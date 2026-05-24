@@ -34,6 +34,7 @@ export interface StoredSubmission {
   department?: string
   companyName?: string
   companyDomain?: string
+  companyLinkedinUrl?: string
   companySize?: string
   companyIndustry?: string
   companySubIndustry?: string
@@ -107,6 +108,7 @@ interface DbRow {
   department: string | null
   company_name: string | null
   company_domain: string | null
+  company_linkedin_url: string | null
   company_size: string | null
   company_industry: string | null
   company_sub_industry: string | null
@@ -157,6 +159,7 @@ function toRow(s: StoredSubmission): DbRow {
     department: s.department || null,
     company_name: s.companyName || null,
     company_domain: s.companyDomain || null,
+    company_linkedin_url: s.companyLinkedinUrl || null,
     company_size: s.companySize || null,
     company_industry: s.companyIndustry || null,
     company_sub_industry: s.companySubIndustry || null,
@@ -207,6 +210,7 @@ function fromRow(r: DbRow): StoredSubmission {
     department: r.department || undefined,
     companyName: r.company_name || undefined,
     companyDomain: r.company_domain || undefined,
+    companyLinkedinUrl: r.company_linkedin_url || undefined,
     companySize: r.company_size || undefined,
     companyIndustry: r.company_industry || undefined,
     companySubIndustry: r.company_sub_industry || undefined,

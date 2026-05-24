@@ -18,8 +18,9 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
   const continent = continentOf(item.country)
   const hasState = showState(item.country)
 
-  // Company LinkedIn URL — lives in the enrichment jsonb, not its own column
+  // Company LinkedIn URL — prefer the dedicated column, fall back to enrichment jsonb
   const companyLinkedinUrl =
+    item.companyLinkedinUrl ||
     (item.enrichment as Record<string, unknown> | undefined)?.companyLinkedinUrl as string | undefined ||
     (item.enrichmentRaw as Record<string, Record<string, unknown> | undefined> | undefined)?.apollo_legacy?.['Company Linkedin Url'] as string | undefined
 
