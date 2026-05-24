@@ -53,6 +53,10 @@ export interface StoredSubmission {
   companyFunding?: string
   companyFoundedYear?: number
   legacyResponses?: Record<string, unknown>
+  // AI-estimated socio-demographics from profile photo
+  ageAiEstimate?: string
+  sexAiEstimate?: string
+  aiEstimateConfidence?: string
 }
 
 // Lazy client — throws only when actually used, so build-time imports don't fail.
@@ -121,6 +125,9 @@ interface DbRow {
   company_funding: string | null
   company_founded_year: number | null
   legacy_responses: Record<string, unknown> | null
+  age_ai_estimate: string | null
+  sex_ai_estimate: string | null
+  ai_estimate_confidence: string | null
   created_at?: string
 }
 
@@ -168,6 +175,9 @@ function toRow(s: StoredSubmission): DbRow {
     company_funding: s.companyFunding || null,
     company_founded_year: s.companyFoundedYear ?? null,
     legacy_responses: s.legacyResponses ?? null,
+    age_ai_estimate: s.ageAiEstimate || null,
+    sex_ai_estimate: s.sexAiEstimate || null,
+    ai_estimate_confidence: s.aiEstimateConfidence || null,
   }
 }
 
@@ -215,6 +225,9 @@ function fromRow(r: DbRow): StoredSubmission {
     companyFunding: r.company_funding ?? undefined,
     companyFoundedYear: r.company_founded_year ?? undefined,
     legacyResponses: r.legacy_responses ?? undefined,
+    ageAiEstimate: r.age_ai_estimate ?? undefined,
+    sexAiEstimate: r.sex_ai_estimate ?? undefined,
+    aiEstimateConfidence: r.ai_estimate_confidence ?? undefined,
   }
 }
 

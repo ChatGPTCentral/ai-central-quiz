@@ -13,6 +13,7 @@ import { wizaProvider } from './wiza'
 import { findLinkedInViaGoogle } from './google-linkedin-search'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { inferNameFromEmail, type InferredName } from './name-from-email'
+import { estimateDemographicsFromPhoto, type PhotoDemographics } from './photo-demographics'
 import { mergeEnrichment } from './merge'
 import type { NormalizedPerson, MergedEnrichment, EnrichmentSource } from './types'
 
@@ -26,9 +27,9 @@ export interface V2Input {
 }
 
 export interface V2Stage {
-  name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape'
+  name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape' | 'photo_ai_demographics'
   status: 'skipped' | 'ok' | 'miss' | 'error'
-  result?: NormalizedPerson | InferredName | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string; query?: string }[] }
+  result?: NormalizedPerson | InferredName | PhotoDemographics | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string; query?: string }[] }
   reason?: string
 }
 
@@ -36,9 +37,10 @@ export interface V2Result {
   email: string
   stages: V2Stage[]
   merged: MergedEnrichment
-  raw: Record<string, NormalizedPerson['raw']>
+  raw: Record<string, unknown>
   providersTried: EnrichmentSource[]
   status: 'complete' | 'partial' | 'failed'
+  aiDemographics?: PhotoDemographics
 }
 
 function hasPhoto(results: NormalizedPerson[]): boolean {
@@ -156,8 +158,30 @@ export async function runV2(input: V2Input): Promise<V2Result> {
   }
 
   const merged = mergeEnrichment(results, tried)
+
+  // ── Stage 6: AI vision demographics from photo (age + sex) ──────
+  let aiDemographics: PhotoDemographics | undefined
+  if (merged.photoUrl && process.env.ANTHROPIC_API_KEY) {
+    const d = await estimateDemographicsFromPhoto(merged.photoUrl)
+    if (d.error) {
+      stages.push({ name: 'photo_ai_demographics', status: 'error', reason: d.error })
+    } else if (d.ageBracket || d.sexPresentation) {
+      stages.push({ name: 'photo_ai_demographics', status: 'ok', result: d })
+      aiDemographics = d
+      ;(raw as Record<string, unknown>).claude_vision = d.raw
+    } else {
+      stages.push({ name: 'photo_ai_demographics', status: 'miss' })
+    }
+  } else {
+    stages.push({
+      name: 'photo_ai_demographics',
+      status: 'skipped',
+      reason: !merged.photoUrl ? 'no photo to analyze' : 'ANTHROPIC_API_KEY not set',
+    })
+  }
+
   const status: V2Result['status'] =
     merged.linkedinUrl && merged.photoUrl ? 'complete' :
     results.length > 0 || merged.linkedinUrl ? 'partial' : 'failed'
-  return { email, stages, merged, raw, providersTried: tried, status }
+  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics }
 }

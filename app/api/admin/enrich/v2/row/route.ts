@@ -120,6 +120,17 @@ export async function POST(req: NextRequest) {
     if (v2.merged.function)        update.job_function         = v2.merged.function
     if (v2.merged.department)      update.department           = v2.merged.department
 
+    // Stage 6 AI vision results — write only when Claude returned a non-uncertain estimate
+    if (v2.aiDemographics?.ageBracket && v2.aiDemographics.ageBracket !== 'uncertain') {
+      update.age_ai_estimate = v2.aiDemographics.ageBracket
+    }
+    if (v2.aiDemographics?.sexPresentation && v2.aiDemographics.sexPresentation !== 'uncertain') {
+      update.sex_ai_estimate = v2.aiDemographics.sexPresentation
+    }
+    if (v2.aiDemographics?.confidence) {
+      update.ai_estimate_confidence = v2.aiDemographics.confidence
+    }
+
     console.log(`[v2 save] row=${rowId} updating columns:`, Object.keys(update))
 
     if (Object.keys(update).length > 0) {

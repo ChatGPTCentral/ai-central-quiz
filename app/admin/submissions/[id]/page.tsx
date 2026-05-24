@@ -109,10 +109,28 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       {/* ── SOCIO-DEMOGRAPHIC ───────────────────────────── */}
       <ProfileSection title="Socio-demographic">
         <FieldRow label="Age">
-          <InlineField rowId={item.id} field="ageBracket" value={item.ageBracket || ''} placeholder="age bracket" />
+          {item.ageBracket ? (
+            <InlineField rowId={item.id} field="ageBracket" value={item.ageBracket} placeholder="age bracket" />
+          ) : item.ageAiEstimate ? (
+            <span className="inline-flex items-center gap-1.5 text-sm text-[#333333]">
+              {item.ageAiEstimate}
+              <span title={`AI-estimated · confidence ${item.aiEstimateConfidence || 'unknown'}`}
+                className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#FEF7E7] text-[#E48715]">✨ AI</span>
+            </span>
+          ) : (
+            <InlineField rowId={item.id} field="ageBracket" value="" placeholder="age bracket" />
+          )}
         </FieldRow>
         <FieldRow label="Sex">
-          <span className="text-sm text-[#E8E4DF]">— (not captured)</span>
+          {item.sexAiEstimate ? (
+            <span className="inline-flex items-center gap-1.5 text-sm text-[#333333]">
+              {item.sexAiEstimate}
+              <span title={`AI-estimated · confidence ${item.aiEstimateConfidence || 'unknown'}`}
+                className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#FEF7E7] text-[#E48715]">✨ AI</span>
+            </span>
+          ) : (
+            <span className="text-sm text-[#E8E4DF]">— (run ✨ Enrich to estimate from photo)</span>
+          )}
         </FieldRow>
         <FieldRow label="City">
           <InlineField rowId={item.id} field="city" value={item.city || ''} placeholder="city" />
