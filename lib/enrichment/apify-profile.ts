@@ -72,7 +72,7 @@ export const apifyProfileProvider: Provider = {
   name: 'apify_profile',
   slow: true,
   async lookup({ email, name, linkedinUrl, partial }): Promise<NormalizedPerson | null> {
-    const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN
+    const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY
     if (!token) return null
 
     // Build the strongest possible input. The actor accepts several optional

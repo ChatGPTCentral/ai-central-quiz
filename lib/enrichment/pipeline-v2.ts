@@ -1,16 +1,15 @@
-// Enrichment v2 — one cohesive pipeline.
+// Enrichment v2 — Google-first pipeline.
 //
-// Input: a row's known signals (email + whatever is already there).
-// Output: stage-by-stage results + a merged NormalizedPerson + status.
-//
-// Stages:
-//   1. Name inference from email local-part (if name is missing).
-//   2. Apollo direct match by email (+ any other signals).
-//   3. Google → first linkedin.com/in/* in SERP (if we don't already have one).
-//   4. Apify-profile scrape by LinkedIn URL (if we now have one).
-//   5. Merge — first-non-empty-wins; photo always overwrites.
+// Order (per user's spec, Morgane Marlow flow):
+//   1. Infer name from email (if missing).
+//   2. Google search: top 5 organic results, find first linkedin.com/in/*.
+//   3. Once we have a LinkedIn URL → push to Apollo (richer match via URL).
+//   4. If Apollo didn't return a face → Wiza.
+//   5. If still no face → Apify profile scraper (last resort, paid actor).
+//   6. Merge; photo always overwrites.
 
 import { apolloProvider } from './apollo'
+import { wizaProvider } from './wiza'
 import { findLinkedInViaGoogle } from './google-linkedin-search'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { inferNameFromEmail, type InferredName } from './name-from-email'
@@ -27,9 +26,9 @@ export interface V2Input {
 }
 
 export interface V2Stage {
-  name: 'name_from_email' | 'apollo' | 'google_search' | 'linkedin_scrape'
+  name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape'
   status: 'skipped' | 'ok' | 'miss' | 'error'
-  result?: NormalizedPerson | InferredName | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string }[] }
+  result?: NormalizedPerson | InferredName | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string; query?: string }[] }
   reason?: string
 }
 
@@ -42,9 +41,8 @@ export interface V2Result {
   status: 'complete' | 'partial' | 'failed'
 }
 
-function isComplete(m: MergedEnrichment): boolean {
-  // For v2, "complete" means we have a LinkedIn URL AND a photo. That's the user's stated goal.
-  return !!m.linkedinUrl && !!m.photoUrl
+function hasPhoto(results: NormalizedPerson[]): boolean {
+  return results.some(r => !!r.photoUrl)
 }
 
 export async function runV2(input: V2Input): Promise<V2Result> {
@@ -54,7 +52,6 @@ export async function runV2(input: V2Input): Promise<V2Result> {
   const raw: Record<string, NormalizedPerson['raw']> = {}
   const tried: EnrichmentSource[] = []
 
-  // Working context — grows as stages discover more signals
   const ctx = {
     email,
     name: input.name?.trim() || undefined,
@@ -64,7 +61,7 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     country: input.country?.trim() || undefined,
   }
 
-  // ── Stage 1: infer name from email if missing ───────────────────
+  // ── Stage 1: name from email ────────────────────────────────────
   if (!ctx.name) {
     const inferred = inferNameFromEmail(email)
     if (inferred) {
@@ -77,36 +74,7 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     stages.push({ name: 'name_from_email', status: 'skipped', reason: 'row already has a name' })
   }
 
-  // ── Stage 2: Apollo direct ──────────────────────────────────────
-  try {
-    tried.push('apollo')
-    const apolloResult = await apolloProvider.lookup(ctx)
-    if (apolloResult) {
-      results.push(apolloResult)
-      raw['apollo'] = apolloResult.raw
-      // Promote Apollo's findings into the working context so later stages benefit
-      if (!ctx.linkedinUrl && apolloResult.linkedinUrl) ctx.linkedinUrl = apolloResult.linkedinUrl
-      if (!ctx.companyName && apolloResult.companyName) ctx.companyName = apolloResult.companyName
-      if (!ctx.jobTitle && apolloResult.jobTitle)       ctx.jobTitle = apolloResult.jobTitle
-      if (!ctx.country && apolloResult.country)         ctx.country = apolloResult.country
-      if (!ctx.name && apolloResult.fullName)           ctx.name = apolloResult.fullName
-      stages.push({ name: 'apollo', status: 'ok', result: apolloResult })
-    } else {
-      stages.push({ name: 'apollo', status: 'miss' })
-    }
-  } catch (err) {
-    stages.push({ name: 'apollo', status: 'error', reason: String(err) })
-  }
-
-  // Early-exit check after Apollo
-  const interimAfterApollo = mergeEnrichment(results, [...tried])
-  if (isComplete(interimAfterApollo)) {
-    stages.push({ name: 'google_search',  status: 'skipped', reason: 'already complete' })
-    stages.push({ name: 'linkedin_scrape', status: 'skipped', reason: 'already complete' })
-    return finish(email, stages, results, raw, tried, interimAfterApollo)
-  }
-
-  // ── Stage 3: Google → LinkedIn URL (only if missing) ────────────
+  // ── Stage 2: Google → LinkedIn URL (if missing) ─────────────────
   if (!ctx.linkedinUrl) {
     try {
       const search = await findLinkedInViaGoogle({
@@ -126,8 +94,46 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     stages.push({ name: 'google_search', status: 'skipped', reason: 'linkedin_url already known' })
   }
 
-  // ── Stage 4: scrape the LinkedIn profile (if we have a URL) ─────
-  if (ctx.linkedinUrl) {
+  // ── Stage 3: Apollo (now armed with the LinkedIn URL) ───────────
+  try {
+    tried.push('apollo')
+    const apolloResult = await apolloProvider.lookup(ctx)
+    if (apolloResult) {
+      results.push(apolloResult)
+      raw['apollo'] = apolloResult.raw
+      // Promote findings into ctx in case downstream providers can use them
+      if (!ctx.linkedinUrl && apolloResult.linkedinUrl) ctx.linkedinUrl = apolloResult.linkedinUrl
+      if (!ctx.companyName && apolloResult.companyName) ctx.companyName = apolloResult.companyName
+      if (!ctx.jobTitle && apolloResult.jobTitle)       ctx.jobTitle = apolloResult.jobTitle
+      stages.push({ name: 'apollo', status: 'ok', result: apolloResult })
+    } else {
+      stages.push({ name: 'apollo', status: 'miss' })
+    }
+  } catch (err) {
+    stages.push({ name: 'apollo', status: 'error', reason: String(err) })
+  }
+
+  // ── Stage 4: Wiza (only if Apollo didn't return a photo) ────────
+  if (!hasPhoto(results)) {
+    try {
+      tried.push('wiza')
+      const wizaResult = await wizaProvider.lookup(ctx)
+      if (wizaResult) {
+        results.push(wizaResult)
+        raw['wiza'] = wizaResult.raw
+        stages.push({ name: 'wiza', status: 'ok', result: wizaResult })
+      } else {
+        stages.push({ name: 'wiza', status: 'miss' })
+      }
+    } catch (err) {
+      stages.push({ name: 'wiza', status: 'error', reason: String(err) })
+    }
+  } else {
+    stages.push({ name: 'wiza', status: 'skipped', reason: 'photo already obtained from Apollo' })
+  }
+
+  // ── Stage 5: Apify profile scraper (only if still no photo) ─────
+  if (!hasPhoto(results) && ctx.linkedinUrl) {
     try {
       tried.push('apify_profile')
       const profile = await scrapeLinkedInProfile(ctx.linkedinUrl)
@@ -142,23 +148,16 @@ export async function runV2(input: V2Input): Promise<V2Result> {
       stages.push({ name: 'linkedin_scrape', status: 'error', reason: String(err) })
     }
   } else {
-    stages.push({ name: 'linkedin_scrape', status: 'skipped', reason: 'no linkedin_url to scrape' })
+    stages.push({
+      name: 'linkedin_scrape',
+      status: 'skipped',
+      reason: !ctx.linkedinUrl ? 'no linkedin_url to scrape' : 'photo already obtained earlier',
+    })
   }
 
   const merged = mergeEnrichment(results, tried)
-  return finish(email, stages, results, raw, tried, merged)
-}
-
-function finish(
-  email: string,
-  stages: V2Stage[],
-  results: NormalizedPerson[],
-  raw: Record<string, NormalizedPerson['raw']>,
-  tried: EnrichmentSource[],
-  merged: MergedEnrichment,
-): V2Result {
   const status: V2Result['status'] =
     merged.linkedinUrl && merged.photoUrl ? 'complete' :
-    results.length > 0 ? 'partial' : 'failed'
+    results.length > 0 || merged.linkedinUrl ? 'partial' : 'failed'
   return { email, stages, merged, raw, providersTried: tried, status }
 }

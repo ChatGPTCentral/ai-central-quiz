@@ -74,7 +74,7 @@ function resultUrl(r: OrganicResult): string {
 }
 
 export async function findLinkedInViaGoogle(input: GoogleSearchInput): Promise<GoogleSearchResult> {
-  const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN
+  const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY
   if (!token) return { triedQueries: [] }
 
   const queries = buildQueries(input)
@@ -89,11 +89,12 @@ export async function findLinkedInViaGoogle(input: GoogleSearchInput): Promise<G
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         queries: queries.join('\n'),
-        resultsPerPage: 50,
+        resultsPerPage: 10,
         maxPagesPerQuery: 1,
         languageCode: 'en',
         mobileResults: false,
         saveHtml: false,
+        includeUnfilteredResults: false,
       }),
       signal: AbortSignal.timeout(SYNC_TIMEOUT_MS + 5_000),
     })
@@ -104,11 +105,13 @@ export async function findLinkedInViaGoogle(input: GoogleSearchInput): Promise<G
     }
     const items: ApifyGoogleResult[] = await res.json()
 
-    // Flatten all organic results across all queries, tagging each with its source query.
+    // Flatten organic results from all queries — cap at first 5 per query
+    // (only natural, non-sponsored results; google-search-scraper separates `paidResults`).
     const allOrganic: { url: string; title?: string; query?: string }[] = []
     for (const block of items) {
       const term = block.searchQuery?.term
-      for (const r of block.organicResults || []) {
+      const top5 = (block.organicResults || []).slice(0, 5)
+      for (const r of top5) {
         const u = resultUrl(r)
         if (u) allOrganic.push({ url: u, title: r.title, query: term })
       }

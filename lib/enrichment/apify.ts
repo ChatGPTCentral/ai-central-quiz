@@ -72,7 +72,7 @@ export const apifyProvider: Provider = {
   name: 'apify',
   slow: true,
   async lookup({ partial }): Promise<NormalizedPerson | null> {
-    const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN
+    const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY
     if (!token) return null
 
     const query = buildQuery(partial?.fullName, partial?.companyName)
