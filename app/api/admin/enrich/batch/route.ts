@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 import { createClient } from '@supabase/supabase-js'
-import { runEnrichment } from '@/lib/enrichment/waterfall'
+import { runV2 } from '@/lib/enrichment/pipeline-v2'
 
 export const maxDuration = 300 // Vercel — give us 5 min
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const c = client()
   const { data, error } = await c
     .from('submissions')
-    .select('id, email, enrichment_status')
+    .select('id, email, name, linkedin_url, company_name, job_title, country')
     .is('linkedin_url', null)
     .neq('enrichment_status', 'failed')
     .order('ts', { ascending: false })
@@ -46,33 +46,49 @@ export async function POST(req: NextRequest) {
       continue
     }
     try {
-      const enr = await runEnrichment(row.email, { includeSlow: true })
-      // Update the submission row
-      await c.from('submissions').update({
-        linkedin_url: enr.merged.linkedinUrl || null,
-        photo_url: enr.merged.photoUrl || null,
-        job_title: enr.merged.jobTitle || null,
-        seniority: enr.merged.seniority || null,
-        job_function: enr.merged.function || null,
-        department: enr.merged.department || null,
-        company_name: enr.merged.companyName || null,
-        company_domain: enr.merged.companyDomain || null,
-        company_size: enr.merged.companySize || null,
-        company_industry: enr.merged.industry || null,
-        company_sub_industry: enr.merged.subIndustry || null,
-        country: enr.merged.country || null,
-        region: enr.merged.region || null,
-        city: enr.merged.city || null,
+      // Force-run v2 pipeline for every batch row (bypasses cache so we get fresh data)
+      const enr = await runV2({
+        email: row.email,
+        name: row.name || undefined,
+        linkedinUrl: row.linkedin_url || undefined,
+        companyName: row.company_name || undefined,
+        jobTitle: row.job_title || undefined,
+        country: row.country || undefined,
+      }, { useCache: false })
+
+      const update: Record<string, unknown> = {
         enrichment: enr.merged,
-        enrichment_raw: enr.raw,
         enrichment_status: enr.status,
-      }).eq('id', row.id)
+      }
+      if (enr.merged.linkedinUrl)        update.linkedin_url         = enr.merged.linkedinUrl
+      if (enr.merged.photoUrl)           update.photo_url            = enr.merged.photoUrl
+      if (enr.merged.jobTitle)           update.job_title            = enr.merged.jobTitle
+      if (enr.standardized?.seniority)   update.seniority            = enr.standardized.seniority
+      else if (enr.merged.seniority)     update.seniority            = enr.merged.seniority
+      if (enr.merged.function)           update.job_function         = enr.merged.function
+      if (enr.merged.department)         update.department           = enr.merged.department
+      if (enr.merged.companyName)        update.company_name         = enr.merged.companyName
+      if (enr.merged.companyDomain)      update.company_domain       = enr.merged.companyDomain
+      if (enr.merged.companyLinkedinUrl) update.company_linkedin_url = enr.merged.companyLinkedinUrl
+      if (enr.merged.companyWebsite)     update.company_website      = enr.merged.companyWebsite
+      if (enr.merged.companySize)        update.company_size         = enr.merged.companySize
+      if (enr.merged.industry)           update.company_industry     = enr.merged.industry
+      if (enr.merged.subIndustry)        update.company_sub_industry = enr.merged.subIndustry
+      if (enr.merged.country)            update.country              = enr.merged.country
+      if (enr.merged.region)             update.region               = enr.merged.region
+      if (enr.merged.city)               update.city                 = enr.merged.city
+      if (enr.aiDemographics?.ageBracket && enr.aiDemographics.ageBracket !== 'uncertain') update.age_ai_estimate = enr.aiDemographics.ageBracket
+      if (enr.aiDemographics?.sexPresentation && enr.aiDemographics.sexPresentation !== 'uncertain') update.sex_ai_estimate = enr.aiDemographics.sexPresentation
+      if (enr.aiDemographics?.confidence) update.ai_estimate_confidence = enr.aiDemographics.confidence
+
+      await c.from('submissions').update(update).eq('id', row.id)
+
       results.push({
         email: row.email,
         status: enr.status,
         linkedinUrl: enr.merged.linkedinUrl,
         providersTried: enr.providersTried,
-        fromCache: enr.fromCache,
+        fromCache: enr.fromCache || false,
       })
       // Small pause to respect provider rate limits
       await new Promise(r => setTimeout(r, 200))

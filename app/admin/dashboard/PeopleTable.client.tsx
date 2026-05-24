@@ -102,9 +102,7 @@ function EditableCell({
 }
 
 // ── Column descriptors ──────────────────────────────────────────
-type ProviderKey = 'apollo' | 'wiza' | 'apify_profile' | 'google' | 'v2'
-
-const V2_ENABLED = process.env.NEXT_PUBLIC_ENRICH_V2 === 'true'
+type ProviderKey = 'v2'
 
 type RowCtx = {
   s: StoredSubmission
@@ -218,38 +216,30 @@ const COLUMNS: Column[] = [
     cell: ({ s }) => <span className="text-[#9C9C9C] text-xs whitespace-nowrap" title={new Date(s.ts).toISOString()}>{fmt(s.ts)}</span>,
   },
   {
-    id: 'enrich', label: 'Enrich', width: V2_ENABLED ? '200px' : '160px', align: 'center', required: true,
-    cell: ({ s, busyProvider, providerResult, runProvider }) => (
-      <div className="flex items-center gap-1 justify-center">
-        {((V2_ENABLED ? ['v2', 'google', 'apify_profile', 'apollo', 'wiza'] : ['google', 'apify_profile', 'apollo', 'wiza']) as ProviderKey[]).map(p => {
-          const busy = busyProvider?.id === s.id && busyProvider.provider === p
-          const r = providerResult[s.id]?.[p]
-          const ok = r?.status === 'complete'
-          const partial = r?.status === 'partial'
-          const fail = r && !ok && !partial
-          const label = p === 'v2' ? '✨' : p === 'google' ? 'G' : p === 'apify_profile' ? 'L' : p === 'apollo' ? 'A' : 'W'
-          const isV2 = p === 'v2'
-          return (
-            <button
-              key={p}
-              onClick={(e) => { e.stopPropagation(); runProvider(s.id, p) }}
-              disabled={!!busyProvider}
-              title={isV2 ? 'Run full v2 pipeline (name from email → Apollo → Google → LinkedIn scrape)' : `Try ${p[0].toUpperCase() + p.slice(1)} — ${r?.status || 'idle'}`}
-              className={`w-7 h-6 rounded text-[10px] font-bold transition-colors flex items-center justify-center ${
-                busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
-                ok ? 'bg-[#62A758] text-white' :
-                partial ? 'bg-[#E7B02F] text-[#333333]' :
-                fail ? 'bg-[#BE3B3B] text-white' :
-                isV2 ? 'bg-[#333333] text-[#FFFDFA] hover:opacity-90' :
-                'bg-white border border-[#E8E4DF] text-[#333333] hover:bg-[#FEF7E7]'
-              }`}
-            >
-              {busy ? '…' : label}
-            </button>
-          )
-        })}
-      </div>
-    ),
+    id: 'enrich', label: 'Enrich', width: '88px', align: 'center', required: true,
+    cell: ({ s, busyProvider, providerResult, runProvider }) => {
+      const busy = busyProvider?.id === s.id
+      const r = providerResult[s.id]?.v2
+      const ok = r?.status === 'complete'
+      const partial = r?.status === 'partial'
+      const fail = r && !ok && !partial
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); runProvider(s.id, 'v2') }}
+          disabled={!!busyProvider}
+          title="Force-run the full enrichment pipeline (bypasses cache, costs API credits)"
+          className={`px-3 h-7 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1 ${
+            busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
+            ok ? 'bg-[#62A758] text-white' :
+            partial ? 'bg-[#E7B02F] text-[#333333]' :
+            fail ? 'bg-[#BE3B3B] text-white' :
+            'bg-[#333333] text-[#FFFDFA] hover:opacity-90'
+          }`}
+        >
+          {busy ? '…' : <>✨ Enrich</>}
+        </button>
+      )
+    },
   },
   {
     id: 'menu', label: '', width: '40px', align: 'center', required: true,
@@ -319,23 +309,18 @@ export default function PeopleTable({ items }: Props) {
   async function runProvider(id: string, provider: ProviderKey) {
     setBusyProvider({ id, provider })
     try {
-      // v2 button hits the pipeline endpoint with save=true; other buttons hit the per-provider endpoint
-      const endpoint = provider === 'v2' ? '/api/admin/enrich/v2/row' : '/api/admin/enrich/provider'
-      const reqBody = provider === 'v2' ? { id, save: true } : { id, provider }
-      const res = await fetch(endpoint, {
+      // Single ✨ Enrich button — always force-runs the v2 pipeline
+      const res = await fetch('/api/admin/enrich/v2/row', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(reqBody),
+        body: JSON.stringify({ id, save: true, force: true }),
       })
       const data = await res.json()
-      // Normalize v2's nested merged shape to the per-provider button's flat shape
-      if (provider === 'v2') {
-        data.linkedinUrl = data.merged?.linkedinUrl
-        data.photoUrl = data.merged?.photoUrl
-        data.name = data.merged?.fullName
-        data.jobTitle = data.merged?.jobTitle
-        data.companyName = data.merged?.companyName
-      }
+      data.linkedinUrl = data.merged?.linkedinUrl
+      data.photoUrl = data.merged?.photoUrl
+      data.name = data.merged?.fullName
+      data.jobTitle = data.merged?.jobTitle
+      data.companyName = data.merged?.companyName
       const status = data.status || (res.ok ? 'partial' : 'failed')
       setProviderResult(prev => ({
         ...prev,
@@ -351,17 +336,10 @@ export default function PeopleTable({ items }: Props) {
         if (data.companyName && !row.companyName) row.companyName = data.companyName
         bumpRow()
       }
-      // For v2, also pull fresh DB state so subsequent navigations show what was saved
-      if (provider === 'v2') {
-        if (data.saveError) console.error('v2 save error:', data.saveError)
-        if (data.fieldsUpdated?.length) console.log(`v2 saved fields for ${id}:`, data.fieldsUpdated)
-        router.refresh()
-      }
-      // Log diagnostic info for Google misses
-      if (provider === 'google' && !data.linkedinUrl) {
-        const sample = (data.organicSample || []).map((o: { title?: string; url: string }) => `- ${o.title || ''}\n  ${o.url}`).join('\n')
-        console.warn(`Google miss for row ${id}.\nTried:\n${(data.triedQueries || []).join('\n')}\n\nTop results:\n${sample || '(none)'}`)
-      }
+      // Pull fresh DB state so subsequent navigations show what was saved
+      if (data.saveError) console.error('v2 save error:', data.saveError)
+      if (data.fieldsUpdated?.length) console.log(`v2 saved fields for ${id}:`, data.fieldsUpdated)
+      router.refresh()
     } catch {
       setProviderResult(prev => ({
         ...prev,
