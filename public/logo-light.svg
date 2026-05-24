@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <!-- AI Central mark - light version (cream on dark background) -->
+  <rect width="500" height="500" fill="#333333" rx="0"/>
+  <rect x="12" y="12" width="476" height="476" fill="none" stroke="#FFFDFA" stroke-width="4" opacity="0.3"/>
+  <!-- Stylized "AI" letterform -->
+  <path d="M80 440 L220 60 L260 60 L160 440 Z" fill="#FFFDFA"/>
+  <path d="M80 60 L220 60 L140 200 Z" fill="#FFFDFA"/>
+  <path d="M270 60 L340 60 L340 440 L270 440 Z" fill="#FFFDFA"/>
+  <path d="M370 60 L420 60 L420 320 L370 320 Z" fill="#FFFDFA"/>
+  <path d="M370 370 L420 370 L420 440 L370 440 Z" fill="#FFFDFA"/>
+</svg>

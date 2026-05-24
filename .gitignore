@@ -1,0 +1,9 @@
+node_modules
+.next
+.env*.local
+.env*-dump
+.env*-prod
+.DS_Store
+*.tsbuildinfo
+# Vercel project link — keep the named snapshots, ignore the live pointer
+.vercel/project.json

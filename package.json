@@ -1,0 +1,29 @@
+{
+  "name": "ai-central-quiz",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "deploy:prod": "./scripts/deploy.sh prod",
+    "deploy:staging": "./scripts/deploy.sh staging"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "next": "14.2.29",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10",
+    "pg": "^8.21.0",
+    "postcss": "^8",
+    "tailwindcss": "^3",
+    "typescript": "^5"
+  }
+}
