@@ -115,9 +115,6 @@ export async function runV2(input: V2Input): Promise<V2Result> {
   }
 
   // ── Stage 3: Apify profile scrape — PRIMARY work-profile source ──
-  // The Apify `apify-profile` actor takes a LinkedIn URL and returns the
-  // canonical profile: photo, headline, title, company, company URL, location,
-  // industry. This is what fills "the work profile" the user expects.
   if (ctx.linkedinUrl) {
     try {
       tried.push('apify_profile')
@@ -126,7 +123,17 @@ export async function runV2(input: V2Input): Promise<V2Result> {
         record('apify_profile', profile)
         stages.push({ name: 'linkedin_scrape', status: 'ok', result: profile })
       } else {
-        stages.push({ name: 'linkedin_scrape', status: 'miss' })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const attempts = (globalThis as any).__lastApifyProfileAttempts || []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(globalThis as any).__lastApifyProfileAttempts = undefined
+        stages.push({
+          name: 'linkedin_scrape',
+          status: 'miss',
+          // Surface what each actor returned so the user can diagnose in the Lab page
+          result: { linkedinUrl: ctx.linkedinUrl, attempts } as never,
+          reason: `Tried ${attempts.length} actor(s) — all returned no usable data`,
+        })
       }
     } catch (err) {
       stages.push({ name: 'linkedin_scrape', status: 'error', reason: String(err) })
