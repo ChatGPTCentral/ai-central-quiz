@@ -12,6 +12,7 @@ export interface NormalizedPerson {
   department?: string
   companyName?: string
   companyDomain?: string
+  companyWebsite?: string
   companySize?: string
   companyLinkedinUrl?: string
   companyLogoUrl?: string
@@ -38,6 +39,7 @@ export interface MergedEnrichment {
   department?: string
   companyName?: string
   companyDomain?: string
+  companyWebsite?: string
   companySize?: string
   companyLinkedinUrl?: string
   companyLogoUrl?: string

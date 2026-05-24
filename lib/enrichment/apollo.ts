@@ -18,6 +18,7 @@ interface ApolloPerson {
   organization?: {
     name?: string
     primary_domain?: string
+    website_url?: string
     estimated_num_employees?: number
     industry?: string
     keywords?: string[]
@@ -77,6 +78,7 @@ export const apolloProvider: Provider = {
         department: p.departments?.[0],
         companyName: p.organization?.name,
         companyDomain: p.organization?.primary_domain,
+        companyWebsite: p.organization?.website_url,
         companySize: p.organization?.estimated_num_employees?.toString(),
         companyLinkedinUrl: p.organization?.linkedin_url,
         companyLogoUrl: p.organization?.logo_url,

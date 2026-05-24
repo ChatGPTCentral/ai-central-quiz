@@ -4,7 +4,7 @@ import type { NormalizedPerson, MergedEnrichment, EnrichmentSource } from './typ
 const FIELDS: (keyof Omit<MergedEnrichment, 'sources' | 'providersTried'>)[] = [
   'firstName', 'lastName', 'fullName',
   'linkedinUrl', 'jobTitle', 'seniority', 'function', 'department',
-  'companyName', 'companyDomain', 'companySize', 'companyLinkedinUrl', 'companyLogoUrl',
+  'companyName', 'companyDomain', 'companyWebsite', 'companySize', 'companyLinkedinUrl', 'companyLogoUrl',
   'industry', 'subIndustry',
   'country', 'region', 'city',
   'photoUrl', 'headline',

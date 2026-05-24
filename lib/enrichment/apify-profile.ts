@@ -30,11 +30,12 @@ interface ApifyExperience {
   positionTitle?: string
   subtitle?: string
   companyName?: string
-  company?: string | { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string }
+  company?: string | { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string; website?: string; websiteUrl?: string }
   companyUrl?: string
   companyLink1?: string
   companyLink2?: string
   companyLogo?: string
+  companyWebsite?: string
   caption?: string
   duration?: string
   durationShort?: string
@@ -134,19 +135,26 @@ function pickCurrentExperience(p: ApifyProfileItem): ApifyExperience | null {
   return all[0]
 }
 
-function getCompanyFromExperience(e: ApifyExperience): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string } {
+function getCompanyFromExperience(e: ApifyExperience): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string; website?: string } {
   if (typeof e.company === 'object' && e.company) {
-    return { name: e.company.name, linkedinUrl: e.company.linkedinUrl, logoUrl: e.company.logoUrl, industry: e.company.industry }
+    return {
+      name: e.company.name,
+      linkedinUrl: e.company.linkedinUrl,
+      logoUrl: e.company.logoUrl,
+      industry: e.company.industry,
+      website: e.company.website || e.company.websiteUrl,
+    }
   }
   return {
     name: (typeof e.company === 'string' ? e.company : undefined) || e.companyName,
     linkedinUrl: e.companyLink1 || e.companyLink2 || e.companyUrl,
     logoUrl: e.companyLogo,
     industry: e.industry,
+    website: e.companyWebsite,
   }
 }
 
-function extractCurrentCompany(p: ApifyProfileItem): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string } {
+function extractCurrentCompany(p: ApifyProfileItem): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string; website?: string } {
   // 1) Look at the canonical CURRENT experience from the array (uses Present marker)
   const currentExp = pickCurrentExperience(p)
   if (currentExp) {
@@ -287,6 +295,7 @@ export const apifyProfileProvider: Provider = {
         companyName: company.name,
         companyLinkedinUrl: company.linkedinUrl,
         companyLogoUrl: company.logoUrl,
+        companyWebsite: company.website,
         industry: p.industry || company.industry,
         country: p.geo?.country || p.country || loc.split(',').pop()?.trim(),
         region: p.geo?.state,

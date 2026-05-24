@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
     if (v2.merged.city)            update.city                 = v2.merged.city
     if (v2.merged.companyDomain)       update.company_domain       = v2.merged.companyDomain
     if (v2.merged.companyLinkedinUrl)  update.company_linkedin_url = v2.merged.companyLinkedinUrl
+    if (v2.merged.companyWebsite)      update.company_website      = v2.merged.companyWebsite
     if (v2.merged.companySize)         update.company_size         = v2.merged.companySize
     if (v2.merged.industry)            update.company_industry     = v2.merged.industry
     if (v2.merged.subIndustry)         update.company_sub_industry = v2.merged.subIndustry
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
   if (rowId && saved) {
     const { data: verified } = await c
       .from('submissions')
-      .select('linkedin_url, photo_url, job_title, seniority, company_name, company_industry, company_size, country, city, region')
+      .select('linkedin_url, photo_url, job_title, seniority, company_name, company_linkedin_url, company_website, company_industry, company_size, country, city, region')
       .eq('id', rowId)
       .maybeSingle()
     persisted = verified

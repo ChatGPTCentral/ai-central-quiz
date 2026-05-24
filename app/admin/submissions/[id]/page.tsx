@@ -168,6 +168,19 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             <span className="text-sm text-[#E8E4DF]">—</span>
           )}
         </FieldRow>
+        <FieldRow label="Company website">
+          {(() => {
+            // Prefer the full-website column, fall back to a constructed https://<domain>
+            const site = item.companyWebsite
+              || (item.companyDomain ? `https://${item.companyDomain.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : undefined)
+            return site ? (
+              <a href={site} target="_blank" rel="noopener noreferrer"
+                className="text-sm text-[#046BB1] hover:underline break-all">{site}</a>
+            ) : (
+              <span className="text-sm text-[#E8E4DF]">—</span>
+            )
+          })()}
+        </FieldRow>
         <FieldRow label="Industry">
           <InlineField rowId={item.id} field="companyIndustry" value={item.companyIndustry || ''} placeholder="industry" />
         </FieldRow>
