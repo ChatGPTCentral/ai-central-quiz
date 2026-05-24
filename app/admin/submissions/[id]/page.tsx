@@ -5,6 +5,7 @@ import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { continentOf, showState } from '@/lib/geo'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
+import EnrichHeaderButton from './EnrichHeaderButton.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,10 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link href="/admin/submissions" className="text-sm text-[#9C9C9C] hover:text-[#333333]">← All submissions</Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/submissions" className="text-sm text-[#9C9C9C] hover:text-[#333333]">← All submissions</Link>
+        <EnrichHeaderButton id={item.id} />
+      </div>
 
       {/* ── HERO ───────────────────────────────────────────── */}
       <section className="mt-3 mb-8 flex items-start gap-5">

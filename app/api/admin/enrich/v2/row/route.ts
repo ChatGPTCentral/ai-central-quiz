@@ -88,15 +88,17 @@ export async function POST(req: NextRequest) {
 
   const v2 = await runV2(input)
 
-  // Save back if requested AND we have a row id
+  // Save back if requested AND we have a row id.
+  // SPLIT the save into two passes so audit-trail jsonb bloat can NEVER block
+  // the user-facing data update.
   let saved = false
   let saveError: string | null = null
+  let auditError: string | null = null
   const fieldsUpdated: string[] = []
+
   if (body.save && rowId) {
+    // ── Pass 1: scalar/user-facing fields ───────────────────────────
     const update: Record<string, unknown> = {}
-    // For row enrichment we WANT to overwrite empty fields aggressively — that
-    // was the user's complaint ("nothing got written"). Rule: overwrite when
-    // the incoming value is non-empty AND the existing value is empty/missing.
     const setIfNew = (col: string, current: string | undefined | null, fresh: string | undefined) => {
       if (!fresh || !fresh.trim()) return
       if (current && current.trim()) return
@@ -107,36 +109,47 @@ export async function POST(req: NextRequest) {
     setIfNew('company_name',    input.companyName,  v2.merged.companyName)
     setIfNew('job_title',       input.jobTitle,     v2.merged.jobTitle)
     setIfNew('country',         input.country,      v2.merged.country)
-    // Photo URL always overwrites — the whole point of v2 is replacing placeholders.
-    if (v2.merged.photoUrl)        update.photo_url           = v2.merged.photoUrl
-    if (v2.merged.seniority)       update.seniority           = v2.merged.seniority
-    if (v2.merged.region)          update.region              = v2.merged.region
-    if (v2.merged.city)            update.city                = v2.merged.city
-    if (v2.merged.companyDomain)   update.company_domain      = v2.merged.companyDomain
-    if (v2.merged.companySize)     update.company_size        = v2.merged.companySize
-    if (v2.merged.industry)        update.company_industry    = v2.merged.industry
+    if (v2.merged.photoUrl)        update.photo_url            = v2.merged.photoUrl
+    if (v2.merged.seniority)       update.seniority            = v2.merged.seniority
+    if (v2.merged.region)          update.region               = v2.merged.region
+    if (v2.merged.city)            update.city                 = v2.merged.city
+    if (v2.merged.companyDomain)   update.company_domain       = v2.merged.companyDomain
+    if (v2.merged.companySize)     update.company_size         = v2.merged.companySize
+    if (v2.merged.industry)        update.company_industry     = v2.merged.industry
     if (v2.merged.subIndustry)     update.company_sub_industry = v2.merged.subIndustry
-    if (v2.merged.function)        update.job_function        = v2.merged.function
-    if (v2.merged.department)      update.department          = v2.merged.department
+    if (v2.merged.function)        update.job_function         = v2.merged.function
+    if (v2.merged.department)      update.department           = v2.merged.department
 
-    // Audit trail — jsonb merge of v2 raw under the 'v2' key
-    try {
-      const { data } = await c.from('submissions').select('enrichment_raw').eq('id', rowId).maybeSingle()
-      const existingRaw = (data?.enrichment_raw as Record<string, unknown>) || {}
-      update.enrichment_raw = { ...existingRaw, v2: v2.raw }
-    } catch { /* non-fatal */ }
+    console.log(`[v2 save] row=${rowId} updating columns:`, Object.keys(update))
 
     if (Object.keys(update).length > 0) {
-      const { error } = await c.from('submissions').update(update).eq('id', rowId)
+      const { error, data } = await c.from('submissions').update(update).eq('id', rowId).select('id')
       if (error) {
         saveError = error.message
-        console.error('v2 save failed for row', rowId, error)
+        console.error(`[v2 save] row=${rowId} ERROR:`, error)
+      } else if (!data || data.length === 0) {
+        saveError = 'Update affected 0 rows — row id may not exist or RLS blocked it'
+        console.error(`[v2 save] row=${rowId} affected 0 rows`)
       } else {
         saved = true
         fieldsUpdated.push(...Object.keys(update))
+        console.log(`[v2 save] row=${rowId} OK, ${fieldsUpdated.length} columns written`)
       }
+    } else {
+      console.log(`[v2 save] row=${rowId} NOTHING to update — all fields already populated or v2 returned empty`)
+    }
+
+    // ── Pass 2: audit trail (separate, won't block the main save) ───
+    try {
+      const { data } = await c.from('submissions').select('enrichment_raw').eq('id', rowId).maybeSingle()
+      const existingRaw = (data?.enrichment_raw as Record<string, unknown>) || {}
+      const newRaw = { ...existingRaw, v2: v2.raw }
+      const { error: auditErr } = await c.from('submissions').update({ enrichment_raw: newRaw }).eq('id', rowId)
+      if (auditErr) auditError = auditErr.message
+    } catch (err) {
+      auditError = String(err)
     }
   }
 
-  return NextResponse.json({ ...v2, rowId, saved, saveError, fieldsUpdated })
+  return NextResponse.json({ ...v2, rowId, saved, saveError, auditError, fieldsUpdated })
 }
