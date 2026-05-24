@@ -40,6 +40,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Branch safety check — prod must come from `main`, staging from `test`
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "(no git)")
+EXPECTED_BRANCH="main"
+[ "$ENV" = "staging" ] && EXPECTED_BRANCH="test"
+if [ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ] && [ "$CURRENT_BRANCH" != "(no git)" ]; then
+  echo "⚠️  You are on branch '$CURRENT_BRANCH' but $ENV deploys expect '$EXPECTED_BRANCH'."
+  read -r -p "Continue anyway? [y/N] " ans
+  [ "$ans" = "y" ] || [ "$ans" = "Y" ] || { echo "Aborted."; exit 1; }
+fi
+
 cp "$LINK_FILE" .vercel/project.json
-echo "→ Deploying to $ENV (project: $(jq -r .projectName .vercel/project.json 2>/dev/null || cat .vercel/project.json))"
+echo "→ Deploying to $ENV (branch: $CURRENT_BRANCH)"
 vercel --prod
