@@ -15,11 +15,12 @@ function getActorList(): string[] {
   if (env && env.trim()) {
     return env.split(',').map(s => s.trim()).filter(Boolean)
   }
-  // Default chain: known-good actors that take profileUrls and return rich profile data.
+  // Default chain — CP1SVZfEwWflrmWCX is your pinned actor and works once we
+  // pass the required `profileScraperMode`. dev_fusion is a fallback that
+  // requires one-time permission approval per the Apify console.
   return [
-    'dev_fusion~Linkedin-Profile-Scraper',  // most popular, no cookies, input: { profileUrls }
-    'bebity~linkedin-profile-scraper',       // proven backup
-    'CP1SVZfEwWflrmWCX',                     // user's original — last try
+    'CP1SVZfEwWflrmWCX',                     // your pinned — primary
+    'dev_fusion~Linkedin-Profile-Scraper',   // backup (requires console approval)
   ]
 }
 
@@ -162,13 +163,18 @@ export const apifyProfileProvider: Provider = {
     const fullName = name || partial?.fullName
     if (!cleanUrl && !fullName && !email) return null
 
-    // Defensive payload: include every common field-name variant.
-    const payload: Record<string, unknown> = { maxItems: 1, maxRequestRetries: 2 }
+    // Defensive payload: include every common field-name variant AND the
+    // profileScraperMode that CP1SVZfEwWflrmWCX requires.
+    const payload: Record<string, unknown> = {
+      maxItems: 1,
+      maxRequestRetries: 2,
+      profileScraperMode: 'Short ($4 per 1k)',   // required by CP1SVZfEwWflrmWCX
+    }
     if (cleanUrl) {
       payload.profileUrls = [cleanUrl]
       payload.urls = [cleanUrl]
       payload.linkedinUrls = [cleanUrl]
-      payload.startUrls = [{ url: cleanUrl }]   // some actors want startUrls
+      payload.startUrls = [{ url: cleanUrl }]
     }
     if (email) payload.emails = [email]
     if (fullName) {
