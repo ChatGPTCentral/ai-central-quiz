@@ -1,12 +1,22 @@
 // Enrichment v2 — Google-first pipeline.
 //
-// Order (per user's spec, Morgane Marlow flow):
-//   1. Infer name from email (if missing).
-//   2. Google search: top 5 organic results, find first linkedin.com/in/*.
-//   3. Once we have a LinkedIn URL → push to Apollo (richer match via URL).
-//   4. If Apollo didn't return a face → Wiza.
-//   5. If still no face → Apify profile scraper (last resort, paid actor).
-//   6. Merge; photo always overwrites.
+// Two clear paths:
+//
+//   IF we don't have a LinkedIn URL yet:
+//     1. name_from_email      (only if name missing)
+//     2. google_search        (find linkedin.com/in/...)
+//     3. apollo (by email)    ← fallback work-profile lookup if URL not found
+//     4. wiza (by email)      ← also fallback (Wiza only takes email)
+//
+//   IF we now have a LinkedIn URL (either pre-existing or just found):
+//     5. apify_profile        ← THE source for work-profile from a URL
+//     6. apollo (by URL)      ← backup, fills anything Apify missed
+//
+//   ALWAYS once a photo is known:
+//     7. photo_ai_demographics  (Claude vision → age + sex)
+//
+// No early-exit on "got a photo" — every stage that can ADD a field gets to run,
+// so the merge step has the maximum set of signals to combine.
 
 import { apolloProvider } from './apollo'
 import { wizaProvider } from './wiza'
@@ -43,15 +53,11 @@ export interface V2Result {
   aiDemographics?: PhotoDemographics
 }
 
-function hasPhoto(results: NormalizedPerson[]): boolean {
-  return results.some(r => !!r.photoUrl)
-}
-
 export async function runV2(input: V2Input): Promise<V2Result> {
   const email = input.email.trim().toLowerCase()
   const stages: V2Stage[] = []
   const results: NormalizedPerson[] = []
-  const raw: Record<string, NormalizedPerson['raw']> = {}
+  const raw: Record<string, unknown> = {}
   const tried: EnrichmentSource[] = []
 
   const ctx = {
@@ -61,6 +67,18 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     companyName: input.companyName?.trim() || undefined,
     jobTitle: input.jobTitle?.trim() || undefined,
     country: input.country?.trim() || undefined,
+  }
+
+  function record(provider: EnrichmentSource, r: NormalizedPerson | null) {
+    if (!r) return
+    results.push(r)
+    raw[provider] = r.raw
+    // Promote any newly-discovered signals so later providers can use them
+    if (!ctx.linkedinUrl && r.linkedinUrl) ctx.linkedinUrl = r.linkedinUrl
+    if (!ctx.name && r.fullName)           ctx.name = r.fullName
+    if (!ctx.companyName && r.companyName) ctx.companyName = r.companyName
+    if (!ctx.jobTitle && r.jobTitle)       ctx.jobTitle = r.jobTitle
+    if (!ctx.country && r.country)         ctx.country = r.country
   }
 
   // ── Stage 1: name from email ────────────────────────────────────
@@ -76,7 +94,7 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     stages.push({ name: 'name_from_email', status: 'skipped', reason: 'row already has a name' })
   }
 
-  // ── Stage 2: Google → LinkedIn URL (if missing) ─────────────────
+  // ── Stage 2: Google → LinkedIn URL (only if missing) ────────────
   if (!ctx.linkedinUrl) {
     try {
       const search = await findLinkedInViaGoogle({
@@ -96,52 +114,16 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     stages.push({ name: 'google_search', status: 'skipped', reason: 'linkedin_url already known' })
   }
 
-  // ── Stage 3: Apollo (now armed with the LinkedIn URL) ───────────
-  try {
-    tried.push('apollo')
-    const apolloResult = await apolloProvider.lookup(ctx)
-    if (apolloResult) {
-      results.push(apolloResult)
-      raw['apollo'] = apolloResult.raw
-      // Promote findings into ctx in case downstream providers can use them
-      if (!ctx.linkedinUrl && apolloResult.linkedinUrl) ctx.linkedinUrl = apolloResult.linkedinUrl
-      if (!ctx.companyName && apolloResult.companyName) ctx.companyName = apolloResult.companyName
-      if (!ctx.jobTitle && apolloResult.jobTitle)       ctx.jobTitle = apolloResult.jobTitle
-      stages.push({ name: 'apollo', status: 'ok', result: apolloResult })
-    } else {
-      stages.push({ name: 'apollo', status: 'miss' })
-    }
-  } catch (err) {
-    stages.push({ name: 'apollo', status: 'error', reason: String(err) })
-  }
-
-  // ── Stage 4: Wiza (only if Apollo didn't return a photo) ────────
-  if (!hasPhoto(results)) {
-    try {
-      tried.push('wiza')
-      const wizaResult = await wizaProvider.lookup(ctx)
-      if (wizaResult) {
-        results.push(wizaResult)
-        raw['wiza'] = wizaResult.raw
-        stages.push({ name: 'wiza', status: 'ok', result: wizaResult })
-      } else {
-        stages.push({ name: 'wiza', status: 'miss' })
-      }
-    } catch (err) {
-      stages.push({ name: 'wiza', status: 'error', reason: String(err) })
-    }
-  } else {
-    stages.push({ name: 'wiza', status: 'skipped', reason: 'photo already obtained from Apollo' })
-  }
-
-  // ── Stage 5: Apify profile scraper (only if still no photo) ─────
-  if (!hasPhoto(results) && ctx.linkedinUrl) {
+  // ── Stage 3: Apify profile scrape — PRIMARY work-profile source ──
+  // The Apify `apify-profile` actor takes a LinkedIn URL and returns the
+  // canonical profile: photo, headline, title, company, company URL, location,
+  // industry. This is what fills "the work profile" the user expects.
+  if (ctx.linkedinUrl) {
     try {
       tried.push('apify_profile')
       const profile = await scrapeLinkedInProfile(ctx.linkedinUrl)
       if (profile) {
-        results.push(profile)
-        raw['linkedin_scrape'] = profile.raw
+        record('apify_profile', profile)
         stages.push({ name: 'linkedin_scrape', status: 'ok', result: profile })
       } else {
         stages.push({ name: 'linkedin_scrape', status: 'miss' })
@@ -150,16 +132,42 @@ export async function runV2(input: V2Input): Promise<V2Result> {
       stages.push({ name: 'linkedin_scrape', status: 'error', reason: String(err) })
     }
   } else {
-    stages.push({
-      name: 'linkedin_scrape',
-      status: 'skipped',
-      reason: !ctx.linkedinUrl ? 'no linkedin_url to scrape' : 'photo already obtained earlier',
-    })
+    stages.push({ name: 'linkedin_scrape', status: 'skipped', reason: 'no linkedin_url to scrape' })
+  }
+
+  // ── Stage 4: Apollo — backup work-profile source (now that ctx has LinkedIn URL) ──
+  try {
+    tried.push('apollo')
+    const apolloResult = await apolloProvider.lookup(ctx)
+    if (apolloResult) {
+      record('apollo', apolloResult)
+      stages.push({ name: 'apollo', status: 'ok', result: apolloResult })
+    } else {
+      stages.push({ name: 'apollo', status: 'miss' })
+    }
+  } catch (err) {
+    stages.push({ name: 'apollo', status: 'error', reason: String(err) })
+  }
+
+  // ── Stage 5: Wiza — email-only fallback (no LinkedIn-URL endpoint) ──
+  // We still run it for any extra fields it might surface (phone, etc.) but
+  // it's strictly additive at this point.
+  try {
+    tried.push('wiza')
+    const wizaResult = await wizaProvider.lookup(ctx)
+    if (wizaResult) {
+      record('wiza', wizaResult)
+      stages.push({ name: 'wiza', status: 'ok', result: wizaResult })
+    } else {
+      stages.push({ name: 'wiza', status: 'miss' })
+    }
+  } catch (err) {
+    stages.push({ name: 'wiza', status: 'error', reason: String(err) })
   }
 
   const merged = mergeEnrichment(results, tried)
 
-  // ── Stage 6: AI vision demographics from photo (age + sex) ──────
+  // ── Stage 6: Claude vision — age + sex from photo ───────────────
   let aiDemographics: PhotoDemographics | undefined
   if (merged.photoUrl && process.env.ANTHROPIC_API_KEY) {
     const d = await estimateDemographicsFromPhoto(merged.photoUrl)
@@ -168,7 +176,7 @@ export async function runV2(input: V2Input): Promise<V2Result> {
     } else if (d.ageBracket || d.sexPresentation) {
       stages.push({ name: 'photo_ai_demographics', status: 'ok', result: d })
       aiDemographics = d
-      ;(raw as Record<string, unknown>).claude_vision = d.raw
+      raw.claude_vision = d.raw
     } else {
       stages.push({ name: 'photo_ai_demographics', status: 'miss' })
     }
