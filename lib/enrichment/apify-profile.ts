@@ -1,19 +1,25 @@
 import type { Provider, NormalizedPerson } from './types'
 
-// Apify actor: CP1SVZfEwWflrmWCX
-// https://console.apify.com/actors/CP1SVZfEwWflrmWCX/input
+// LinkedIn profile scraping via Apify.
 //
-// Used by the row-level enrichment "sudoku" — feeds whatever signal we have
-// (name + email + linkedin URL) and tries to land the canonical LinkedIn
-// profile, including the real face photo.
+// We try TWO actors in sequence — the user-specified CP1SVZfEwWflrmWCX first,
+// and harvestapi's well-known LinkedIn Profile Scraper as a fallback. Different
+// actors expect slightly different input field names, so we send a defensive
+// payload that covers the common variants (`profileUrls`, `urls`, `queries`).
+//
+// All LinkedIn URLs are normalised to https:// since most actors reject http://.
 
-const ACTOR_ID = 'CP1SVZfEwWflrmWCX'
+const ACTORS = [
+  'CP1SVZfEwWflrmWCX',                       // user-specified actor
+  'harvestapi~linkedin-profile-scraper',     // robust backup (no cookies)
+  '2SyF0bVxmgGr8IVCZ',                       // another harvestapi actor id
+]
+
 const APIFY_API = 'https://api.apify.com/v2'
 const SYNC_TIMEOUT_MS = 120_000
 
-// Defensive shape — the actor's output varies between versions; read every
-// field we might recognize.
 interface ApifyProfileItem {
+  // Output shape varies between actors; we read every field name we recognise.
   fullName?: string
   firstName?: string
   lastName?: string
@@ -35,12 +41,26 @@ interface ApifyProfileItem {
   city?: string
   geo?: { country?: string; city?: string; state?: string }
   jobTitle?: string
-  currentPosition?: string
-  currentCompany?: string | { name?: string; companyName?: string; linkedinUrl?: string; logoUrl?: string }
+  occupation?: string
+  currentPosition?: string | { title?: string; companyName?: string; company?: { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string } }
+  currentCompany?: string | { name?: string; companyName?: string; linkedinUrl?: string; logoUrl?: string; industry?: string }
   companyName?: string
   companyLinkedinUrl?: string
   industry?: string
+  experience?: Array<{ companyName?: string; company?: { name?: string; linkedinUrl?: string }; title?: string; positionTitle?: string }>
+  positions?: Array<{ title?: string; companyName?: string; companyUrl?: string }>
   email?: string
+}
+
+function normaliseLinkedInUrl(u?: string): string | undefined {
+  if (!u) return undefined
+  let url = u.trim()
+  if (!url) return undefined
+  if (url.startsWith('http://')) url = url.replace(/^http:\/\//, 'https://')
+  if (!/^https?:\/\//.test(url)) url = 'https://' + url
+  // Normalise country subdomains (uk.linkedin.com → www.linkedin.com) for actor acceptance
+  url = url.replace(/^https:\/\/[a-z]{2,3}\.linkedin\.com/, 'https://www.linkedin.com')
+  return url.split('?')[0].split('#')[0]
 }
 
 function extractLinkedinUrl(p: ApifyProfileItem): string | undefined {
@@ -54,17 +74,70 @@ function extractPhoto(p: ApifyProfileItem): string | undefined {
   return p.photoUrl || p.profilePicture || p.profilePictureUrl || p.pictureUrl || p.imageUrl
 }
 
-function extractCompany(p: ApifyProfileItem): { name?: string; linkedinUrl?: string; logoUrl?: string } {
+function extractCurrentCompany(p: ApifyProfileItem): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string } {
+  // Try the structured currentPosition.company
+  if (typeof p.currentPosition === 'object' && p.currentPosition?.company) {
+    const c = p.currentPosition.company
+    return {
+      name: c.name,
+      linkedinUrl: c.linkedinUrl,
+      logoUrl: c.logoUrl,
+      industry: c.industry,
+    }
+  }
   if (typeof p.currentCompany === 'object' && p.currentCompany) {
     return {
       name: p.currentCompany.name || p.currentCompany.companyName,
       linkedinUrl: p.currentCompany.linkedinUrl,
       logoUrl: p.currentCompany.logoUrl,
+      industry: p.currentCompany.industry,
     }
   }
-  return {
-    name: (typeof p.currentCompany === 'string' ? p.currentCompany : undefined) || p.companyName,
-    linkedinUrl: p.companyLinkedinUrl,
+  // Fall back to flat fields
+  const name = (typeof p.currentCompany === 'string' ? p.currentCompany : undefined)
+    || p.companyName
+    // First experience entry as last resort
+    || p.experience?.[0]?.companyName
+    || p.experience?.[0]?.company?.name
+    || p.positions?.[0]?.companyName
+  return { name, linkedinUrl: p.companyLinkedinUrl || p.experience?.[0]?.company?.linkedinUrl }
+}
+
+function extractCurrentTitle(p: ApifyProfileItem): string | undefined {
+  if (p.jobTitle) return p.jobTitle
+  if (typeof p.currentPosition === 'string') return p.currentPosition
+  if (typeof p.currentPosition === 'object' && p.currentPosition?.title) return p.currentPosition.title
+  return p.occupation
+    || p.experience?.[0]?.title
+    || p.experience?.[0]?.positionTitle
+    || p.positions?.[0]?.title
+}
+
+async function tryActor(actorId: string, payload: Record<string, unknown>, token: string): Promise<ApifyProfileItem[] | null> {
+  try {
+    const url = `${APIFY_API}/acts/${actorId}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=${SYNC_TIMEOUT_MS / 1000}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(SYNC_TIMEOUT_MS + 5_000),
+    })
+    const body = await res.text()
+    if (!res.ok) {
+      console.error(`[apify-profile] actor ${actorId} → HTTP ${res.status}:`, body.slice(0, 300))
+      return null
+    }
+    try {
+      const items = JSON.parse(body) as ApifyProfileItem[]
+      console.log(`[apify-profile] actor ${actorId} returned ${items?.length || 0} items`)
+      return Array.isArray(items) ? items : null
+    } catch {
+      console.error(`[apify-profile] actor ${actorId} returned non-JSON:`, body.slice(0, 300))
+      return null
+    }
+  } catch (err) {
+    console.error(`[apify-profile] actor ${actorId} threw:`, err)
+    return null
   }
 }
 
@@ -73,65 +146,74 @@ export const apifyProfileProvider: Provider = {
   slow: true,
   async lookup({ email, name, linkedinUrl, partial }): Promise<NormalizedPerson | null> {
     const token = process.env.APIFY_TOKEN || process.env.APIFY_API_TOKEN || process.env.APIFY_API_KEY
-    if (!token) return null
+    if (!token) {
+      console.warn('[apify-profile] no APIFY_API_KEY / APIFY_TOKEN set — skipping')
+      return null
+    }
 
-    // Build the strongest possible input. The actor accepts several optional
-    // fields — we provide everything we have and let it pick.
+    const cleanUrl = normaliseLinkedInUrl(linkedinUrl || partial?.linkedinUrl)
     const fullName = name || partial?.fullName
-    const profileUrl = linkedinUrl || partial?.linkedinUrl
-
-    // Need at least one signal to look up — bail otherwise.
-    if (!fullName && !email && !profileUrl) return null
-
-    const input: Record<string, unknown> = {
-      maxItems: 1,
+    if (!cleanUrl && !fullName && !email) {
+      console.log('[apify-profile] no signal to look up — skipping')
+      return null
     }
-    if (profileUrl) input.profileUrls = [profileUrl]
-    if (email) input.emails = [email]
+
+    // Defensive payload: include every common field-name variant. Each actor
+    // ignores fields it doesn't recognise.
+    const payload: Record<string, unknown> = { maxItems: 1 }
+    if (cleanUrl) {
+      payload.profileUrls = [cleanUrl]
+      payload.urls = [cleanUrl]
+      payload.linkedinUrls = [cleanUrl]
+      payload.profileScraperMode = 'Short ($4 per 1k)'
+    }
+    if (email) payload.emails = [email]
     if (fullName) {
-      input.searchQueries = [fullName]
-      input.names = [fullName]
+      payload.names = [fullName]
+      payload.searchQueries = [fullName]
+      payload.queries = [fullName]
     }
 
-    try {
-      const url = `${APIFY_API}/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=${SYNC_TIMEOUT_MS / 1000}`
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-        signal: AbortSignal.timeout(SYNC_TIMEOUT_MS + 5_000),
-      })
-      if (!res.ok) {
-        console.error('Apify profile actor error:', res.status, await res.text().catch(() => ''))
-        return null
-      }
-      const items: ApifyProfileItem[] = await res.json()
-      if (!items?.length) return null
-      const p = items[0]
-      const company = extractCompany(p)
-      const loc = p.location || p.locationName || ''
+    console.log(`[apify-profile] looking up url=${cleanUrl || '(none)'} name=${fullName || '(none)'}`)
 
+    // Try actors in sequence; return the first one that produces a result.
+    for (const actorId of ACTORS) {
+      const items = await tryActor(actorId, payload, token)
+      if (!items?.length) continue
+      const p = items[0]
+      const company = extractCurrentCompany(p)
+      const title = extractCurrentTitle(p)
+      const photoUrl = extractPhoto(p)
+      const foundLinkedin = extractLinkedinUrl(p) || cleanUrl
+
+      // If the item has literally no useful fields, treat as miss
+      if (!photoUrl && !title && !company.name && !p.fullName) {
+        console.log(`[apify-profile] actor ${actorId} returned item but no useful fields`)
+        continue
+      }
+
+      const loc = p.location || p.locationName || ''
       return {
         source: 'apify_profile',
         firstName: p.firstName,
         lastName: p.lastName,
         fullName: p.fullName,
-        linkedinUrl: extractLinkedinUrl(p),
-        jobTitle: p.jobTitle || p.currentPosition,
+        linkedinUrl: foundLinkedin,
+        jobTitle: title,
         companyName: company.name,
         companyLinkedinUrl: company.linkedinUrl,
         companyLogoUrl: company.logoUrl,
-        industry: p.industry,
+        industry: p.industry || company.industry,
         country: p.geo?.country || p.country || loc.split(',').pop()?.trim(),
         region: p.geo?.state,
         city: p.geo?.city || p.city || loc.split(',')[0]?.trim(),
-        photoUrl: extractPhoto(p),
+        photoUrl,
         headline: p.headline || p.about || p.summary,
-        raw: p,
+        raw: { actor: actorId, item: p },
       }
-    } catch (err) {
-      console.error('Apify profile enrichment failed:', err)
-      return null
     }
+
+    console.log('[apify-profile] all actors exhausted, no profile data extracted')
+    return null
   },
 }

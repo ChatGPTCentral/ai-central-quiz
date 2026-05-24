@@ -5,7 +5,7 @@ import { useState } from 'react'
 type Status = 'skipped' | 'ok' | 'miss' | 'error'
 
 interface Stage {
-  name: 'name_from_email' | 'apollo' | 'google_search' | 'linkedin_scrape'
+  name: 'name_from_email' | 'google_search' | 'linkedin_scrape' | 'apollo' | 'wiza' | 'photo_ai_demographics'
   status: Status
   result?: unknown
   reason?: string
@@ -23,10 +23,12 @@ interface V2Result {
 }
 
 const STAGE_LABEL: Record<Stage['name'], string> = {
-  name_from_email: '1 · Name from email',
-  apollo:          '2 · Apollo direct',
-  google_search:   '3 · Google → LinkedIn',
-  linkedin_scrape: '4 · LinkedIn scrape',
+  name_from_email:         '1 · Name from email',
+  google_search:           '2 · Google → LinkedIn',
+  linkedin_scrape:         '3 · LinkedIn profile scrape (Apify)',
+  apollo:                  '4 · Apollo',
+  wiza:                    '5 · Wiza',
+  photo_ai_demographics:   '6 · AI vision · age + sex',
 }
 
 const STATUS_COLOR: Record<Status, { bg: string; fg: string; label: string }> = {
