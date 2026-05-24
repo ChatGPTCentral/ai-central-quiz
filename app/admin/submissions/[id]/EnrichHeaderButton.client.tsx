@@ -9,7 +9,7 @@ export default function EnrichHeaderButton({ id }: { id: string }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<{ saved: boolean; fields: string[]; saveError?: string } | null>(null)
+  const [result, setResult] = useState<{ saved: boolean; fields: string[]; saveError?: string; fromCache?: boolean } | null>(null)
 
   async function onClick() {
     setBusy(true); setError(''); setResult(null)
@@ -28,6 +28,7 @@ export default function EnrichHeaderButton({ id }: { id: string }) {
         saved: !!data.saved,
         fields: data.fieldsUpdated || [],
         saveError: data.saveError,
+        fromCache: !!data.fromCache,
       })
       if (data.saveError) {
         setError(`Save error: ${data.saveError}`)
@@ -53,7 +54,10 @@ export default function EnrichHeaderButton({ id }: { id: string }) {
       </button>
       {error && <p className="text-[11px] text-[#BE3B3B] max-w-xs text-right break-words">{error}</p>}
       {result && !error && result.saved && (
-        <p className="text-[11px] text-[#62A758]">✓ Saved {result.fields.length} field{result.fields.length === 1 ? '' : 's'}</p>
+        <p className="text-[11px] text-[#62A758]">
+          ✓ Saved {result.fields.length} field{result.fields.length === 1 ? '' : 's'}
+          {result.fromCache && <span className="text-[#9C9C9C] ml-1">· cached (free)</span>}
+        </p>
       )}
       {result && !error && !result.saved && (
         <p className="text-[11px] text-[#9C9C9C]">No new data to save — try Google manually or click Lab page</p>

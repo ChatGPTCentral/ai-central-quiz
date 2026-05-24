@@ -24,8 +24,29 @@ function getActorList(): string[] {
   ]
 }
 
+interface ApifyExperience {
+  // Defensive — covers shapes from multiple actors
+  title?: string
+  positionTitle?: string
+  subtitle?: string
+  companyName?: string
+  company?: string | { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string }
+  companyUrl?: string
+  companyLink1?: string
+  companyLink2?: string
+  companyLogo?: string
+  caption?: string
+  duration?: string
+  durationShort?: string
+  startDate?: string | null
+  endDate?: string | null
+  isCurrent?: boolean
+  current?: boolean
+  industry?: string
+  location?: string
+}
+
 interface ApifyProfileItem {
-  // Defensive union — actors vary in output shape
   fullName?: string
   firstName?: string
   lastName?: string
@@ -57,9 +78,9 @@ interface ApifyProfileItem {
   company?: string | { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string }
   companyLinkedinUrl?: string
   industry?: string
-  experiences?: Array<{ company?: string; companyName?: string; title?: string; subtitle?: string; companyLink1?: string }>
-  experience?: Array<{ companyName?: string; company?: { name?: string; linkedinUrl?: string }; title?: string; positionTitle?: string }>
-  positions?: Array<{ title?: string; companyName?: string; companyUrl?: string }>
+  experiences?: ApifyExperience[]
+  experience?: ApifyExperience[]
+  positions?: ApifyExperience[]
 }
 
 function normaliseLinkedInUrl(u?: string): string | undefined {
@@ -82,7 +103,57 @@ function extractPhoto(p: ApifyProfileItem): string | undefined {
     || p.imageUrl || p.profilePic || p.profileImage
 }
 
+/**
+ * Find the CURRENT employment by scanning the entire experiences array — not
+ * just grabbing the first entry naively. Looks for "Present" markers, null
+ * end_date, isCurrent flags, etc. Falls back to the most-recent if no marker.
+ */
+function pickCurrentExperience(p: ApifyProfileItem): ApifyExperience | null {
+  const all = [
+    ...(p.experiences || []),
+    ...(p.experience || []),
+    ...(p.positions || []),
+  ]
+  if (all.length === 0) return null
+
+  // Best: explicit isCurrent / current flag
+  let hit = all.find(e => e.isCurrent === true || e.current === true)
+  if (hit) return hit
+
+  // Next: endDate === null OR duration contains "Present"
+  hit = all.find(e =>
+    e.endDate === null ||
+    /\bpresent\b/i.test(e.duration || '') ||
+    /\bpresent\b/i.test(e.durationShort || '') ||
+    /\bpresent\b/i.test(e.caption || '') ||
+    /\bpresent\b/i.test(e.subtitle || '')
+  )
+  if (hit) return hit
+
+  // Last resort: first in the list (LinkedIn typically sorts newest first)
+  return all[0]
+}
+
+function getCompanyFromExperience(e: ApifyExperience): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string } {
+  if (typeof e.company === 'object' && e.company) {
+    return { name: e.company.name, linkedinUrl: e.company.linkedinUrl, logoUrl: e.company.logoUrl, industry: e.company.industry }
+  }
+  return {
+    name: (typeof e.company === 'string' ? e.company : undefined) || e.companyName,
+    linkedinUrl: e.companyLink1 || e.companyLink2 || e.companyUrl,
+    logoUrl: e.companyLogo,
+    industry: e.industry,
+  }
+}
+
 function extractCurrentCompany(p: ApifyProfileItem): { name?: string; linkedinUrl?: string; logoUrl?: string; industry?: string } {
+  // 1) Look at the canonical CURRENT experience from the array (uses Present marker)
+  const currentExp = pickCurrentExperience(p)
+  if (currentExp) {
+    const c = getCompanyFromExperience(currentExp)
+    if (c.name) return c
+  }
+  // 2) Structured currentPosition.company on the root
   if (typeof p.currentPosition === 'object' && p.currentPosition?.company) {
     const c = p.currentPosition.company
     return { name: c.name, linkedinUrl: c.linkedinUrl, logoUrl: c.logoUrl, industry: c.industry }
@@ -93,23 +164,25 @@ function extractCurrentCompany(p: ApifyProfileItem): { name?: string; linkedinUr
   if (typeof p.company === 'object' && p.company) {
     return { name: p.company.name, linkedinUrl: p.company.linkedinUrl, logoUrl: p.company.logoUrl, industry: p.company.industry }
   }
-  const name = (typeof p.currentCompany === 'string' ? p.currentCompany : undefined)
-    || (typeof p.company === 'string' ? p.company : undefined)
-    || p.companyName
-    || p.experiences?.[0]?.company || p.experiences?.[0]?.companyName
-    || p.experience?.[0]?.companyName || p.experience?.[0]?.company?.name
-    || p.positions?.[0]?.companyName
-  return { name, linkedinUrl: p.companyLinkedinUrl || p.experiences?.[0]?.companyLink1 || p.experience?.[0]?.company?.linkedinUrl }
+  // 3) Flat fallback
+  return {
+    name: (typeof p.currentCompany === 'string' ? p.currentCompany : undefined)
+      || (typeof p.company === 'string' ? p.company : undefined)
+      || p.companyName,
+    linkedinUrl: p.companyLinkedinUrl,
+  }
 }
 
 function extractCurrentTitle(p: ApifyProfileItem): string | undefined {
+  // 1) Title from the CURRENT experience (Present marker)
+  const currentExp = pickCurrentExperience(p)
+  if (currentExp?.title) return currentExp.title
+  if (currentExp?.positionTitle) return currentExp.positionTitle
+  // 2) Top-level current* fields
   if (p.jobTitle) return p.jobTitle
   if (typeof p.currentPosition === 'string') return p.currentPosition
   if (typeof p.currentPosition === 'object' && p.currentPosition?.title) return p.currentPosition.title
   return p.occupation
-    || p.experiences?.[0]?.title || p.experiences?.[0]?.subtitle
-    || p.experience?.[0]?.title || p.experience?.[0]?.positionTitle
-    || p.positions?.[0]?.title
 }
 
 interface ActorAttempt {

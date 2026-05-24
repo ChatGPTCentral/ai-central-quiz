@@ -25,6 +25,8 @@ import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { inferNameFromEmail, type InferredName } from './name-from-email'
 import { estimateDemographicsFromPhoto, type PhotoDemographics } from './photo-demographics'
 import { mergeEnrichment } from './merge'
+import { standardizeSeniority, standardizeTitle, standardizeIndustry } from './standardize'
+import { getCached, setCached } from './cache'
 import type { NormalizedPerson, MergedEnrichment, EnrichmentSource } from './types'
 
 export interface V2Input {
@@ -51,10 +53,34 @@ export interface V2Result {
   providersTried: EnrichmentSource[]
   status: 'complete' | 'partial' | 'failed'
   aiDemographics?: PhotoDemographics
+  fromCache?: boolean
+  /** Standardized values derived from raw — written to the seniority + ti columns. */
+  standardized?: {
+    seniority?: string
+    jobTitleCanonical?: string
+    industry?: string
+  }
 }
 
-export async function runV2(input: V2Input): Promise<V2Result> {
+export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): Promise<V2Result> {
   const email = input.email.trim().toLowerCase()
+
+  // ── Cache check — protects API budget on re-runs (60-day TTL) ───
+  if (opts.useCache !== false) {
+    const cached = await getCached(email)
+    if (cached) {
+      return {
+        email,
+        stages: [{ name: 'name_from_email', status: 'skipped', reason: 'cached result returned' }],
+        merged: cached.data,
+        raw: cached.raw,
+        providersTried: cached.providersTried,
+        status: cached.status,
+        fromCache: true,
+      }
+    }
+  }
+
   const stages: V2Stage[] = []
   const results: NormalizedPerson[] = []
   const raw: Record<string, unknown> = {}
@@ -198,5 +224,18 @@ export async function runV2(input: V2Input): Promise<V2Result> {
   const status: V2Result['status'] =
     merged.linkedinUrl && merged.photoUrl ? 'complete' :
     results.length > 0 || merged.linkedinUrl ? 'partial' : 'failed'
-  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics }
+
+  // ── Standardize derived values (seniority maps to survey enum) ──
+  const standardized = {
+    seniority: standardizeSeniority(merged.jobTitle, merged.seniority),
+    jobTitleCanonical: standardizeTitle(merged.jobTitle),
+    industry: standardizeIndustry(merged.industry),
+  }
+
+  // ── Cache the pipeline result (TTL 60d) so re-runs don't re-pay ───
+  if (results.length > 0 || merged.linkedinUrl) {
+    setCached(email, { data: merged, raw: raw as Record<string, NormalizedPerson['raw']>, status, providersTried: tried }).catch(() => {})
+  }
+
+  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics, standardized }
 }

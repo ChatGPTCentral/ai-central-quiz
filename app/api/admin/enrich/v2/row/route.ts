@@ -86,7 +86,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid email' }, { status: 400 })
   }
 
-  const v2 = await runV2(input)
+  // body.force === true bypasses the 60-day enrichment_cache so the user can
+  // explicitly re-run all the paid actors on a row.
+  const v2 = await runV2(input, { useCache: !(body as { force?: boolean }).force })
 
   // Save back if requested AND we have a row id.
   // SPLIT the save into two passes so audit-trail jsonb bloat can NEVER block
@@ -110,7 +112,6 @@ export async function POST(req: NextRequest) {
     setIfNew('job_title',       input.jobTitle,     v2.merged.jobTitle)
     setIfNew('country',         input.country,      v2.merged.country)
     if (v2.merged.photoUrl)        update.photo_url            = v2.merged.photoUrl
-    if (v2.merged.seniority)       update.seniority            = v2.merged.seniority
     if (v2.merged.region)          update.region               = v2.merged.region
     if (v2.merged.city)            update.city                 = v2.merged.city
     if (v2.merged.companyDomain)   update.company_domain       = v2.merged.companyDomain
@@ -119,6 +120,14 @@ export async function POST(req: NextRequest) {
     if (v2.merged.subIndustry)     update.company_sub_industry = v2.merged.subIndustry
     if (v2.merged.function)        update.job_function         = v2.merged.function
     if (v2.merged.department)      update.department           = v2.merged.department
+
+    // Standardized seniority — maps to the survey enum so dashboards segment cleanly.
+    // Prefer the bucketed value over the raw one (e.g. "vp" or "Vice President" → "VP/Director").
+    if (v2.standardized?.seniority) {
+      update.seniority = v2.standardized.seniority
+    } else if (v2.merged.seniority) {
+      update.seniority = v2.merged.seniority
+    }
 
     // Stage 6 AI vision results — write only when Claude returned a non-uncertain estimate
     if (v2.aiDemographics?.ageBracket && v2.aiDemographics.ageBracket !== 'uncertain') {
@@ -162,5 +171,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ...v2, rowId, saved, saveError, auditError, fieldsUpdated })
+  // Verify what's actually persisted in the DB after the save — surfaces any
+  // case where we returned saved=true but the DB still shows old values.
+  let persisted: Record<string, unknown> | null = null
+  if (rowId && saved) {
+    const { data: verified } = await c
+      .from('submissions')
+      .select('linkedin_url, photo_url, job_title, seniority, company_name, company_industry, company_size, country, city, region')
+      .eq('id', rowId)
+      .maybeSingle()
+    persisted = verified
+  }
+
+  return NextResponse.json({ ...v2, rowId, saved, saveError, auditError, fieldsUpdated, persisted })
 }
