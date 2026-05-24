@@ -49,3 +49,14 @@ export function isUS(country?: string | null): boolean {
   const c = country.trim().toLowerCase()
   return c === 'united states' || c === 'usa' || c === 'us' || c === 'u.s.' || c === 'u.s.a.'
 }
+
+/** Should we surface the State/Region field? Only for countries where it's culturally meaningful. */
+export function showState(country?: string | null): boolean {
+  if (!country) return false
+  const c = country.trim().toLowerCase()
+  return (
+    c === 'united states' || c === 'usa' || c === 'us' ||
+    c === 'canada' ||
+    c === 'australia'
+  )
+}

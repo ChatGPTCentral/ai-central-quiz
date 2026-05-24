@@ -44,7 +44,7 @@ export interface StoredSubmission {
   enrichmentRaw?: Record<string, NormalizedPerson['raw']>
   enrichmentStatus?: 'complete' | 'partial' | 'failed'
   // Legacy import fields
-  source?: 'quiz_v2' | 'fillout_v1' | 'fillout_v2' | 'fillout_legacy' | 'apollo_legacy'
+  source?: 'survey' | 'legacy' | 'quiz_v2' | 'fillout_v1' | 'fillout_v2' | 'fillout_legacy' | 'apollo_legacy'
   ageBracket?: string
   buyingIntent?: string
   utmSource?: string

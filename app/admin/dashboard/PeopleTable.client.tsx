@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PhotoLightbox, { PhotoCell } from '@/components/admin/PhotoLightbox'
 import type { StoredSubmission } from '@/lib/kv'
@@ -290,6 +291,7 @@ function saveState(order: string[], visible: Set<string>) {
 
 // ── Component ───────────────────────────────────────────────────
 export default function PeopleTable({ items }: Props) {
+  const router = useRouter()
   const [order, setOrder] = useState<string[]>(DEFAULT_ORDER)
   const [visible, setVisible] = useState<Set<string>>(DEFAULT_VISIBLE)
   const [lightbox, setLightbox] = useState<{ name?: string; email?: string; photoUrl?: string; title?: string; company?: string; linkedinUrl?: string } | null>(null)
@@ -343,11 +345,17 @@ export default function PeopleTable({ items }: Props) {
       const row = items.find(r => r.id === id)
       if (row) {
         if (data.linkedinUrl && !row.linkedinUrl) row.linkedinUrl = data.linkedinUrl
-        if (data.photoUrl && !row.photoUrl) row.photoUrl = data.photoUrl
+        if (data.photoUrl) row.photoUrl = data.photoUrl
         if (data.name && !row.name) row.name = data.name
         if (data.jobTitle && !row.jobTitle) row.jobTitle = data.jobTitle
         if (data.companyName && !row.companyName) row.companyName = data.companyName
         bumpRow()
+      }
+      // For v2, also pull fresh DB state so subsequent navigations show what was saved
+      if (provider === 'v2') {
+        if (data.saveError) console.error('v2 save error:', data.saveError)
+        if (data.fieldsUpdated?.length) console.log(`v2 saved fields for ${id}:`, data.fieldsUpdated)
+        router.refresh()
       }
       // Log diagnostic info for Google misses
       if (provider === 'google' && !data.linkedinUrl) {

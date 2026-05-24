@@ -1,116 +1,217 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSubmission } from '@/lib/kv'
-import { ARCHETYPES } from '@/lib/archetypes'
+import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
+import { continentOf, showState } from '@/lib/geo'
 import DeleteButton from './DeleteButton.client'
-import EditableRecord from './EditableRecord.client'
+import InlineField from './InlineField.client'
 
 export const dynamic = 'force-dynamic'
 
 export default async function SubmissionDetailPage({ params }: { params: { id: string } }) {
   let item: Awaited<ReturnType<typeof getSubmission>> = null
-  try {
-    item = await getSubmission(params.id)
-  } catch {
-    item = null
-  }
+  try { item = await getSubmission(params.id) } catch { item = null }
   if (!item) notFound()
 
-  const archetype = ARCHETYPES[item.archetype]
+  const archetype = item.archetype ? ARCHETYPES[item.archetype as ArchetypeKey] : null
+  const continent = continentOf(item.country)
+  const hasState = showState(item.country)
 
-  const fields: { label: string; value: string }[] = [
-    { label: 'Name', value: item.name },
-    { label: 'Email', value: item.email },
-    { label: 'AI level', value: item.aiLevel },
-    { label: 'Work area', value: item.workArea },
-    { label: 'Learning style', value: item.learningStyle },
-    { label: 'Time commitment', value: item.timeCommitment },
-    { label: 'Main goal', value: item.mainGoal },
-    { label: 'AI tools', value: item.aiTools || '—' },
-    { label: 'Job level', value: item.jobLevel },
+  // Company LinkedIn URL — lives in the enrichment jsonb, not its own column
+  const companyLinkedinUrl =
+    (item.enrichment as Record<string, unknown> | undefined)?.companyLinkedinUrl as string | undefined ||
+    (item.enrichmentRaw as Record<string, Record<string, unknown> | undefined> | undefined)?.apollo_legacy?.['Company Linkedin Url'] as string | undefined
+
+  // Quiz fields in their original ask order (matches lib/questions.ts)
+  const surveyFields: { label: string; value?: string }[] = [
+    { label: 'AI familiarity',      value: item.aiLevel },
+    { label: 'Work area',           value: item.workArea },
+    { label: 'Learning style',      value: item.learningStyle },
+    { label: 'Time commitment',     value: item.timeCommitment },
+    { label: 'Main goal',           value: item.mainGoal },
+    { label: 'AI tools used',       value: item.aiTools },
+    { label: 'Job level',           value: item.jobLevel },
   ]
 
   return (
-    <div className="p-8 max-w-3xl">
-      <Link href="/admin/dashboard" className="text-sm text-gray-500 hover:text-black">← All submissions</Link>
+    <div className="p-8 max-w-4xl">
+      <Link href="/admin/submissions" className="text-sm text-[#9C9C9C] hover:text-[#333333]">← All submissions</Link>
 
-      <div className="flex items-start justify-between mt-3 mb-6 gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-black mb-1">{item.name || item.email}</h1>
-          <p className="text-sm text-gray-500">{item.email}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className="inline-block px-3 py-1 rounded-full text-xs font-bold"
-            style={{
-              backgroundColor: `${archetype?.accentColor || '#999'}18`,
-              color: archetype?.accentColor || '#999',
-            }}
-          >
-            {archetype?.label || item.archetype}
-          </span>
-          {item.score !== undefined && (
-            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-black text-white">
-              Score {item.score}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Inline editor — manually correct any field, especially LinkedIn URL + photo */}
-      <EditableRecord
-        initial={{
-          id: item.id,
-          name: item.name,
-          linkedinUrl: item.linkedinUrl,
-          photoUrl: item.photoUrl,
-          jobTitle: item.jobTitle,
-          seniority: item.seniority,
-          companyName: item.companyName,
-          companyDomain: item.companyDomain,
-          companyIndustry: item.companyIndustry,
-          country: item.country,
-          region: item.region,
-          city: item.city,
-          ageBracket: item.ageBracket,
-          buyingIntent: item.buyingIntent,
-        }}
-      />
-
-      <section className="bg-white border border-[#E0E0E0] rounded-xl overflow-hidden mb-6">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 px-5 pt-5">Quiz answers</h2>
-        <div className="px-5 pb-2">
-          {fields.map(f => (
-            <div key={f.label} className="flex items-start justify-between gap-4 py-3 border-b border-[#F0F0F0] last:border-b-0">
-              <span className="text-xs font-bold uppercase tracking-wider text-gray-400 w-32 shrink-0">{f.label}</span>
-              <span className="text-sm text-black flex-1 break-words">{f.value || '—'}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="bg-white border border-[#E0E0E0] rounded-xl p-5 mb-6">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Apollo enrichment</h2>
-        {item.apolloData?.success ? (
-          <pre className="text-xs bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg p-3 overflow-auto max-h-96">
-            {JSON.stringify(item.apolloData, null, 2)}
-          </pre>
+      {/* ── HERO ───────────────────────────────────────────── */}
+      <section className="mt-3 mb-8 flex items-start gap-5">
+        {/* Photo */}
+        {item.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.photoUrl}
+            alt={item.name || item.email}
+            referrerPolicy="no-referrer"
+            className="w-24 h-24 rounded-2xl object-cover bg-[#F5F5F5] border border-[#E8E4DF] shrink-0"
+          />
         ) : (
-          <p className="text-sm text-gray-400">No Apollo data (personal email or no match)</p>
+          <div className="w-24 h-24 rounded-2xl bg-[#F5F5F5] border border-[#E8E4DF] flex items-center justify-center text-3xl font-black text-[#9C9C9C] shrink-0">
+            {(item.name || item.email).slice(0, 1).toUpperCase()}
+          </div>
         )}
-      </section>
 
-      <section className="bg-white border border-[#E0E0E0] rounded-xl p-5 mb-6">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Metadata</h2>
-        <div className="text-xs space-y-1 text-gray-600">
-          <div><span className="font-medium text-gray-400">ID:</span> {item.id}</div>
-          <div><span className="font-medium text-gray-400">Submitted:</span> {new Date(item.ts).toLocaleString()}</div>
-          {item.ip && <div><span className="font-medium text-gray-400">IP:</span> {item.ip}</div>}
-          {item.userAgent && <div className="break-all"><span className="font-medium text-gray-400">UA:</span> {item.userAgent}</div>}
+        {/* Name + subtitle + linkedin + archetype */}
+        <div className="flex-1 min-w-0">
+          <div className="text-2xl font-black text-[#333333] leading-tight">
+            <InlineField rowId={item.id} field="name" value={item.name || ''} placeholder="full name" />
+          </div>
+          <p className="text-sm text-[#9C9C9C] mt-1">{item.email}</p>
+
+          <div className="text-[15px] text-[#9C9C9C] mt-2">
+            <InlineField rowId={item.id} field="jobTitle" value={item.jobTitle || ''} placeholder="job title" />
+            {(item.jobTitle || item.companyName) && <span className="text-[#E8E4DF] mx-1">@</span>}
+            <InlineField rowId={item.id} field="companyName" value={item.companyName || ''} placeholder="company" />
+          </div>
+
+          <div className="mt-2">
+            <InlineField rowId={item.id} field="linkedinUrl" value={item.linkedinUrl || ''} asLink placeholder="LinkedIn URL" />
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            {archetype && (
+              <span
+                className="inline-block px-3 py-0.5 rounded-full text-xs font-bold"
+                style={{ backgroundColor: `${archetype.accentColor}18`, color: archetype.accentColor }}
+              >
+                {archetype.label}
+              </span>
+            )}
+            {!archetype && (
+              <span className="inline-block px-3 py-0.5 rounded-full text-xs font-medium bg-[#F5F5F5] text-[#9C9C9C]">
+                No archetype
+              </span>
+            )}
+            {item.score !== undefined && (
+              <span className="inline-block px-3 py-0.5 rounded-full text-xs font-bold bg-[#333333] text-[#FFFDFA]">
+                Score {item.score}
+              </span>
+            )}
+            {item.source && (
+              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                style={{
+                  backgroundColor: item.source === 'survey' ? '#333333' : '#E8E4DF',
+                  color: item.source === 'survey' ? '#FFFDFA' : '#333333',
+                }}
+              >{item.source}</span>
+            )}
+          </div>
         </div>
       </section>
+
+      {/* ── SOCIO-DEMOGRAPHIC ───────────────────────────── */}
+      <ProfileSection title="Socio-demographic">
+        <FieldRow label="Age">
+          <InlineField rowId={item.id} field="ageBracket" value={item.ageBracket || ''} placeholder="age bracket" />
+        </FieldRow>
+        <FieldRow label="Sex">
+          <span className="text-sm text-[#E8E4DF]">— (not captured)</span>
+        </FieldRow>
+        <FieldRow label="City">
+          <InlineField rowId={item.id} field="city" value={item.city || ''} placeholder="city" />
+        </FieldRow>
+        <FieldRow label="Country">
+          <InlineField rowId={item.id} field="country" value={item.country || ''} placeholder="country" />
+        </FieldRow>
+        {hasState && (
+          <FieldRow label="State / Province">
+            <InlineField rowId={item.id} field="region" value={item.region || ''} placeholder="state" />
+          </FieldRow>
+        )}
+        <FieldRow label="Continent">
+          <span className="text-sm text-[#333333]">{continent}</span>
+        </FieldRow>
+      </ProfileSection>
+
+      {/* ── WORKOGRAPHIC ─────────────────────────────────── */}
+      <ProfileSection title="Workographic">
+        <FieldRow label="Job title">
+          <InlineField rowId={item.id} field="jobTitle" value={item.jobTitle || ''} placeholder="job title" />
+        </FieldRow>
+        <FieldRow label="Seniority">
+          <InlineField rowId={item.id} field="seniority" value={item.seniority || ''} placeholder="seniority" />
+        </FieldRow>
+        <FieldRow label="Company">
+          <InlineField rowId={item.id} field="companyName" value={item.companyName || ''} placeholder="company" />
+        </FieldRow>
+        <FieldRow label="Company LinkedIn">
+          {companyLinkedinUrl ? (
+            <a href={companyLinkedinUrl} target="_blank" rel="noopener noreferrer"
+              className="text-sm text-[#046BB1] hover:underline break-all">{companyLinkedinUrl}</a>
+          ) : (
+            <span className="text-sm text-[#E8E4DF]">—</span>
+          )}
+        </FieldRow>
+        <FieldRow label="Industry">
+          <InlineField rowId={item.id} field="companyIndustry" value={item.companyIndustry || ''} placeholder="industry" />
+        </FieldRow>
+        {item.companySize && (
+          <FieldRow label="Company size">
+            <span className="text-sm text-[#333333]">{item.companySize}</span>
+          </FieldRow>
+        )}
+      </ProfileSection>
+
+      {/* ── SURVEY RESPONSE ─────────────────────────────── */}
+      <ProfileSection title="Survey response">
+        {surveyFields.map(f => (
+          <FieldRow key={f.label} label={f.label}>
+            <span className={`text-sm ${f.value ? 'text-[#333333]' : 'text-[#E8E4DF]'}`}>
+              {f.value || '—'}
+            </span>
+          </FieldRow>
+        ))}
+        {item.buyingIntent && (
+          <FieldRow label="Buying intent">
+            <span className="text-sm text-[#333333]">{item.buyingIntent}</span>
+          </FieldRow>
+        )}
+      </ProfileSection>
+
+      {/* ── METADATA + RAW ENRICHMENT ─────────────────────── */}
+      <details className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-4">
+        <summary className="cursor-pointer px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#9C9C9C] hover:bg-[#FFFDFA]">
+          Raw enrichment data
+        </summary>
+        <pre className="text-[11px] bg-[#FFFDFA] border-t border-[#E8E4DF] p-4 overflow-auto max-h-96">
+          {JSON.stringify(item.enrichmentRaw, null, 2)}
+        </pre>
+      </details>
+
+      <details className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-6">
+        <summary className="cursor-pointer px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#9C9C9C] hover:bg-[#FFFDFA]">
+          Metadata
+        </summary>
+        <div className="px-5 py-4 text-xs space-y-1 text-[#9C9C9C]">
+          <div><span className="text-[#E8E4DF]">ID:</span> {item.id}</div>
+          <div><span className="text-[#E8E4DF]">Submitted:</span> {new Date(item.ts).toLocaleString()}</div>
+          {item.ip && <div><span className="text-[#E8E4DF]">IP:</span> {item.ip}</div>}
+          {item.userAgent && <div className="break-all"><span className="text-[#E8E4DF]">UA:</span> {item.userAgent}</div>}
+        </div>
+      </details>
 
       <DeleteButton id={item.id} />
+    </div>
+  )
+}
+
+function ProfileSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-4">
+      <h2 className="text-xs font-bold uppercase tracking-widest text-[#9C9C9C] px-5 pt-4 pb-1">{title}</h2>
+      <div className="px-5 py-2">{children}</div>
+    </section>
+  )
+}
+
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-4 py-2.5 border-b border-[#F5F5F5] last:border-b-0">
+      <span className="text-xs font-medium text-[#9C9C9C] w-32 shrink-0 pt-0.5 uppercase tracking-wider">{label}</span>
+      <div className="flex-1 min-w-0">{children}</div>
     </div>
   )
 }

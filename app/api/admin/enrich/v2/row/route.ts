@@ -90,16 +90,24 @@ export async function POST(req: NextRequest) {
 
   // Save back if requested AND we have a row id
   let saved = false
+  let saveError: string | null = null
+  const fieldsUpdated: string[] = []
   if (body.save && rowId) {
     const update: Record<string, unknown> = {}
-    const setIfNew = (col: string, current: string | undefined, fresh: string | undefined) => {
-      if (fresh && fresh.trim() && !current) update[col] = fresh.trim()
+    // For row enrichment we WANT to overwrite empty fields aggressively — that
+    // was the user's complaint ("nothing got written"). Rule: overwrite when
+    // the incoming value is non-empty AND the existing value is empty/missing.
+    const setIfNew = (col: string, current: string | undefined | null, fresh: string | undefined) => {
+      if (!fresh || !fresh.trim()) return
+      if (current && current.trim()) return
+      update[col] = fresh.trim()
     }
     setIfNew('name',            input.name,         v2.merged.fullName)
     setIfNew('linkedin_url',    input.linkedinUrl,  v2.merged.linkedinUrl)
     setIfNew('company_name',    input.companyName,  v2.merged.companyName)
     setIfNew('job_title',       input.jobTitle,     v2.merged.jobTitle)
     setIfNew('country',         input.country,      v2.merged.country)
+    // Photo URL always overwrites — the whole point of v2 is replacing placeholders.
     if (v2.merged.photoUrl)        update.photo_url           = v2.merged.photoUrl
     if (v2.merged.seniority)       update.seniority           = v2.merged.seniority
     if (v2.merged.region)          update.region              = v2.merged.region
@@ -120,9 +128,15 @@ export async function POST(req: NextRequest) {
 
     if (Object.keys(update).length > 0) {
       const { error } = await c.from('submissions').update(update).eq('id', rowId)
-      if (!error) saved = true
+      if (error) {
+        saveError = error.message
+        console.error('v2 save failed for row', rowId, error)
+      } else {
+        saved = true
+        fieldsUpdated.push(...Object.keys(update))
+      }
     }
   }
 
-  return NextResponse.json({ ...v2, rowId, saved })
+  return NextResponse.json({ ...v2, rowId, saved, saveError, fieldsUpdated })
 }
