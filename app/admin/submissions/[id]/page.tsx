@@ -8,6 +8,7 @@ import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
 import LinkedInReplacer from './LinkedInReplacer.client'
+import PhotoEditor from './PhotoEditor.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,20 +57,12 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
       {/* ── HERO ───────────────────────────────────────────── */}
       <section className="mt-3 mb-8 flex items-start gap-5">
-        {/* Photo */}
-        {item.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.photoUrl}
-            alt={item.name || item.email}
-            referrerPolicy="no-referrer"
-            className="w-24 h-24 rounded-2xl object-cover bg-[#F5F5F5] border border-[#E8E4DF] shrink-0"
-          />
-        ) : (
-          <div className="w-24 h-24 rounded-2xl bg-[#F5F5F5] border border-[#E8E4DF] flex items-center justify-center text-3xl font-black text-[#9C9C9C] shrink-0">
-            {(item.name || item.email).slice(0, 1).toUpperCase()}
-          </div>
-        )}
+        <PhotoEditor
+          id={item.id}
+          currentPhotoUrl={item.photoUrl}
+          name={item.name}
+          email={item.email}
+        />
 
         {/* Name + subtitle + linkedin + archetype */}
         <div className="flex-1 min-w-0">
