@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PhotoLightbox, { PhotoCell, type CardPerson } from '@/components/admin/PhotoLightbox'
+import FieldEnrichTrigger from '@/components/admin/FieldEnrichTrigger'
+import ColumnEnrichTrigger from '@/components/admin/ColumnEnrichTrigger'
 import type { StoredSubmission } from '@/lib/kv'
 
 interface Props { items: StoredSubmission[] }
@@ -212,14 +214,23 @@ const COLUMNS: Column[] = [
     ) : <span className="text-[11px] text-[#E8E4DF]">—</span>,
   },
   {
-    id: 'photo', label: 'Photo', width: '52px', align: 'center',
+    id: 'photo', label: 'Photo', width: '70px', align: 'center',
+    header: () => (
+      <span className="inline-flex items-center">
+        Photo
+        <ColumnEnrichTrigger field="photo" />
+      </span>
+    ),
     cell: ({ s, openLightbox }) => (
-      <PhotoCell size={32}
-        person={{
-          name: s.name, email: s.email, photoUrl: s.photoUrl,
-          title: s.jobTitle, company: s.companyName, linkedinUrl: s.linkedinUrl,
-        }}
-        onOpen={() => openLightbox(s.id)} />
+      <span className="inline-flex items-center gap-1 justify-center">
+        <PhotoCell size={32}
+          person={{
+            name: s.name, email: s.email, photoUrl: s.photoUrl,
+            title: s.jobTitle, company: s.companyName, linkedinUrl: s.linkedinUrl,
+          }}
+          onOpen={() => openLightbox(s.id)} />
+        {!s.photoUrl && <FieldEnrichTrigger rowId={s.id} field="photo" title="Fetch photo only (≈$0.004)" />}
+      </span>
     ),
   },
   {
@@ -250,16 +261,25 @@ const COLUMNS: Column[] = [
     ),
   },
   {
-    id: 'age', label: 'Age', width: '90px',
+    id: 'age', label: 'Age', width: '110px',
+    header: () => (
+      <span className="inline-flex items-center">
+        Age
+        <ColumnEnrichTrigger field="demographics" />
+      </span>
+    ),
     cell: ({ s, bumpRow }) => {
       // Merge logic: user-reported quiz value wins, else AI-estimate from photo
       const value = s.ageBracket || s.ageAiEstimate
       const isAi = !s.ageBracket && !!s.ageAiEstimate
       if (!value) {
         return (
-          <EditableCell value="" rowId={s.id} field="ageBracket"
-            placeholder="age" className="text-[12px] text-[#E8E4DF] whitespace-nowrap"
-            onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
+          <span className="inline-flex items-center gap-1">
+            <EditableCell value="" rowId={s.id} field="ageBracket"
+              placeholder="age" className="text-[12px] text-[#E8E4DF] whitespace-nowrap"
+              onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
+            <FieldEnrichTrigger rowId={s.id} field="demographics" title="Estimate age + sex from photo (≈$0.005)" />
+          </span>
         )
       }
       if (isAi) {
@@ -278,9 +298,22 @@ const COLUMNS: Column[] = [
     },
   },
   {
-    id: 'sex', label: 'Sex', width: '80px',
+    id: 'sex', label: 'Sex', width: '100px',
+    header: () => (
+      <span className="inline-flex items-center">
+        Sex
+        <ColumnEnrichTrigger field="demographics" />
+      </span>
+    ),
     cell: ({ s }) => {
-      if (!s.sexAiEstimate) return <span className="text-[12px] text-[#E8E4DF]">—</span>
+      if (!s.sexAiEstimate) {
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className="text-[12px] text-[#E8E4DF]">—</span>
+            <FieldEnrichTrigger rowId={s.id} field="demographics" title="Estimate age + sex from photo (≈$0.005)" />
+          </span>
+        )
+      }
       const display = s.sexAiEstimate.charAt(0).toUpperCase() + s.sexAiEstimate.slice(1).toLowerCase()
       return (
         <span className="inline-flex items-center gap-1 text-[12px] text-[#9C9C9C]">
