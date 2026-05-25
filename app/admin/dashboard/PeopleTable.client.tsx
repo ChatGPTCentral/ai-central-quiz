@@ -252,25 +252,27 @@ const COLUMNS: Column[] = [
   {
     id: 'age', label: 'Age', width: '90px',
     cell: ({ s, bumpRow }) => {
-      // Show user-reported value if present, else AI-estimated with ✨ chip
-      if (s.ageBracket) {
+      // Merge logic: user-reported quiz value wins, else AI-estimate from photo
+      const value = s.ageBracket || s.ageAiEstimate
+      const isAi = !s.ageBracket && !!s.ageAiEstimate
+      if (!value) {
         return (
-          <EditableCell value={s.ageBracket} rowId={s.id} field="ageBracket"
-            placeholder="age" className="text-[12px] text-[#9C9C9C] whitespace-nowrap"
+          <EditableCell value="" rowId={s.id} field="ageBracket"
+            placeholder="age" className="text-[12px] text-[#E8E4DF] whitespace-nowrap"
             onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
         )
       }
-      if (s.ageAiEstimate) {
+      if (isAi) {
         return (
-          <span className="inline-flex items-center gap-1 text-[12px] text-[#9C9C9C] whitespace-nowrap">
-            {s.ageAiEstimate}
-            <span className="text-[9px] font-bold uppercase px-1 py-px rounded bg-[#FEF7E7] text-[#E48715]" title="AI-estimated">✨</span>
+          <span className="inline-flex items-center gap-1 text-[12px] text-[#9C9C9C] whitespace-nowrap" title={`AI-estimated · ${s.aiEstimateConfidence || 'unknown'} confidence`}>
+            {value}
+            <span className="text-[9px] font-bold uppercase px-1 py-px rounded bg-[#FEF7E7] text-[#E48715]">✨</span>
           </span>
         )
       }
       return (
-        <EditableCell value="" rowId={s.id} field="ageBracket"
-          placeholder="age" className="text-[12px] text-[#E8E4DF] whitespace-nowrap"
+        <EditableCell value={value} rowId={s.id} field="ageBracket"
+          placeholder="age" className="text-[12px] text-[#333333] whitespace-nowrap"
           onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
       )
     },

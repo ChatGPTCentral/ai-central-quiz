@@ -85,19 +85,28 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (f.missing?.length) {
     // Each token narrows the result to rows MISSING that field.
     // (intersect — a row must match every requested gap)
-    const colFor: Record<string, string> = {
+    // For 'age', a row is "missing age" only if BOTH the user-reported
+    // age_bracket AND the AI-estimated age_ai_estimate are empty — matches
+    // what the table cell actually renders (ageBracket || ageAiEstimate).
+    const colFor: Record<string, string | string[]> = {
       enrichment: 'enrichment_status',
       linkedin:   'linkedin_url',
       photo:      'photo_url',
       sex:        'sex_ai_estimate',
-      age:        'age_bracket',
+      age:        ['age_bracket', 'age_ai_estimate'],
       company:    'company_name',
       country:    'country',
       industry:   'company_industry',
     }
     for (const m of f.missing) {
       const col = colFor[m]
-      if (col) r = r.or(`${col}.is.null,${col}.eq.`)
+      if (!col) continue
+      if (Array.isArray(col)) {
+        // intersect: every column must be null/empty
+        for (const c of col) r = r.or(`${c}.is.null,${c}.eq.`)
+      } else {
+        r = r.or(`${col}.is.null,${col}.eq.`)
+      }
     }
   }
   if (typeof f.scoreMin === 'number') r = r.gte('score', f.scoreMin)
