@@ -110,10 +110,15 @@ export async function enrichRowFields(c: any, id: string, fields: FieldName[]): 
       if (!b) {
         skipped.push({ field: 'beehiiv', reason: 'not a Beehiiv subscriber' })
       } else {
+        // Beehiiv WINS on name conflict — it's the canonical source the user
+        // explicitly typed at signup. Only the diff is logged in `updated`.
         const fullName = [b.firstName, b.lastName].filter(Boolean).join(' ').trim()
-        if (fullName && !row.name)    { update.name = fullName; updated.push('name') }
+        if (fullName && fullName !== row.name) { update.name = fullName; updated.push('name') }
+        // Country: Beehiiv also wins. Newsletter signup country tends to be
+        // more accurate than scraped LinkedIn location (which is sometimes
+        // a city / state string).
         const country = normalizeCountry(b.country)
-        if (country && !row.country)  { update.country = country; updated.push('country') }
+        if (country && country !== row.country) { update.country = country; updated.push('country') }
         if (b.utmSource)              { update.utm_source_beehiiv = b.utmSource; updated.push('utm_source_beehiiv') }
         if (b.subscriptionTier)       { update.subscription_tier  = b.subscriptionTier; updated.push('subscription_tier') }
         if (b.status)                 { update.beehiiv_status     = b.status; updated.push('beehiiv_status') }

@@ -167,11 +167,14 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Beehiiv extras (free email-keyed enrichment) ────────────────
+    // Beehiiv WINS on name + country — these come from the user's own
+    // newsletter signup form and are more reliable than scraped fields.
     if (v2.extras?.beehiiv) {
       const b = v2.extras.beehiiv
       const fullName = [b.firstName, b.lastName].filter(Boolean).join(' ').trim()
-      if (fullName) setIfNew('name', input.name, fullName)
-      setIfNew('country', input.country, normalizeCountry(b.country))
+      if (fullName) update.name = fullName
+      const country = normalizeCountry(b.country)
+      if (country) update.country = country
       if (b.utmSource)        update.utm_source_beehiiv = b.utmSource
       if (b.subscriptionTier) update.subscription_tier  = b.subscriptionTier
       if (b.status)           update.beehiiv_status     = b.status
