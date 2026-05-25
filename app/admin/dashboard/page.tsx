@@ -137,7 +137,7 @@ export default async function DashboardPage({
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <VerticalBarChart
                 title="Age"
-                subtitle="x = age bracket · y = count · density on top"
+                subtitle="x = age bracket · y = count · density (red) vs normal (grey dashed)"
                 data={ageData}
                 orderedLabels={AGE_ORDER}
                 uniformColor={PALETTE.marianBlue}
@@ -167,7 +167,7 @@ export default async function DashboardPage({
               />
               <VerticalBarChart
                 title="Company size"
-                subtitle="x = # employees (small → big) · y = count · density on top"
+                subtitle="x = # employees (small → big) · y = count · density (red) vs normal (grey dashed)"
                 data={sizeData}
                 orderedLabels={[...COMPANY_SIZE_ORDER]}
                 uniformColor={PALETTE.xanthous}
