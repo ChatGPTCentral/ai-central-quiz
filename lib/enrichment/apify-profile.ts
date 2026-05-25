@@ -1,4 +1,5 @@
 import type { Provider, NormalizedPerson } from './types'
+import { cleanPhoto } from './photo-filter'
 
 // LinkedIn profile scraping via Apify.
 //
@@ -102,8 +103,15 @@ function extractLinkedinUrl(p: ApifyProfileItem): string | undefined {
 }
 
 function extractPhoto(p: ApifyProfileItem): string | undefined {
-  return p.photoUrl || p.profilePicture || p.profilePictureUrl || p.pictureUrl
-    || p.imageUrl || p.profilePic || p.profileImage
+  // Try every known field name, but reject LinkedIn's default-avatar placeholder
+  // so a real photo on another provider can win the merge.
+  const candidates = [p.photoUrl, p.profilePicture, p.profilePictureUrl, p.pictureUrl,
+    p.imageUrl, p.profilePic, p.profileImage]
+  for (const c of candidates) {
+    const cleaned = cleanPhoto(c)
+    if (cleaned) return cleaned
+  }
+  return undefined
 }
 
 /**

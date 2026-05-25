@@ -1,4 +1,5 @@
 import type { Provider, NormalizedPerson } from './types'
+import { cleanPhoto } from './photo-filter'
 
 interface ApolloPerson {
   name?: string
@@ -102,7 +103,7 @@ export const apolloProvider: Provider = {
         country: p.country || p.organization?.country,
         region: p.state,
         city: p.city,
-        photoUrl: p.photo_url,
+        photoUrl: cleanPhoto(p.photo_url),
         headline: p.headline,
         raw: p,
       }

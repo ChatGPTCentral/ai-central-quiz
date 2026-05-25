@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 import { createClient } from '@supabase/supabase-js'
 import { runV2 } from '@/lib/enrichment/pipeline-v2'
+import { isPlaceholderPhoto } from '@/lib/enrichment/photo-filter'
 
 export const maxDuration = 180
 
@@ -40,16 +41,18 @@ export async function POST(req: NextRequest) {
 
   // If id provided, hydrate from the row
   let rowId: string | null = null
+  let currentPhotoUrl: string | null = null
   let input = { email: body.email || '', name: undefined as string | undefined, linkedinUrl: undefined as string | undefined, companyName: undefined as string | undefined, jobTitle: undefined as string | undefined, country: undefined as string | undefined }
   if (body.id) {
     const { data: row, error } = await c
       .from('submissions')
-      .select('id, email, name, linkedin_url, company_name, job_title, country')
+      .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url')
       .eq('id', body.id)
       .maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     rowId = row.id
+    currentPhotoUrl = row.photo_url
     input = {
       email: row.email,
       name: row.name || undefined,
@@ -62,13 +65,14 @@ export async function POST(req: NextRequest) {
     // Try to find an existing row by email for context (helpful in Lab page)
     const { data: row } = await c
       .from('submissions')
-      .select('id, email, name, linkedin_url, company_name, job_title, country')
+      .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url')
       .ilike('email', body.email.trim().toLowerCase())
       .order('ts', { ascending: false })
       .limit(1)
       .maybeSingle()
     if (row) {
       rowId = row.id
+      currentPhotoUrl = row.photo_url
       input = {
         email: row.email,
         name: row.name || undefined,
@@ -113,7 +117,15 @@ export async function POST(req: NextRequest) {
     setIfNew('company_name',    input.companyName,  v2.merged.companyName)
     setIfNew('job_title',       input.jobTitle,     v2.merged.jobTitle)
     setIfNew('country',         input.country,      v2.merged.country)
-    if (v2.merged.photoUrl)        update.photo_url            = v2.merged.photoUrl
+    // Photo handling — placeholder LinkedIn avatars never win.
+    // 1) If pipeline returned a real photo → save it (always overwrites)
+    // 2) Else if the current DB photo is a placeholder → null it out so the UI
+    //    falls back to the initial-letter avatar instead of showing a ghost
+    if (v2.merged.photoUrl) {
+      update.photo_url = v2.merged.photoUrl
+    } else if (currentPhotoUrl && isPlaceholderPhoto(currentPhotoUrl)) {
+      update.photo_url = null
+    }
     if (v2.merged.region)          update.region               = v2.merged.region
     if (v2.merged.city)            update.city                 = v2.merged.city
     if (v2.merged.companyDomain)       update.company_domain       = v2.merged.companyDomain
