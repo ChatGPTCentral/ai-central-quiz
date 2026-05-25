@@ -9,6 +9,7 @@ import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
 import LinkedInReplacer from './LinkedInReplacer.client'
 import PhotoEditor from './PhotoEditor.client'
+import RawDataSection from './RawDataSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -269,15 +270,8 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         )}
       </ProfileSection>
 
-      {/* ── METADATA + RAW ENRICHMENT ─────────────────────── */}
-      <details className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-4">
-        <summary className="cursor-pointer px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#9C9C9C] hover:bg-[#FFFDFA]">
-          Raw enrichment data
-        </summary>
-        <pre className="text-[11px] bg-[#FFFDFA] border-t border-[#E8E4DF] p-4 overflow-auto max-h-96">
-          {JSON.stringify(item.enrichmentRaw, null, 2)}
-        </pre>
-      </details>
+      {/* ── RAW PROVIDER DATA (per-provider collapsible cards) ─ */}
+      <RawDataSection enrichmentRaw={item.enrichmentRaw} />
 
       <details className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-6">
         <summary className="cursor-pointer px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#9C9C9C] hover:bg-[#FFFDFA]">

@@ -10,9 +10,14 @@ const ACTOR_ID = 'apify~google-search-scraper'
 const APIFY_API = 'https://api.apify.com/v2'
 const SYNC_TIMEOUT_MS = 120_000
 
-// Matches every common LinkedIn profile URL shape, including country
-// subdomains, mobile sub-paths, and legacy `/pub/` URLs.
-const LINKEDIN_PROFILE_RE = /https?:\/\/(?:[a-z]{2,3}\.)?(?:www\.|m\.)?linkedin\.com\/(?:in|pub|profile\/view)\/[^\s?&#"<>'`)]+/i
+// Matches every common LinkedIn profile URL shape (country subdomains,
+// mobile sub-paths, legacy `/pub/<slug>` URLs).
+//
+// We EXPLICITLY reject `/pub/dir/<first>/<last>` — that's LinkedIn's
+// name-disambiguation listing, NOT a profile. Apify actors fed a /pub/dir/
+// URL silently return some unrelated person's data — caused the
+// "Kafein Technology Solutions" mass-contamination bug.
+const LINKEDIN_PROFILE_RE = /https?:\/\/(?:[a-z]{2,3}\.)?(?:www\.|m\.)?linkedin\.com\/(?:(?:in|profile\/view)\/[^\s?&#"<>'`)]+|pub\/(?!dir\/)[^\s?&#"<>'`)]+)/i
 
 interface OrganicResult {
   url?: string

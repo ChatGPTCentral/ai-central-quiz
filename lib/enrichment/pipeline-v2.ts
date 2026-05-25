@@ -235,6 +235,7 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
     const b = await findBeehiivSubscriberByEmail(email)
     if (b) {
       extras.beehiiv = b
+      raw.beehiiv = b.raw
       stages.push({ name: 'beehiiv_lookup', status: 'ok', result: b })
     } else {
       stages.push({ name: 'beehiiv_lookup', status: 'miss', reason: 'not a Beehiiv subscriber' })
@@ -248,6 +249,7 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
     const s = await findStripeCustomerByEmail(email)
     if (s) {
       extras.stripe = s
+      raw.stripe = s.raw
       stages.push({ name: 'stripe_lookup', status: 'ok', result: s })
     } else {
       stages.push({ name: 'stripe_lookup', status: 'miss', reason: 'no Stripe customer for this email' })
