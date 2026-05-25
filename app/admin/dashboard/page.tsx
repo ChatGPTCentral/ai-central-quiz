@@ -81,20 +81,39 @@ export default async function DashboardPage({
     return Array.from(m.entries()).map(([label, value]) => ({ label, value }))
   }
 
+  // Exclude AI "uncertain" classifications from the chart — they're noise.
+  const isUncertain = (v?: string | null) => !v || v.toLowerCase() === 'uncertain'
+
   const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
-  const ageData      = countBy(allRows, r => r.ageBracket)
+  const ageData      = countBy(allRows, r => {
+    const v = r.ageBracket || r.ageAiEstimate
+    return isUncertain(v) ? undefined : v
+  })
   const sexData      = countBy(allRows, r => {
     const v = r.sexAiEstimate
-    if (!v) return undefined
-    return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
+    if (isUncertain(v)) return undefined
+    return v!.charAt(0).toUpperCase() + v!.slice(1).toLowerCase()
   })
   const roleData     = countBy(allRows, r => r.jobTitleStandardized || r.jobTitle || r.jobLevel)
   const industryData = countBy(allRows, r => r.companyIndustry)
   const sizeData     = countBy(allRows, r => r.companySize)
 
-  // Fixed ordering for ordinal axes
+  // Fixed ordering for ordinal axes (uncertain dropped)
   const AGE_ORDER = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+']
-  const SEX_ORDER = ['Male', 'Female', 'Uncertain']
+  const SEX_ORDER = ['Male', 'Female']
+
+  // N = total observations counted per chart (after filtering uncertain/empty)
+  const sumOf = (arr: { value: number }[]) => arr.reduce((a, b) => a + b.value, 0)
+  const N = {
+    age:      sumOf(ageData),
+    sex:      sumOf(sexData),
+    role:     sumOf(roleData),
+    industry: sumOf(industryData),
+    size:     sumOf(sizeData),
+    utm:      sumOf(utmData),
+    geo:      allRows.filter(r => r.country).length,
+  }
+  const n = (k: number) => `N = ${k.toLocaleString()}`
 
   // Country chart needs continent + region for grouping
   const geoRows = allRows.map(r => ({
@@ -142,37 +161,37 @@ export default async function DashboardPage({
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <VerticalBarChart
                 title="Age"
-                subtitle="x = age bracket · y = count · density (red) vs normal (grey dashed)"
+                subtitle={n(N.age)}
                 data={ageData}
                 orderedLabels={AGE_ORDER}
                 uniformColor={PALETTE.marianBlue}
               />
               <VerticalBarChart
                 title="Sex"
-                subtitle="AI-estimated from profile photo"
+                subtitle={n(N.sex)}
                 data={sexData}
                 orderedLabels={SEX_ORDER}
                 uniformColor={PALETTE.rosePompadour}
               />
-              <CountryChart rows={geoRows} />
+              <CountryChart rows={geoRows} subtitle={n(N.geo)} />
 
               <HorizontalBarChart
                 title="Industry"
-                subtitle="Self-reported + Apollo-enriched"
+                subtitle={n(N.industry)}
                 data={industryData}
                 maxRows={8}
                 uniformColor={PALETTE.asparagus}
               />
               <HorizontalBarChart
                 title="Role"
-                subtitle="Standardized job titles"
+                subtitle={n(N.role)}
                 data={roleData}
                 maxRows={8}
                 uniformColor={PALETTE.azul}
               />
               <VerticalBarChart
                 title="Company size"
-                subtitle="x = # employees (small → big) · y = count · density (red) vs normal (grey dashed)"
+                subtitle={n(N.size)}
                 data={sizeData}
                 orderedLabels={[...COMPANY_SIZE_ORDER]}
                 uniformColor={PALETTE.xanthous}
@@ -180,7 +199,7 @@ export default async function DashboardPage({
 
               <HorizontalBarChart
                 title="UTM source"
-                subtitle="Acquisition channel · ?utm_source= on landing URL"
+                subtitle={n(N.utm)}
                 data={utmData}
                 maxRows={10}
                 uniformColor={PALETTE.fulvous}

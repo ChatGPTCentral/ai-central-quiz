@@ -13,11 +13,12 @@ interface RowSlim {
 
 interface Props {
   rows: RowSlim[]
+  subtitle?: string
 }
 
 type Group = 'continent' | 'country' | 'us_state'
 
-export default function CountryChart({ rows }: Props) {
+export default function CountryChart({ rows, subtitle }: Props) {
   const [group, setGroup] = useState<Group>('country')
   const [expanded, setExpanded] = useState(false)
 
@@ -70,7 +71,7 @@ export default function CountryChart({ rows }: Props) {
       <div className="relative">
         <HorizontalBarChart
           title="Geographic distribution"
-          subtitle={group === 'us_state' ? 'US states only' : group === 'continent' ? 'Top continents' : 'Top 7 + Others'}
+          subtitle={subtitle ?? (group === 'us_state' ? 'US states only' : group === 'continent' ? 'Top continents' : 'Top 7 + Others')}
           data={data}
           maxRows={group === 'continent' ? 7 : 7}
           groupRest
