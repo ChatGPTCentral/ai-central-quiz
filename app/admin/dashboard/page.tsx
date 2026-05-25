@@ -82,12 +82,14 @@ export default async function DashboardPage({
   }
 
   const ageData      = countBy(allRows, r => r.ageBracket)
+  const sexData      = countBy(allRows, r => r.sexAiEstimate)
   const roleData     = countBy(allRows, r => r.jobTitleStandardized || r.jobTitle || r.jobLevel)
   const industryData = countBy(allRows, r => r.companyIndustry)
   const sizeData     = countBy(allRows, r => r.companySize)
 
   // Fixed ordering for ordinal axes
   const AGE_ORDER = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+']
+  const SEX_ORDER = ['male', 'female', 'uncertain']
 
   // Country chart needs continent + region for grouping
   const geoRows = allRows.map(r => ({
@@ -131,14 +133,30 @@ export default async function DashboardPage({
               <StatCard label="Unique roles"      value={uniqueRoles}      accent="fulvous" />
             </section>
 
-            {/* Charts grid */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+            {/* Charts grid — row 1: Age · Sex · Country | row 2: Industry · Role · Company size */}
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <VerticalBarChart
                 title="Age"
-                subtitle="x = age bracket · y = count · density curve on top"
+                subtitle="x = age bracket · y = count · density on top"
                 data={ageData}
                 orderedLabels={AGE_ORDER}
                 uniformColor={PALETTE.marianBlue}
+              />
+              <VerticalBarChart
+                title="Sex"
+                subtitle="AI-estimated from profile photo"
+                data={sexData}
+                orderedLabels={SEX_ORDER}
+                uniformColor={PALETTE.rosePompadour}
+              />
+              <CountryChart rows={geoRows} />
+
+              <HorizontalBarChart
+                title="Industry"
+                subtitle="Self-reported + Apollo-enriched"
+                data={industryData}
+                maxRows={8}
+                uniformColor={PALETTE.asparagus}
               />
               <HorizontalBarChart
                 title="Role"
@@ -147,21 +165,13 @@ export default async function DashboardPage({
                 maxRows={8}
                 uniformColor={PALETTE.azul}
               />
-              <HorizontalBarChart
-                title="Industry"
-                subtitle="Self-reported + Apollo-enriched"
-                data={industryData}
-                maxRows={8}
-                uniformColor={PALETTE.asparagus}
-              />
               <VerticalBarChart
                 title="Company size"
-                subtitle="x = # employees (small → big) · y = count · density curve on top"
+                subtitle="x = # employees (small → big) · y = count · density on top"
                 data={sizeData}
                 orderedLabels={[...COMPANY_SIZE_ORDER]}
                 uniformColor={PALETTE.xanthous}
               />
-              <CountryChart rows={geoRows} />
             </section>
           </>
         )}
