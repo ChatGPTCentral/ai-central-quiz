@@ -151,15 +151,31 @@ const COLUMNS: Column[] = [
     header: () => null,
     cell: ({ s, busyProvider, providerResult, runProvider }) => {
       const busy = busyProvider?.id === s.id
-      const r = providerResult[s.id]?.v2
-      const ok = r?.status === 'complete'
-      const partial = r?.status === 'partial'
-      const fail = r && !ok && !partial
+      // Prefer session result if the user just enriched, else fall back to
+      // the row's DB status so we always reflect "has this been enriched?"
+      const sessionR = providerResult[s.id]?.v2
+      const sessionStatus = sessionR?.status
+      const dbStatus = s.enrichmentStatus
+      const status = sessionStatus || dbStatus
+
+      const ok = status === 'complete'
+      const partial = status === 'partial'
+      const fail = status === 'failed'
+      const enrichedDate = s.enrichedAt ? new Date(s.enrichedAt).toLocaleDateString() : null
+      const label = !status ? '✨ Enrich' : ok ? '✓ Done' : partial ? '~ Partial' : '✕ Failed'
+      const tip = !status
+        ? 'Run the full enrichment pipeline'
+        : `Already enriched${enrichedDate ? ` on ${enrichedDate}` : ''} (${status}). Click to re-run.`
+
       return (
         <button
-          onClick={(e) => { e.stopPropagation(); runProvider(s.id, 'v2') }}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (status && !confirm(`This row was already enriched${enrichedDate ? ` on ${enrichedDate}` : ''} (status: ${status}).\n\nRe-run anyway? Costs API credits.`)) return
+            runProvider(s.id, 'v2')
+          }}
           disabled={!!busyProvider}
-          title="Force-run the full enrichment pipeline (bypasses cache, costs API credits)"
+          title={tip}
           className={`h-7 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors ${
             busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
             ok ? 'bg-[#62A758] text-white' :
@@ -168,7 +184,7 @@ const COLUMNS: Column[] = [
             'bg-[#333333] text-[#FFFDFA] hover:opacity-90'
           }`}
         >
-          {busy ? '…' : '✨ Enrich'}
+          {busy ? '…' : label}
         </button>
       )
     },

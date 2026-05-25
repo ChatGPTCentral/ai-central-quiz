@@ -51,7 +51,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               ↗ {item.utmSource || 'direct'}{item.utmRef ? ` / ${item.utmRef}` : ''}
             </span>
           )}
-          <EnrichHeaderButton id={item.id} />
+          <EnrichHeaderButton id={item.id} status={item.enrichmentStatus} enrichedAt={item.enrichedAt} />
         </div>
       </div>
 

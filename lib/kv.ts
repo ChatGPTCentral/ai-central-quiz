@@ -45,6 +45,7 @@ export interface StoredSubmission {
   enrichment?: MergedEnrichment
   enrichmentRaw?: Record<string, NormalizedPerson['raw']>
   enrichmentStatus?: 'complete' | 'partial' | 'failed'
+  enrichedAt?: string  // ISO timestamp of last successful enrichment run
   // Legacy import fields
   source?: 'survey' | 'legacy' | 'quiz_v2' | 'fillout_v1' | 'fillout_v2' | 'fillout_legacy' | 'apollo_legacy'
   ageBracket?: string
@@ -121,6 +122,7 @@ interface DbRow {
   enrichment: MergedEnrichment | null
   enrichment_raw: Record<string, NormalizedPerson['raw']> | null
   enrichment_status: 'complete' | 'partial' | 'failed' | null
+  enriched_at: string | null
   source: string | null
   age_bracket: string | null
   buying_intent: string | null
@@ -174,6 +176,7 @@ function toRow(s: StoredSubmission): DbRow {
     enrichment: s.enrichment ?? null,
     enrichment_raw: s.enrichmentRaw ?? null,
     enrichment_status: s.enrichmentStatus ?? null,
+    enriched_at: s.enrichedAt ?? null,
     source: s.source || 'quiz_v2',
     age_bracket: s.ageBracket || null,
     buying_intent: s.buyingIntent || null,
@@ -227,6 +230,7 @@ function fromRow(r: DbRow): StoredSubmission {
     enrichment: r.enrichment ?? undefined,
     enrichmentRaw: r.enrichment_raw ?? undefined,
     enrichmentStatus: r.enrichment_status ?? undefined,
+    enrichedAt: r.enriched_at ?? undefined,
     source: (r.source as StoredSubmission['source']) ?? undefined,
     ageBracket: r.age_bracket ?? undefined,
     buyingIntent: r.buying_intent ?? undefined,

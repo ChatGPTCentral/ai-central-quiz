@@ -166,6 +166,11 @@ export async function POST(req: NextRequest) {
       update.ai_estimate_confidence = v2.aiDemographics.confidence
     }
 
+    // Stamp the enrichment status + timestamp so the UI can tell at a glance
+    // which rows have already been processed (avoid wasteful re-runs).
+    update.enrichment_status = v2.status
+    update.enriched_at = new Date().toISOString()
+
     console.log(`[v2 save] row=${rowId} updating columns:`, Object.keys(update))
 
     if (Object.keys(update).length > 0) {

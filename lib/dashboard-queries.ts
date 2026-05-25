@@ -29,7 +29,7 @@ export interface DashboardFilters {
   hasLinkedin?: boolean
   hasPhoto?: boolean
   /** Saved-search style "broken records" filters — show ONLY rows missing each field. */
-  missing?: ('linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry')[]
+  missing?: ('enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry')[]
   scoreMin?: number
   scoreMax?: number
   workArea?: string  // substring match on the CSV column
@@ -86,13 +86,14 @@ function applyFilters(q: any, f: DashboardFilters): any {
     // Each token narrows the result to rows MISSING that field.
     // (intersect — a row must match every requested gap)
     const colFor: Record<string, string> = {
-      linkedin: 'linkedin_url',
-      photo:    'photo_url',
-      sex:      'sex_ai_estimate',
-      age:      'age_bracket',
-      company:  'company_name',
-      country:  'country',
-      industry: 'company_industry',
+      enrichment: 'enrichment_status',
+      linkedin:   'linkedin_url',
+      photo:      'photo_url',
+      sex:        'sex_ai_estimate',
+      age:        'age_bracket',
+      company:    'company_name',
+      country:    'country',
+      industry:   'company_industry',
     }
     for (const m of f.missing) {
       const col = colFor[m]
