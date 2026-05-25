@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { StoredSubmission } from './kv'
+import { fromRow, type DbRow, type StoredSubmission } from './kv'
 
 let _client: SupabaseClient | null = null
 function client(): SupabaseClient {
@@ -133,7 +133,7 @@ export async function filteredSubmissions(
     .range(offset, offset + limit - 1)
   if (error) throw new Error(error.message)
   return {
-    items: (data || []).map(rowToSubmission),
+    items: (data || []).map(r => fromRow(r as DbRow)),
     total: count || 0,
   }
 }
@@ -152,7 +152,7 @@ export async function filteredSubmissionsAll(filters: DashboardFilters): Promise
   q = applyFilters(q, filters)
   const { data, error } = await q.order('ts', { ascending: false })
   if (error) throw new Error(error.message)
-  return (data || []).map(rowToSubmission)
+  return (data || []).map(r => fromRow(r as DbRow))
 }
 
 /** Top-N facet counts honoring current filters (so the UI shows reachable values only). */
@@ -177,95 +177,6 @@ export async function facetCounts(
     .slice(0, limit)
 }
 
-// Same row-shape mapping as in lib/kv.ts (kept private here to avoid circular import).
-interface DbRow {
-  id: string
-  name: string | null
-  email: string
-  ai_level: string | null
-  work_area: string | null
-  learning_style: string | null
-  time_commitment: string | null
-  main_goal: string | null
-  ai_tools: string | null
-  job_level: string | null
-  archetype: string
-  score: number | null
-  ts: number
-  ip: string | null
-  user_agent: string | null
-  apollo_data: unknown
-  linkedin_url: string | null
-  photo_url: string | null
-  job_title: string | null
-  seniority: string | null
-  job_function: string | null
-  department: string | null
-  company_name: string | null
-  company_domain: string | null
-  company_size: string | null
-  company_industry: string | null
-  company_sub_industry: string | null
-  country: string | null
-  region: string | null
-  city: string | null
-  enrichment: unknown
-  enrichment_raw: unknown
-  enrichment_status: string | null
-  source: string | null
-  age_bracket: string | null
-  buying_intent: string | null
-  utm_source: string | null
-  utm_ref: string | null
-  company_revenue: string | null
-  company_funding: string | null
-  company_founded_year: number | null
-  legacy_responses: unknown
-}
-
-function rowToSubmission(r: DbRow): StoredSubmission {
-  return {
-    id: r.id,
-    name: r.name || '',
-    email: r.email,
-    aiLevel: r.ai_level || '',
-    workArea: r.work_area || '',
-    learningStyle: r.learning_style || '',
-    timeCommitment: r.time_commitment || '',
-    mainGoal: r.main_goal || '',
-    aiTools: r.ai_tools || '',
-    jobLevel: r.job_level || '',
-    archetype: r.archetype as StoredSubmission['archetype'],
-    score: r.score ?? undefined,
-    apolloData: (r.apollo_data ?? undefined) as StoredSubmission['apolloData'],
-    ts: r.ts,
-    ip: r.ip || undefined,
-    userAgent: r.user_agent || undefined,
-    linkedinUrl: r.linkedin_url || undefined,
-    photoUrl: r.photo_url || undefined,
-    jobTitle: r.job_title || undefined,
-    seniority: r.seniority || undefined,
-    jobFunction: r.job_function || undefined,
-    department: r.department || undefined,
-    companyName: r.company_name || undefined,
-    companyDomain: r.company_domain || undefined,
-    companySize: r.company_size || undefined,
-    companyIndustry: r.company_industry || undefined,
-    companySubIndustry: r.company_sub_industry || undefined,
-    country: r.country || undefined,
-    region: r.region || undefined,
-    city: r.city || undefined,
-    enrichment: (r.enrichment ?? undefined) as StoredSubmission['enrichment'],
-    enrichmentRaw: (r.enrichment_raw ?? undefined) as StoredSubmission['enrichmentRaw'],
-    enrichmentStatus: (r.enrichment_status ?? undefined) as StoredSubmission['enrichmentStatus'],
-    source: (r.source ?? undefined) as StoredSubmission['source'],
-    ageBracket: r.age_bracket ?? undefined,
-    buyingIntent: r.buying_intent ?? undefined,
-    utmSource: r.utm_source ?? undefined,
-    utmRef: r.utm_ref ?? undefined,
-    companyRevenue: r.company_revenue ?? undefined,
-    companyFunding: r.company_funding ?? undefined,
-    companyFoundedYear: r.company_founded_year ?? undefined,
-    legacyResponses: (r.legacy_responses ?? undefined) as StoredSubmission['legacyResponses'],
-  }
-}
+// The DB-row → StoredSubmission mapper lives in lib/kv.ts (`fromRow`).
+// Do NOT re-implement it here — keep a single source of truth so new columns
+// surface in every code path (table, detail, CSV export) at the same time.

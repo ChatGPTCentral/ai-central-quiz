@@ -85,7 +85,7 @@ function client(): SupabaseClient {
 }
 
 // ── snake_case ↔ camelCase helpers ──────────────────────────────
-interface DbRow {
+export interface DbRow {
   id: string
   name: string | null
   email: string
@@ -193,7 +193,13 @@ function toRow(s: StoredSubmission): DbRow {
   }
 }
 
-function fromRow(r: DbRow): StoredSubmission {
+/**
+ * SINGLE SOURCE OF TRUTH for DB row → StoredSubmission mapping.
+ * Every code path that reads `submissions` MUST go through this. Do not create
+ * a private copy in another file — it will silently drift out of sync
+ * (see the AI-estimate bug fixed in commit b/c).
+ */
+export function fromRow(r: DbRow): StoredSubmission {
   return {
     id: r.id,
     name: r.name || '',
