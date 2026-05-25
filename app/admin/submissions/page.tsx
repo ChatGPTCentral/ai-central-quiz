@@ -6,7 +6,7 @@ import {
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
 import Filters from '../dashboard/Filters.client'
-import PeopleTable from '../dashboard/PeopleTable.client'
+import ViewToggle from './ViewToggle.client'
 import { RightSidebar } from '@/components/admin/AdminShell.client'
 
 export const dynamic = 'force-dynamic'
@@ -99,15 +99,10 @@ export default async function SubmissionsListPage({
           </a>
         </div>
 
-        {error ? null : items.length === 0 ? (
-          <div className="bg-white border border-[#E8E4DF] rounded-xl p-8 text-center">
-            <p className="text-sm text-[#9C9C9C]">No matches. Loosen the filters.</p>
-          </div>
-        ) : (
-          <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
-            <PeopleTable items={items} />
-
-            <div className="flex items-center justify-between px-4 py-3 bg-[#FFFDFA] border-t border-[#E8E4DF]">
+        {error ? null : (
+          <>
+            <ViewToggle items={items} />
+            <div className="flex items-center justify-between px-1 py-3 mt-2">
               <p className="text-xs text-[#9C9C9C]">
                 Showing {offset + 1}–{Math.min(offset + items.length, total)} of {total.toLocaleString()}
               </p>
@@ -120,7 +115,7 @@ export default async function SubmissionsListPage({
                 )}
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
