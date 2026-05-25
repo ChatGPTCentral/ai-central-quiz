@@ -172,6 +172,7 @@ export default async function DashboardPage({
                 data={sexData}
                 orderedLabels={SEX_ORDER}
                 uniformColor={PALETTE.rosePompadour}
+                showCurves={false}
               />
               <CountryChart rows={geoRows} subtitle={n(N.geo)} />
 

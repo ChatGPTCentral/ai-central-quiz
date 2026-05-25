@@ -19,6 +19,8 @@ interface Props {
   defaultMode?: 'count' | 'percent'
   /** Curve color. */
   curveColor?: string
+  /** Set false to hide the density + normal-distribution overlays (useful for nominal categories like sex). */
+  showCurves?: boolean
 }
 
 /**
@@ -29,7 +31,7 @@ interface Props {
  * with a Catmull-Rom-ish spline.
  */
 export default function VerticalBarChart({
-  title, subtitle, data, orderedLabels, uniformColor, defaultMode = 'count', curveColor,
+  title, subtitle, data, orderedLabels, uniformColor, defaultMode = 'count', curveColor, showCurves = true,
 }: Props) {
   const [mode, setMode] = useState<'count' | 'percent'>(defaultMode)
 
@@ -142,7 +144,7 @@ export default function VerticalBarChart({
               />
             ))}
             {/* Reference Gaussian (drawn first so the empirical density sits on top) */}
-            {N > 1 && stats.total > 0 && (
+            {showCurves && N > 1 && stats.total > 0 && (
               <path
                 d={gaussianPath}
                 fill="none"
@@ -155,7 +157,7 @@ export default function VerticalBarChart({
               />
             )}
             {/* Empirical density (KDE) */}
-            {N > 1 && stats.total > 0 && (
+            {showCurves && N > 1 && stats.total > 0 && (
               <path
                 d={densityPath}
                 fill="none"
@@ -197,7 +199,7 @@ export default function VerticalBarChart({
         </div>
 
         {/* Legend */}
-        {stats.total > 0 && (
+        {showCurves && stats.total > 0 && (
           <div className="flex items-center justify-end gap-4 mt-2 text-[9px] text-[#9C9C9C] uppercase tracking-wider font-bold">
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-4 h-px" style={{ backgroundColor: densityStroke }} />
