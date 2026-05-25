@@ -82,14 +82,18 @@ export default async function DashboardPage({
   }
 
   const ageData      = countBy(allRows, r => r.ageBracket)
-  const sexData      = countBy(allRows, r => r.sexAiEstimate)
+  const sexData      = countBy(allRows, r => {
+    const v = r.sexAiEstimate
+    if (!v) return undefined
+    return v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
+  })
   const roleData     = countBy(allRows, r => r.jobTitleStandardized || r.jobTitle || r.jobLevel)
   const industryData = countBy(allRows, r => r.companyIndustry)
   const sizeData     = countBy(allRows, r => r.companySize)
 
   // Fixed ordering for ordinal axes
   const AGE_ORDER = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+']
-  const SEX_ORDER = ['male', 'female', 'uncertain']
+  const SEX_ORDER = ['Male', 'Female', 'Uncertain']
 
   // Country chart needs continent + region for grouping
   const geoRows = allRows.map(r => ({

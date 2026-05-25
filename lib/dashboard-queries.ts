@@ -28,6 +28,8 @@ export interface DashboardFilters {
   buyingIntent?: string[]
   hasLinkedin?: boolean
   hasPhoto?: boolean
+  /** Saved-search style "broken records" filters — show ONLY rows missing each field. */
+  missing?: ('linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry')[]
   scoreMin?: number
   scoreMax?: number
   workArea?: string  // substring match on the CSV column
@@ -53,6 +55,9 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
     buyingIntent: csv('intent'),
     hasLinkedin: sp.get('hasLinkedin') === '1' ? true : undefined,
     hasPhoto: sp.get('hasPhoto') === '1' ? true : undefined,
+    missing: sp.get('missing')
+      ? sp.get('missing')!.split(',').map(s => s.trim()).filter(Boolean) as DashboardFilters['missing']
+      : undefined,
     scoreMin: sp.get('scoreMin') ? parseInt(sp.get('scoreMin')!, 10) : undefined,
     scoreMax: sp.get('scoreMax') ? parseInt(sp.get('scoreMax')!, 10) : undefined,
     workArea: sp.get('workArea') || undefined,
@@ -77,6 +82,23 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (f.buyingIntent?.length)      r = r.in('buying_intent', f.buyingIntent)
   if (f.hasLinkedin)               r = r.not('linkedin_url', 'is', null)
   if (f.hasPhoto)                  r = r.not('photo_url', 'is', null)
+  if (f.missing?.length) {
+    // Each token narrows the result to rows MISSING that field.
+    // (intersect — a row must match every requested gap)
+    const colFor: Record<string, string> = {
+      linkedin: 'linkedin_url',
+      photo:    'photo_url',
+      sex:      'sex_ai_estimate',
+      age:      'age_bracket',
+      company:  'company_name',
+      country:  'country',
+      industry: 'company_industry',
+    }
+    for (const m of f.missing) {
+      const col = colFor[m]
+      if (col) r = r.or(`${col}.is.null,${col}.eq.`)
+    }
+  }
   if (typeof f.scoreMin === 'number') r = r.gte('score', f.scoreMin)
   if (typeof f.scoreMax === 'number') r = r.lte('score', f.scoreMax)
   if (f.workArea)                  r = r.ilike('work_area', `%${f.workArea}%`)

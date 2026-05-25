@@ -3,6 +3,7 @@ import { isAdmin } from '@/lib/admin-auth'
 import { createClient } from '@supabase/supabase-js'
 import { runV2 } from '@/lib/enrichment/pipeline-v2'
 import { isPlaceholderPhoto } from '@/lib/enrichment/photo-filter'
+import { titleCase, normalizeCountry } from '@/lib/normalize'
 
 export const maxDuration = 180
 
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
     setIfNew('linkedin_url',    input.linkedinUrl,  v2.merged.linkedinUrl)
     setIfNew('company_name',    input.companyName,  v2.merged.companyName)
     setIfNew('job_title',       input.jobTitle,     v2.merged.jobTitle)
-    setIfNew('country',         input.country,      v2.merged.country)
+    setIfNew('country',         input.country,      normalizeCountry(v2.merged.country))
     // Photo handling — placeholder LinkedIn avatars never win.
     // 1) If pipeline returned a real photo → save it (always overwrites)
     // 2) Else if the current DB photo is a placeholder → null it out so the UI
@@ -137,8 +138,8 @@ export async function POST(req: NextRequest) {
       const bracket = bracketCompanySize(v2.merged.companySize)
       update.company_size = bracket || v2.merged.companySize
     }
-    if (v2.merged.industry)            update.company_industry     = v2.merged.industry
-    if (v2.merged.subIndustry)         update.company_sub_industry = v2.merged.subIndustry
+    if (v2.merged.industry)            update.company_industry     = titleCase(v2.merged.industry)
+    if (v2.merged.subIndustry)         update.company_sub_industry = titleCase(v2.merged.subIndustry)
     if (v2.merged.function)        update.job_function         = v2.merged.function
     if (v2.merged.department)      update.department           = v2.merged.department
 

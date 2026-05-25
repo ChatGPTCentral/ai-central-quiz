@@ -7,6 +7,7 @@ import {
 } from '@/lib/dashboard-queries'
 import Filters from '../dashboard/Filters.client'
 import ViewToggle from './ViewToggle.client'
+import SavedSearches from './SavedSearches'
 import { RightSidebar } from '@/components/admin/AdminShell.client'
 
 export const dynamic = 'force-dynamic'
@@ -101,6 +102,7 @@ export default async function SubmissionsListPage({
 
         {error ? null : (
           <>
+            <SavedSearches searchParams={searchParams} />
             <ViewToggle items={items} />
             <div className="flex items-center justify-between px-1 py-3 mt-2">
               <p className="text-xs text-[#9C9C9C]">

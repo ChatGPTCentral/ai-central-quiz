@@ -1,7 +1,7 @@
 // Country-name → flag emoji. Covers everything `lib/geo.ts` recognises.
 // Falls back to a globe glyph for unknowns.
 
-const NAME_TO_CODE: Record<string, string> = {
+export const NAME_TO_CODE: Record<string, string> = {
   'United States': 'US', 'USA': 'US', 'US': 'US',
   'Canada': 'CA', 'Mexico': 'MX',
   'United Kingdom': 'GB', 'UK': 'GB', 'England': 'GB', 'Scotland': 'GB', 'Wales': 'GB', 'Great Britain': 'GB',
