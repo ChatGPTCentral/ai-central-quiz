@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import HorizontalBarChart from './HorizontalBarChart'
 import { PALETTE } from '@/lib/palette'
+import { countryFlag } from '@/lib/country-flags'
 
 interface RowSlim {
   country?: string | null
@@ -36,7 +37,10 @@ export default function CountryChart({ rows }: Props) {
       if (!key) continue
       counts.set(key, (counts.get(key) || 0) + 1)
     }
-    return Array.from(counts.entries()).map(([label, value]) => ({ label, value }))
+    return Array.from(counts.entries()).map(([label, value]) => {
+      const prefix = group === 'country' ? countryFlag(label) : ''
+      return { label: prefix ? `${prefix} ${label}` : label, value }
+    })
   }, [rows, group])
 
   const segments: { key: Group; label: string }[] = [

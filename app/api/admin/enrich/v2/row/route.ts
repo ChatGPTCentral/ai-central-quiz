@@ -117,7 +117,12 @@ export async function POST(req: NextRequest) {
     if (v2.merged.companyDomain)       update.company_domain       = v2.merged.companyDomain
     if (v2.merged.companyLinkedinUrl)  update.company_linkedin_url = v2.merged.companyLinkedinUrl
     if (v2.merged.companyWebsite)      update.company_website      = v2.merged.companyWebsite
-    if (v2.merged.companySize)         update.company_size         = v2.merged.companySize
+    if (v2.merged.companySize) {
+      // Bracket into canonical employee-count buckets before persisting
+      const { bracketCompanySize } = await import('@/lib/enrichment/standardize')
+      const bracket = bracketCompanySize(v2.merged.companySize)
+      update.company_size = bracket || v2.merged.companySize
+    }
     if (v2.merged.industry)            update.company_industry     = v2.merged.industry
     if (v2.merged.subIndustry)         update.company_sub_industry = v2.merged.subIndustry
     if (v2.merged.function)        update.job_function         = v2.merged.function

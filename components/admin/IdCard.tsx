@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { countryFlag } from '@/lib/country-flags'
 
 export interface IdCardPerson {
   id: string
@@ -130,7 +131,7 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
 
         {(person.city || person.country) && (
           <p className="text-[11px] text-[#9C9C9C] mt-1.5">
-            📍 {[person.city, person.region, person.country].filter(Boolean).join(', ')}
+            {countryFlag(person.country) || '📍'} {[person.city, person.region, person.country].filter(Boolean).join(', ')}
           </p>
         )}
 

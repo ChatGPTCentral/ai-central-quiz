@@ -6,6 +6,7 @@ import {
 } from '@/lib/dashboard-queries'
 import { continentOf } from '@/lib/geo'
 import { PALETTE } from '@/lib/palette'
+import { COMPANY_SIZE_ORDER } from '@/lib/enrichment/standardize'
 import StatCard from '@/components/admin/StatCard'
 import HorizontalBarChart from '@/components/admin/HorizontalBarChart'
 import CountryChart from '@/components/admin/CountryChart'
@@ -80,10 +81,12 @@ export default async function DashboardPage({
   }
 
   const ageData      = countBy(allRows, r => r.ageBracket)
-  const roleData     = countBy(allRows, r => r.jobTitle || r.jobLevel)
-  const tutorialData = countBy(allRows, r => r.mainGoal)
+  const roleData     = countBy(allRows, r => r.jobTitleStandardized || r.jobTitle || r.jobLevel)
   const industryData = countBy(allRows, r => r.companyIndustry)
   const sizeData     = countBy(allRows, r => r.companySize)
+
+  // Fixed ordering for ordinal axes
+  const AGE_ORDER = ['18-25', '26-35', '36-45', '46-55', '56-65', '65+']
 
   // Country chart needs continent + region for grouping
   const geoRows = allRows.map(r => ({
@@ -131,24 +134,18 @@ export default async function DashboardPage({
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
               <HorizontalBarChart
                 title="Age"
-                subtitle="Self-reported age brackets"
+                subtitle="Age brackets · density overlay"
                 data={ageData}
-                maxRows={8}
+                orderedLabels={AGE_ORDER}
+                densityOverlay
                 uniformColor={PALETTE.marianBlue}
               />
               <HorizontalBarChart
                 title="Role"
-                subtitle="Job title (Apollo) or job level"
+                subtitle="Standardized job titles"
                 data={roleData}
                 maxRows={8}
                 uniformColor={PALETTE.azul}
-              />
-              <HorizontalBarChart
-                title="Tutorial preference"
-                subtitle="What people most want to learn"
-                data={tutorialData}
-                maxRows={8}
-                uniformColor={PALETTE.fulvous}
               />
               <HorizontalBarChart
                 title="Industry"
@@ -159,9 +156,10 @@ export default async function DashboardPage({
               />
               <HorizontalBarChart
                 title="Company size"
-                subtitle="# of employees"
+                subtitle="# of employees · small → big · density overlay"
                 data={sizeData}
-                maxRows={8}
+                orderedLabels={[...COMPANY_SIZE_ORDER]}
+                densityOverlay
                 uniformColor={PALETTE.xanthous}
               />
               <CountryChart rows={geoRows} />

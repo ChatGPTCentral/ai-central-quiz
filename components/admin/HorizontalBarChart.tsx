@@ -22,24 +22,35 @@ interface Props {
   rightAction?: React.ReactNode
   /** Default toggle mode. */
   defaultMode?: 'count' | 'percent'
+  /** When provided, rows render in this exact order (no sort, no Others). Missing labels render as 0. */
+  orderedLabels?: string[]
+  /** When true, render a smooth density curve over the bar tips. */
+  densityOverlay?: boolean
 }
 
 export default function HorizontalBarChart({
   title, subtitle, data, maxRows = 10, groupRest = true, uniformColor, rightAction, defaultMode = 'count',
+  orderedLabels, densityOverlay,
 }: Props) {
   const [mode, setMode] = useState<'count' | 'percent'>(defaultMode)
 
   const { rows, total, max } = useMemo(() => {
-    const sorted = [...data].sort((a, b) => b.value - a.value)
-    let rows: BarDatum[] = sorted.slice(0, maxRows)
-    if (groupRest && sorted.length > maxRows) {
-      const rest = sorted.slice(maxRows).reduce((a, b) => a + b.value, 0)
-      if (rest > 0) rows.push({ label: 'Others', value: rest, color: PALETTE.battleshipGrey })
+    let rows: BarDatum[]
+    if (orderedLabels && orderedLabels.length) {
+      const lookup = new Map(data.map(d => [d.label, d.value]))
+      rows = orderedLabels.map(l => ({ label: l, value: lookup.get(l) || 0 }))
+    } else {
+      const sorted = [...data].sort((a, b) => b.value - a.value)
+      rows = sorted.slice(0, maxRows)
+      if (groupRest && sorted.length > maxRows) {
+        const rest = sorted.slice(maxRows).reduce((a, b) => a + b.value, 0)
+        if (rest > 0) rows.push({ label: 'Others', value: rest, color: PALETTE.battleshipGrey })
+      }
     }
-    const total = sorted.reduce((a, b) => a + b.value, 0)
+    const total = rows.reduce((a, b) => a + b.value, 0)
     const max = Math.max(...rows.map(r => r.value), 1)
     return { rows, total, max }
-  }, [data, maxRows, groupRest])
+  }, [data, maxRows, groupRest, orderedLabels])
 
   return (
     <section className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
@@ -69,7 +80,7 @@ export default function HorizontalBarChart({
       </header>
 
       {/* Bars */}
-      <div className="px-5 pb-5 flex flex-col gap-2">
+      <div className="px-5 pb-5 flex flex-col gap-2 relative">
         {rows.length === 0 ? (
           <p className="text-xs text-[#9C9C9C] py-4 text-center">No data</p>
         ) : rows.map((r) => {
@@ -91,7 +102,54 @@ export default function HorizontalBarChart({
             </div>
           )
         })}
+        {densityOverlay && rows.length > 1 && (
+          <DensityCurve rows={rows} max={max} />
+        )}
       </div>
     </section>
+  )
+}
+
+/**
+ * Smooth density curve overlay. Positioned absolutely over the bars column,
+ * connecting each bar's tip with a Catmull-Rom-ish spline.
+ *
+ * The bars area is: left=128px (label col w-32) + 12px (gap-3); right=56px (value col w-14) + 12px (gap-3).
+ * Each bar is h-6 (24px) with gap-2 (8px). The first bar starts at top of container (no top padding).
+ */
+function DensityCurve({ rows, max }: { rows: BarDatum[]; max: number }) {
+  const BAR_H = 24
+  const GAP = 8
+  const LEFT = 128 + 12        // label width + gap
+  const RIGHT = 56 + 12        // value width + gap
+  const N = rows.length
+  const totalH = N * BAR_H + (N - 1) * GAP
+
+  // x-axis = value (0..max → 0..100%), y-axis = bar center
+  const points = rows.map((r, i) => ({
+    x: max > 0 ? (r.value / max) * 100 : 0,
+    y: i * (BAR_H + GAP) + BAR_H / 2,
+  }))
+
+  // Build smooth path (viewBox: x=0..100, y=0..totalH; preserveAspectRatio=none stretches x)
+  const path = points.map((p, i) => {
+    if (i === 0) return `M ${p.x} ${p.y}`
+    const prev = points[i - 1]
+    const cx = (prev.x + p.x) / 2
+    return `C ${cx} ${prev.y}, ${cx} ${p.y}, ${p.x} ${p.y}`
+  }).join(' ')
+
+  return (
+    <svg
+      className="absolute pointer-events-none"
+      style={{ left: LEFT, top: 0, height: totalH, width: `calc(100% - ${LEFT + RIGHT}px)` }}
+      preserveAspectRatio="none"
+      viewBox={`0 0 100 ${totalH}`}
+    >
+      <path d={path} fill="none" stroke={PALETTE.persianRed} strokeWidth="1.5" strokeLinecap="round" opacity="0.7" vectorEffect="non-scaling-stroke" />
+      {points.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="1.2" fill={PALETTE.persianRed} opacity="0.9" vectorEffect="non-scaling-stroke" />
+      ))}
+    </svg>
   )
 }

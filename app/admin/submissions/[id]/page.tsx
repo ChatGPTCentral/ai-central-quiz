@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getSubmission } from '@/lib/kv'
 import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { continentOf, showState } from '@/lib/geo'
+import { countryFlag } from '@/lib/country-flags'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
@@ -136,7 +137,10 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
           <InlineField rowId={item.id} field="city" value={item.city || ''} placeholder="city" />
         </FieldRow>
         <FieldRow label="Country">
-          <InlineField rowId={item.id} field="country" value={item.country || ''} placeholder="country" />
+          <span className="flex items-center gap-2">
+            {item.country && <span className="text-base leading-none">{countryFlag(item.country)}</span>}
+            <InlineField rowId={item.id} field="country" value={item.country || ''} placeholder="country" />
+          </span>
         </FieldRow>
         {hasState && (
           <FieldRow label="State / Province">

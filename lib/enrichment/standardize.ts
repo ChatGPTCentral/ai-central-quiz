@@ -113,3 +113,31 @@ export function standardizeIndustry(rawIndustry?: string | null): string | undef
   if (!rawIndustry) return undefined
   return rawIndustry.trim()
 }
+
+/**
+ * Company-size brackets — non-overlapping employee-count buckets aligned with
+ * the dashboard's display order. Raw values from Apollo come as a number-ish
+ * string ("48", "10001+"); LinkedIn returns ranges ("51-200"). We parse out the
+ * lower bound and map it to a canonical bucket.
+ */
+export type CompanySizeBracket = '1' | '2-5' | '6-20' | '21-50' | '51-100' | '101-300' | '301-500' | '500+'
+export const COMPANY_SIZE_ORDER: CompanySizeBracket[] = ['1', '2-5', '6-20', '21-50', '51-100', '101-300', '301-500', '500+']
+
+export function bracketCompanySize(raw?: string | number | null): CompanySizeBracket | undefined {
+  if (raw === null || raw === undefined) return undefined
+  const s = String(raw).trim()
+  if (!s) return undefined
+  // Pull the FIRST integer in the string (works for "48", "51-200", "10001+", "1,000+", "1 employee")
+  const m = s.replace(/,/g, '').match(/\d+/)
+  if (!m) return undefined
+  const n = parseInt(m[0], 10)
+  if (!isFinite(n) || n < 1) return undefined
+  if (n === 1) return '1'
+  if (n <= 5)    return '2-5'
+  if (n <= 20)   return '6-20'
+  if (n <= 50)   return '21-50'
+  if (n <= 100)  return '51-100'
+  if (n <= 300)  return '101-300'
+  if (n <= 500)  return '301-500'
+  return '500+'
+}
