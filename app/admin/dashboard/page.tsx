@@ -81,6 +81,7 @@ export default async function DashboardPage({
     return Array.from(m.entries()).map(([label, value]) => ({ label, value }))
   }
 
+  const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
   const ageData      = countBy(allRows, r => r.ageBracket)
   const sexData      = countBy(allRows, r => {
     const v = r.sexAiEstimate
@@ -175,6 +176,14 @@ export default async function DashboardPage({
                 data={sizeData}
                 orderedLabels={[...COMPANY_SIZE_ORDER]}
                 uniformColor={PALETTE.xanthous}
+              />
+
+              <HorizontalBarChart
+                title="UTM source"
+                subtitle="Acquisition channel · ?utm_source= on landing URL"
+                data={utmData}
+                maxRows={10}
+                uniformColor={PALETTE.fulvous}
               />
             </section>
           </>
