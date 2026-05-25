@@ -1,13 +1,20 @@
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useMemo } from 'react'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 interface FacetGroup {
   key: string
   label: string
   values: { value: string; count: number }[]
 }
+
+interface Preset {
+  name: string
+  qs: string
+}
+
+const PRESETS_STORAGE_KEY = 'admin_filter_presets_v1'
 
 export default function Filters({
   facets,
@@ -17,6 +24,7 @@ export default function Filters({
   workAreas: string[]
 }) {
   const router = useRouter()
+  const pathname = usePathname()      // route-aware: works on /admin/dashboard, /admin/submissions, /admin/lab
   const sp = useSearchParams()
 
   const params = useMemo(() => {
@@ -31,8 +39,18 @@ export default function Filters({
     for (const [k, v] of Object.entries(merged)) {
       if (v !== undefined && v !== '') usp.set(k, v)
     }
-    router.push(`/admin/dashboard?${usp.toString()}`)
-  }, [params, router])
+    router.push(`${pathname}?${usp.toString()}`)
+  }, [params, router, pathname])
+
+  // Debounced search — real-time-ish (200ms) so the URL doesn't update on every keystroke
+  const [searchDraft, setSearchDraft] = useState(params.q || '')
+  useEffect(() => { setSearchDraft(params.q || '') }, [params.q])
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onSearchChange = (v: string) => {
+    setSearchDraft(v)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => apply({ q: v || undefined }), 200)
+  }
 
   const toggle = (key: string, value: string) => {
     const current = (params[key] || '').split(',').filter(Boolean)
@@ -44,20 +62,84 @@ export default function Filters({
   const isActive = (key: string, value: string) =>
     (params[key] || '').split(',').filter(Boolean).includes(value)
 
-  const clearAll = () => router.push('/admin/dashboard')
+  const clearAll = () => router.push(pathname)
+
+  // ── Filter presets — saved in localStorage per current pathname ──
+  const [presets, setPresets] = useState<Preset[]>([])
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`${PRESETS_STORAGE_KEY}:${pathname}`)
+      if (raw) setPresets(JSON.parse(raw))
+    } catch { /* noop */ }
+  }, [pathname])
+
+  const savePresets = (next: Preset[]) => {
+    setPresets(next)
+    try { localStorage.setItem(`${PRESETS_STORAGE_KEY}:${pathname}`, JSON.stringify(next)) } catch { /* noop */ }
+  }
+
+  const currentQs = useMemo(() => {
+    const usp = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v) usp.set(k, v)
+    return usp.toString()
+  }, [params])
+
+  const saveCurrentAsPreset = () => {
+    if (!currentQs) { alert('No active filters to save.'); return }
+    const name = prompt('Preset name:')?.trim()
+    if (!name) return
+    const next = [...presets.filter(p => p.name !== name), { name, qs: currentQs }]
+    savePresets(next)
+  }
+  const applyPreset = (p: Preset) => router.push(`${pathname}?${p.qs}`)
+  const deletePreset = (name: string) => savePresets(presets.filter(p => p.name !== name))
+
+  // Active-filter count badge
+  const activeCount = Object.keys(params).filter(k => k !== 'offset' && params[k]).length
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Saved presets */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Saved filters</span>
+          {activeCount > 0 && (
+            <button
+              onClick={saveCurrentAsPreset}
+              className="text-[10px] text-[#046BB1] font-bold uppercase tracking-wider hover:underline"
+            >+ Save current</button>
+          )}
+        </div>
+        {presets.length === 0 ? (
+          <p className="text-[11px] text-gray-400">No saved filters yet. Apply filters then click &quot;Save current&quot;.</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {presets.map(p => (
+              <div key={p.name} className="flex items-center gap-1.5 text-xs group">
+                <button
+                  onClick={() => applyPreset(p)}
+                  className="flex-1 text-left px-2 py-1.5 rounded-md bg-white border border-[#E8E4DF] text-[#333333] hover:bg-[#FEF7E7] truncate"
+                  title={p.qs}
+                >{p.name}</button>
+                <button
+                  onClick={() => deletePreset(p.name)}
+                  title="Delete preset"
+                  className="text-[#9C9C9C] hover:text-[#BE3B3B] text-base leading-none px-1 opacity-0 group-hover:opacity-100"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Search */}
       <div>
         <label className="text-xs font-bold uppercase tracking-widest text-gray-500 block mb-2">Search</label>
         <input
           type="text"
-          defaultValue={params.q || ''}
+          value={searchDraft}
           placeholder="name, email, company…"
-          onKeyDown={e => {
-            if (e.key === 'Enter') apply({ q: (e.target as HTMLInputElement).value || undefined })
-          }}
+          onChange={e => onSearchChange(e.target.value)}
           className="w-full px-3 py-2 border border-[#E0E0E0] rounded-lg text-sm outline-none focus:border-black"
         />
       </div>
@@ -142,12 +224,14 @@ export default function Filters({
         </div>
       ))}
 
-      <button
-        onClick={clearAll}
-        className="text-xs text-gray-400 hover:text-black text-left transition-colors"
-      >
-        Clear all filters
-      </button>
+      {activeCount > 0 && (
+        <button
+          onClick={clearAll}
+          className="text-xs text-gray-400 hover:text-black text-left transition-colors"
+        >
+          Clear all filters ({activeCount})
+        </button>
+      )}
     </div>
   )
 }

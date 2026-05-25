@@ -104,6 +104,8 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
+const STORAGE_KEY = 'admin_table_columns_v5'  // bumped to reset prior layouts
+
 type RowCtx = {
   s: StoredSubmission
   busyProvider: { id: string; provider: ProviderKey } | null
@@ -112,6 +114,8 @@ type RowCtx = {
   deleteRow: (id: string, label: string) => void
   openLightbox: (p: { name?: string; email?: string; photoUrl?: string; title?: string; company?: string; linkedinUrl?: string }) => void
   bumpRow: () => void
+  selected: Set<string>
+  toggleSelected: (id: string) => void
 }
 
 interface Column {
@@ -125,14 +129,66 @@ interface Column {
 }
 
 const COLUMNS: Column[] = [
+  // Row select (Clay-style multi-select)
   {
-    id: 'source', label: 'Source', width: '76px', required: true,
+    id: 'select', label: '', width: '36px', align: 'center', required: true,
+    header: () => null,
+    cell: ({ s, selected, toggleSelected }) => (
+      <input
+        type="checkbox"
+        checked={selected.has(s.id)}
+        onChange={(e) => { e.stopPropagation(); toggleSelected(s.id) }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-3.5 h-3.5 accent-[#333333] cursor-pointer"
+      />
+    ),
+  },
+  // ✨ Enrich button — moved to first action column (per Clay layout)
+  {
+    id: 'enrich', label: '', width: '92px', align: 'center', required: true,
+    header: () => null,
+    cell: ({ s, busyProvider, providerResult, runProvider }) => {
+      const busy = busyProvider?.id === s.id
+      const r = providerResult[s.id]?.v2
+      const ok = r?.status === 'complete'
+      const partial = r?.status === 'partial'
+      const fail = r && !ok && !partial
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); runProvider(s.id, 'v2') }}
+          disabled={!!busyProvider}
+          title="Force-run the full enrichment pipeline (bypasses cache, costs API credits)"
+          className={`px-2.5 h-7 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1 ${
+            busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
+            ok ? 'bg-[#62A758] text-white' :
+            partial ? 'bg-[#E7B02F] text-[#333333]' :
+            fail ? 'bg-[#BE3B3B] text-white' :
+            'bg-[#333333] text-[#FFFDFA] hover:opacity-90'
+          }`}
+        >
+          {busy ? '…' : <>✨ Enrich</>}
+        </button>
+      )
+    },
+  },
+  // ── DEFAULT ORDER PER USER SPEC: Date, Source, Photo, Full name,
+  //    Job title, Company, Age, Sex, Email, LinkedIn ───────────────
+  {
+    id: 'date', label: 'Date · time', width: '130px',
+    cell: ({ s }) => (
+      <span className="text-[#9C9C9C] text-xs whitespace-nowrap" title={new Date(s.ts).toISOString()}>
+        {fmt(s.ts)}
+      </span>
+    ),
+  },
+  {
+    id: 'source', label: 'Source', width: '78px',
     cell: ({ s }) => <SourceBadge source={s.source} />,
   },
   {
-    id: 'photo', label: 'Photo', width: '48px', required: true, align: 'center',
+    id: 'photo', label: 'Photo', width: '52px', align: 'center',
     cell: ({ s, openLightbox }) => (
-      <PhotoCell size={36}
+      <PhotoCell size={32}
         person={{
           name: s.name, email: s.email, photoUrl: s.photoUrl,
           title: s.jobTitle, company: s.companyName, linkedinUrl: s.linkedinUrl,
@@ -141,32 +197,85 @@ const COLUMNS: Column[] = [
     ),
   },
   {
-    id: 'person', label: 'Person',
+    id: 'name', label: 'Full name',
     cell: ({ s, bumpRow }) => (
-      <div className="min-w-0">
+      <Link href={`/admin/submissions/${s.id}`} className="block hover:underline">
         <EditableCell value={s.name || ''} rowId={s.id} field="name"
           placeholder="add name"
-          className="text-sm font-semibold text-[#333333] block max-w-[200px] truncate"
+          className="text-[13px] font-semibold text-[#333333] block max-w-[200px] truncate"
           onSaved={(v) => { s.name = v; bumpRow() }} />
-        <p className="text-[11px] text-[#9C9C9C] truncate max-w-[200px]">
-          <Link href={`/admin/submissions/${s.id}`} className="hover:underline">{s.email}</Link>
-        </p>
-      </div>
+      </Link>
     ),
   },
   {
-    id: 'title_company', label: 'Title @ Company',
+    id: 'jobTitle', label: 'Job title',
     cell: ({ s, bumpRow }) => (
-      <div className="min-w-0">
-        <EditableCell value={s.jobTitle || ''} rowId={s.id} field="jobTitle"
-          placeholder="title" className="text-[13px] text-[#333333] block"
-          onSaved={(v) => { s.jobTitle = v; bumpRow() }} />
-        <EditableCell value={s.companyName || ''} rowId={s.id} field="companyName"
-          placeholder="company" className="text-[12px] text-[#9C9C9C] block"
-          onSaved={(v) => { s.companyName = v; bumpRow() }} />
-      </div>
+      <EditableCell value={s.jobTitle || ''} rowId={s.id} field="jobTitle"
+        placeholder="job title" className="text-[13px] text-[#333333]"
+        onSaved={(v) => { s.jobTitle = v; bumpRow() }} />
     ),
   },
+  {
+    id: 'company', label: 'Company',
+    cell: ({ s, bumpRow }) => (
+      <EditableCell value={s.companyName || ''} rowId={s.id} field="companyName"
+        placeholder="company" className="text-[13px] text-[#333333]"
+        onSaved={(v) => { s.companyName = v; bumpRow() }} />
+    ),
+  },
+  {
+    id: 'age', label: 'Age', width: '90px',
+    cell: ({ s, bumpRow }) => {
+      // Show user-reported value if present, else AI-estimated with ✨ chip
+      if (s.ageBracket) {
+        return (
+          <EditableCell value={s.ageBracket} rowId={s.id} field="ageBracket"
+            placeholder="age" className="text-[12px] text-[#9C9C9C] whitespace-nowrap"
+            onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
+        )
+      }
+      if (s.ageAiEstimate) {
+        return (
+          <span className="inline-flex items-center gap-1 text-[12px] text-[#9C9C9C] whitespace-nowrap">
+            {s.ageAiEstimate}
+            <span className="text-[9px] font-bold uppercase px-1 py-px rounded bg-[#FEF7E7] text-[#E48715]" title="AI-estimated">✨</span>
+          </span>
+        )
+      }
+      return (
+        <EditableCell value="" rowId={s.id} field="ageBracket"
+          placeholder="age" className="text-[12px] text-[#E8E4DF] whitespace-nowrap"
+          onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
+      )
+    },
+  },
+  {
+    id: 'sex', label: 'Sex', width: '80px',
+    cell: ({ s }) =>
+      s.sexAiEstimate ? (
+        <span className="inline-flex items-center gap-1 text-[12px] text-[#9C9C9C]">
+          {s.sexAiEstimate}
+          <span className="text-[9px] font-bold uppercase px-1 py-px rounded bg-[#FEF7E7] text-[#E48715]" title="AI-estimated">✨</span>
+        </span>
+      ) : <span className="text-[12px] text-[#E8E4DF]">—</span>,
+  },
+  {
+    id: 'email', label: 'Email',
+    cell: ({ s }) => (
+      <Link href={`/admin/submissions/${s.id}`} className="text-[12px] text-[#9C9C9C] hover:text-[#046BB1] truncate max-w-[240px] block">
+        {s.email}
+      </Link>
+    ),
+  },
+  {
+    id: 'linkedin', label: 'LinkedIn', width: '60px', align: 'center',
+    cell: ({ s }) => s.linkedinUrl ? (
+      <a href={s.linkedinUrl} target="_blank" rel="noopener noreferrer"
+        title={s.linkedinUrl}
+        className="text-[#046BB1] hover:underline text-xs font-bold">in</a>
+    ) : <span className="text-[#E8E4DF] text-xs">—</span>,
+  },
+  // Hidden by default but available via Columns toggle
   {
     id: 'industry', label: 'Industry',
     cell: ({ s, bumpRow }) => (
@@ -184,14 +293,6 @@ const COLUMNS: Column[] = [
     ),
   },
   {
-    id: 'age', label: 'Age',
-    cell: ({ s, bumpRow }) => (
-      <EditableCell value={s.ageBracket || ''} rowId={s.id} field="ageBracket"
-        placeholder="age" className="text-[12px] text-[#9C9C9C] whitespace-nowrap"
-        onSaved={(v) => { s.ageBracket = v; bumpRow() }} />
-    ),
-  },
-  {
     id: 'seniority', label: 'Seniority',
     cell: ({ s, bumpRow }) => (
       <EditableCell value={s.seniority || ''} rowId={s.id} field="seniority"
@@ -201,45 +302,7 @@ const COLUMNS: Column[] = [
   },
   {
     id: 'score', label: 'Score', align: 'right',
-    cell: ({ s }) => <span className="font-semibold tabular-nums">{s.score ?? '—'}</span>,
-  },
-  {
-    id: 'linkedin', label: 'LinkedIn', width: '56px', align: 'center', required: true,
-    cell: ({ s }) => s.linkedinUrl ? (
-      <a href={s.linkedinUrl} target="_blank" rel="noopener noreferrer"
-        title={s.linkedinUrl}
-        className="text-[#046BB1] hover:underline text-xs font-bold">in</a>
-    ) : <span className="text-[#E8E4DF] text-xs">—</span>,
-  },
-  {
-    id: 'date', label: 'Date', width: '120px',
-    cell: ({ s }) => <span className="text-[#9C9C9C] text-xs whitespace-nowrap" title={new Date(s.ts).toISOString()}>{fmt(s.ts)}</span>,
-  },
-  {
-    id: 'enrich', label: 'Enrich', width: '88px', align: 'center', required: true,
-    cell: ({ s, busyProvider, providerResult, runProvider }) => {
-      const busy = busyProvider?.id === s.id
-      const r = providerResult[s.id]?.v2
-      const ok = r?.status === 'complete'
-      const partial = r?.status === 'partial'
-      const fail = r && !ok && !partial
-      return (
-        <button
-          onClick={(e) => { e.stopPropagation(); runProvider(s.id, 'v2') }}
-          disabled={!!busyProvider}
-          title="Force-run the full enrichment pipeline (bypasses cache, costs API credits)"
-          className={`px-3 h-7 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1 ${
-            busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
-            ok ? 'bg-[#62A758] text-white' :
-            partial ? 'bg-[#E7B02F] text-[#333333]' :
-            fail ? 'bg-[#BE3B3B] text-white' :
-            'bg-[#333333] text-[#FFFDFA] hover:opacity-90'
-          }`}
-        >
-          {busy ? '…' : <>✨ Enrich</>}
-        </button>
-      )
-    },
+    cell: ({ s }) => <span className="font-semibold tabular-nums text-[12px]">{s.score ?? '—'}</span>,
   },
   {
     id: 'menu', label: '', width: '40px', align: 'center', required: true,
@@ -254,9 +317,14 @@ const COLUMNS: Column[] = [
   },
 ]
 
+// Default-visible columns (the rest are hidden until user toggles them on)
+const DEFAULT_VISIBLE_IDS = new Set([
+  'select', 'enrich', 'date', 'source', 'photo', 'name',
+  'jobTitle', 'company', 'age', 'sex', 'email', 'linkedin', 'menu',
+])
+
 const DEFAULT_ORDER = COLUMNS.map(c => c.id)
-const DEFAULT_VISIBLE = new Set(COLUMNS.map(c => c.id))
-const STORAGE_KEY = 'admin_table_columns_v3'  // bumped to force-reset users with old saved column order
+const DEFAULT_VISIBLE = new Set(DEFAULT_VISIBLE_IDS)
 
 function loadState(): { order: string[]; visible: Set<string> } {
   if (typeof window === 'undefined') return { order: DEFAULT_ORDER, visible: DEFAULT_VISIBLE }
@@ -288,6 +356,12 @@ export default function PeopleTable({ items }: Props) {
   const [busyProvider, setBusyProvider] = useState<{ id: string; provider: ProviderKey } | null>(null)
   const [providerResult, setProviderResult] = useState<Record<string, Record<ProviderKey, { status: string; linkedinUrl?: string } | undefined> | undefined>>({})
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const toggleSelected = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
   const [paneOpen, setPaneOpen] = useState(false)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [renderTick, setRenderTick] = useState(0)
@@ -367,6 +441,7 @@ export default function PeopleTable({ items }: Props) {
   const ctxBase = {
     busyProvider, providerResult, runProvider, deleteRow,
     openLightbox: setLightbox, bumpRow,
+    selected, toggleSelected,
   }
 
   const visibleItems = useMemo(() => items.filter(s => !removedIds.has(s.id)), [items, removedIds])

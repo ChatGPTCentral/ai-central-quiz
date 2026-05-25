@@ -14,7 +14,7 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: '◧' },
       { href: '/admin/submissions', label: 'Submissions', icon: '☰' },
-      { href: '/admin/enrich', label: 'Re-enrich', icon: '✦' },
+      { href: '/admin/lab', label: 'Enrich', icon: '✨' },
     ],
   },
   {
@@ -23,10 +23,6 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
       { href: '/admin/debug', label: 'Debug lookup', icon: '⌖' },
       { href: '/admin/stats', label: 'Stats', icon: '◔' },
       { href: '/admin/flow', label: 'Flow', icon: '⇋' },
-      ...(process.env.NEXT_PUBLIC_ENRICH_V2 === 'true'
-        ? [{ href: '/admin/lab', label: 'Lab', icon: '✨' }]
-        : []
-      ),
     ],
   },
 ]
@@ -49,20 +45,30 @@ export default function AdminShell({ children }: Props) {
         className="sticky top-0 self-start h-screen bg-white border-r border-[#E8E4DF] flex flex-col transition-all duration-200 shrink-0"
         style={{ width: leftCollapsed ? 64 : 224 }}
       >
-        {/* Logo area */}
-        <div className="px-3 py-5 border-b border-[#E8E4DF] flex items-center gap-2">
+        {/* Logo area + top-right collapse toggle */}
+        <div className="px-3 py-4 border-b border-[#E8E4DF] flex items-center justify-between gap-2">
           {leftCollapsed ? (
-            <div className="w-9 h-9 rounded-md bg-[#333333] flex items-center justify-center mx-auto">
-              <svg width="22" height="22" viewBox="0 0 40 40" fill="none">
-                <rect width="40" height="40" rx="6" fill="#333333"/>
-                <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fill="#FFFDFA" fontSize="22" fontWeight="900" fontFamily="Inter, sans-serif">Ai</text>
-              </svg>
-            </div>
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/logo-square.svg" alt="AI Central" className="w-9 h-9 mx-auto" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src="/logo-full-light-bg.png" alt="AI Central" className="h-7 w-auto" />
           )}
+          {!leftCollapsed && (
+            <button
+              onClick={() => setLeftCollapsed(true)}
+              title="Collapse sidebar"
+              className="text-[#9C9C9C] hover:text-[#333333] text-base leading-none px-1.5 py-1 rounded hover:bg-[#F5F5F5]"
+            >‹</button>
+          )}
         </div>
+        {leftCollapsed && (
+          <button
+            onClick={() => setLeftCollapsed(false)}
+            title="Expand sidebar"
+            className="mx-auto mt-2 text-[#9C9C9C] hover:text-[#333333] text-base leading-none px-1.5 py-1 rounded hover:bg-[#F5F5F5]"
+          >›</button>
+        )}
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-3 flex flex-col gap-3 overflow-y-auto">
@@ -110,13 +116,6 @@ export default function AdminShell({ children }: Props) {
               {!leftCollapsed && <span>Sign out</span>}
             </button>
           </form>
-          <button
-            onClick={() => setLeftCollapsed(c => !c)}
-            title={leftCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="w-full flex items-center justify-center px-3 py-1.5 rounded-md text-[#9C9C9C] hover:bg-[#F5F5F5] hover:text-[#333333] transition-colors"
-          >
-            {leftCollapsed ? '›' : '‹'}
-          </button>
         </div>
       </aside>
 

@@ -1,5 +1,6 @@
 import { QUESTIONS } from '@/lib/questions'
 import { ARCHETYPES } from '@/lib/archetypes'
+import ArchetypeTrace from './ArchetypeTrace.client'
 
 const ARCHETYPES_LIST = [
   { key: 'technical_pioneer', label: 'Technical Pioneer', color: '#2D8879' },
@@ -139,14 +140,8 @@ export default function AdminFlowPage() {
           </div>
         </div>
 
-        {/* Email gating note */}
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <p className="text-xs font-bold text-amber-800 mb-1">Email Gating</p>
-          <p className="text-[11px] text-amber-700">
-            Personal emails (Gmail, Yahoo, iCloud, Hotmail, Outlook, AOL, ProtonMail, etc.) are blocked at step 2.
-            Work emails only. If <code className="bg-amber-100 px-1 rounded">?email=</code> param is present and valid, step 2 is auto-skipped.
-          </p>
-        </div>
+        {/* Archetype trace — paste a row UUID or email to see how the form mapped it */}
+        <ArchetypeTrace />
       </div>
     </div>
   )

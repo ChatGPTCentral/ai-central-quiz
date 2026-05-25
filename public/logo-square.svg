@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" rx="0" fill="#FEF7E7"/>
+  <rect x="14" y="14" width="472" height="472" rx="0" fill="#FEF7E7" stroke="#333333" stroke-width="14"/>
+  <!-- 'A' as forward-slash bar -->
+  <path d="M 38 38 L 156 138 L 230 38 Z" fill="#333333"/>
+  <!-- 'i' / vertical bar -->
+  <path d="M 240 38 L 332 38 L 332 462 L 240 462 L 240 252 L 130 462 L 38 462 L 38 364 Z" fill="#333333"/>
+  <!-- 'i' top piece -->
+  <path d="M 380 38 L 462 38 L 462 138 L 410 138 L 380 100 Z" fill="#333333"/>
+  <rect x="370" y="168" width="92" height="294" fill="#333333"/>
+</svg>
