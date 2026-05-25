@@ -271,7 +271,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       </ProfileSection>
 
       {/* ── RAW PROVIDER DATA (per-provider collapsible cards) ─ */}
-      <RawDataSection enrichmentRaw={item.enrichmentRaw} />
+      <RawDataSection rowId={item.id} enrichmentRaw={item.enrichmentRaw} />
 
       <details className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-6">
         <summary className="cursor-pointer px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#9C9C9C] hover:bg-[#FFFDFA]">

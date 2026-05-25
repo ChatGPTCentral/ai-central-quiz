@@ -5,13 +5,16 @@
 
 import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { apolloProvider } from './apollo'
+import { wizaProvider } from './wiza'
 import { estimateDemographicsFromPhoto } from './photo-demographics'
 import { findBeehiivSubscriberByEmail } from './beehiiv-lookup'
 import { findStripeCustomerByEmail } from './stripe-lookup'
 import { cleanPhoto, isPlaceholderPhoto } from './photo-filter'
-import { normalizeCountry } from '../normalize'
+import { normalizeCountry, titleCase } from '../normalize'
+import { standardizeSeniority, standardizeTitle, bracketCompanySize } from './standardize'
+import type { NormalizedPerson } from './types'
 
-export type FieldName = 'photo' | 'demographics' | 'beehiiv' | 'stripe'
+export type FieldName = 'photo' | 'demographics' | 'beehiiv' | 'stripe' | 'apify' | 'apollo' | 'wiza'
 
 export interface FieldEnrichResult {
   rowId: string
@@ -136,10 +139,90 @@ export async function enrichRowFields(c: any, id: string, fields: FieldName[]): 
     }
   }
 
+  // ── APIFY (re-scrape LinkedIn, overwrite all derived fields) ───
+  if (fields.includes('apify')) {
+    if (!row.linkedin_url) {
+      skipped.push({ field: 'apify', reason: 'no linkedin_url to scrape' })
+    } else {
+      try {
+        cost.apify++
+        const p = await scrapeLinkedInProfile(row.linkedin_url)
+        if (!p) skipped.push({ field: 'apify', reason: 'actor returned no usable data' })
+        else applyNormalizedPerson(update, updated, p)
+      } catch (err) {
+        skipped.push({ field: 'apify', reason: String(err) })
+      }
+    }
+  }
+
+  // ── APOLLO (re-run match, overwrite derived fields) ─────────────
+  if (fields.includes('apollo')) {
+    try {
+      cost.apollo++
+      const a = await apolloProvider.lookup({ email: row.email, linkedinUrl: row.linkedin_url, name: row.name })
+      if (!a) skipped.push({ field: 'apollo', reason: 'Apollo returned no match' })
+      else applyNormalizedPerson(update, updated, a)
+    } catch (err) {
+      skipped.push({ field: 'apollo', reason: String(err) })
+    }
+  }
+
+  // ── WIZA (re-run email lookup) ──────────────────────────────────
+  if (fields.includes('wiza')) {
+    try {
+      const w = await wizaProvider.lookup({ email: row.email })
+      if (!w) skipped.push({ field: 'wiza', reason: 'Wiza returned no match' })
+      else applyNormalizedPerson(update, updated, w)
+    } catch (err) {
+      skipped.push({ field: 'wiza', reason: String(err) })
+    }
+  }
+
   if (Object.keys(update).length > 0) {
     const { error: upErr } = await c.from('submissions').update(update).eq('id', id)
     if (upErr) return { rowId: id, updated: [], skipped: [{ field: 'save', reason: upErr.message }], cost }
   }
 
   return { rowId: id, updated, skipped, cost }
+}
+
+/**
+ * Apply a NormalizedPerson (from any LinkedIn-style provider) onto the
+ * update payload. Overwrites — surgical re-runs are explicit requests to
+ * refresh data, not gap-fillers.
+ */
+function applyNormalizedPerson(update: Record<string, unknown>, updated: string[], p: NormalizedPerson) {
+  const set = (col: string, val: string | undefined | null) => {
+    const trimmed = typeof val === 'string' ? val.trim() : val
+    if (!trimmed) return
+    update[col] = trimmed
+    updated.push(col)
+  }
+  const cleanedPhoto = cleanPhoto(p.photoUrl)
+  if (cleanedPhoto) { update.photo_url = cleanedPhoto; updated.push('photo_url') }
+  const fullName = p.fullName || [p.firstName, p.lastName].filter(Boolean).join(' ').trim()
+  set('name', fullName)
+  set('linkedin_url', p.linkedinUrl)
+  set('job_title', p.jobTitle)
+  set('company_name', p.companyName)
+  set('company_linkedin_url', p.companyLinkedinUrl)
+  set('company_website', p.companyWebsite)
+  set('company_domain', p.companyDomain)
+  set('job_function', p.function)
+  set('department', p.department)
+  set('country', normalizeCountry(p.country))
+  set('region', p.region)
+  set('city', p.city)
+  if (p.industry)     set('company_industry', titleCase(p.industry))
+  if (p.subIndustry)  set('company_sub_industry', titleCase(p.subIndustry))
+  if (p.companySize) {
+    const bracketed = bracketCompanySize(p.companySize) || p.companySize
+    update.company_size = bracketed
+    updated.push('company_size')
+  }
+  // Derived: bucketed seniority + canonical title
+  const seniority = standardizeSeniority(p.jobTitle, p.seniority)
+  if (seniority) { update.seniority = seniority; updated.push('seniority') }
+  const titleCanonical = standardizeTitle(p.jobTitle)
+  if (titleCanonical) { update.job_title_standardized = titleCanonical; updated.push('job_title_standardized') }
 }
