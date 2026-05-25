@@ -6,6 +6,7 @@ import { continentOf, showState } from '@/lib/geo'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
+import LinkedInReplacer from './LinkedInReplacer.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,9 +73,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             <InlineField rowId={item.id} field="companyName" value={item.companyName || ''} placeholder="company" />
           </div>
 
-          <div className="mt-2">
-            <InlineField rowId={item.id} field="linkedinUrl" value={item.linkedinUrl || ''} asLink placeholder="LinkedIn URL" />
-          </div>
+          <LinkedInReplacer id={item.id} value={item.linkedinUrl} />
 
           <div className="mt-3 flex items-center gap-2">
             {archetype && (

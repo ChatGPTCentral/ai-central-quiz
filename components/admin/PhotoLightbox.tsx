@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 
 export interface CardPerson {
   id?: string
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export default function PhotoLightbox({ person, allPeople = [], onClose, onChange }: Props) {
+  const router = useRouter()
   const currentIndex = person && allPeople.length > 0
     ? allPeople.findIndex(p => p.id === person.id)
     : -1
@@ -39,6 +41,30 @@ export default function PhotoLightbox({ person, allPeople = [], onClose, onChang
 
   const goPrev = () => { if (canPrev && onChange) onChange(allPeople[currentIndex - 1]) }
   const goNext = () => { if (canNext && onChange) onChange(allPeople[currentIndex + 1]) }
+
+  const [busy, setBusy] = useState(false)
+  const [enrichStatus, setEnrichStatus] = useState<'idle' | 'ok' | 'partial' | 'fail'>('idle')
+  useEffect(() => { setEnrichStatus('idle') }, [person?.id])
+
+  async function enrich() {
+    if (!person?.id) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/admin/enrich/v2/row', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: person.id, save: true, force: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setEnrichStatus('fail'); return }
+      setEnrichStatus(data.status === 'complete' ? 'ok' : data.status === 'partial' ? 'partial' : 'fail')
+      router.refresh()
+    } catch {
+      setEnrichStatus('fail')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (!person) return
@@ -155,17 +181,33 @@ export default function PhotoLightbox({ person, allPeople = [], onClose, onChang
         {/* Footer actions */}
         <div className="border-t border-[#E8E4DF] px-6 py-3 flex items-center justify-between gap-2 bg-[#FFFDFA]">
           <p className="text-[11px] text-[#9C9C9C] truncate flex-1">{person.email || '—'}</p>
+          {person.id && (
+            <button
+              onClick={enrich}
+              disabled={busy}
+              title="Force-run the full enrichment pipeline"
+              className={`h-7 px-2.5 rounded-md text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors ${
+                busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
+                enrichStatus === 'ok' ? 'bg-[#62A758] text-white' :
+                enrichStatus === 'partial' ? 'bg-[#E7B02F] text-[#333333]' :
+                enrichStatus === 'fail' ? 'bg-[#BE3B3B] text-white' :
+                'bg-[#333333] text-[#FFFDFA] hover:opacity-90'
+              }`}
+            >
+              {busy ? 'Enriching…' : '✨ Enrich'}
+            </button>
+          )}
           {person.linkedinUrl && (
             <a
               href={person.linkedinUrl}
               target="_blank" rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-[#046BB1] text-white text-xs font-bold rounded-md hover:opacity-90 shrink-0"
+              className="h-7 px-2.5 inline-flex items-center bg-[#046BB1] text-white text-[10px] font-bold uppercase tracking-wider rounded-md hover:opacity-90 shrink-0"
             >LinkedIn ↗</a>
           )}
           {person.id && (
             <a
               href={`/admin/submissions/${person.id}`}
-              className="px-3 py-1.5 bg-[#333333] text-[#FFFDFA] text-xs font-bold rounded-md hover:opacity-90 shrink-0"
+              className="h-7 px-2.5 inline-flex items-center bg-white border border-[#E8E4DF] text-[#333333] text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-[#FFFDFA] shrink-0"
             >Open</a>
           )}
         </div>

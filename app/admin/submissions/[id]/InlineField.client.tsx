@@ -12,13 +12,15 @@ interface Props {
   asLink?: boolean
   /** Optional formatter for read-mode display. */
   display?: (v: string) => React.ReactNode
+  /** Fires after a successful save with the new value. */
+  onAfterSave?: (newValue: string) => void
 }
 
 /**
  * Inline editable field — click to edit, Enter or blur to save, ESC to cancel.
  * Uses the existing PATCH /api/admin/submissions/[id] endpoint.
  */
-export default function InlineField({ rowId, field, value, placeholder, asLink, display }: Props) {
+export default function InlineField({ rowId, field, value, placeholder, asLink, display, onAfterSave }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -39,6 +41,7 @@ export default function InlineField({ rowId, field, value, placeholder, asLink, 
       })
       if (res.ok) {
         setEditing(false)
+        onAfterSave?.(draft)
         router.refresh()
       } else {
         alert('Save failed')

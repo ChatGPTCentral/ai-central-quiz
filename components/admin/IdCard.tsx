@@ -70,18 +70,19 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
 
   return (
     <div className="bg-[#FFFDFA] rounded-2xl border border-[#E8E4DF] overflow-hidden shadow-sm break-inside-avoid mb-4">
-      {/* Doc-ID header strip */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#333333] text-[#FFFDFA]">
-        <p className="text-[9px] font-bold uppercase tracking-widest">AI Central · Member</p>
-        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest">
-          {person.source && (
-            <span className="px-1.5 py-0.5 rounded bg-[#FFFDFA]/15">{person.source}</span>
-          )}
-          {typeof person.score === 'number' && (
-            <span className="px-1.5 py-0.5 rounded bg-[#E48715]">{person.score}</span>
-          )}
+      {/* Top-right meta chips floating over the photo block */}
+      {(person.source || typeof person.score === 'number') && (
+        <div className="relative">
+          <div className="absolute top-2 right-2 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest z-10">
+            {person.source && (
+              <span className="px-1.5 py-0.5 rounded bg-[#333333] text-[#FFFDFA]">{person.source}</span>
+            )}
+            {typeof person.score === 'number' && (
+              <span className="px-1.5 py-0.5 rounded bg-[#E48715] text-[#FFFDFA]">{person.score}</span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Photo */}
       <button
