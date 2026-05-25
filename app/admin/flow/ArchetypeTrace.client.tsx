@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 interface Trace {
   email: string
@@ -10,11 +10,24 @@ interface Trace {
   steps: Array<{ rule: string; matched: boolean; detail?: string }>
 }
 
+interface RecentRow { id: string; email: string; archetype: string | null }
+
 export default function ArchetypeTrace() {
   const [identifier, setIdentifier] = useState('')
   const [trace, setTrace] = useState<Trace | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [recent, setRecent] = useState<RecentRow[]>([])
+  const [stats, setStats] = useState<Record<string, number>>({})
+
+  // Pull a small "recent submissions" list + archetype distribution to
+  // give the observability page some live context.
+  useEffect(() => {
+    fetch('/api/admin/flow/recent').then(r => r.json()).then(d => {
+      if (d.recent) setRecent(d.recent)
+      if (d.stats) setStats(d.stats)
+    }).catch(() => {})
+  }, [])
 
   async function run(e?: React.FormEvent) {
     e?.preventDefault()
@@ -33,11 +46,48 @@ export default function ArchetypeTrace() {
   }
 
   return (
-    <div className="mt-6 bg-white border border-[#E0E0E0] rounded-xl p-5">
-      <h2 className="text-sm font-black text-black mb-1">Archetype trace</h2>
-      <p className="text-xs text-gray-500 mb-4">
-        Paste a row UUID or email to see EXACTLY which condition mapped that submission to its archetype.
-      </p>
+    <div className="mt-6 space-y-4">
+      {/* Aggregate stats: how many rows landed in each archetype */}
+      {Object.keys(stats).length > 0 && (
+        <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">
+          <h2 className="text-sm font-black text-black mb-1">Distribution across archetypes</h2>
+          <p className="text-xs text-gray-500 mb-3">Live count of how many submissions ended up in each bucket.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Object.entries(stats).map(([k, n]) => (
+              <div key={k} className="bg-[#FFFDFA] border border-[#E0E0E0] rounded-md p-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{k}</p>
+                <p className="text-xl font-black text-black tabular-nums">{n}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white border border-[#E0E0E0] rounded-xl p-5">
+        <h2 className="text-sm font-black text-black mb-1">Archetype trace</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Paste a row UUID or email to see EXACTLY which condition mapped that submission to its archetype.
+        </p>
+
+        {recent.length > 0 && !trace && (
+          <div className="mb-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Recent classifications</p>
+            <div className="flex flex-wrap gap-1.5">
+              {recent.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => { setIdentifier(r.email); setTimeout(() => run(), 0) }}
+                  className="px-2 py-1 rounded-md bg-[#FFFDFA] border border-[#E0E0E0] hover:bg-[#FEF7E7] text-[11px]"
+                  title={`${r.email} → ${r.archetype || '(none)'}`}
+                >
+                  {r.email.split('@')[0]}{' '}
+                  <span className="text-gray-400">→</span>{' '}
+                  <span className="font-medium">{r.archetype || '—'}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
       <form onSubmit={run} className="flex gap-2 mb-4">
         <input
@@ -104,6 +154,7 @@ export default function ArchetypeTrace() {
           </details>
         </div>
       )}
+      </div>
     </div>
   )
 }

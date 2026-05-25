@@ -59,6 +59,7 @@ export interface StoredSubmission {
   ageAiEstimate?: string
   sexAiEstimate?: string
   aiEstimateConfidence?: string
+  jobTitleStandardized?: string
 }
 
 // Lazy client — throws only when actually used, so build-time imports don't fail.
@@ -132,6 +133,7 @@ interface DbRow {
   age_ai_estimate: string | null
   sex_ai_estimate: string | null
   ai_estimate_confidence: string | null
+  job_title_standardized: string | null
   created_at?: string
 }
 
@@ -184,6 +186,7 @@ function toRow(s: StoredSubmission): DbRow {
     age_ai_estimate: s.ageAiEstimate || null,
     sex_ai_estimate: s.sexAiEstimate || null,
     ai_estimate_confidence: s.aiEstimateConfidence || null,
+    job_title_standardized: s.jobTitleStandardized || null,
   }
 }
 
@@ -236,6 +239,7 @@ function fromRow(r: DbRow): StoredSubmission {
     ageAiEstimate: r.age_ai_estimate ?? undefined,
     sexAiEstimate: r.sex_ai_estimate ?? undefined,
     aiEstimateConfidence: r.ai_estimate_confidence ?? undefined,
+    jobTitleStandardized: r.job_title_standardized ?? undefined,
   }
 }
 

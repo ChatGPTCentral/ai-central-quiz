@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import PhotoLightbox, { PhotoCell } from '@/components/admin/PhotoLightbox'
+import PhotoLightbox, { PhotoCell, type CardPerson } from '@/components/admin/PhotoLightbox'
 import type { StoredSubmission } from '@/lib/kv'
 
 interface Props { items: StoredSubmission[] }
@@ -112,7 +112,7 @@ type RowCtx = {
   providerResult: Record<string, Record<ProviderKey, { status: string; linkedinUrl?: string } | undefined> | undefined>
   runProvider: (id: string, provider: ProviderKey) => void
   deleteRow: (id: string, label: string) => void
-  openLightbox: (p: { name?: string; email?: string; photoUrl?: string; title?: string; company?: string; linkedinUrl?: string }) => void
+  openLightbox: (rowId: string) => void
   bumpRow: () => void
   selected: Set<string>
   toggleSelected: (id: string) => void
@@ -129,7 +129,9 @@ interface Column {
 }
 
 const COLUMNS: Column[] = [
-  // Row select (Clay-style multi-select)
+  // Row select (Clay-style multi-select) — header has a select-all checkbox.
+  // We render the header with a custom node when the column is 'select' (in the
+  // <thead> below), so this `header` ref is just a placeholder.
   {
     id: 'select', label: '', width: '36px', align: 'center', required: true,
     header: () => null,
@@ -145,7 +147,7 @@ const COLUMNS: Column[] = [
   },
   // ✨ Enrich button — moved to first action column (per Clay layout)
   {
-    id: 'enrich', label: '', width: '92px', align: 'center', required: true,
+    id: 'enrich', label: '', width: '96px', align: 'center', required: true,
     header: () => null,
     cell: ({ s, busyProvider, providerResult, runProvider }) => {
       const busy = busyProvider?.id === s.id
@@ -158,7 +160,7 @@ const COLUMNS: Column[] = [
           onClick={(e) => { e.stopPropagation(); runProvider(s.id, 'v2') }}
           disabled={!!busyProvider}
           title="Force-run the full enrichment pipeline (bypasses cache, costs API credits)"
-          className={`px-2.5 h-7 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors inline-flex items-center gap-1 ${
+          className={`h-7 px-2 rounded-md text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors ${
             busy ? 'bg-[#F5F5F5] text-[#9C9C9C]' :
             ok ? 'bg-[#62A758] text-white' :
             partial ? 'bg-[#E7B02F] text-[#333333]' :
@@ -166,7 +168,7 @@ const COLUMNS: Column[] = [
             'bg-[#333333] text-[#FFFDFA] hover:opacity-90'
           }`}
         >
-          {busy ? '…' : <>✨ Enrich</>}
+          {busy ? '…' : '✨ Enrich'}
         </button>
       )
     },
@@ -193,7 +195,7 @@ const COLUMNS: Column[] = [
           name: s.name, email: s.email, photoUrl: s.photoUrl,
           title: s.jobTitle, company: s.companyName, linkedinUrl: s.linkedinUrl,
         }}
-        onOpen={openLightbox} />
+        onOpen={() => openLightbox(s.id)} />
     ),
   },
   {
@@ -208,10 +210,10 @@ const COLUMNS: Column[] = [
     ),
   },
   {
-    id: 'jobTitle', label: 'Job title',
+    id: 'jobTitle', label: 'Headline',
     cell: ({ s, bumpRow }) => (
       <EditableCell value={s.jobTitle || ''} rowId={s.id} field="jobTitle"
-        placeholder="job title" className="text-[13px] text-[#333333]"
+        placeholder="headline" className="text-[13px] text-[#333333]"
         onSaved={(v) => { s.jobTitle = v; bumpRow() }} />
     ),
   },
@@ -352,7 +354,7 @@ export default function PeopleTable({ items }: Props) {
   const router = useRouter()
   const [order, setOrder] = useState<string[]>(DEFAULT_ORDER)
   const [visible, setVisible] = useState<Set<string>>(DEFAULT_VISIBLE)
-  const [lightbox, setLightbox] = useState<{ name?: string; email?: string; photoUrl?: string; title?: string; company?: string; linkedinUrl?: string } | null>(null)
+  const [lightboxId, setLightboxId] = useState<string | null>(null)
   const [busyProvider, setBusyProvider] = useState<{ id: string; provider: ProviderKey } | null>(null)
   const [providerResult, setProviderResult] = useState<Record<string, Record<ProviderKey, { status: string; linkedinUrl?: string } | undefined> | undefined>>({})
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
@@ -438,9 +440,36 @@ export default function PeopleTable({ items }: Props) {
     }
   }
 
+  // Sequential bulk-enrich loop — fires v2+force for each selected row in turn.
+  // Stops on first failure so the user can see what went wrong.
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
+  async function bulkEnrich() {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    if (!confirm(`Enrich ${ids.length} selected row${ids.length === 1 ? '' : 's'}? Each call costs API credits.`)) return
+    setBulkProgress({ done: 0, total: ids.length })
+    for (let i = 0; i < ids.length; i++) {
+      await runProvider(ids[i], 'v2')
+      setBulkProgress({ done: i + 1, total: ids.length })
+    }
+    setBulkProgress(null)
+    setSelected(new Set())
+    router.refresh()
+  }
+  async function bulkDelete() {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    if (!confirm(`Permanently delete ${ids.length} record${ids.length === 1 ? '' : 's'}?`)) return
+    for (const id of ids) {
+      await fetch(`/api/admin/submissions/${id}`, { method: 'DELETE' }).catch(() => {})
+    }
+    setRemovedIds(prev => { const next = new Set(prev); ids.forEach(i => next.add(i)); return next })
+    setSelected(new Set())
+  }
+
   const ctxBase = {
     busyProvider, providerResult, runProvider, deleteRow,
-    openLightbox: setLightbox, bumpRow,
+    openLightbox: setLightboxId, bumpRow,
     selected, toggleSelected,
   }
 
@@ -449,7 +478,32 @@ export default function PeopleTable({ items }: Props) {
   return (
     <>
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#E8E4DF] bg-[#FFFDFA]">
-        <p className="text-[11px] text-[#9C9C9C]">Double-click any cell to edit · click a photo for cinema mode</p>
+        {selected.size > 0 ? (
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-[#333333] font-bold">{selected.size} selected</span>
+            {bulkProgress ? (
+              <span className="text-[11px] text-[#9C9C9C]">Enriching {bulkProgress.done}/{bulkProgress.total}…</span>
+            ) : (
+              <>
+                <button
+                  onClick={bulkEnrich}
+                  disabled={!!busyProvider}
+                  className="h-7 px-3 rounded-md bg-[#333333] text-[#FFFDFA] text-[10px] font-bold uppercase tracking-wider whitespace-nowrap disabled:opacity-40 hover:opacity-90"
+                >✨ Enrich selected</button>
+                <button
+                  onClick={bulkDelete}
+                  className="h-7 px-3 rounded-md bg-white border border-[#FEE3E3] text-[#BE3B3B] text-[10px] font-bold uppercase tracking-wider hover:bg-[#FEE3E3]"
+                >Delete selected</button>
+                <button
+                  onClick={() => setSelected(new Set())}
+                  className="text-[11px] text-[#9C9C9C] hover:text-[#333333]"
+                >Clear</button>
+              </>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-[#9C9C9C]">Double-click any cell to edit · click a photo for cinema mode · select rows for bulk actions</p>
+        )}
         <button
           onClick={() => setPaneOpen(p => !p)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-[#E8E4DF] text-xs font-bold text-[#333333] hover:bg-[#F5F5F5]"
@@ -474,13 +528,34 @@ export default function PeopleTable({ items }: Props) {
         <table className="w-full text-sm">
           <thead className="bg-[#FFFDFA] border-b border-[#E8E4DF]">
             <tr className="text-left text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">
-              {visibleColumns.map(c => (
-                <th key={c.id}
-                  className={`px-3 py-3 ${c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : ''}`}
-                  style={c.width ? { width: c.width } : undefined}>
-                  {c.header ? c.header() : c.label}
-                </th>
-              ))}
+              {visibleColumns.map(c => {
+                // Custom header for the "select" column → select-all checkbox
+                if (c.id === 'select') {
+                  const allSelected = visibleItems.length > 0 && visibleItems.every(item => selected.has(item.id))
+                  const someSelected = visibleItems.some(item => selected.has(item.id))
+                  return (
+                    <th key={c.id} className="px-3 py-3 text-center" style={{ width: c.width }}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={el => { if (el) el.indeterminate = !allSelected && someSelected }}
+                        onChange={() => {
+                          if (allSelected) setSelected(new Set())
+                          else setSelected(new Set(visibleItems.map(item => item.id)))
+                        }}
+                        className="w-3.5 h-3.5 accent-[#333333] cursor-pointer"
+                      />
+                    </th>
+                  )
+                }
+                return (
+                  <th key={c.id}
+                    className={`px-3 py-3 ${c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : ''}`}
+                    style={c.width ? { width: c.width } : undefined}>
+                    {c.header ? c.header() : c.label}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
@@ -498,7 +573,41 @@ export default function PeopleTable({ items }: Props) {
         </table>
       </div>
 
-      <PhotoLightbox person={lightbox} onClose={() => setLightbox(null)} />
+      <PhotoLightbox
+        person={lightboxId
+          ? (() => {
+              const s = visibleItems.find(v => v.id === lightboxId)
+              if (!s) return null
+              const card: CardPerson = {
+                id: s.id,
+                name: s.name,
+                email: s.email,
+                photoUrl: s.photoUrl,
+                title: s.jobTitle,
+                company: s.companyName,
+                companyIndustry: s.companyIndustry,
+                linkedinUrl: s.linkedinUrl,
+                country: s.country,
+                city: s.city,
+                ageBracket: s.ageBracket,
+                ageAiEstimate: s.ageAiEstimate,
+                sexAiEstimate: s.sexAiEstimate,
+                source: s.source,
+                score: s.score,
+              }
+              return card
+            })()
+          : null}
+        allPeople={visibleItems.map((s): CardPerson => ({
+          id: s.id, name: s.name, email: s.email, photoUrl: s.photoUrl,
+          title: s.jobTitle, company: s.companyName, companyIndustry: s.companyIndustry,
+          linkedinUrl: s.linkedinUrl, country: s.country, city: s.city,
+          ageBracket: s.ageBracket, ageAiEstimate: s.ageAiEstimate,
+          sexAiEstimate: s.sexAiEstimate, source: s.source, score: s.score,
+        }))}
+        onChange={(next) => setLightboxId(next.id || null)}
+        onClose={() => setLightboxId(null)}
+      />
     </>
   )
 }

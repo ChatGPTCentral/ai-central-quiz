@@ -26,6 +26,7 @@ import { inferNameFromEmail, type InferredName } from './name-from-email'
 import { estimateDemographicsFromPhoto, type PhotoDemographics } from './photo-demographics'
 import { mergeEnrichment } from './merge'
 import { standardizeSeniority, standardizeTitle, standardizeIndustry } from './standardize'
+import { standardizeTitleWithLLM } from './standardize-title-llm'
 import { getCached, setCached } from './cache'
 import type { NormalizedPerson, MergedEnrichment, EnrichmentSource } from './types'
 
@@ -225,10 +226,14 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
     merged.linkedinUrl && merged.photoUrl ? 'complete' :
     results.length > 0 || merged.linkedinUrl ? 'partial' : 'failed'
 
-  // ── Standardize derived values (seniority maps to survey enum) ──
+  // ── Standardize derived values ──────────────────────────────────
+  // Local TITLE_BANK is fast + free for common cases; falls back to Claude
+  // (gpriday/job-titles classifier) for unknowns when ANTHROPIC_API_KEY is set.
+  const localCanonical = standardizeTitle(merged.jobTitle)
+  const llmCanonical = !localCanonical ? await standardizeTitleWithLLM(merged.jobTitle || '') : undefined
   const standardized = {
     seniority: standardizeSeniority(merged.jobTitle, merged.seniority),
-    jobTitleCanonical: standardizeTitle(merged.jobTitle),
+    jobTitleCanonical: localCanonical || llmCanonical,
     industry: standardizeIndustry(merged.industry),
   }
 

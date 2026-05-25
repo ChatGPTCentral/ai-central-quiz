@@ -130,6 +130,10 @@ export async function POST(req: NextRequest) {
     } else if (v2.merged.seniority) {
       update.seniority = v2.merged.seniority
     }
+    // Standardized job title (canonical form from gpriday/job-titles classifier)
+    if (v2.standardized?.jobTitleCanonical) {
+      update.job_title_standardized = v2.standardized.jobTitleCanonical
+    }
 
     // Stage 6 AI vision results — write only when Claude returned a non-uncertain estimate
     if (v2.aiDemographics?.ageBracket && v2.aiDemographics.ageBracket !== 'uncertain') {

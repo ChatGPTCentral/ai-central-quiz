@@ -151,8 +151,19 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
       {/* ── WORKOGRAPHIC ─────────────────────────────────── */}
       <ProfileSection title="Workographic">
-        <FieldRow label="Job title">
-          <InlineField rowId={item.id} field="jobTitle" value={item.jobTitle || ''} placeholder="job title" />
+        <FieldRow label="Headline">
+          <InlineField rowId={item.id} field="jobTitle" value={item.jobTitle || ''} placeholder="LinkedIn headline / raw job title" />
+        </FieldRow>
+        <FieldRow label="Standardized job title">
+          {item.jobTitleStandardized ? (
+            <span className="inline-flex items-center gap-1.5 text-sm text-[#333333]">
+              {item.jobTitleStandardized}
+              <span title="Classified against gpriday/job-titles (ESCO + O*NET + OSCA)"
+                className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-px rounded bg-[#FEF7E7] text-[#E48715]">✨ AI</span>
+            </span>
+          ) : (
+            <span className="text-sm text-[#E8E4DF]">— (auto-fills on next Enrich)</span>
+          )}
         </FieldRow>
         <FieldRow label="Seniority">
           <InlineField rowId={item.id} field="seniority" value={item.seniority || ''} placeholder="seniority" />
