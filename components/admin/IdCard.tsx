@@ -140,7 +140,7 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
           {(person.ageBracket || person.ageAiEstimate) && (
             <Chip>{person.ageBracket || person.ageAiEstimate}{!person.ageBracket && person.ageAiEstimate && ' ✨'}</Chip>
           )}
-          {person.sexAiEstimate && <Chip>{person.sexAiEstimate} ✨</Chip>}
+          {person.sexAiEstimate && <Chip>{person.sexAiEstimate.charAt(0).toUpperCase() + person.sexAiEstimate.slice(1).toLowerCase()} ✨</Chip>}
           {person.seniority && <Chip>{person.seniority}</Chip>}
           {person.companyIndustry && <Chip>{person.companyIndustry}</Chip>}
         </div>

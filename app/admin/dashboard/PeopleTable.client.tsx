@@ -104,7 +104,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v6'  // bumped to reset prior layouts
+const STORAGE_KEY = 'admin_table_columns_v7'  // bumped to reset prior layouts (re-shows age + sex)
 
 type RowCtx = {
   s: StoredSubmission
@@ -277,13 +277,16 @@ const COLUMNS: Column[] = [
   },
   {
     id: 'sex', label: 'Sex', width: '80px',
-    cell: ({ s }) =>
-      s.sexAiEstimate ? (
+    cell: ({ s }) => {
+      if (!s.sexAiEstimate) return <span className="text-[12px] text-[#E8E4DF]">—</span>
+      const display = s.sexAiEstimate.charAt(0).toUpperCase() + s.sexAiEstimate.slice(1).toLowerCase()
+      return (
         <span className="inline-flex items-center gap-1 text-[12px] text-[#9C9C9C]">
-          {s.sexAiEstimate}
+          {display}
           <span className="text-[9px] font-bold uppercase px-1 py-px rounded bg-[#FEF7E7] text-[#E48715]" title="AI-estimated">✨</span>
         </span>
-      ) : <span className="text-[12px] text-[#E8E4DF]">—</span>,
+      )
+    },
   },
   {
     id: 'email', label: 'Email',

@@ -128,7 +128,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         <FieldRow label="Sex">
           {item.sexAiEstimate ? (
             <span className="inline-flex items-center gap-1.5 text-sm text-[#333333]">
-              {item.sexAiEstimate}
+              {item.sexAiEstimate.charAt(0).toUpperCase() + item.sexAiEstimate.slice(1).toLowerCase()}
               <span title={`AI-estimated · confidence ${item.aiEstimateConfidence || 'unknown'}`}
                 className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#FEF7E7] text-[#E48715]">✨ AI</span>
             </span>
