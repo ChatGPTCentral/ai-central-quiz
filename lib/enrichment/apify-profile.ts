@@ -21,6 +21,8 @@ function getActorList(): string[] {
   return [
     'CP1SVZfEwWflrmWCX',                     // your pinned — primary
     'dev_fusion~Linkedin-Profile-Scraper',   // backup (requires console approval)
+    'bebity~linkedin-profile-scraper',       // last-resort public actor
+    'apimaestro~linkedin-profile-detail',    // last-resort public actor
   ]
 }
 

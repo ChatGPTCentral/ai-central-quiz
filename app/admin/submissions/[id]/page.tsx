@@ -39,9 +39,19 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
   return (
     <div className="p-8 max-w-4xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <Link href="/admin/submissions" className="text-sm text-[#9C9C9C] hover:text-[#333333]">← All submissions</Link>
-        <EnrichHeaderButton id={item.id} />
+        <div className="flex items-center gap-2">
+          {(item.utmSource || item.utmRef) && (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#FEF7E7] text-[#E48715] border border-[#E48715]/30"
+              title={[item.utmSource && `utm_source: ${item.utmSource}`, item.utmRef && `utm_ref: ${item.utmRef}`].filter(Boolean).join(' · ')}
+            >
+              ↗ {item.utmSource || 'direct'}{item.utmRef ? ` / ${item.utmRef}` : ''}
+            </span>
+          )}
+          <EnrichHeaderButton id={item.id} />
+        </div>
       </div>
 
       {/* ── HERO ───────────────────────────────────────────── */}

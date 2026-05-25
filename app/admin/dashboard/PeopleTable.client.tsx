@@ -104,7 +104,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v5'  // bumped to reset prior layouts
+const STORAGE_KEY = 'admin_table_columns_v6'  // bumped to reset prior layouts
 
 type RowCtx = {
   s: StoredSubmission
@@ -186,6 +186,14 @@ const COLUMNS: Column[] = [
   {
     id: 'source', label: 'Source', width: '78px',
     cell: ({ s }) => <SourceBadge source={s.source} />,
+  },
+  {
+    id: 'utmSource', label: 'UTM source', width: '110px',
+    cell: ({ s }) => s.utmSource ? (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[#FEF7E7] text-[#E48715] border border-[#E48715]/30 truncate max-w-[100px]" title={s.utmRef ? `${s.utmSource} · ${s.utmRef}` : s.utmSource}>
+        ↗ {s.utmSource}
+      </span>
+    ) : <span className="text-[11px] text-[#E8E4DF]">—</span>,
   },
   {
     id: 'photo', label: 'Photo', width: '52px', align: 'center',
@@ -321,7 +329,7 @@ const COLUMNS: Column[] = [
 
 // Default-visible columns (the rest are hidden until user toggles them on)
 const DEFAULT_VISIBLE_IDS = new Set([
-  'select', 'enrich', 'date', 'source', 'photo', 'name',
+  'select', 'enrich', 'date', 'source', 'utmSource', 'photo', 'name',
   'jobTitle', 'company', 'age', 'sex', 'email', 'linkedin', 'menu',
 ])
 

@@ -66,13 +66,28 @@ export const apolloProvider: Provider = {
       const p: ApolloPerson | undefined = data?.person
       if (!p) return null
 
+      // Sanity-check Apollo's `title` — sometimes LinkedIn's freeform headline
+      // ("Living my best life…") leaks into this field. Real titles are short
+      // and don't read like prose. If it looks like a sentence, drop it so
+      // later providers / merge can use a better value.
+      const looksLikeJobTitle = (t?: string) => {
+        if (!t) return false
+        const s = t.trim()
+        if (!s) return false
+        if (s.length > 80) return false
+        if (s.split(/\s+/).length > 8) return false
+        if (/\b(my|i'm|i am|love|life|passionate|enthusiast|living)\b/i.test(s)) return false
+        return true
+      }
+      const cleanTitle = looksLikeJobTitle(p.title) ? p.title : undefined
+
       return {
         source: 'apollo',
         firstName: p.first_name,
         lastName: p.last_name,
         fullName: p.name,
         linkedinUrl: p.linkedin_url || undefined,
-        jobTitle: p.title || undefined,
+        jobTitle: cleanTitle || undefined,
         seniority: p.seniority || undefined,
         function: p.functions?.[0],
         department: p.departments?.[0],

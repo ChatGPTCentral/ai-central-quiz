@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
 
   // body.force === true bypasses the 60-day enrichment_cache so the user can
   // explicitly re-run all the paid actors on a row.
-  const v2 = await runV2(input, { useCache: !(body as { force?: boolean }).force })
+  const force = (body as { force?: boolean }).force === true
+  const v2 = await runV2(input, { useCache: !force })
 
   // Save back if requested AND we have a row id.
   // SPLIT the save into two passes so audit-trail jsonb bloat can NEVER block
@@ -101,9 +102,10 @@ export async function POST(req: NextRequest) {
   if (body.save && rowId) {
     // ── Pass 1: scalar/user-facing fields ───────────────────────────
     const update: Record<string, unknown> = {}
+    // `force` runs OVERWRITE existing values — the user explicitly asked for a fresh enrichment.
     const setIfNew = (col: string, current: string | undefined | null, fresh: string | undefined) => {
       if (!fresh || !fresh.trim()) return
-      if (current && current.trim()) return
+      if (!force && current && current.trim()) return
       update[col] = fresh.trim()
     }
     setIfNew('name',            input.name,         v2.merged.fullName)

@@ -154,6 +154,19 @@ function QuizContent() {
         aiToolsCount,
       )
 
+      // Capture UTM / referrer params from the landing URL so we can segment by source.
+      const utmSource =
+        searchParams.get('utm_source') ||
+        searchParams.get('utmSource') ||
+        searchParams.get('source') ||
+        ''
+      const utmRef =
+        searchParams.get('utm_ref') ||
+        searchParams.get('ref') ||
+        searchParams.get('utm_medium') ||
+        searchParams.get('utm_campaign') ||
+        ''
+
       const res = await fetch('/api/submit-quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,6 +180,8 @@ function QuizContent() {
           mainGoal: answers.mainGoal || '',
           aiTools: aiTools.join(', '),
           jobLevel: answers.jobLevel || '',
+          utmSource,
+          utmRef,
         }),
       })
       const data = await res.json()

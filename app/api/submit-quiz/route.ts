@@ -47,6 +47,9 @@ export async function POST(req: NextRequest) {
     jobLevel: String(body.jobLevel || ''),
   }
 
+  const utmSource = String(body.utmSource || '').trim().slice(0, 120) || undefined
+  const utmRef    = String(body.utmRef    || '').trim().slice(0, 120) || undefined
+
   const { valid, errors } = validateQuizSubmission(formData)
   if (!valid) {
     return NextResponse.json({ success: false, error: 'Validation failed', errors }, { status: 400 })
@@ -113,6 +116,8 @@ export async function POST(req: NextRequest) {
     ts: Date.now(),
     ip,
     userAgent: req.headers.get('user-agent') || undefined,
+    utmSource,
+    utmRef,
     ...enrichedRow,
   }).catch(err => console.error('Supabase save failed:', err))
 

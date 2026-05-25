@@ -9,6 +9,7 @@ import { PALETTE } from '@/lib/palette'
 import { COMPANY_SIZE_ORDER } from '@/lib/enrichment/standardize'
 import StatCard from '@/components/admin/StatCard'
 import HorizontalBarChart from '@/components/admin/HorizontalBarChart'
+import VerticalBarChart from '@/components/admin/VerticalBarChart'
 import CountryChart from '@/components/admin/CountryChart'
 import Filters from './Filters.client'
 import { RightSidebar } from '@/components/admin/AdminShell.client'
@@ -132,12 +133,11 @@ export default async function DashboardPage({
 
             {/* Charts grid */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-              <HorizontalBarChart
+              <VerticalBarChart
                 title="Age"
-                subtitle="Age brackets · density overlay"
+                subtitle="x = age bracket · y = count · density curve on top"
                 data={ageData}
                 orderedLabels={AGE_ORDER}
-                densityOverlay
                 uniformColor={PALETTE.marianBlue}
               />
               <HorizontalBarChart
@@ -154,12 +154,11 @@ export default async function DashboardPage({
                 maxRows={8}
                 uniformColor={PALETTE.asparagus}
               />
-              <HorizontalBarChart
+              <VerticalBarChart
                 title="Company size"
-                subtitle="# of employees · small → big · density overlay"
+                subtitle="x = # employees (small → big) · y = count · density curve on top"
                 data={sizeData}
                 orderedLabels={[...COMPANY_SIZE_ORDER]}
-                densityOverlay
                 uniformColor={PALETTE.xanthous}
               />
               <CountryChart rows={geoRows} />
