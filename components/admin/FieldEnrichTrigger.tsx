@@ -19,7 +19,7 @@ export default function FieldEnrichTrigger({
   className = '',
 }: {
   rowId: string
-  field: 'photo' | 'demographics'
+  field: 'photo' | 'demographics' | 'beehiiv' | 'stripe'
   label?: string
   title?: string
   className?: string

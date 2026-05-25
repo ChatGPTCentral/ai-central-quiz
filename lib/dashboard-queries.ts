@@ -29,7 +29,7 @@ export interface DashboardFilters {
   hasLinkedin?: boolean
   hasPhoto?: boolean
   /** Saved-search style "broken records" filters — show ONLY rows missing each field. */
-  missing?: ('enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry')[]
+  missing?: ('enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry' | 'beehiiv' | 'stripe')[]
   scoreMin?: number
   scoreMax?: number
   workArea?: string  // substring match on the CSV column
@@ -97,6 +97,8 @@ function applyFilters(q: any, f: DashboardFilters): any {
       company:    'company_name',
       country:    'country',
       industry:   'company_industry',
+      beehiiv:    'subscription_tier',
+      stripe:     'stripe_customer_id',
     }
     for (const m of f.missing) {
       const col = colFor[m]

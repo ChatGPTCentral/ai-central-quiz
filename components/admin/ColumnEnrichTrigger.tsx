@@ -12,7 +12,7 @@ export default function ColumnEnrichTrigger({
   field,
   label = '✨ Fill',
 }: {
-  field: 'photo' | 'demographics'
+  field: 'photo' | 'demographics' | 'beehiiv' | 'stripe'
   label?: string
 }) {
   const router = useRouter()
@@ -21,7 +21,11 @@ export default function ColumnEnrichTrigger({
 
   async function run(e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation()
-    if (!confirm(`Fill empty ${field === 'photo' ? 'photos' : 'age + sex'} for the top 50 rows missing them?\n\nCost ≈ $${(50 * (field === 'photo' ? 0.004 : 0.005)).toFixed(2)} (50 calls max).`)) return
+    const labelMap = { photo: 'photos', demographics: 'age + sex', beehiiv: 'Beehiiv data', stripe: 'Stripe LTV' }
+    const costMap  = { photo: 0.004,    demographics: 0.005,        beehiiv: 0,             stripe: 0 }
+    const free = costMap[field] === 0
+    const note = free ? 'free (API has no per-call cost)' : `≈ $${(50 * costMap[field]).toFixed(2)} (50 calls max)`
+    if (!confirm(`Fill empty ${labelMap[field]} for the top 50 rows missing them?\n\nCost: ${note}.`)) return
     setBusy(true); setMsg('')
     try {
       const res = await fetch('/api/admin/enrich/v2/field/batch', {

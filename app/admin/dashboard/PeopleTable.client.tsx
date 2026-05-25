@@ -106,7 +106,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v7'  // bumped to reset prior layouts (re-shows age + sex)
+const STORAGE_KEY = 'admin_table_columns_v8'  // bumped: added tier + ltv columns
 
 type RowCtx = {
   s: StoredSubmission
@@ -339,6 +339,51 @@ const COLUMNS: Column[] = [
         className="text-[#046BB1] hover:underline text-xs font-bold">in</a>
     ) : <span className="text-[#E8E4DF] text-xs">—</span>,
   },
+  {
+    id: 'tier', label: 'Tier', width: '110px',
+    header: () => (
+      <span className="inline-flex items-center">
+        Tier
+        <ColumnEnrichTrigger field="beehiiv" />
+      </span>
+    ),
+    cell: ({ s }) => {
+      if (!s.subscriptionTier) {
+        return (
+          <span className="inline-flex items-center gap-1">
+            <span className="text-[12px] text-[#E8E4DF]">—</span>
+            <FieldEnrichTrigger rowId={s.id} field="beehiiv" title="Fetch Beehiiv subscriber data (free)" />
+          </span>
+        )
+      }
+      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[#3B4C99]/10 text-[#3B4C99] border border-[#3B4C99]/30 truncate max-w-[90px]" title={s.subscriptionTier}>{s.subscriptionTier}</span>
+    },
+  },
+  {
+    id: 'ltv', label: 'LTV', width: '90px', align: 'right',
+    header: () => (
+      <span className="inline-flex items-center">
+        LTV
+        <ColumnEnrichTrigger field="stripe" />
+      </span>
+    ),
+    cell: ({ s }) => {
+      if (typeof s.lifetimeValueUsd !== 'number') {
+        return (
+          <span className="inline-flex items-center gap-1 justify-end">
+            <span className="text-[12px] text-[#E8E4DF]">—</span>
+            <FieldEnrichTrigger rowId={s.id} field="stripe" title="Fetch Stripe LTV (free)" />
+          </span>
+        )
+      }
+      const v = s.lifetimeValueUsd
+      return (
+        <span className={`text-[12px] tabular-nums font-bold ${v > 0 ? 'text-[#62A758]' : 'text-[#9C9C9C]'}`}>
+          ${v.toFixed(v >= 100 ? 0 : 2)}
+        </span>
+      )
+    },
+  },
   // Hidden by default but available via Columns toggle
   {
     id: 'industry', label: 'Industry',
@@ -384,7 +429,7 @@ const COLUMNS: Column[] = [
 // Default-visible columns (the rest are hidden until user toggles them on)
 const DEFAULT_VISIBLE_IDS = new Set([
   'select', 'enrich', 'date', 'source', 'utmSource', 'photo', 'name',
-  'jobTitle', 'company', 'age', 'sex', 'email', 'linkedin', 'menu',
+  'jobTitle', 'company', 'age', 'sex', 'tier', 'ltv', 'email', 'linkedin', 'menu',
 ])
 
 const DEFAULT_ORDER = COLUMNS.map(c => c.id)

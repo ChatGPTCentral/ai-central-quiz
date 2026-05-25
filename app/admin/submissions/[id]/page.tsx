@@ -208,6 +208,51 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         )}
       </ProfileSection>
 
+      {/* ── NEWSLETTER & PAYMENTS ────────────────────────── */}
+      <ProfileSection title="Newsletter & payments">
+        <FieldRow label="Beehiiv tier">
+          <span className={`text-sm ${item.subscriptionTier ? 'text-[#333333]' : 'text-[#E8E4DF]'}`}>
+            {item.subscriptionTier || '— (not in Beehiiv)'}
+          </span>
+        </FieldRow>
+        <FieldRow label="Beehiiv status">
+          {item.beehiivStatus ? (
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                item.beehiivStatus === 'active' ? 'bg-[#62A758]/15 text-[#2D6A26] border border-[#62A758]/40' :
+                item.beehiivStatus === 'unsubscribed' ? 'bg-[#BE3B3B]/15 text-[#8A1F1F] border border-[#BE3B3B]/40' :
+                'bg-[#F5F5F5] text-[#9C9C9C] border border-[#E8E4DF]'
+              }`}
+            >
+              {item.beehiivStatus}
+            </span>
+          ) : <span className="text-sm text-[#E8E4DF]">—</span>}
+        </FieldRow>
+        <FieldRow label="Newsletter UTM source">
+          <span className={`text-sm ${item.utmSourceBeehiiv ? 'text-[#333333]' : 'text-[#E8E4DF]'}`}>
+            {item.utmSourceBeehiiv || '—'}
+          </span>
+        </FieldRow>
+        <FieldRow label="Lifetime $ paid">
+          {typeof item.lifetimeValueUsd === 'number' ? (
+            <span className="text-sm font-bold text-[#62A758]">
+              ${item.lifetimeValueUsd.toFixed(2)}
+            </span>
+          ) : <span className="text-sm text-[#E8E4DF]">— (no Stripe customer)</span>}
+        </FieldRow>
+        {item.stripeCustomerId && (
+          <FieldRow label="Stripe customer">
+            <a
+              href={`https://dashboard.stripe.com/customers/${item.stripeCustomerId}`}
+              target="_blank" rel="noopener noreferrer"
+              className="text-xs text-[#046BB1] hover:underline font-mono"
+            >
+              {item.stripeCustomerId} ↗
+            </a>
+          </FieldRow>
+        )}
+      </ProfileSection>
+
       {/* ── SURVEY RESPONSE ─────────────────────────────── */}
       <ProfileSection title="Survey response">
         {surveyFields.map(f => (

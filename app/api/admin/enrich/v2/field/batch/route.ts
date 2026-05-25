@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 import { createClient } from '@supabase/supabase-js'
-import { enrichRowFields, type FieldEnrichResult } from '../route'
+import { enrichRowFields, type FieldEnrichResult, type FieldName } from '@/lib/enrichment/field-enricher'
 
 export const maxDuration = 300
 
@@ -28,15 +28,16 @@ function client() {
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { field?: 'photo' | 'demographics'; ids?: string[]; limit?: number; missingOnly?: boolean }
+  let body: { field?: FieldName; ids?: string[]; limit?: number; missingOnly?: boolean }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid body' }, { status: 400 }) }
 
   const field = body.field
-  if (field !== 'photo' && field !== 'demographics') {
-    return NextResponse.json({ error: 'field must be "photo" or "demographics"' }, { status: 400 })
+  const VALID: FieldName[] = ['photo', 'demographics', 'beehiiv', 'stripe']
+  if (!field || !VALID.includes(field)) {
+    return NextResponse.json({ error: `field must be one of: ${VALID.join(', ')}` }, { status: 400 })
   }
-  const limit = Math.max(1, Math.min(body.limit ?? 50, 200))
+  const limit = Math.max(1, Math.min(body.limit ?? 50, 500))
   const missingOnly = body.missingOnly !== false
 
   const c = client()
@@ -48,19 +49,24 @@ export async function POST(req: NextRequest) {
     // Auto-pick rows that are missing the target field
     let q = c.from('submissions').select('id').order('ts', { ascending: false }).limit(limit)
     if (missingOnly) {
-      if (field === 'photo') {
-        q = q.or('photo_url.is.null,photo_url.eq.')
-      } else {
-        // demographics → either age or sex missing
-        q = q.or('age_ai_estimate.is.null,sex_ai_estimate.is.null')
+      // Each field gets its own "missing" definition. Photo / demographics use
+      // the canonical column. Beehiiv keys off subscription_tier (most rows in
+      // Beehiiv will have a tier). Stripe keys off stripe_customer_id.
+      const filterFor: Record<FieldName, string> = {
+        photo:        'photo_url.is.null,photo_url.eq.',
+        demographics: 'age_ai_estimate.is.null,sex_ai_estimate.is.null',
+        beehiiv:      'subscription_tier.is.null,subscription_tier.eq.',
+        stripe:       'stripe_customer_id.is.null,stripe_customer_id.eq.',
       }
+      q = q.or(filterFor[field])
     }
     const { data, error } = await q
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     ids = (data || []).map((r: { id: string }) => r.id)
   }
 
-  if (ids.length === 0) return NextResponse.json({ processed: 0, results: [], totalCost: { apify: 0, apollo: 0, claude: 0 } })
+  const ZERO = { apify: 0, apollo: 0, claude: 0, beehiiv: 0, stripe: 0 }
+  if (ids.length === 0) return NextResponse.json({ processed: 0, results: [], totalCost: ZERO })
 
   // Sequential to keep the cost log accurate and avoid hammering any provider.
   const results: FieldEnrichResult[] = []
@@ -70,8 +76,14 @@ export async function POST(req: NextRequest) {
   }
 
   const totalCost = results.reduce(
-    (acc, r) => ({ apify: acc.apify + r.cost.apify, apollo: acc.apollo + r.cost.apollo, claude: acc.claude + r.cost.claude }),
-    { apify: 0, apollo: 0, claude: 0 },
+    (acc, r) => ({
+      apify:   acc.apify   + r.cost.apify,
+      apollo:  acc.apollo  + r.cost.apollo,
+      claude:  acc.claude  + r.cost.claude,
+      beehiiv: acc.beehiiv + r.cost.beehiiv,
+      stripe:  acc.stripe  + r.cost.stripe,
+    }),
+    { ...ZERO },
   )
   const updatedCount = results.filter(r => r.updated.length > 0).length
 

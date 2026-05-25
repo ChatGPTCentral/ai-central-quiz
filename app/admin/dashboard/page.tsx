@@ -85,6 +85,19 @@ export default async function DashboardPage({
   const isUncertain = (v?: string | null) => !v || v.toLowerCase() === 'uncertain'
 
   const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
+  const tierData     = countBy(allRows, r => r.subscriptionTier)
+  // LTV buckets — paid customers only (skip $0 / null)
+  const LTV_BUCKETS: { label: string; min: number; max: number }[] = [
+    { label: '$1-100',   min: 0.01,   max: 100 },
+    { label: '$100-500', min: 100.01, max: 500 },
+    { label: '$500-2k',  min: 500.01, max: 2000 },
+    { label: '$2k+',     min: 2000.01, max: Infinity },
+  ]
+  const ltvData = countBy(allRows, r => {
+    const v = r.lifetimeValueUsd
+    if (typeof v !== 'number' || v <= 0) return undefined
+    return LTV_BUCKETS.find(b => v >= b.min && v <= b.max)?.label
+  })
   const ageData      = countBy(allRows, r => {
     const v = r.ageBracket || r.ageAiEstimate
     return isUncertain(v) ? undefined : v
@@ -112,6 +125,8 @@ export default async function DashboardPage({
     size:     sumOf(sizeData),
     utm:      sumOf(utmData),
     geo:      allRows.filter(r => r.country).length,
+    tier:     sumOf(tierData),
+    ltv:      sumOf(ltvData),
   }
   const n = (k: number) => `N = ${k.toLocaleString()}`
 
@@ -204,6 +219,21 @@ export default async function DashboardPage({
                 data={utmData}
                 maxRows={10}
                 uniformColor={PALETTE.fulvous}
+              />
+              <HorizontalBarChart
+                title="Subscription tier"
+                subtitle={n(N.tier)}
+                data={tierData}
+                maxRows={8}
+                uniformColor={PALETTE.marianBlue}
+              />
+              <VerticalBarChart
+                title="Lifetime value"
+                subtitle={n(N.ltv) + ' paying customers'}
+                data={ltvData}
+                orderedLabels={LTV_BUCKETS.map(b => b.label)}
+                uniformColor={PALETTE.asparagus}
+                showCurves={false}
               />
             </section>
           </>

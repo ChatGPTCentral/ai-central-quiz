@@ -8,17 +8,19 @@ import Link from 'next/link'
  * Rendered server-side so it doesn't pull JS into the page just for nav.
  */
 
-type Key = 'enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry'
+type Key = 'enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry' | 'beehiiv' | 'stripe'
 
 const CHIPS: { key: Key; label: string; emoji: string }[] = [
-  { key: 'enrichment', label: 'Not enriched', emoji: '✨' },
-  { key: 'linkedin',   label: 'No LinkedIn',  emoji: '🔗' },
-  { key: 'photo',      label: 'No photo',     emoji: '🖼️' },
-  { key: 'sex',        label: 'No sex',       emoji: '🚻' },
-  { key: 'age',        label: 'No age',       emoji: '🎂' },
-  { key: 'company',    label: 'No company',   emoji: '🏢' },
-  { key: 'country',    label: 'No country',   emoji: '🌍' },
-  { key: 'industry',   label: 'No industry',  emoji: '🏭' },
+  { key: 'enrichment', label: 'Not enriched',  emoji: '✨' },
+  { key: 'linkedin',   label: 'No LinkedIn',   emoji: '🔗' },
+  { key: 'photo',      label: 'No photo',      emoji: '🖼️' },
+  { key: 'sex',        label: 'No sex',        emoji: '🚻' },
+  { key: 'age',        label: 'No age',        emoji: '🎂' },
+  { key: 'company',    label: 'No company',    emoji: '🏢' },
+  { key: 'country',    label: 'No country',    emoji: '🌍' },
+  { key: 'industry',   label: 'No industry',   emoji: '🏭' },
+  { key: 'beehiiv',    label: 'Not in Beehiiv', emoji: '📧' },
+  { key: 'stripe',     label: 'No Stripe',     emoji: '💳' },
 ]
 
 export default function SavedSearches({

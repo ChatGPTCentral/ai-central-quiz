@@ -46,6 +46,12 @@ export interface StoredSubmission {
   enrichmentRaw?: Record<string, NormalizedPerson['raw']>
   enrichmentStatus?: 'complete' | 'partial' | 'failed'
   enrichedAt?: string  // ISO timestamp of last successful enrichment run
+  // Beehiiv + Stripe (email-keyed enrichment, free)
+  utmSourceBeehiiv?: string
+  subscriptionTier?: string
+  beehiivStatus?: string
+  stripeCustomerId?: string
+  lifetimeValueUsd?: number
   // Legacy import fields
   source?: 'survey' | 'legacy' | 'quiz_v2' | 'fillout_v1' | 'fillout_v2' | 'fillout_legacy' | 'apollo_legacy'
   ageBracket?: string
@@ -136,6 +142,11 @@ export interface DbRow {
   sex_ai_estimate: string | null
   ai_estimate_confidence: string | null
   job_title_standardized: string | null
+  utm_source_beehiiv: string | null
+  subscription_tier: string | null
+  beehiiv_status: string | null
+  stripe_customer_id: string | null
+  lifetime_value_usd: number | string | null   // numeric(10,2) — Supabase returns as string
   created_at?: string
 }
 
@@ -190,6 +201,11 @@ function toRow(s: StoredSubmission): DbRow {
     sex_ai_estimate: s.sexAiEstimate || null,
     ai_estimate_confidence: s.aiEstimateConfidence || null,
     job_title_standardized: s.jobTitleStandardized || null,
+    utm_source_beehiiv: s.utmSourceBeehiiv || null,
+    subscription_tier: s.subscriptionTier || null,
+    beehiiv_status: s.beehiivStatus || null,
+    stripe_customer_id: s.stripeCustomerId || null,
+    lifetime_value_usd: s.lifetimeValueUsd ?? null,
   }
 }
 
@@ -250,6 +266,11 @@ export function fromRow(r: DbRow): StoredSubmission {
     sexAiEstimate: r.sex_ai_estimate ?? undefined,
     aiEstimateConfidence: r.ai_estimate_confidence ?? undefined,
     jobTitleStandardized: r.job_title_standardized ?? undefined,
+    utmSourceBeehiiv: r.utm_source_beehiiv ?? undefined,
+    subscriptionTier: r.subscription_tier ?? undefined,
+    beehiivStatus: r.beehiiv_status ?? undefined,
+    stripeCustomerId: r.stripe_customer_id ?? undefined,
+    lifetimeValueUsd: r.lifetime_value_usd != null ? Number(r.lifetime_value_usd) : undefined,
   }
 }
 

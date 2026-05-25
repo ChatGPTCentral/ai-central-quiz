@@ -166,6 +166,23 @@ export async function POST(req: NextRequest) {
       update.ai_estimate_confidence = v2.aiDemographics.confidence
     }
 
+    // ── Beehiiv extras (free email-keyed enrichment) ────────────────
+    if (v2.extras?.beehiiv) {
+      const b = v2.extras.beehiiv
+      const fullName = [b.firstName, b.lastName].filter(Boolean).join(' ').trim()
+      if (fullName) setIfNew('name', input.name, fullName)
+      setIfNew('country', input.country, normalizeCountry(b.country))
+      if (b.utmSource)        update.utm_source_beehiiv = b.utmSource
+      if (b.subscriptionTier) update.subscription_tier  = b.subscriptionTier
+      if (b.status)           update.beehiiv_status     = b.status
+    }
+
+    // ── Stripe extras (always overwrites — freshest truth) ──────────
+    if (v2.extras?.stripe) {
+      update.stripe_customer_id = v2.extras.stripe.customerId
+      update.lifetime_value_usd = v2.extras.stripe.lifetimeValueUsd
+    }
+
     // Stamp the enrichment status + timestamp so the UI can tell at a glance
     // which rows have already been processed (avoid wasteful re-runs).
     update.enrichment_status = v2.status

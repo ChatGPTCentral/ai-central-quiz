@@ -24,6 +24,8 @@ import { findLinkedInViaGoogle } from './google-linkedin-search'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { inferNameFromEmail, type InferredName } from './name-from-email'
 import { estimateDemographicsFromPhoto, type PhotoDemographics } from './photo-demographics'
+import { findBeehiivSubscriberByEmail, type BeehiivLookupResult } from './beehiiv-lookup'
+import { findStripeCustomerByEmail, type StripeLookupResult } from './stripe-lookup'
 import { mergeEnrichment } from './merge'
 import { standardizeSeniority, standardizeTitle, standardizeIndustry } from './standardize'
 import { standardizeTitleWithLLM } from './standardize-title-llm'
@@ -40,9 +42,9 @@ export interface V2Input {
 }
 
 export interface V2Stage {
-  name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape' | 'photo_ai_demographics'
+  name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
   status: 'skipped' | 'ok' | 'miss' | 'error'
-  result?: NormalizedPerson | InferredName | PhotoDemographics | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string; query?: string }[] }
+  result?: NormalizedPerson | InferredName | PhotoDemographics | BeehiivLookupResult | StripeLookupResult | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string; query?: string }[] }
   reason?: string
 }
 
@@ -54,6 +56,11 @@ export interface V2Result {
   providersTried: EnrichmentSource[]
   status: 'complete' | 'partial' | 'failed'
   aiDemographics?: PhotoDemographics
+  /** Email-keyed lookups outside the linkedin merge — saved directly to columns. */
+  extras?: {
+    beehiiv?: BeehiivLookupResult
+    stripe?: StripeLookupResult
+  }
   fromCache?: boolean
   /** Standardized values derived from raw — written to the seniority + ti columns. */
   standardized?: {
@@ -222,9 +229,36 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
     })
   }
 
+  // ── Stage 7: Beehiiv lookup (free, email-keyed) ─────────────────
+  const extras: V2Result['extras'] = {}
+  try {
+    const b = await findBeehiivSubscriberByEmail(email)
+    if (b) {
+      extras.beehiiv = b
+      stages.push({ name: 'beehiiv_lookup', status: 'ok', result: b })
+    } else {
+      stages.push({ name: 'beehiiv_lookup', status: 'miss', reason: 'not a Beehiiv subscriber' })
+    }
+  } catch (err) {
+    stages.push({ name: 'beehiiv_lookup', status: 'error', reason: String(err) })
+  }
+
+  // ── Stage 8: Stripe lookup (free, email-keyed) ──────────────────
+  try {
+    const s = await findStripeCustomerByEmail(email)
+    if (s) {
+      extras.stripe = s
+      stages.push({ name: 'stripe_lookup', status: 'ok', result: s })
+    } else {
+      stages.push({ name: 'stripe_lookup', status: 'miss', reason: 'no Stripe customer for this email' })
+    }
+  } catch (err) {
+    stages.push({ name: 'stripe_lookup', status: 'error', reason: String(err) })
+  }
+
   const status: V2Result['status'] =
     merged.linkedinUrl && merged.photoUrl ? 'complete' :
-    results.length > 0 || merged.linkedinUrl ? 'partial' : 'failed'
+    results.length > 0 || merged.linkedinUrl || extras.beehiiv || extras.stripe ? 'partial' : 'failed'
 
   // ── Standardize derived values ──────────────────────────────────
   // Local TITLE_BANK is fast + free for common cases; falls back to Claude
@@ -242,5 +276,5 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
     setCached(email, { data: merged, raw: raw as Record<string, NormalizedPerson['raw']>, status, providersTried: tried }).catch(() => {})
   }
 
-  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics, standardized }
+  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics, extras, standardized }
 }
