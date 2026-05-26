@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { fromRow, type DbRow, type StoredSubmission } from './kv'
+import { applyFilterSpec, decodeSpec, type FilterSpec } from './advanced-filter'
 
 let _client: SupabaseClient | null = null
 function client(): SupabaseClient {
@@ -28,8 +29,16 @@ export interface DashboardFilters {
   buyingIntent?: string[]
   hasLinkedin?: boolean
   hasPhoto?: boolean
+  // Additional facets (multi-select like archetype etc.)
+  subscriptionTier?: string[]
+  beehiivStatus?: string[]
+  sexAiEstimate?: string[]
+  enrichmentStatus?: string[]
+  companySize?: string[]
   /** Saved-search style "broken records" filters — show ONLY rows missing each field. */
   missing?: ('enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry' | 'beehiiv' | 'stripe')[]
+  /** Free-form advanced filter tree (AND/OR rules with per-field operators). */
+  spec?: FilterSpec
   scoreMin?: number
   scoreMax?: number
   workArea?: string  // substring match on the CSV column
@@ -55,6 +64,11 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
     buyingIntent: csv('intent'),
     hasLinkedin: sp.get('hasLinkedin') === '1' ? true : undefined,
     hasPhoto: sp.get('hasPhoto') === '1' ? true : undefined,
+    subscriptionTier: csv('subscriptionTier'),
+    beehiivStatus: csv('beehiivStatus'),
+    sexAiEstimate: csv('sexAiEstimate'),
+    enrichmentStatus: csv('enrichmentStatus'),
+    companySize: csv('companySize'),
     missing: sp.get('missing')
       ? sp.get('missing')!.split(',').map(s => s.trim()).filter(Boolean) as DashboardFilters['missing']
       : undefined,
@@ -62,6 +76,7 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
     scoreMax: sp.get('scoreMax') ? parseInt(sp.get('scoreMax')!, 10) : undefined,
     workArea: sp.get('workArea') || undefined,
     search: sp.get('q') || undefined,
+    spec: decodeSpec(sp.get('spec')),
   }
 }
 
@@ -80,6 +95,11 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (f.source?.length)            r = r.in('source', f.source)
   if (f.ageBracket?.length)        r = r.in('age_bracket', f.ageBracket)
   if (f.buyingIntent?.length)      r = r.in('buying_intent', f.buyingIntent)
+  if (f.subscriptionTier?.length)  r = r.in('subscription_tier', f.subscriptionTier)
+  if (f.beehiivStatus?.length)     r = r.in('beehiiv_status', f.beehiivStatus)
+  if (f.sexAiEstimate?.length)     r = r.in('sex_ai_estimate', f.sexAiEstimate)
+  if (f.enrichmentStatus?.length)  r = r.in('enrichment_status', f.enrichmentStatus)
+  if (f.companySize?.length)       r = r.in('company_size', f.companySize)
   if (f.hasLinkedin)               r = r.not('linkedin_url', 'is', null)
   if (f.hasPhoto)                  r = r.not('photo_url', 'is', null)
   if (f.missing?.length) {
@@ -117,6 +137,7 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (f.search) {
     r = r.or(`name.ilike.%${f.search}%,email.ilike.%${f.search}%,company_name.ilike.%${f.search}%`)
   }
+  if (f.spec) r = applyFilterSpec(r, f.spec)
   return r
 }
 
@@ -160,7 +181,7 @@ export async function filteredSubmissionsAll(filters: DashboardFilters): Promise
 /** Top-N facet counts honoring current filters (so the UI shows reachable values only). */
 export async function facetCounts(
   filters: DashboardFilters,
-  column: 'archetype' | 'seniority' | 'company_industry' | 'country' | 'main_goal' | 'source' | 'age_bracket' | 'buying_intent',
+  column: 'archetype' | 'seniority' | 'company_industry' | 'country' | 'main_goal' | 'source' | 'age_bracket' | 'buying_intent' | 'subscription_tier' | 'beehiiv_status' | 'sex_ai_estimate' | 'enrichment_status' | 'work_area' | 'ai_level' | 'company_size' | 'job_level',
   limit = 10,
 ): Promise<{ value: string; count: number }[]> {
   let q = client().from('submissions').select(column)

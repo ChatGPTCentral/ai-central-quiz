@@ -106,7 +106,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v8'  // bumped: added tier + ltv columns
+const STORAGE_KEY = 'admin_table_columns_v9'  // bumped: full schema coverage
 
 type RowCtx = {
   s: StoredSubmission
@@ -413,6 +413,65 @@ const COLUMNS: Column[] = [
     id: 'score', label: 'Score', align: 'right',
     cell: ({ s }) => <span className="font-semibold tabular-nums text-[12px]">{s.score ?? '—'}</span>,
   },
+  // ── CRM EXTENDED COLUMNS (hidden by default, toggle on per need) ──
+  ...((): Column[] => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Editable = (field: keyof StoredSubmission, placeholder: string, className = 'text-[12px] text-[#9C9C9C]') => ({ s, bumpRow }: any) => (
+      <EditableCell
+        value={String(s[field] ?? '')}
+        rowId={s.id}
+        field={field as string}
+        placeholder={placeholder}
+        className={className}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onSaved={(v) => { (s as any)[field] = v; bumpRow() }}
+      />
+    )
+    return [
+      { id: 'companySize',         label: 'Company size',    width: '110px', cell: Editable('companySize', 'size') },
+      { id: 'companyDomain',       label: 'Company domain',  cell: Editable('companyDomain', 'domain') },
+      { id: 'companyWebsite',      label: 'Company website', cell: Editable('companyWebsite', 'website') },
+      { id: 'companyLinkedinUrl',  label: 'Co. LinkedIn',    cell: Editable('companyLinkedinUrl', 'linkedin') },
+      { id: 'companySubIndustry',  label: 'Sub-industry',    cell: Editable('companySubIndustry', 'sub-industry') },
+      { id: 'companyRevenue',      label: 'Revenue',         cell: Editable('companyRevenue', 'revenue') },
+      { id: 'companyFoundedYear',  label: 'Founded',         width: '90px', cell: Editable('companyFoundedYear', 'year') },
+      { id: 'region',              label: 'Region',          cell: Editable('region', 'state/region') },
+      { id: 'city',                label: 'City',            cell: Editable('city', 'city') },
+      { id: 'jobTitleStandardized',label: 'Title (canonical)', cell: Editable('jobTitleStandardized', 'canonical') },
+      { id: 'jobFunction',         label: 'Function',        cell: Editable('jobFunction', 'function') },
+      { id: 'department',          label: 'Department',      cell: Editable('department', 'department') },
+      { id: 'jobLevel',            label: 'Job level',       cell: Editable('jobLevel', 'job level') },
+      { id: 'archetype',           label: 'Archetype',       cell: Editable('archetype', 'archetype') },
+      { id: 'aiLevel',             label: 'AI familiarity',  cell: Editable('aiLevel', 'level') },
+      { id: 'workArea',            label: 'Work area',       cell: Editable('workArea', 'work area') },
+      { id: 'learningStyle',       label: 'Learning style',  cell: Editable('learningStyle', 'style') },
+      { id: 'timeCommitment',      label: 'Time',            cell: Editable('timeCommitment', 'time') },
+      { id: 'mainGoal',            label: 'Main goal',       cell: Editable('mainGoal', 'goal') },
+      { id: 'aiTools',             label: 'AI tools',        cell: Editable('aiTools', 'tools') },
+      { id: 'buyingIntent',        label: 'Buying intent',   cell: Editable('buyingIntent', 'intent') },
+      { id: 'ageBracket',          label: 'Age (self)',      width: '100px', cell: Editable('ageBracket', 'age') },
+      { id: 'ageAiEstimate',       label: 'Age (AI)',        width: '90px', cell: Editable('ageAiEstimate', 'AI age') },
+      { id: 'beehiivStatus',       label: 'Beehiiv status',  width: '110px',
+        cell: ({ s }) => s.beehiivStatus ? (
+          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+            s.beehiivStatus === 'active' ? 'bg-[#62A758]/15 text-[#2D6A26] border-[#62A758]/40' :
+            s.beehiivStatus === 'unsubscribed' ? 'bg-[#BE3B3B]/15 text-[#8A1F1F] border-[#BE3B3B]/40' :
+            'bg-[#F5F5F5] text-[#9C9C9C] border-[#E8E4DF]'
+          }`}>{s.beehiivStatus}</span>
+        ) : <span className="text-[12px] text-[#E8E4DF]">—</span>,
+      },
+      { id: 'stripeCustomerId',    label: 'Stripe ID', cell: ({ s }) => s.stripeCustomerId ? (
+        <a href={`https://dashboard.stripe.com/customers/${s.stripeCustomerId}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#046BB1] hover:underline font-mono truncate max-w-[140px] block">{s.stripeCustomerId}</a>
+      ) : <span className="text-[12px] text-[#E8E4DF]">—</span> },
+      { id: 'utmRef',              label: 'UTM ref',         cell: Editable('utmRef', '—') },
+      { id: 'utmSourceBeehiiv',    label: 'Beehiiv UTM',     cell: Editable('utmSourceBeehiiv', '—') },
+      { id: 'enrichedAt',          label: 'Enriched at',     width: '120px',
+        cell: ({ s }) => s.enrichedAt ? (
+          <span className="text-[11px] text-[#9C9C9C] whitespace-nowrap">{new Date(s.enrichedAt).toLocaleDateString()}</span>
+        ) : <span className="text-[12px] text-[#E8E4DF]">—</span>,
+      },
+    ]
+  })(),
   {
     id: 'menu', label: '', width: '40px', align: 'center', required: true,
     header: () => null,
