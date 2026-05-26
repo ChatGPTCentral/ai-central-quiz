@@ -107,6 +107,7 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
   const CONCURRENCY = 12
   const result = new Map<string, AggregatedCustomer>()
   const entries = Array.from(customersByEmail.entries())
+  const s: Stripe = stripe  // narrow for use inside the closure (TypeScript loses the null-check across the async boundary)
 
   async function processOne(email: string, customers: Stripe.Customer[]) {
     customers.sort((a, b) => (b.created || 0) - (a.created || 0))
@@ -127,9 +128,9 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
     for (const c of customers) {
       // Parallel per-customer
       const [charges, invoices, subs] = await Promise.all([
-        collect(stripe.charges.list({ customer: c.id, limit: 100 })),
-        collect(stripe.invoices.list({ customer: c.id, limit: 100 })),
-        collect(stripe.subscriptions.list({ customer: c.id, limit: 100, status: 'all' })),
+        collect(s.charges.list({ customer: c.id, limit: 100 })),
+        collect(s.invoices.list({ customer: c.id, limit: 100 })),
+        collect(s.subscriptions.list({ customer: c.id, limit: 100, status: 'all' })),
       ])
 
       for (const charge of charges) {
