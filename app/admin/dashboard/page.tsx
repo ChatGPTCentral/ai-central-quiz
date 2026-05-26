@@ -13,6 +13,7 @@ import VerticalBarChart from '@/components/admin/VerticalBarChart'
 import CountryChart from '@/components/admin/CountryChart'
 import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
 import RoleChart from '@/components/admin/RoleChart.client'
+import AgeChart from '@/components/admin/AgeChart.client'
 import Filters from './Filters.client'
 import { RightSidebar } from '@/components/admin/AdminShell.client'
 
@@ -161,13 +162,10 @@ export default async function DashboardPage({
 
             {/* Charts grid — row 1: Age · Sex · Country | row 2: Industry · Role · Company size */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-              <VerticalBarChart
-                title="Age"
-                subtitle={n(N.age)}
-                data={ageData}
-                orderedLabels={AGE_ORDER}
-                uniformColor={PALETTE.marianBlue}
-              />
+              <AgeChart rows={allRows.map(r => ({
+                ageBracket: r.ageBracket,
+                ageAiEstimate: r.ageAiEstimate,
+              }))} />
               <VerticalBarChart
                 title="Sex"
                 subtitle={n(N.sex)}

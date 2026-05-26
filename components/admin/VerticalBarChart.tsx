@@ -21,6 +21,8 @@ interface Props {
   curveColor?: string
   /** Set false to hide the density + normal-distribution overlays (useful for nominal categories like sex). */
   showCurves?: boolean
+  /** Extra node placed left of the count/% toggle in the header — e.g. a view switcher. */
+  rightAction?: React.ReactNode
 }
 
 /**
@@ -31,7 +33,7 @@ interface Props {
  * with a Catmull-Rom-ish spline.
  */
 export default function VerticalBarChart({
-  title, subtitle, data, orderedLabels, uniformColor, defaultMode = 'count', curveColor, showCurves = true,
+  title, subtitle, data, orderedLabels, uniformColor, defaultMode = 'count', curveColor, showCurves = true, rightAction,
 }: Props) {
   const [mode, setMode] = useState<'count' | 'percent'>(defaultMode)
 
@@ -108,18 +110,21 @@ export default function VerticalBarChart({
           <h3 className="text-sm font-black text-[#333333] tracking-tight">{title}</h3>
           {subtitle && <p className="text-[11px] text-[#9C9C9C] mt-0.5">{subtitle}</p>}
         </div>
-        <div className="flex bg-[#F5F5F5] rounded-md p-0.5 shrink-0">
-          {(['count', 'percent'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-colors ${
-                mode === m ? 'bg-white text-[#333333] shadow-sm' : 'text-[#9C9C9C] hover:text-[#333333]'
-              }`}
-            >
-              {m === 'count' ? '#' : '%'}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 shrink-0">
+          {rightAction}
+          <div className="flex bg-[#F5F5F5] rounded-md p-0.5">
+            {(['count', 'percent'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-colors ${
+                  mode === m ? 'bg-white text-[#333333] shadow-sm' : 'text-[#9C9C9C] hover:text-[#333333]'
+                }`}
+              >
+                {m === 'count' ? '#' : '%'}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
