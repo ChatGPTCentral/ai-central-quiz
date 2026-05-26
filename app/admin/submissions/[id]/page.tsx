@@ -243,17 +243,26 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         </FieldRow>
         {item.stripeCustomerIds && item.stripeCustomerIds.length > 0 && (
           <FieldRow label={`Stripe customer${item.stripeCustomerIds.length > 1 ? 's' : ''}`}>
-            <div className="flex flex-wrap gap-1.5">
-              {item.stripeCustomerIds.map(cid => (
-                <a
-                  key={cid}
-                  href={`https://dashboard.stripe.com/customers/${cid}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-[#62A758]/15 text-[#2D6A26] border border-[#62A758]/40 hover:bg-[#62A758]/25"
-                >
-                  {cid}
-                </a>
-              ))}
+            <div className="flex flex-col gap-2">
+              <a
+                href={`https://dashboard.stripe.com/customers/${item.stripeCustomerIds[0]}`}
+                target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 rounded-md bg-[#635BFF] text-white text-xs font-bold hover:opacity-90"
+              >
+                🔗 Open in Stripe Dashboard ↗
+              </a>
+              <div className="flex flex-wrap gap-1.5">
+                {item.stripeCustomerIds.map(cid => (
+                  <a
+                    key={cid}
+                    href={`https://dashboard.stripe.com/customers/${cid}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-[#62A758]/15 text-[#2D6A26] border border-[#62A758]/40 hover:bg-[#62A758]/25"
+                  >
+                    {cid}
+                  </a>
+                ))}
+              </div>
             </div>
           </FieldRow>
         )}

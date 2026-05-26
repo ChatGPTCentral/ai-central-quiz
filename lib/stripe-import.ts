@@ -77,6 +77,8 @@ export interface AggregatedCustomer {
   subscriptions: SubscriptionSummary[]
   firstChargeAt?: string
   lastChargeAt?: string
+  /** Earliest customer.created across all cus_XXX in the group (ISO). */
+  customerCreatedAt?: string
   // Raw payload — kept for the detail-page Stripe card
   raw: { customers: Stripe.Customer[]; chargeCount: number; invoiceCount: number }
 }
@@ -216,6 +218,16 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
     const countryCode = primary.address?.country
     const country = countryCode ? isoCodeToName(countryCode) : undefined
 
+    // EARLIEST customer.created across the group — used to set the row's
+    // canonical creation date (ts + created_at) instead of "today".
+    const earliestCreatedSec = customers
+      .map(c => c.created || 0)
+      .filter(s => s > 0)
+      .reduce((min, s) => Math.min(min, s), Infinity)
+    const customerCreatedAt = isFinite(earliestCreatedSec)
+      ? new Date(earliestCreatedSec * 1000).toISOString()
+      : undefined
+
     result.set(email, {
       email,
       customerIds,
@@ -227,6 +239,7 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
       subscriptions,
       firstChargeAt: firstChargeAt ? new Date(firstChargeAt).toISOString() : undefined,
       lastChargeAt:  lastChargeAt  ? new Date(lastChargeAt).toISOString()  : undefined,
+      customerCreatedAt,
       raw: { customers, chargeCount, invoiceCount },
     })
   }
@@ -316,6 +329,14 @@ export async function importAggregatedToCRM(
       // Conflict-winning fields — also Stripe wins per the user's policy.
       if (a.name)    stripeFields.name = a.name
       if (a.country) stripeFields.country = a.country
+      // Canonical creation date — earliest customer.created across all
+      // cus_XXX in the group. We overwrite even for existing rows so the
+      // row's history reflects the original Stripe creation, not the
+      // re-import time.
+      if (a.customerCreatedAt) {
+        stripeFields.created_at = a.customerCreatedAt
+        stripeFields.ts = new Date(a.customerCreatedAt).getTime()
+      }
       // Subscription tier: when there's an active subscription, set the
       // tier to that product name; otherwise leave whatever existed.
       const activeSub = a.subscriptions.find(s => s.status === 'active' || s.status === 'trialing')
@@ -328,12 +349,12 @@ export async function importAggregatedToCRM(
       } else {
         // Stripe-only insert — minimal row, source='stripe', no quiz fields
         const id = randomUUID()
-        const ts = a.firstChargeAt ? new Date(a.firstChargeAt).getTime() : Date.now()
+        // ts + created_at come from stripeFields if we set them above
         const insertPayload: Record<string, unknown> = {
           id,
           email,
           source: 'stripe',
-          ts,
+          ts: a.customerCreatedAt ? new Date(a.customerCreatedAt).getTime() : Date.now(),
           ai_level: '', work_area: '', learning_style: '', time_commitment: '',
           main_goal: '', ai_tools: '', job_level: '',
           archetype: null,

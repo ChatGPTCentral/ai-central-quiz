@@ -186,11 +186,27 @@ export async function filteredCount(filters: DashboardFilters): Promise<number> 
 
 /** All matching submissions (no pagination) — used by CSV export. */
 export async function filteredSubmissionsAll(filters: DashboardFilters): Promise<StoredSubmission[]> {
-  let q = client().from('submissions').select('*')
-  q = applyFilters(q, filters)
-  const { data, error } = await q.order('ts', { ascending: false })
-  if (error) throw new Error(error.message)
-  return (data || []).map(r => fromRow(r as DbRow))
+  // Supabase / PostgREST returns max 1000 rows per request by default. With
+  // 2000+ rows in the unified CRM the dashboard was silently truncating.
+  // Page through in 1000-row chunks until exhausted.
+  const PAGE = 1000
+  const all: StoredSubmission[] = []
+  let offset = 0
+  // Safety cap: 50 pages = 50k rows. Bail before that — something else is wrong.
+  for (let page = 0; page < 50; page++) {
+    let q = client().from('submissions').select('*')
+    q = applyFilters(q, filters)
+    const { data, error } = await q
+      .order('ts', { ascending: false })
+      .order('id', { ascending: false })   // stable secondary sort for paging
+      .range(offset, offset + PAGE - 1)
+    if (error) throw new Error(error.message)
+    const batch = (data || []).map(r => fromRow(r as DbRow))
+    all.push(...batch)
+    if (batch.length < PAGE) break
+    offset += PAGE
+  }
+  return all
 }
 
 /** Top-N facet counts honoring current filters (so the UI shows reachable values only). */
@@ -199,15 +215,24 @@ export async function facetCounts(
   column: 'archetype' | 'seniority' | 'company_industry' | 'country' | 'main_goal' | 'source' | 'age_bracket' | 'buying_intent' | 'subscription_tier' | 'beehiiv_status' | 'sex_ai_estimate' | 'enrichment_status' | 'work_area' | 'ai_level' | 'company_size' | 'job_level',
   limit = 10,
 ): Promise<{ value: string; count: number }[]> {
-  let q = client().from('submissions').select(column)
-  q = applyFilters(q, filters)
-  const { data, error } = await q
-  if (error) throw new Error(error.message)
+  // Paginate to bypass the PostgREST 1000-row default cap (same fix as
+  // filteredSubmissionsAll — otherwise facets undercount at 2k+ rows).
+  const PAGE = 1000
   const counts = new Map<string, number>()
-  for (const row of (data || []) as Record<string, string | null>[]) {
-    const v = row[column]
-    if (!v) continue
-    counts.set(v, (counts.get(v) || 0) + 1)
+  let offset = 0
+  for (let page = 0; page < 50; page++) {
+    let q = client().from('submissions').select(column)
+    q = applyFilters(q, filters)
+    const { data, error } = await q.range(offset, offset + PAGE - 1)
+    if (error) throw new Error(error.message)
+    const batch = (data || []) as Record<string, string | null>[]
+    for (const row of batch) {
+      const v = row[column]
+      if (!v) continue
+      counts.set(v, (counts.get(v) || 0) + 1)
+    }
+    if (batch.length < PAGE) break
+    offset += PAGE
   }
   return Array.from(counts.entries())
     .map(([value, count]) => ({ value, count }))
