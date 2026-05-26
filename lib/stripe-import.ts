@@ -90,8 +90,16 @@ export interface AggregatedCustomer {
  * group compute the unified LTV, product breakdown, subscription summary.
  *
  * Customers without an email are skipped (can't dedupe by email).
+ *
+ * Options:
+ *   skipEmails — emails already imported (skip the slow per-customer fetch)
+ *   deadlineMs — wall-clock budget; stop processing once exceeded, return what we have
  */
-export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCustomer>> {
+export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; deadlineMs?: number } = {}): Promise<{
+  aggregated: Map<string, AggregatedCustomer>
+  totalEmails: number
+  hasMore: boolean
+}> {
   const stripe = stripeClient()
   if (!stripe) throw new Error('STRIPE_SECRET_KEY not set')
 
@@ -111,7 +119,13 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
   // 429s gracefully. Slower but reliable.
   const CONCURRENCY = 2
   const result = new Map<string, AggregatedCustomer>()
-  const entries = Array.from(customersByEmail.entries())
+  const totalEmails = customersByEmail.size
+
+  // Filter out already-imported emails BEFORE the slow per-customer loop
+  const skipEmails = opts.skipEmails || new Set()
+  const entries = Array.from(customersByEmail.entries()).filter(([email]) => !skipEmails.has(email))
+  const deadline = opts.deadlineMs ? Date.now() + opts.deadlineMs : Infinity
+  let hasMore = false
   const s: Stripe = stripe  // narrow for use inside the closure (TypeScript loses the null-check across the async boundary)
 
   async function processOne(email: string, customers: Stripe.Customer[]) {
@@ -217,16 +231,20 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
     })
   }
 
-  // Pool runner — process up to CONCURRENCY emails simultaneously
+  // Pool runner — process up to CONCURRENCY emails simultaneously,
+  // respecting the wall-clock budget. Anything left over is returned as
+  // `hasMore` so the caller can resume.
   const queue = [...entries]
   await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
     while (queue.length) {
+      if (Date.now() > deadline) { hasMore = true; return }
       const item = queue.shift()
       if (item) await processOne(item[0], item[1])
     }
   }))
+  if (queue.length > 0) hasMore = true
 
-  return result
+  return { aggregated: result, totalEmails, hasMore }
 }
 
 async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {

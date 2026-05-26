@@ -1,35 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
+import { createClient } from '@supabase/supabase-js'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
 
 export const maxDuration = 300
 
+function sb() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) throw new Error('Supabase env missing')
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+}
+
 /**
  * POST /api/admin/stripe/import
  *
- * Walks every Stripe customer, groups by email, aggregates LTV +
- * products + subscriptions, then upserts into the submissions table.
+ * Body: {
+ *   dryRun?: boolean,   // walk + aggregate but don't write
+ *   resume?: boolean,   // skip emails already imported (default true)
+ * }
  *
- * Body: { dryRun?: boolean }
- *   dryRun=true returns the aggregation summary without writing.
- *
- * Stripe always wins on conflict (name + country + every stripe_*
- * column). Quiz-derived fields (archetype, score, ai_level, etc.)
- * stay untouched on existing rows.
- *
- * Stripe-only rows land as `source='stripe'`. They can later be
- * enriched via the normal v2 pipeline (Google → Apify → Apollo →
- * Beehiiv → Claude vision) just like quiz rows.
+ * Resumable: each call has a ~250s budget for the slow per-customer
+ * fetch loop. Anything not processed returns `hasMore: true` so the
+ * caller can re-invoke. Skip-already-imported makes resumes efficient.
  */
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { dryRun?: boolean } = {}
+  let body: { dryRun?: boolean; resume?: boolean } = {}
   try { body = await req.json() } catch { /* empty body ok */ }
+  const resume = body.resume !== false   // default true
 
   try {
+    // For resume: list emails already imported, skip those
+    let skipEmails: Set<string> | undefined
+    if (resume && !body.dryRun) {
+      const c = sb()
+      const { data } = await c
+        .from('submissions')
+        .select('email')
+        .not('stripe_imported_at', 'is', null)
+      skipEmails = new Set((data || []).map((r: { email: string }) => r.email.toLowerCase()))
+    }
+
     const t0 = Date.now()
-    const aggregated = await aggregateStripeByEmail()
+    const { aggregated, totalEmails, hasMore: aggrHasMore } = await aggregateStripeByEmail({
+      skipEmails,
+      deadlineMs: body.dryRun ? undefined : 240_000,    // leave headroom for the upsert phase
+    })
     const aggregateMs = Date.now() - t0
 
     if (body.dryRun) {
@@ -37,9 +55,12 @@ export async function POST(req: NextRequest) {
       const multiCustomerEmails = Array.from(aggregated.values()).filter(a => a.customerIds.length > 1).length
       return NextResponse.json({
         dryRun: true,
-        emails: aggregated.size,
+        totalEmails,
+        processed: aggregated.size,
+        skipped: skipEmails?.size ?? 0,
         totalLtv: Math.round(totalLtv * 100) / 100,
         multiCustomerEmails,
+        hasMore: aggrHasMore,
         aggregateMs,
         sample: Array.from(aggregated.values()).slice(0, 5).map(a => ({
           email: a.email,
@@ -55,10 +76,13 @@ export async function POST(req: NextRequest) {
     const upsertMs = Date.now() - t1
 
     return NextResponse.json({
-      emails: aggregated.size,
+      totalEmails,
+      processed: aggregated.size,
+      skipped: skipEmails?.size ?? 0,
       inserted: upsert.inserted,
       updated: upsert.updated,
       errors: upsert.errors,
+      hasMore: aggrHasMore,
       aggregateMs,
       upsertMs,
     })

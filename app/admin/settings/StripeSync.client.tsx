@@ -4,12 +4,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface ImportResult {
-  emails?: number
+  totalEmails?: number
+  processed?: number
+  skipped?: number
   inserted?: number
   updated?: number
   dryRun?: boolean
   totalLtv?: number
   multiCustomerEmails?: number
+  hasMore?: boolean
   aggregateMs?: number
   upsertMs?: number
   errors?: { email: string; error: string }[]
@@ -23,18 +26,32 @@ export default function StripeSync() {
 
   async function run(dryRun: boolean) {
     if (!dryRun) {
-      if (!confirm('Re-import every Stripe customer and upsert into the CRM?\n\nStripe wins on conflict — existing rows that match by email get their name + country + stripe_* fields overwritten. Quiz data (archetype, AI level, etc.) stays untouched.')) return
+      if (!confirm('Re-import every Stripe customer and upsert into the CRM?\n\nStripe wins on conflict — existing rows that match by email get their name + country + stripe_* fields overwritten. Quiz data (archetype, AI level, etc.) stays untouched.\n\nResumable — already-imported emails are skipped automatically.')) return
     }
     setBusy(true); setLast(null)
+
+    // Loop until hasMore=false (or dryRun, which doesn't chunk)
+    let cumulative = { inserted: 0, updated: 0, processed: 0, errors: [] as { email: string; error: string }[] }
+    let pass = 0
     try {
-      const res = await fetch('/api/admin/stripe/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun }),
-      })
-      const data = await res.json()
-      setLast(data)
-      if (!dryRun && res.ok) router.refresh()
+      while (true) {
+        pass++
+        const res = await fetch('/api/admin/stripe/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dryRun }),
+        })
+        const data: ImportResult = await res.json()
+        if (!res.ok) { setLast(data); return }
+        if (dryRun) { setLast(data); return }
+        cumulative.inserted += data.inserted ?? 0
+        cumulative.updated  += data.updated  ?? 0
+        cumulative.processed += data.processed ?? 0
+        if (data.errors?.length) cumulative.errors.push(...data.errors)
+        setLast({ ...data, ...cumulative })
+        if (!data.hasMore || pass >= 12) break       // safety cap on the loop
+      }
+      router.refresh()
     } catch (e) {
       setLast({ error: String(e) })
     } finally {
@@ -79,7 +96,8 @@ export default function StripeSync() {
             </p>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
-              <Stat label={last.dryRun ? 'Would touch' : 'Emails seen'} value={last.emails?.toLocaleString() || '0'} />
+              <Stat label="Total in Stripe" value={(last.totalEmails ?? 0).toLocaleString()} />
+              <Stat label="Processed" value={(last.processed ?? 0).toLocaleString()} accent="#046BB1" />
               {last.dryRun ? (
                 <>
                   <Stat label="Total LTV" value={`$${(last.totalLtv ?? 0).toLocaleString()}`} accent="#62A758" />
@@ -91,7 +109,10 @@ export default function StripeSync() {
                   <Stat label="Updated" value={(last.updated ?? 0).toLocaleString()} accent="#046BB1" />
                 </>
               )}
-              <Stat label="Aggregate ms" value={`${last.aggregateMs ?? 0}`} />
+              {last.skipped !== undefined && last.skipped > 0 && (
+                <Stat label="Skipped (already done)" value={last.skipped.toLocaleString()} />
+              )}
+              {last.hasMore && <Stat label="Has more" value="⚠ yes — resumed" accent="#E48715" />}
             </div>
           )}
           {last.errors && last.errors.length > 0 && (
