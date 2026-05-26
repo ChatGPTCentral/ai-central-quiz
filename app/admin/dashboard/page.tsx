@@ -89,6 +89,18 @@ export default async function DashboardPage({
 
   const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
   const tierData     = countBy(allRows, r => r.subscriptionTier)
+
+  // Products bought (Stripe) — aggregate count of customers per product name
+  const productCounts = new Map<string, number>()
+  for (const r of allRows) {
+    if (!r.stripeProducts?.length) continue
+    for (const p of r.stripeProducts) {
+      const k = (p.name || 'Unknown').trim()
+      if (!k) continue
+      productCounts.set(k, (productCounts.get(k) || 0) + 1)
+    }
+  }
+  const productData = Array.from(productCounts.entries()).map(([label, value]) => ({ label, value }))
   const ageData      = countBy(allRows, r => {
     const v = r.ageBracket || r.ageAiEstimate
     return isUncertain(v) ? undefined : v
@@ -115,6 +127,7 @@ export default async function DashboardPage({
     utm:      sumOf(utmData),
     geo:      allRows.filter(r => r.country).length,
     tier:     sumOf(tierData),
+    products: sumOf(productData),
   }
   const n = (k: number) => `N = ${k.toLocaleString()}`
 
@@ -211,6 +224,14 @@ export default async function DashboardPage({
                 data={tierData}
                 maxRows={8}
                 uniformColor={PALETTE.marianBlue}
+              />
+              <HorizontalBarChart
+                title="Products bought"
+                subtitle={n(N.products) + ' paying purchases'}
+                data={productData}
+                maxRows={8}
+                uniformColor={PALETTE.viridian}
+                expandable
               />
               <LifetimeValueChart values={allRows.map(r => r.lifetimeValueUsd)} />
             </section>

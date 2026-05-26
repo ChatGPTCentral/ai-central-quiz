@@ -30,6 +30,7 @@ export default function SavedSearches({
 }) {
   const current = new Set((searchParams.missing || '').split(',').map(s => s.trim()).filter(Boolean))
   const onlyArchived = searchParams.onlyArchived === '1'
+  const stripeOnly  = (searchParams.source || '') === 'stripe'
 
   function hrefFor(key: Key | 'all') {
     const sp = new URLSearchParams(searchParams as Record<string, string>)
@@ -53,8 +54,15 @@ export default function SavedSearches({
     else sp.set('onlyArchived', '1')
     return `/admin/submissions?${sp.toString()}`
   }
+  function stripeOnlyHref() {
+    const sp = new URLSearchParams(searchParams as Record<string, string>)
+    sp.delete('offset')
+    if (stripeOnly) sp.delete('source')
+    else sp.set('source', 'stripe')
+    return `/admin/submissions?${sp.toString()}`
+  }
 
-  const noneActive = current.size === 0 && !onlyArchived
+  const noneActive = current.size === 0 && !onlyArchived && !stripeOnly
 
   return (
     <section className="mb-4">
@@ -90,6 +98,18 @@ export default function SavedSearches({
             </Link>
           )
         })}
+        <Link
+          href={stripeOnlyHref()}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
+            stripeOnly
+              ? 'bg-[#62A758] text-white'
+              : 'bg-white border border-[#E8E4DF] text-[#333333] hover:bg-[#FEF7E7] hover:border-[#62A758]'
+          }`}
+          title={stripeOnly ? 'Showing only Stripe-imported rows' : 'Show only Stripe customers'}
+        >
+          <span className="text-[12px]">💳</span>
+          {stripeOnly ? 'Stripe only' : 'Stripe customers'}
+        </Link>
         <Link
           href={archiveHref()}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ml-auto ${

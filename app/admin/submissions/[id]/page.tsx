@@ -241,7 +241,23 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             </span>
           ) : <span className="text-sm text-[#E8E4DF]">— (no Stripe customer)</span>}
         </FieldRow>
-        {item.stripeCustomerId && (
+        {item.stripeCustomerIds && item.stripeCustomerIds.length > 0 && (
+          <FieldRow label={`Stripe customer${item.stripeCustomerIds.length > 1 ? 's' : ''}`}>
+            <div className="flex flex-wrap gap-1.5">
+              {item.stripeCustomerIds.map(cid => (
+                <a
+                  key={cid}
+                  href={`https://dashboard.stripe.com/customers/${cid}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-[#62A758]/15 text-[#2D6A26] border border-[#62A758]/40 hover:bg-[#62A758]/25"
+                >
+                  {cid}
+                </a>
+              ))}
+            </div>
+          </FieldRow>
+        )}
+        {!item.stripeCustomerIds?.length && item.stripeCustomerId && (
           <FieldRow label="Stripe customer">
             <a
               href={`https://dashboard.stripe.com/customers/${item.stripeCustomerId}`}
@@ -250,6 +266,29 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             >
               {item.stripeCustomerId} ↗
             </a>
+          </FieldRow>
+        )}
+        {item.stripeFirstChargeAt && (
+          <FieldRow label="First charge">
+            <span className="text-sm text-[#333333]">{new Date(item.stripeFirstChargeAt).toLocaleDateString()}</span>
+          </FieldRow>
+        )}
+        {item.stripeLastChargeAt && (
+          <FieldRow label="Last charge">
+            <span className="text-sm text-[#333333]">{new Date(item.stripeLastChargeAt).toLocaleDateString()}</span>
+          </FieldRow>
+        )}
+        {item.stripeProducts && item.stripeProducts.length > 0 && (
+          <FieldRow label="Products">
+            <div className="flex flex-col gap-1 max-w-xl">
+              {item.stripeProducts.map((p, i) => (
+                <div key={i} className="flex items-center gap-3 text-[12px] py-1 border-b border-[#F5F5F5] last:border-0">
+                  <span className="flex-1 truncate font-medium text-[#333333]" title={p.name}>{p.name || 'Unknown product'}</span>
+                  <span className="tabular-nums text-[#62A758] font-bold">${p.totalAmount.toFixed(2)}</span>
+                  <span className="text-[10px] text-[#9C9C9C]">× {p.count}</span>
+                </div>
+              ))}
+            </div>
           </FieldRow>
         )}
       </ProfileSection>

@@ -21,8 +21,14 @@ function fmt(ts: number): string {
 
 function SourceBadge({ source }: { source?: string }) {
   const map: Record<string, { label: string; bg: string; fg: string }> = {
-    survey: { label: 'Survey', bg: '#333333', fg: '#FFFDFA' },
-    legacy: { label: 'Legacy', bg: '#E8E4DF', fg: '#333333' },
+    survey: { label: 'Survey',   bg: '#333333', fg: '#FFFDFA' },
+    quiz_v2: { label: 'Quiz v2', bg: '#333333', fg: '#FFFDFA' },
+    legacy: { label: 'Legacy',   bg: '#E8E4DF', fg: '#333333' },
+    stripe: { label: 'Stripe',   bg: '#62A758', fg: '#FFFFFF' },
+    fillout_v1: { label: 'Fillout', bg: '#E8E4DF', fg: '#333333' },
+    fillout_v2: { label: 'Fillout', bg: '#E8E4DF', fg: '#333333' },
+    fillout_legacy: { label: 'Fillout', bg: '#E8E4DF', fg: '#333333' },
+    apollo_legacy: { label: 'Apollo', bg: '#E8E4DF', fg: '#333333' },
   }
   const cfg = map[source || ''] || { label: source || '—', bg: '#F5F5F5', fg: '#9C9C9C' }
   return (

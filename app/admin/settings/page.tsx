@@ -1,4 +1,5 @@
 import SeniorityClassifier from './SeniorityClassifier.client'
+import StripeSync from './StripeSync.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,7 @@ export default function SettingsPage() {
       </div>
 
       <SeniorityClassifier />
+      <StripeSync />
     </div>
   )
 }

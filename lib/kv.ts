@@ -48,6 +48,14 @@ export interface StoredSubmission {
   enrichedAt?: string  // ISO timestamp of last successful enrichment run
   archivedAt?: string  // soft-delete marker; row excluded from default queries
                        // when set. Auto-cleared on re-submit (auto-resurface).
+  // Stripe bulk-import — multiple cus_XXX collapsed into one person via email
+  stripeCustomerIds?: string[]
+  stripeProducts?: Array<{ productId?: string; name?: string; totalAmount: number; count: number; firstPaidAt?: string; lastPaidAt?: string }>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  stripeSubscriptions?: any
+  stripeFirstChargeAt?: string
+  stripeLastChargeAt?: string
+  stripeImportedAt?: string
   // Beehiiv + Stripe (email-keyed enrichment, free)
   utmSourceBeehiiv?: string
   subscriptionTier?: string
@@ -55,7 +63,7 @@ export interface StoredSubmission {
   stripeCustomerId?: string
   lifetimeValueUsd?: number
   // Legacy import fields
-  source?: 'survey' | 'legacy' | 'quiz_v2' | 'fillout_v1' | 'fillout_v2' | 'fillout_legacy' | 'apollo_legacy'
+  source?: 'survey' | 'legacy' | 'quiz_v2' | 'fillout_v1' | 'fillout_v2' | 'fillout_legacy' | 'apollo_legacy' | 'stripe'
   ageBracket?: string
   buyingIntent?: string
   utmSource?: string
@@ -132,6 +140,12 @@ export interface DbRow {
   enrichment_status: 'complete' | 'partial' | 'failed' | null
   enriched_at: string | null
   archived_at: string | null
+  stripe_customer_ids: string[] | null
+  stripe_products: unknown
+  stripe_subscriptions: unknown
+  stripe_first_charge_at: string | null
+  stripe_last_charge_at: string | null
+  stripe_imported_at: string | null
   source: string | null
   age_bracket: string | null
   buying_intent: string | null
@@ -192,6 +206,12 @@ function toRow(s: StoredSubmission): DbRow {
     enrichment_status: s.enrichmentStatus ?? null,
     enriched_at: s.enrichedAt ?? null,
     archived_at: s.archivedAt ?? null,
+    stripe_customer_ids: s.stripeCustomerIds ?? null,
+    stripe_products: s.stripeProducts ?? null,
+    stripe_subscriptions: s.stripeSubscriptions ?? null,
+    stripe_first_charge_at: s.stripeFirstChargeAt ?? null,
+    stripe_last_charge_at: s.stripeLastChargeAt ?? null,
+    stripe_imported_at: s.stripeImportedAt ?? null,
     source: s.source || 'quiz_v2',
     age_bracket: s.ageBracket || null,
     buying_intent: s.buyingIntent || null,
@@ -258,6 +278,13 @@ export function fromRow(r: DbRow): StoredSubmission {
     enrichmentStatus: r.enrichment_status ?? undefined,
     enrichedAt: r.enriched_at ?? undefined,
     archivedAt: r.archived_at ?? undefined,
+    stripeCustomerIds: r.stripe_customer_ids ?? undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    stripeProducts: (r.stripe_products ?? undefined) as any,
+    stripeSubscriptions: r.stripe_subscriptions ?? undefined,
+    stripeFirstChargeAt: r.stripe_first_charge_at ?? undefined,
+    stripeLastChargeAt: r.stripe_last_charge_at ?? undefined,
+    stripeImportedAt: r.stripe_imported_at ?? undefined,
     source: (r.source as StoredSubmission['source']) ?? undefined,
     ageBracket: r.age_bracket ?? undefined,
     buyingIntent: r.buying_intent ?? undefined,
