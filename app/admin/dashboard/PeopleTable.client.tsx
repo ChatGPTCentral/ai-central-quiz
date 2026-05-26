@@ -112,7 +112,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v9'  // bumped: full schema coverage
+const STORAGE_KEY = 'admin_table_columns_v10'  // bumped: ensure LTV + Stripe columns visible after import
 
 type RowCtx = {
   s: StoredSubmission
@@ -366,7 +366,7 @@ const COLUMNS: Column[] = [
     },
   },
   {
-    id: 'ltv', label: 'LTV', width: '90px', align: 'right',
+    id: 'ltv', label: 'Lifetime $ paid', width: '110px', align: 'right',
     header: () => (
       <span className="inline-flex items-center">
         LTV
