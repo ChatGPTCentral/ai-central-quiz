@@ -624,12 +624,23 @@ export default function PeopleTable({ items }: Props) {
     setSelected(new Set())
     router.refresh()
   }
+  async function bulkArchive() {
+    const ids = Array.from(selected)
+    if (ids.length === 0) return
+    if (!confirm(`Archive ${ids.length} record${ids.length === 1 ? '' : 's'}?\n\nRows disappear from charts + lists but stay in the database. Auto-resurface if the same email submits again.`)) return
+    for (const id of ids) {
+      await fetch(`/api/admin/submissions/${id}`, { method: 'DELETE' }).catch(() => {})
+    }
+    setRemovedIds(prev => { const next = new Set(prev); ids.forEach(i => next.add(i)); return next })
+    setSelected(new Set())
+  }
   async function bulkDelete() {
     const ids = Array.from(selected)
     if (ids.length === 0) return
-    if (!confirm(`Permanently delete ${ids.length} record${ids.length === 1 ? '' : 's'}?`)) return
+    if (!confirm(`PERMANENTLY DELETE ${ids.length} record${ids.length === 1 ? '' : 's'}?\n\nThis cannot be undone.`)) return
+    if (!confirm('Are you absolutely sure? Hard-deleted rows are gone forever.')) return
     for (const id of ids) {
-      await fetch(`/api/admin/submissions/${id}`, { method: 'DELETE' }).catch(() => {})
+      await fetch(`/api/admin/submissions/${id}?hard=1`, { method: 'DELETE' }).catch(() => {})
     }
     setRemovedIds(prev => { const next = new Set(prev); ids.forEach(i => next.add(i)); return next })
     setSelected(new Set())
@@ -659,8 +670,14 @@ export default function PeopleTable({ items }: Props) {
                   className="h-7 px-3 rounded-md bg-[#333333] text-[#FFFDFA] text-[10px] font-bold uppercase tracking-wider whitespace-nowrap disabled:opacity-40 hover:opacity-90"
                 >✨ Enrich selected</button>
                 <button
+                  onClick={bulkArchive}
+                  className="h-7 px-3 rounded-md bg-white border border-[#E8E4DF] text-[#666666] text-[10px] font-bold uppercase tracking-wider hover:bg-[#F5F5F5]"
+                  title="Soft-delete — rows stay in the DB, hidden from charts/lists, resurface on re-submit"
+                >🗄️ Archive selected</button>
+                <button
                   onClick={bulkDelete}
                   className="h-7 px-3 rounded-md bg-white border border-[#FEE3E3] text-[#BE3B3B] text-[10px] font-bold uppercase tracking-wider hover:bg-[#FEE3E3]"
+                  title="Permanently delete — cannot be undone"
                 >Delete selected</button>
                 <button
                   onClick={() => setSelected(new Set())}
