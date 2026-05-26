@@ -23,8 +23,21 @@ function getActorList(): string[] {
     'CP1SVZfEwWflrmWCX',                     // your pinned — primary
     'dev_fusion~Linkedin-Profile-Scraper',   // backup (requires console approval)
     'bebity~linkedin-profile-scraper',       // last-resort public actor
-    'apimaestro~linkedin-profile-detail',    // last-resort public actor
+    // REMOVED: apimaestro~linkedin-profile-detail
+    //   This actor returns a phantom record ("Sanjay Kulkarni @ Kafein
+    //   Technology Solutions, Senior Product Owner") when its scrape
+    //   internally fails — instead of erroring out. It contaminated 129
+    //   unrelated rows with identical wrong data. Untrustworthy.
   ]
+}
+
+// Known phantom-response signatures from broken Apify actors. If a scraped
+// item matches one of these signatures we treat it as a no-op miss.
+function isPhantomScrape(p: ApifyProfileItem): boolean {
+  const fullName = (p.fullName || `${p.firstName || ''} ${p.lastName || ''}`).trim().toLowerCase()
+  // apimaestro phantom: every "failed" call returned the same dummy record
+  if (fullName === 'sanjay kulkarni' && JSON.stringify(p).toLowerCase().includes('kafein technology')) return true
+  return false
 }
 
 interface ApifyExperience {
@@ -284,6 +297,25 @@ export const apifyProfileProvider: Provider = {
       attempts.push(attempt)
       if (!items.length) continue
       const p = items[0]
+
+      // Reject known phantom responses — see the Kafein contamination incident
+      if (isPhantomScrape(p)) {
+        console.warn(`[apify-profile] ${actorId} returned a phantom record for ${cleanUrl}; treating as miss`)
+        attempt.error = 'phantom-response'
+        continue
+      }
+
+      // Sanity-check: if we have a LinkedIn URL with a slug AND the scraped
+      // name doesn't share ANY token with the slug, the scrape likely returned
+      // the wrong person. (Most LinkedIn slugs are `firstname-lastname-suffix`.)
+      const slug = cleanUrl ? cleanUrl.match(/linkedin\.com\/in\/([^/?#]+)/i)?.[1] : null
+      const scrapedFull = `${p.firstName || ''} ${p.lastName || ''} ${p.fullName || ''}`.toLowerCase()
+      if (slug && scrapedFull.trim() && !slugMatchesName(slug, scrapedFull)) {
+        console.warn(`[apify-profile] ${actorId} slug-name mismatch: url=${cleanUrl} → scraped="${scrapedFull.trim()}"`)
+        attempt.error = 'slug-name-mismatch'
+        continue
+      }
+
       const company = extractCurrentCompany(p)
       const title = extractCurrentTitle(p)
       const photoUrl = extractPhoto(p)
@@ -323,4 +355,28 @@ export const apifyProfileProvider: Provider = {
     ;(globalThis as any).__lastApifyProfileAttempts = attempts
     return null
   },
+}
+
+/**
+ * Heuristic: does the LinkedIn slug share at least one alphabetic token
+ * (>= 3 chars) with the scraped name? Catches the case where an actor
+ * returns an unrelated person's data.
+ *
+ * slug examples: "irshad-kazi-834a0725" · "joseluisgutierrezcorrales"
+ *                "anastasiia-solodovnyk-online-marketing"
+ * scraped: "Sanjay Kulkarni" (phantom response) → no token overlap → rejected.
+ */
+function slugMatchesName(slug: string, name: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z]+/g, ' ')
+  const slugTokens = new Set(norm(slug).split(/\s+/).filter(t => t.length >= 3))
+  // Treat the slug as one big string too — useful when name parts are joined
+  // (e.g. "joseluisgutierrezcorrales" should match "Jose Luis Gutierrez").
+  const slugFlat = norm(slug).replace(/\s+/g, '')
+  const nameTokens = norm(name).split(/\s+/).filter(t => t.length >= 3)
+  if (nameTokens.length === 0 || slugTokens.size === 0) return true  // can't decide, allow
+  for (const t of nameTokens) {
+    if (slugTokens.has(t)) return true
+    if (slugFlat.includes(t)) return true
+  }
+  return false
 }
