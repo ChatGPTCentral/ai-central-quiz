@@ -101,11 +101,14 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
     customersByEmail.set(email, bucket)
   }
 
-  // For each email, fan out to charges + invoices + subscriptions.
-  // Sequential per-email to keep things predictable; inside the per-email
-  // block we hit Stripe in parallel for the three resource types.
+  // Process emails in parallel — Stripe Search/List APIs are happy with
+  // ~10-20 concurrent reads. Sequential was timing out at 300s for several
+  // hundred customers.
+  const CONCURRENCY = 12
   const result = new Map<string, AggregatedCustomer>()
-  for (const [email, customers] of Array.from(customersByEmail.entries())) {
+  const entries = Array.from(customersByEmail.entries())
+
+  async function processOne(email: string, customers: Stripe.Customer[]) {
     customers.sort((a, b) => (b.created || 0) - (a.created || 0))
     const primary = customers[0]
     const customerIds = customers.map(c => c.id)
@@ -207,6 +210,15 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
       raw: { customers, chargeCount, invoiceCount },
     })
   }
+
+  // Pool runner — process up to CONCURRENCY emails simultaneously
+  const queue = [...entries]
+  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+    while (queue.length) {
+      const item = queue.shift()
+      if (item) await processOne(item[0], item[1])
+    }
+  }))
 
   return result
 }
