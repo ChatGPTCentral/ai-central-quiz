@@ -24,7 +24,11 @@ function stripeClient(): Stripe | null {
   if (_stripe) return _stripe
   const key = process.env.STRIPE_SECRET_KEY
   if (!key) return null
-  _stripe = new Stripe(key, { apiVersion: '2026-04-22.dahlia' })
+  _stripe = new Stripe(key, {
+    apiVersion: '2026-04-22.dahlia',
+    maxNetworkRetries: 5,           // auto-backoff on 429s — Stripe burst limits trip easily on bulk reads
+    timeout: 30_000,
+  })
   return _stripe
 }
 
@@ -101,11 +105,11 @@ export async function aggregateStripeByEmail(): Promise<Map<string, AggregatedCu
     customersByEmail.set(email, bucket)
   }
 
-  // Process emails in parallel. Stripe's read rate limit is ~100 req/s but
-  // burst-limits each endpoint to ~25 req/s. Each customer fires 3 list-
-  // iterators in parallel, so CONCURRENCY=4 → ~12 in-flight requests, well
-  // under burst. ~3-4 minutes for ~500 customers.
-  const CONCURRENCY = 4
+  // Process emails in parallel. Stripe's burst limit is tighter than the
+  // documented 100 req/s — bulk reads with concurrency=4 still tripped
+  // rate-limits. CONCURRENCY=2 + SDK maxNetworkRetries handles transient
+  // 429s gracefully. Slower but reliable.
+  const CONCURRENCY = 2
   const result = new Map<string, AggregatedCustomer>()
   const entries = Array.from(customersByEmail.entries())
   const s: Stripe = stripe  // narrow for use inside the closure (TypeScript loses the null-check across the async boundary)
