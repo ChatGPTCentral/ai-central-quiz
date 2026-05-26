@@ -25,6 +25,12 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
       { href: '/admin/flow', label: 'Flow', icon: '⇋' },
     ],
   },
+  {
+    label: 'Settings',
+    items: [
+      { href: '/admin/settings', label: 'Classifications', icon: '⚙' },
+    ],
+  },
 ]
 
 export default function AdminShell({ children }: Props) {

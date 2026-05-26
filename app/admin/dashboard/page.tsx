@@ -11,6 +11,8 @@ import StatCard from '@/components/admin/StatCard'
 import HorizontalBarChart from '@/components/admin/HorizontalBarChart'
 import VerticalBarChart from '@/components/admin/VerticalBarChart'
 import CountryChart from '@/components/admin/CountryChart'
+import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
+import RoleChart from '@/components/admin/RoleChart.client'
 import Filters from './Filters.client'
 import { RightSidebar } from '@/components/admin/AdminShell.client'
 
@@ -86,18 +88,6 @@ export default async function DashboardPage({
 
   const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
   const tierData     = countBy(allRows, r => r.subscriptionTier)
-  // LTV buckets — paid customers only (skip $0 / null)
-  const LTV_BUCKETS: { label: string; min: number; max: number }[] = [
-    { label: '$1-100',   min: 0.01,   max: 100 },
-    { label: '$100-500', min: 100.01, max: 500 },
-    { label: '$500-2k',  min: 500.01, max: 2000 },
-    { label: '$2k+',     min: 2000.01, max: Infinity },
-  ]
-  const ltvData = countBy(allRows, r => {
-    const v = r.lifetimeValueUsd
-    if (typeof v !== 'number' || v <= 0) return undefined
-    return LTV_BUCKETS.find(b => v >= b.min && v <= b.max)?.label
-  })
   const ageData      = countBy(allRows, r => {
     const v = r.ageBracket || r.ageAiEstimate
     return isUncertain(v) ? undefined : v
@@ -107,7 +97,6 @@ export default async function DashboardPage({
     if (isUncertain(v)) return undefined
     return v!.charAt(0).toUpperCase() + v!.slice(1).toLowerCase()
   })
-  const roleData     = countBy(allRows, r => r.jobTitleStandardized || r.jobTitle || r.jobLevel)
   const industryData = countBy(allRows, r => r.companyIndustry)
   const sizeData     = countBy(allRows, r => r.companySize)
 
@@ -120,13 +109,11 @@ export default async function DashboardPage({
   const N = {
     age:      sumOf(ageData),
     sex:      sumOf(sexData),
-    role:     sumOf(roleData),
     industry: sumOf(industryData),
     size:     sumOf(sizeData),
     utm:      sumOf(utmData),
     geo:      allRows.filter(r => r.country).length,
     tier:     sumOf(tierData),
-    ltv:      sumOf(ltvData),
   }
   const n = (k: number) => `N = ${k.toLocaleString()}`
 
@@ -199,14 +186,12 @@ export default async function DashboardPage({
                 uniformColor={PALETTE.asparagus}
                 expandable
               />
-              <HorizontalBarChart
-                title="Role"
-                subtitle={n(N.role)}
-                data={roleData}
-                maxRows={8}
-                uniformColor={PALETTE.azul}
-                expandable
-              />
+              <RoleChart rows={allRows.map(r => ({
+                jobTitle: r.jobTitle,
+                jobTitleStandardized: r.jobTitleStandardized,
+                jobLevel: r.jobLevel,
+                seniority: r.seniority,
+              }))} />
               <VerticalBarChart
                 title="Company size"
                 subtitle={n(N.size)}
@@ -229,14 +214,7 @@ export default async function DashboardPage({
                 maxRows={8}
                 uniformColor={PALETTE.marianBlue}
               />
-              <VerticalBarChart
-                title="Lifetime value"
-                subtitle={n(N.ltv) + ' paying customers'}
-                data={ltvData}
-                orderedLabels={LTV_BUCKETS.map(b => b.label)}
-                uniformColor={PALETTE.asparagus}
-                showCurves={false}
-              />
+              <LifetimeValueChart values={allRows.map(r => r.lifetimeValueUsd)} />
             </section>
           </>
         )}

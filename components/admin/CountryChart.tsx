@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import HorizontalBarChart from './HorizontalBarChart'
+import WorldMap from './WorldMap'
 import { PALETTE } from '@/lib/palette'
 import { countryFlag } from '@/lib/country-flags'
 
@@ -115,6 +116,7 @@ export default function CountryChart({ rows, subtitle }: Props) {
         <FullScreenCountry
           group={group}
           data={data}
+          rows={rows}
           groupToggle={groupToggle}
           onClose={() => setExpanded(false)}
         />
@@ -124,16 +126,22 @@ export default function CountryChart({ rows, subtitle }: Props) {
 }
 
 function FullScreenCountry({
-  group, data, groupToggle, onClose,
+  group, data, rows, groupToggle, onClose,
 }: {
   group: Group
   data: { label: string; value: number }[]
+  rows: RowSlim[]
   groupToggle: React.ReactNode
   onClose: () => void
 }) {
   const sorted = [...data].sort((a, b) => b.value - a.value)
   const total = sorted.reduce((a, b) => a + b.value, 0)
   const max = sorted[0]?.value || 1
+  const [view, setView] = useState<'list' | 'map'>(group === 'country' ? 'map' : 'list')
+
+  // Map view only makes sense for country grouping (continent map is too coarse,
+  // US state needs a different topology)
+  const mapAvailable = group === 'country'
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6" onClick={onClose}>
@@ -149,11 +157,32 @@ function FullScreenCountry({
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {mapAvailable && (
+              <div className="flex bg-[#F5F5F5] rounded-md p-0.5">
+                {(['map', 'list'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded transition-colors ${
+                      view === v ? 'bg-white text-[#333333] shadow-sm' : 'text-[#9C9C9C] hover:text-[#333333]'
+                    }`}
+                  >
+                    {v === 'map' ? '🌍 Map' : '☰ List'}
+                  </button>
+                ))}
+              </div>
+            )}
             {groupToggle}
             <button onClick={onClose} className="text-[#9C9C9C] hover:text-[#333333] text-2xl leading-none">×</button>
           </div>
         </header>
         <div className="flex-1 overflow-auto p-6">
+          {mapAvailable && view === 'map' ? (
+            <div className="h-[60vh]">
+              <WorldMap rows={rows.map(r => ({ country: r.country }))} />
+            </div>
+          ) : null}
+          {(!mapAvailable || view === 'list') ? (
           <div className="flex flex-col gap-2">
             {sorted.map((r) => {
               const pct = total > 0 ? (r.value / total) * 100 : 0
@@ -170,6 +199,7 @@ function FullScreenCountry({
               )
             })}
           </div>
+          ) : null}
         </div>
       </div>
     </div>

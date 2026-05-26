@@ -27,7 +27,8 @@ import { estimateDemographicsFromPhoto, type PhotoDemographics } from './photo-d
 import { findBeehiivSubscriberByEmail, type BeehiivLookupResult } from './beehiiv-lookup'
 import { findStripeCustomerByEmail, type StripeLookupResult } from './stripe-lookup'
 import { mergeEnrichment } from './merge'
-import { standardizeSeniority, standardizeTitle, standardizeIndustry } from './standardize'
+import { standardizeIndustry } from './standardize'
+import { resolveSeniority, resolveTitle } from '../classification-overrides'
 import { standardizeTitleWithLLM } from './standardize-title-llm'
 import { getCached, setCached } from './cache'
 import type { NormalizedPerson, MergedEnrichment, EnrichmentSource } from './types'
@@ -263,12 +264,13 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
     results.length > 0 || merged.linkedinUrl || extras.beehiiv || extras.stripe ? 'partial' : 'failed'
 
   // ── Standardize derived values ──────────────────────────────────
-  // Local TITLE_BANK is fast + free for common cases; falls back to Claude
-  // (gpriday/job-titles classifier) for unknowns when ANTHROPIC_API_KEY is set.
-  const localCanonical = standardizeTitle(merged.jobTitle)
+  // Override-aware: classification_overrides table → TITLE_BANK → LLM
+  // fallback. Both resolveSeniority/resolveTitle are async because they
+  // consult a cached DB layer for user-edited overrides.
+  const localCanonical = await resolveTitle(merged.jobTitle)
   const llmCanonical = !localCanonical ? await standardizeTitleWithLLM(merged.jobTitle || '') : undefined
   const standardized = {
-    seniority: standardizeSeniority(merged.jobTitle, merged.seniority),
+    seniority: await resolveSeniority(merged.jobTitle, merged.seniority),
     jobTitleCanonical: localCanonical || llmCanonical,
     industry: standardizeIndustry(merged.industry),
   }
