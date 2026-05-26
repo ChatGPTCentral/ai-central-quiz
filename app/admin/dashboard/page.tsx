@@ -197,6 +197,7 @@ export default async function DashboardPage({
                 data={industryData}
                 maxRows={8}
                 uniformColor={PALETTE.asparagus}
+                expandable
               />
               <HorizontalBarChart
                 title="Role"
@@ -204,6 +205,7 @@ export default async function DashboardPage({
                 data={roleData}
                 maxRows={8}
                 uniformColor={PALETTE.azul}
+                expandable
               />
               <VerticalBarChart
                 title="Company size"

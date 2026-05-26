@@ -5,6 +5,19 @@ import HorizontalBarChart from './HorizontalBarChart'
 import { PALETTE } from '@/lib/palette'
 import { countryFlag } from '@/lib/country-flags'
 
+// Canonical list of US states + territories. Anything else appearing in `region`
+// for a US-tagged row is treated as misparsed data (e.g. "England", "Lagos")
+// and excluded from the US-state chart instead of corrupting the picture.
+const US_STATES = new Set([
+  'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware',
+  'Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky',
+  'Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri',
+  'Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York','North Carolina',
+  'North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island','South Carolina','South Dakota',
+  'Tennessee','Texas','Utah','Vermont','Virginia','Washington','West Virginia','Wisconsin','Wyoming',
+  'District of Columbia','Puerto Rico','Guam','U.S. Virgin Islands',
+])
+
 interface RowSlim {
   country?: string | null
   region?: string | null
@@ -26,14 +39,22 @@ export default function CountryChart({ rows, subtitle }: Props) {
     const counts = new Map<string, number>()
     for (const r of rows) {
       let key: string | undefined
-      if (group === 'continent') key = (r.continent || 'Unknown').trim()
-      else if (group === 'country') key = (r.country || 'Unknown').trim()
-      else {
-        // US state — only for US rows
+      if (group === 'continent') {
+        if (!r.continent) continue       // drop unclassified — was creating noisy "Unknown" bucket
+        key = r.continent.trim()
+      } else if (group === 'country') {
+        if (!r.country) continue         // same — only chart rows with a real country
+        key = r.country.trim()
+      } else {
+        // US state — only for US rows AND only those whose region looks like a real US state.
         const c = (r.country || '').toLowerCase()
         const isUS = c === 'united states' || c === 'usa' || c === 'us'
         if (!isUS) continue
-        key = (r.region || 'Unknown US').trim()
+        if (!r.region) continue          // skip "Unknown US" — meaningless bucket
+        // Filter out non-US region values that got into US rows by Apify/Apollo
+        // misparses (e.g. region='England' on a US-tagged row).
+        if (!US_STATES.has(r.region.trim())) continue
+        key = r.region.trim()
       }
       if (!key) continue
       counts.set(key, (counts.get(key) || 0) + 1)
@@ -133,7 +154,7 @@ function FullScreenCountry({
           </div>
         </header>
         <div className="flex-1 overflow-auto p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+          <div className="flex flex-col gap-2">
             {sorted.map((r) => {
               const pct = total > 0 ? (r.value / total) * 100 : 0
               const width = (r.value / max) * 100

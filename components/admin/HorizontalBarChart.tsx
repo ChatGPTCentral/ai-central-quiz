@@ -26,13 +26,16 @@ interface Props {
   orderedLabels?: string[]
   /** When true, render a smooth density curve over the bar tips. */
   densityOverlay?: boolean
+  /** When true, show an "Expand" link that opens a fullscreen modal with all rows. */
+  expandable?: boolean
 }
 
 export default function HorizontalBarChart({
   title, subtitle, data, maxRows = 10, groupRest = true, uniformColor, rightAction, defaultMode = 'count',
-  orderedLabels, densityOverlay,
+  orderedLabels, densityOverlay, expandable,
 }: Props) {
   const [mode, setMode] = useState<'count' | 'percent'>(defaultMode)
+  const [expanded, setExpanded] = useState(false)
 
   const { rows, total, max } = useMemo(() => {
     let rows: BarDatum[]
@@ -62,6 +65,14 @@ export default function HorizontalBarChart({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {rightAction}
+          {expandable && data.length > maxRows && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="text-[10px] font-bold uppercase tracking-wider text-[#046BB1] hover:underline"
+            >
+              Expand
+            </button>
+          )}
           {/* count/% toggle */}
           <div className="flex bg-[#F5F5F5] rounded-md p-0.5">
             {(['count', 'percent'] as const).map(m => (
@@ -106,7 +117,56 @@ export default function HorizontalBarChart({
           <DensityCurve rows={rows} max={max} />
         )}
       </div>
+      {expanded && (
+        <ExpandedModal title={title} data={data} uniformColor={uniformColor} onClose={() => setExpanded(false)} />
+      )}
     </section>
+  )
+}
+
+/** Fullscreen modal — shows the complete dataset (no maxRows cap) in a single column. */
+function ExpandedModal({
+  title, data, uniformColor, onClose,
+}: { title: string; data: BarDatum[]; uniformColor?: string; onClose: () => void }) {
+  const sorted = [...data].sort((a, b) => b.value - a.value)
+  const total = sorted.reduce((a, b) => a + b.value, 0)
+  const max = sorted[0]?.value || 1
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-6" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl w-full max-w-3xl max-h-[88vh] overflow-hidden flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <header className="flex items-center justify-between px-6 py-4 border-b border-[#E8E4DF]">
+          <div>
+            <h2 className="text-lg font-black text-[#333333]">{title}</h2>
+            <p className="text-xs text-[#9C9C9C]">
+              {sorted.length} categories · {total.toLocaleString()} records
+            </p>
+          </div>
+          <button onClick={onClose} className="text-[#9C9C9C] hover:text-[#333333] text-2xl leading-none">×</button>
+        </header>
+        <div className="flex-1 overflow-auto p-6">
+          <div className="flex flex-col gap-2">
+            {sorted.map(r => {
+              const pct = total > 0 ? (r.value / total) * 100 : 0
+              const width = (r.value / max) * 100
+              const color = r.color || uniformColor || colorForLabel(r.label, CHART_COLORS)
+              return (
+                <div key={r.label} className="flex items-center gap-3 text-[12px] py-1.5 border-b border-[#F5F5F5]">
+                  <div className="flex-1 truncate font-medium text-[#333333]" title={r.label}>{r.label}</div>
+                  <div className="w-48 h-2 bg-[#F5F5F5] rounded-full overflow-hidden shrink-0">
+                    <div className="h-full" style={{ width: `${width}%`, backgroundColor: color }} />
+                  </div>
+                  <div className="w-12 text-right tabular-nums font-semibold text-[#333333]">{r.value}</div>
+                  <div className="w-14 text-right tabular-nums text-[#9C9C9C]">{pct.toFixed(1)}%</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
