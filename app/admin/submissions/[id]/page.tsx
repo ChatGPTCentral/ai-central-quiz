@@ -285,7 +285,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         </div>
       </details>
 
-      <DeleteButton id={item.id} />
+      <DeleteButton id={item.id} archivedAt={item.archivedAt} />
     </div>
   )
 }

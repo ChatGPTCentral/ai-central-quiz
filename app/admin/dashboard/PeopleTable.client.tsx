@@ -478,7 +478,7 @@ const COLUMNS: Column[] = [
     cell: ({ s, deleteRow }) => (
       <button
         onClick={(e) => { e.stopPropagation(); deleteRow(s.id, s.name || s.email) }}
-        title="Delete this record"
+        title="Archive this row (soft-delete; resurfaces on re-submit)"
         className="px-1.5 py-1 rounded-md text-[#9C9C9C] hover:bg-[#FEE3E3] hover:text-[#BE3B3B] transition-colors text-base leading-none"
       >…</button>
     ),
@@ -593,13 +593,15 @@ export default function PeopleTable({ items }: Props) {
   }
 
   async function deleteRow(id: string, label: string) {
-    if (!confirm(`Permanently delete this record (${label})?`)) return
+    // Soft-archive by default. Shift-click on the trigger upgrades to hard-delete
+    // via the deleteHard helper below.
+    if (!confirm(`Archive this record (${label})?\n\nThe row stays in the database but disappears from charts + lists. It auto-resurfaces if the same email submits the quiz again.`)) return
     try {
       const res = await fetch(`/api/admin/submissions/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setRemovedIds(prev => { const next = new Set(prev); next.add(id); return next })
       } else {
-        alert('Delete failed')
+        alert('Archive failed')
       }
     } catch {
       alert('Network error')

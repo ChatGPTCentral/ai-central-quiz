@@ -20,10 +20,40 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json(item)
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+/**
+ * DELETE — soft-archive by default (sets archived_at = now). Pass
+ * `?hard=1` for a true permanent delete (data is unrecoverable).
+ *
+ * Archived rows are excluded from every default query (dashboard charts,
+ * submissions list, exports). They re-surface if a new submission comes
+ * in for the same email (auto-clears archived_at in saveSubmission), or
+ * if the user explicitly browses with onlyArchived=1.
+ */
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  await deleteSubmission(params.id)
-  return NextResponse.json({ success: true })
+  const url = new URL(req.url)
+  if (url.searchParams.get('hard') === '1') {
+    await deleteSubmission(params.id)
+    return NextResponse.json({ success: true, mode: 'hard-delete' })
+  }
+  const { error } = await client().from('submissions').update({ archived_at: new Date().toISOString() }).eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true, mode: 'archived' })
+}
+
+/**
+ * POST — toggle archive state explicitly.
+ * Body: { archived: boolean }
+ */
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  let body: { archived?: boolean }
+  try { body = await req.json() }
+  catch { return NextResponse.json({ error: 'Invalid body' }, { status: 400 }) }
+  const next = body.archived ? new Date().toISOString() : null
+  const { error } = await client().from('submissions').update({ archived_at: next }).eq('id', params.id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true, archived: !!body.archived })
 }
 
 // Whitelist of editable fields → DB column names. Every column the user can

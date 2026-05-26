@@ -29,6 +29,7 @@ export default function SavedSearches({
   searchParams: Record<string, string | undefined>
 }) {
   const current = new Set((searchParams.missing || '').split(',').map(s => s.trim()).filter(Boolean))
+  const onlyArchived = searchParams.onlyArchived === '1'
 
   function hrefFor(key: Key | 'all') {
     const sp = new URLSearchParams(searchParams as Record<string, string>)
@@ -36,7 +37,6 @@ export default function SavedSearches({
     if (key === 'all') {
       sp.delete('missing')
     } else {
-      // Toggle this key in the missing list
       const next = new Set(current)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -46,7 +46,15 @@ export default function SavedSearches({
     return `/admin/submissions?${sp.toString()}`
   }
 
-  const noneActive = current.size === 0
+  function archiveHref() {
+    const sp = new URLSearchParams(searchParams as Record<string, string>)
+    sp.delete('offset')
+    if (onlyArchived) sp.delete('onlyArchived')
+    else sp.set('onlyArchived', '1')
+    return `/admin/submissions?${sp.toString()}`
+  }
+
+  const noneActive = current.size === 0 && !onlyArchived
 
   return (
     <section className="mb-4">
@@ -82,6 +90,18 @@ export default function SavedSearches({
             </Link>
           )
         })}
+        <Link
+          href={archiveHref()}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ml-auto ${
+            onlyArchived
+              ? 'bg-[#9C9C9C] text-white'
+              : 'bg-white border border-[#E8E4DF] text-[#9C9C9C] hover:bg-[#F5F5F5]'
+          }`}
+          title={onlyArchived ? 'Showing only archived rows — click to exit' : 'Browse archived rows'}
+        >
+          <span className="text-[12px]">🗄️</span>
+          {onlyArchived ? 'Showing archive' : 'Archive'}
+        </Link>
       </div>
     </section>
   )

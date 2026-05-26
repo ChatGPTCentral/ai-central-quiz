@@ -39,6 +39,10 @@ export interface DashboardFilters {
   missing?: ('enrichment' | 'linkedin' | 'photo' | 'sex' | 'age' | 'company' | 'country' | 'industry' | 'beehiiv' | 'stripe')[]
   /** Free-form advanced filter tree (AND/OR rules with per-field operators). */
   spec?: FilterSpec
+  /** Include rows where archived_at IS NOT NULL. Default false. */
+  includeArchived?: boolean
+  /** Show ONLY archived rows (for the archive browser). */
+  onlyArchived?: boolean
   scoreMin?: number
   scoreMax?: number
   workArea?: string  // substring match on the CSV column
@@ -77,6 +81,8 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
     workArea: sp.get('workArea') || undefined,
     search: sp.get('q') || undefined,
     spec: decodeSpec(sp.get('spec')),
+    includeArchived: sp.get('includeArchived') === '1' ? true : undefined,
+    onlyArchived: sp.get('onlyArchived') === '1' ? true : undefined,
   }
 }
 
@@ -138,6 +144,15 @@ function applyFilters(q: any, f: DashboardFilters): any {
     r = r.or(`name.ilike.%${f.search}%,email.ilike.%${f.search}%,company_name.ilike.%${f.search}%`)
   }
   if (f.spec) r = applyFilterSpec(r, f.spec)
+  // Soft-delete handling: by default exclude archived rows from every view
+  // (dashboard charts, submissions list, exports). Two opt-outs:
+  //   - includeArchived=1  → show both active + archived
+  //   - onlyArchived=1     → show only archived (the archive browser)
+  if (f.onlyArchived) {
+    r = r.not('archived_at', 'is', null)
+  } else if (!f.includeArchived) {
+    r = r.is('archived_at', null)
+  }
   return r
 }
 

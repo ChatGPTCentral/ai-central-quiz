@@ -46,6 +46,8 @@ export interface StoredSubmission {
   enrichmentRaw?: Record<string, NormalizedPerson['raw']>
   enrichmentStatus?: 'complete' | 'partial' | 'failed'
   enrichedAt?: string  // ISO timestamp of last successful enrichment run
+  archivedAt?: string  // soft-delete marker; row excluded from default queries
+                       // when set. Auto-cleared on re-submit (auto-resurface).
   // Beehiiv + Stripe (email-keyed enrichment, free)
   utmSourceBeehiiv?: string
   subscriptionTier?: string
@@ -129,6 +131,7 @@ export interface DbRow {
   enrichment_raw: Record<string, NormalizedPerson['raw']> | null
   enrichment_status: 'complete' | 'partial' | 'failed' | null
   enriched_at: string | null
+  archived_at: string | null
   source: string | null
   age_bracket: string | null
   buying_intent: string | null
@@ -188,6 +191,7 @@ function toRow(s: StoredSubmission): DbRow {
     enrichment_raw: s.enrichmentRaw ?? null,
     enrichment_status: s.enrichmentStatus ?? null,
     enriched_at: s.enrichedAt ?? null,
+    archived_at: s.archivedAt ?? null,
     source: s.source || 'quiz_v2',
     age_bracket: s.ageBracket || null,
     buying_intent: s.buyingIntent || null,
@@ -253,6 +257,7 @@ export function fromRow(r: DbRow): StoredSubmission {
     enrichmentRaw: r.enrichment_raw ?? undefined,
     enrichmentStatus: r.enrichment_status ?? undefined,
     enrichedAt: r.enriched_at ?? undefined,
+    archivedAt: r.archived_at ?? undefined,
     source: (r.source as StoredSubmission['source']) ?? undefined,
     ageBracket: r.age_bracket ?? undefined,
     buyingIntent: r.buying_intent ?? undefined,
@@ -305,6 +310,9 @@ export async function saveSubmission(s: StoredSubmission): Promise<void> {
     ip: s.ip || existing.ip,
     userAgent: s.userAgent || existing.userAgent,
     source: 'quiz_v2',
+    // Auto-resurface: a new submission for this email clears the archive
+    // marker so the row reappears in the dashboard / list views.
+    archivedAt: undefined,
   }
 
   // Enrichment: only fill if missing or previously failed
