@@ -34,6 +34,9 @@ const LIST_COLUMNS = [
   'lifetime_value_usd',
   // Persona segmentation
   'segment', 'segment_score', 'segment_reason', 'segmented_at',
+  // SANDBOX v2 — Stage + Persona
+  'stage', 'stage_score', 'stage_reason', 'persona', 'persona_reason', 'staged_at',
+  'frequency_score', 'depth_score', 'breadth_score', 'momentum', 'friction', 'intent_30d',
 ].join(', ')
 
 let _client: SupabaseClient | null = null

@@ -61,6 +61,21 @@ export interface StoredSubmission {
   segmentScore?: number
   segmentReason?: string
   segmentedAt?: string
+  // SANDBOX v2 — laddered Stage + Persona (lib/segmentation-v2.ts).
+  // Lives alongside `segment` so we can compare and only flip later.
+  stage?: string                // S0_unaware..S5_builder | unknown
+  stageScore?: number           // 0..5, -1 = unknown
+  stageReason?: string
+  persona?: string              // decision_maker | operator | maker | learner | unknown
+  personaReason?: string
+  stagedAt?: string             // ISO timestamp of last v2 classification
+  // Future survey-v2 fields (NULL until quiz v2 ships)
+  frequencyScore?: number       // 0..3 (last-7-days usage)
+  depthScore?: number           // 0..5 (count of depth ticks)
+  breadthScore?: number         // 0..N (active tool count)
+  momentum?: number             // -1..+2 (vs 6 months ago)
+  friction?: string             // enum: where they're stuck
+  intent30d?: string            // enum: 30-day intent
   // Beehiiv + Stripe (email-keyed enrichment, free)
   utmSourceBeehiiv?: string
   subscriptionTier?: string
@@ -155,6 +170,19 @@ export interface DbRow {
   segment_score: number | null
   segment_reason: string | null
   segmented_at: string | null
+  // SANDBOX v2 columns
+  stage: string | null
+  stage_score: number | null
+  stage_reason: string | null
+  persona: string | null
+  persona_reason: string | null
+  staged_at: string | null
+  frequency_score: number | null
+  depth_score: number | null
+  breadth_score: number | null
+  momentum: number | null
+  friction: string | null
+  intent_30d: string | null
   source: string | null
   age_bracket: string | null
   buying_intent: string | null
@@ -225,6 +253,18 @@ function toRow(s: StoredSubmission): DbRow {
     segment_score: s.segmentScore ?? null,
     segment_reason: s.segmentReason ?? null,
     segmented_at: s.segmentedAt ?? null,
+    stage: s.stage ?? null,
+    stage_score: s.stageScore ?? null,
+    stage_reason: s.stageReason ?? null,
+    persona: s.persona ?? null,
+    persona_reason: s.personaReason ?? null,
+    staged_at: s.stagedAt ?? null,
+    frequency_score: s.frequencyScore ?? null,
+    depth_score: s.depthScore ?? null,
+    breadth_score: s.breadthScore ?? null,
+    momentum: s.momentum ?? null,
+    friction: s.friction ?? null,
+    intent_30d: s.intent30d ?? null,
     source: s.source || 'quiz_v2',
     age_bracket: s.ageBracket || null,
     buying_intent: s.buyingIntent || null,
@@ -302,6 +342,18 @@ export function fromRow(r: DbRow): StoredSubmission {
     segmentScore: r.segment_score ?? undefined,
     segmentReason: r.segment_reason ?? undefined,
     segmentedAt: r.segmented_at ?? undefined,
+    stage: r.stage ?? undefined,
+    stageScore: r.stage_score ?? undefined,
+    stageReason: r.stage_reason ?? undefined,
+    persona: r.persona ?? undefined,
+    personaReason: r.persona_reason ?? undefined,
+    stagedAt: r.staged_at ?? undefined,
+    frequencyScore: r.frequency_score ?? undefined,
+    depthScore: r.depth_score ?? undefined,
+    breadthScore: r.breadth_score ?? undefined,
+    momentum: r.momentum ?? undefined,
+    friction: r.friction ?? undefined,
+    intent30d: r.intent_30d ?? undefined,
     source: (r.source as StoredSubmission['source']) ?? undefined,
     ageBracket: r.age_bracket ?? undefined,
     buyingIntent: r.buying_intent ?? undefined,
