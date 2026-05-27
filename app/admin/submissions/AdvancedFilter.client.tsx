@@ -35,25 +35,98 @@ const FIELD_LABEL: Record<string, string> = Object.fromEntries(
   FIELD_ORDER.map(f => [f, f.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).replace(/\bAi\b/, 'AI').replace(/\bUtm\b/, 'UTM').replace(/\bId\b/, 'ID').replace(/\bUsd\b/, 'USD').replace(/\bUrl\b/, 'URL')])
 )
 
-interface Props {
-  storageKey?: string
-}
+// ── Suggested filters ────────────────────────────────────────────
+// Pre-canned filter specs that surface in the "Suggested" tab.
+// Order = priority. Add new ones over time.
+const SUGGESTED: { name: string; emoji: string; description: string; spec: FilterGroup }[] = [
+  {
+    name: 'High-value customers', emoji: '💎',
+    description: 'Lifetime $ paid ≥ $100',
+    spec: { combinator: 'and', rules: [{ field: 'lifetimeValueUsd', op: 'gte', value: 100 }] },
+  },
+  {
+    name: 'Active paying subscribers', emoji: '🔥',
+    description: 'Beehiiv active + LTV > 0',
+    spec: { combinator: 'and', rules: [
+      { field: 'beehiivStatus', op: 'eq', value: 'active' },
+      { field: 'lifetimeValueUsd', op: 'gt', value: 0 },
+    ] },
+  },
+  {
+    name: 'Stripe-only (no quiz)', emoji: '💳',
+    description: 'Customers who paid but never took the quiz',
+    spec: { combinator: 'and', rules: [{ field: 'source', op: 'eq', value: 'stripe' }] },
+  },
+  {
+    name: 'Founders + C-Suite', emoji: '👑',
+    description: 'Decision-makers',
+    spec: { combinator: 'and', rules: [{ field: 'seniority', op: 'in', value: ['Founder', 'C-Suite'] }] },
+  },
+  {
+    name: 'Churned (unsubscribed)', emoji: '👋',
+    description: 'Beehiiv unsubscribed',
+    spec: { combinator: 'and', rules: [{ field: 'beehiivStatus', op: 'eq', value: 'unsubscribed' }] },
+  },
+  {
+    name: 'Missing LinkedIn', emoji: '🔗',
+    description: 'No LinkedIn URL yet',
+    spec: { combinator: 'and', rules: [{ field: 'linkedinUrl', op: 'empty' }] },
+  },
+  {
+    name: 'United States cohort', emoji: '🇺🇸',
+    description: 'Country is US',
+    spec: { combinator: 'and', rules: [{ field: 'country', op: 'eq', value: 'United States' }] },
+  },
+]
 
-export default function AdvancedFilter({ storageKey = 'submissions' }: Props) {
+// ── localStorage keys ────────────────────────────────────────────
+const SAVED_KEY = 'admin_saved_filters_v1'
+const RECENT_KEY = 'admin_recent_filters_v1'
+const RECENT_LIMIT = 10
+
+interface SavedFilter { name: string; spec: FilterGroup }
+interface RecentFilter { spec: FilterGroup; at: number }
+
+function loadSaved(): SavedFilter[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]') } catch { return [] }
+}
+function loadRecent(): RecentFilter[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') } catch { return [] }
+}
+function persistSaved(s: SavedFilter[]) { try { localStorage.setItem(SAVED_KEY, JSON.stringify(s)) } catch { /* noop */ } }
+function persistRecent(r: RecentFilter[]) { try { localStorage.setItem(RECENT_KEY, JSON.stringify(r)) } catch { /* noop */ } }
+
+// ── Component ────────────────────────────────────────────────────
+
+export default function AdvancedFilter() {
   const router = useRouter()
   const sp = useSearchParams()
   const [group, setGroup] = useState<FilterGroup>(() => decodeFromSearch(sp.get('spec')))
   const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<'builder' | 'saved' | 'suggested' | 'recent'>('builder')
+  const [saved, setSaved] = useState<SavedFilter[]>([])
+  const [recent, setRecent] = useState<RecentFilter[]>([])
 
-  // Apply: push to URL
-  function apply() {
+  useEffect(() => { setSaved(loadSaved()); setRecent(loadRecent()) }, [])
+  useEffect(() => { setGroup(decodeFromSearch(sp.get('spec'))) }, [sp])
+
+  function applySpec(spec: FilterGroup) {
     const u = new URLSearchParams(sp.toString())
-    if (group.rules.length === 0) u.delete('spec')
-    else u.set('spec', encodeURIComponent(JSON.stringify(group)))
+    if (spec.rules.length === 0) u.delete('spec')
+    else u.set('spec', encodeURIComponent(JSON.stringify(spec)))
     u.delete('offset')
     router.push(`?${u.toString()}`)
     setOpen(false)
+
+    // Track in recents (skip empty)
+    if (spec.rules.length > 0) {
+      const next = [{ spec, at: Date.now() }, ...recent.filter(r => JSON.stringify(r.spec) !== JSON.stringify(spec))].slice(0, RECENT_LIMIT)
+      setRecent(next); persistRecent(next)
+    }
   }
+
   function clearAll() {
     setGroup({ combinator: 'and', rules: [] })
     const u = new URLSearchParams(sp.toString())
@@ -62,8 +135,17 @@ export default function AdvancedFilter({ storageKey = 'submissions' }: Props) {
     setOpen(false)
   }
 
-  // Sync state when URL changes externally
-  useEffect(() => { setGroup(decodeFromSearch(sp.get('spec'))) }, [sp])
+  function saveCurrent() {
+    if (group.rules.length === 0) return
+    const name = prompt('Name this filter:')?.trim()
+    if (!name) return
+    const next = [{ name, spec: group }, ...saved.filter(s => s.name !== name)]
+    setSaved(next); persistSaved(next)
+  }
+  function deleteSaved(name: string) {
+    const next = saved.filter(s => s.name !== name)
+    setSaved(next); persistSaved(next)
+  }
 
   const summary = useMemo(() => describeGroup(group), [group])
   const hasFilters = group.rules.length > 0
@@ -77,30 +159,134 @@ export default function AdvancedFilter({ storageKey = 'submissions' }: Props) {
             hasFilters ? 'bg-[#046BB1] text-white border-[#046BB1]' : 'bg-white text-[#333333] border-[#E8E4DF] hover:bg-[#FEF7E7]'
           }`}
         >
-          ⚙ Advanced filter
+          ⚙ Filters
           {hasFilters && <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-white text-[#046BB1] text-[10px] font-black">{countRules(group)}</span>}
         </button>
         {hasFilters && (
           <>
-            <span className="text-[11px] text-[#9C9C9C]">{summary}</span>
+            <span className="text-[11px] text-[#9C9C9C] truncate max-w-2xl" title={summary}>{summary}</span>
+            <button onClick={saveCurrent} className="text-[10px] font-bold uppercase tracking-wider text-[#046BB1] hover:underline">Save</button>
             <button onClick={clearAll} className="text-[10px] font-bold uppercase tracking-wider text-[#BE3B3B] hover:underline">Clear</button>
           </>
         )}
-        <span className="text-[9px] text-[#9C9C9C] ml-auto">stack: {storageKey}</span>
       </div>
 
       {open && (
-        <div className="mt-3 bg-white border border-[#E8E4DF] rounded-xl shadow-lg p-4">
-          <FilterGroupEditor group={group} onChange={setGroup} root />
-          <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-[#E8E4DF]">
-            <button onClick={() => setOpen(false)} className="text-[11px] font-medium text-[#9C9C9C] px-3 py-1.5 hover:text-[#333333]">Close</button>
-            <button onClick={apply} className="px-4 py-1.5 rounded-md bg-[#333333] text-[#FFFDFA] text-[11px] font-bold uppercase tracking-wider hover:opacity-90">Apply filter</button>
+        <div className="mt-3 bg-white border border-[#E8E4DF] rounded-xl shadow-lg overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-[#E8E4DF] bg-[#FFFDFA]">
+            {([
+              { k: 'builder',   label: '⚙ Builder' },
+              { k: 'saved',     label: `★ Saved${saved.length ? ` (${saved.length})` : ''}` },
+              { k: 'suggested', label: '✨ Suggested' },
+              { k: 'recent',    label: `↻ Recent${recent.length ? ` (${recent.length})` : ''}` },
+            ] as const).map(t => (
+              <button
+                key={t.k}
+                onClick={() => setTab(t.k)}
+                className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                  tab === t.k ? 'bg-white text-[#333333] border-b-2 border-[#046BB1]' : 'text-[#9C9C9C] hover:text-[#333333]'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+            <button onClick={() => setOpen(false)} className="ml-auto px-4 text-[#9C9C9C] hover:text-[#333333]">×</button>
+          </div>
+
+          {/* Tab content */}
+          <div className="p-4">
+            {tab === 'builder' && (
+              <>
+                <FilterGroupEditor group={group} onChange={setGroup} root />
+                <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-[#E8E4DF]">
+                  {hasFilters && (
+                    <button onClick={saveCurrent} className="text-[11px] font-bold uppercase tracking-wider text-[#046BB1] hover:underline px-2">★ Save filter</button>
+                  )}
+                  <button onClick={() => setOpen(false)} className="text-[11px] font-medium text-[#9C9C9C] px-3 py-1.5 hover:text-[#333333]">Close</button>
+                  <button onClick={() => applySpec(group)} className="px-4 py-1.5 rounded-md bg-[#333333] text-[#FFFDFA] text-[11px] font-bold uppercase tracking-wider hover:opacity-90">Apply filter</button>
+                </div>
+              </>
+            )}
+            {tab === 'saved' && (
+              <SavedList items={saved} onApply={s => applySpec(s.spec)} onDelete={s => deleteSaved(s.name)} />
+            )}
+            {tab === 'suggested' && (
+              <SuggestedList items={SUGGESTED} onApply={s => applySpec(s.spec)} />
+            )}
+            {tab === 'recent' && (
+              <RecentList items={recent} onApply={s => applySpec(s.spec)} />
+            )}
           </div>
         </div>
       )}
     </div>
   )
 }
+
+// ── Tabs ─────────────────────────────────────────────────────────
+
+function SavedList({ items, onApply, onDelete }: { items: SavedFilter[]; onApply: (s: SavedFilter) => void; onDelete: (s: SavedFilter) => void }) {
+  if (items.length === 0) {
+    return <p className="text-[12px] text-[#9C9C9C] py-6 text-center">No saved filters yet. Build a filter in the Builder tab and click ★ Save.</p>
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map(s => (
+        <div key={s.name} className="flex items-center gap-3 p-2 rounded border border-[#E8E4DF] hover:bg-[#FFFDFA]">
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-bold text-[#333333]">{s.name}</div>
+            <div className="text-[10px] text-[#9C9C9C] truncate">{describeGroup(s.spec)}</div>
+          </div>
+          <button onClick={() => onApply(s)} className="text-[10px] font-bold uppercase tracking-wider text-[#046BB1] hover:underline">Apply</button>
+          <button onClick={() => onDelete(s)} className="text-[10px] text-[#BE3B3B] hover:underline">Delete</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SuggestedList({ items, onApply }: { items: { name: string; emoji: string; description: string; spec: FilterGroup }[]; onApply: (s: { spec: FilterGroup }) => void }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      {items.map(s => (
+        <button
+          key={s.name}
+          onClick={() => onApply(s)}
+          className="text-left p-3 rounded border border-[#E8E4DF] hover:border-[#046BB1] hover:bg-[#FEF7E7] transition-colors"
+        >
+          <div className="text-[12px] font-bold text-[#333333]">{s.emoji} {s.name}</div>
+          <div className="text-[10px] text-[#9C9C9C] mt-0.5">{s.description}</div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function RecentList({ items, onApply }: { items: RecentFilter[]; onApply: (s: { spec: FilterGroup }) => void }) {
+  if (items.length === 0) {
+    return <p className="text-[12px] text-[#9C9C9C] py-6 text-center">No recent filters yet. Apply a filter and it'll show up here.</p>
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map((r, i) => (
+        <button
+          key={i}
+          onClick={() => onApply(r)}
+          className="text-left flex items-center gap-3 p-2 rounded border border-[#E8E4DF] hover:bg-[#FEF7E7]"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] text-[#333333] truncate">{describeGroup(r.spec)}</div>
+            <div className="text-[10px] text-[#9C9C9C]">{new Date(r.at).toLocaleString()}</div>
+          </div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#046BB1]">Apply</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ── Rule + Group editors ─────────────────────────────────────────
 
 function FilterGroupEditor({ group, onChange, root }: { group: FilterGroup; onChange: (g: FilterGroup) => void; root?: boolean }) {
   function addRule() {
@@ -160,10 +346,6 @@ function RuleEditor({ rule, onChange, onRemove }: { rule: FilterRule; onChange: 
   const isBetween = rule.op === 'between'
   const isNumeric = meta?.type === 'number'
 
-  // Changing the field can invalidate the current op (e.g. 'contains' on a
-  // numeric column blows up with "operator does not exist: numeric ~~*").
-  // Reset op + value to safe defaults whenever the new field can't host the
-  // current op.
   function changeField(nextField: string) {
     const nextMeta = FILTERABLE_FIELDS[nextField]
     const nextOps = nextMeta ? OPS_FOR_TYPE[nextMeta.type] || OPS_FOR_TYPE.text : OPS_FOR_TYPE.text

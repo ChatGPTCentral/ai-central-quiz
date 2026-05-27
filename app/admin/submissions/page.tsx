@@ -1,25 +1,16 @@
 import Link from 'next/link'
 import {
   filteredSubmissions,
-  facetCounts,
   parseFilters,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
-import Filters from '../dashboard/Filters.client'
 import ViewToggle from './ViewToggle.client'
 import SavedSearches from './SavedSearches'
 import AdvancedFilter from './AdvancedFilter.client'
-import { RightSidebar } from '@/components/admin/AdminShell.client'
 
 export const dynamic = 'force-dynamic'
 
 const PAGE_SIZE = 100
-
-const WORK_AREAS = [
-  'Marketing', 'Sales', 'Coding', 'Data analytics', 'Finance', 'Legal',
-  'Business operations', 'Consulting', 'Project management', 'Writing',
-  'Research', 'Government', 'Reading/UX', 'Student',
-]
 
 /**
  * Pure-table submissions view. Same `PeopleTable` component as the dashboard
@@ -39,46 +30,10 @@ export default async function SubmissionsListPage({
   let items: Awaited<ReturnType<typeof filteredSubmissions>>['items'] = []
   let total = 0
 
-  let sourceFacet: { value: string; count: number }[] = []
-  let archetypeFacet: { value: string; count: number }[] = []
-  let seniorityFacet: { value: string; count: number }[] = []
-  let industryFacet: { value: string; count: number }[] = []
-  let countryFacet: { value: string; count: number }[] = []
-  let ageFacet: { value: string; count: number }[] = []
-  let tierFacet: { value: string; count: number }[] = []
-  let beehiivStatusFacet: { value: string; count: number }[] = []
-  let sexFacet: { value: string; count: number }[] = []
-  let enrichmentFacet: { value: string; count: number }[] = []
-  let companySizeFacet: { value: string; count: number }[] = []
-
   try {
-    const [list, fSrc, fA, fS, fI, fC, fAge, fT, fBS, fSex, fES, fCS] = await Promise.all([
-      filteredSubmissions(filters, { offset, limit: PAGE_SIZE }),
-      facetCounts(filters, 'source'),
-      facetCounts(filters, 'archetype'),
-      facetCounts(filters, 'seniority'),
-      facetCounts(filters, 'company_industry'),
-      facetCounts(filters, 'country'),
-      facetCounts(filters, 'age_bracket'),
-      facetCounts(filters, 'subscription_tier'),
-      facetCounts(filters, 'beehiiv_status'),
-      facetCounts(filters, 'sex_ai_estimate'),
-      facetCounts(filters, 'enrichment_status'),
-      facetCounts(filters, 'company_size'),
-    ])
+    const list = await filteredSubmissions(filters, { offset, limit: PAGE_SIZE })
     items = list.items
     total = list.total
-    sourceFacet = fSrc
-    archetypeFacet = fA
-    seniorityFacet = fS
-    industryFacet = fI
-    countryFacet = fC
-    ageFacet = fAge
-    tierFacet = fT
-    beehiivStatusFacet = fBS
-    sexFacet = fSex
-    enrichmentFacet = fES
-    companySizeFacet = fCS
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
   }
@@ -138,24 +93,6 @@ export default async function SubmissionsListPage({
         )}
       </div>
 
-      <RightSidebar title="Filters" storageKey="admin_submissions_filters_collapsed">
-        <Filters
-          workAreas={WORK_AREAS}
-          facets={[
-            { key: 'source',           label: 'Source',           values: sourceFacet },
-            { key: 'enrichmentStatus', label: 'Enrichment',       values: enrichmentFacet },
-            { key: 'subscriptionTier', label: 'Subscription tier', values: tierFacet },
-            { key: 'beehiivStatus',    label: 'Beehiiv status',   values: beehiivStatusFacet },
-            { key: 'age',              label: 'Age bracket',      values: ageFacet },
-            { key: 'sexAiEstimate',    label: 'Sex (AI)',         values: sexFacet },
-            { key: 'archetype',        label: 'Archetype',        values: archetypeFacet },
-            { key: 'seniority',        label: 'Seniority',        values: seniorityFacet },
-            { key: 'industry',         label: 'Industry',         values: industryFacet },
-            { key: 'companySize',      label: 'Company size',     values: companySizeFacet },
-            { key: 'country',          label: 'Country',          values: countryFacet },
-          ]}
-        />
-      </RightSidebar>
     </div>
   )
 }

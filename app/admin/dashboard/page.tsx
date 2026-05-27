@@ -1,6 +1,5 @@
 import {
   filteredSubmissionsAll,
-  facetCounts,
   parseFilters,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
@@ -15,20 +14,12 @@ import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
 import RoleChart from '@/components/admin/RoleChart.client'
 import AgeChart from '@/components/admin/AgeChart.client'
 import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
-import Filters from './Filters.client'
-import { RightSidebar } from '@/components/admin/AdminShell.client'
 
 export const dynamic = 'force-dynamic'
 // Edge-cache for 30s — the dataset doesn't change between rapid navigations
 // and the dashboard's full-scan aggregations are the slowest page in the app.
 // Filter changes hit a different URL so they're not cached together.
 export const revalidate = 30
-
-const WORK_AREAS = [
-  'Marketing', 'Sales', 'Coding', 'Data analytics', 'Finance', 'Legal',
-  'Business operations', 'Consulting', 'Project management', 'Writing',
-  'Research', 'Government', 'Reading/UX', 'Student',
-]
 
 export default async function DashboardPage({
   searchParams,
@@ -41,31 +32,8 @@ export default async function DashboardPage({
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
 
-  // Sidebar facet groups (live counts based on current filters)
-  let sourceFacet: { value: string; count: number }[] = []
-  let archetypeFacet: { value: string; count: number }[] = []
-  let seniorityFacet: { value: string; count: number }[] = []
-  let industryFacet: { value: string; count: number }[] = []
-  let countryFacet: { value: string; count: number }[] = []
-  let ageFacet: { value: string; count: number }[] = []
-
   try {
-    const [all, fSrc, fA, fS, fI, fC, fAge] = await Promise.all([
-      filteredSubmissionsAll(filters),
-      facetCounts(filters, 'source'),
-      facetCounts(filters, 'archetype'),
-      facetCounts(filters, 'seniority'),
-      facetCounts(filters, 'company_industry'),
-      facetCounts(filters, 'country'),
-      facetCounts(filters, 'age_bracket'),
-    ])
-    allRows = all
-    sourceFacet = fSrc
-    archetypeFacet = fA
-    seniorityFacet = fS
-    industryFacet = fI
-    countryFacet = fC
-    ageFacet = fAge
+    allRows = await filteredSubmissionsAll(filters)
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
   }
@@ -269,20 +237,6 @@ export default async function DashboardPage({
 
       </div>
 
-      {/* Right collapsible filter sidebar */}
-      <RightSidebar title="Filters">
-        <Filters
-          workAreas={WORK_AREAS}
-          facets={[
-            { key: 'source',    label: 'Source',     values: sourceFacet },
-            { key: 'age',       label: 'Age bracket', values: ageFacet },
-            { key: 'archetype', label: 'Archetype',  values: archetypeFacet },
-            { key: 'seniority', label: 'Seniority',  values: seniorityFacet },
-            { key: 'industry',  label: 'Industry',   values: industryFacet },
-            { key: 'country',   label: 'Country',    values: countryFacet },
-          ]}
-        />
-      </RightSidebar>
     </div>
   )
 }
