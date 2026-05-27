@@ -71,7 +71,7 @@ export interface V2Result {
   }
 }
 
-export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): Promise<V2Result> {
+export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza?: boolean } = {}): Promise<V2Result> {
   const email = input.email.trim().toLowerCase()
 
   // ── Cache check — protects API budget on re-runs (60-day TTL) ───
@@ -192,9 +192,11 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean } = {}): 
   }
 
   // ── Stage 5: Wiza — email-only fallback (no LinkedIn-URL endpoint) ──
-  // We still run it for any extra fields it might surface (phone, etc.) but
-  // it's strictly additive at this point.
-  try {
+  // Strictly additive on top of Apify. Skipped when opts.skipWiza=true to
+  // save ~$0.02/row on bulk imports.
+  if (opts.skipWiza) {
+    stages.push({ name: 'wiza', status: 'skipped', reason: 'skipWiza=true' })
+  } else try {
     tried.push('wiza')
     const wizaResult = await wizaProvider.lookup(ctx)
     if (wizaResult) {
