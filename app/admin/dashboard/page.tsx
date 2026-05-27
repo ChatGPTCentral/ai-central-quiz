@@ -60,24 +60,46 @@ export default async function DashboardPage({
   // Exclude AI "uncertain" classifications from the chart — they're noise.
   const isUncertain = (v?: string | null) => !v || v.toLowerCase() === 'uncertain'
 
-  const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
-  const tierData     = countBy(allRows, r => r.subscriptionTier)
+  // Acquisition attribution — three lenses on "where did they come from?"
+  //   utmQuizData       — quiz utm_source (UTM that drove them to take the survey)
+  //   utmNewsletterData — Beehiiv utm_source (UTM that drove their newsletter signup)
+  //   utmPaidData       — coalesce(beehiiv, quiz, 'Direct') for PAYING customers only
+  //                       → answers "where do paid conversions come from?"
+  const cleanUtm = (s?: string) => (s || '').trim() || null
+  const utmQuizData = countBy(allRows, r => cleanUtm(r.utmSource) || 'Direct / unknown')
+  const utmNewsletterData = countBy(allRows, r => cleanUtm(r.utmSourceBeehiiv) || 'Direct / unknown')
+  const utmPaidData = countBy(allRows, r => {
+    if (!r.lifetimeValueUsd || r.lifetimeValueUsd <= 0) return undefined  // only paying customers
+    return cleanUtm(r.utmSourceBeehiiv) || cleanUtm(r.utmSource) || 'Direct / unknown'
+  })
 
   // Products bought (Stripe) — aggregate by stripe product_id, label with
-  // canonical product name. Skips lines without a productId (trial-period
-  // rows, manual adjustments, etc. — they're noise, not real products).
+  // canonical product name. CRITICAL: must include EVERY paying customer,
+  // even those whose stripeProducts is empty (one-off charges without
+  // invoice line items, or pre-re-import legacy data). Those go into an
+  // "Other / unidentified product" bucket so N matches the LTV chart's N.
   const productAgg = new Map<string, { name: string; customers: number }>()
+  const OTHER_KEY = '__other__'
   for (const r of allRows) {
-    if (!r.stripeProducts?.length) continue
+    if (!r.lifetimeValueUsd || r.lifetimeValueUsd <= 0) continue  // only paying customers
+    let matchedAnyProduct = false
     const seenInRow = new Set<string>()
-    for (const p of r.stripeProducts) {
-      if (!p.productId) continue
-      if (seenInRow.has(p.productId)) continue  // count one customer per product, not one per purchase
-      seenInRow.add(p.productId)
-      const existing = productAgg.get(p.productId) || { name: p.name || p.productId, customers: 0 }
+    if (r.stripeProducts?.length) {
+      for (const p of r.stripeProducts) {
+        if (!p.productId) continue
+        if (seenInRow.has(p.productId)) continue
+        seenInRow.add(p.productId)
+        matchedAnyProduct = true
+        const existing = productAgg.get(p.productId) || { name: p.name || p.productId, customers: 0 }
+        existing.customers += 1
+        if (p.name) existing.name = p.name
+        productAgg.set(p.productId, existing)
+      }
+    }
+    if (!matchedAnyProduct) {
+      const existing = productAgg.get(OTHER_KEY) || { name: 'Other / one-off charge', customers: 0 }
       existing.customers += 1
-      if (p.name) existing.name = p.name
-      productAgg.set(p.productId, existing)
+      productAgg.set(OTHER_KEY, existing)
     }
   }
   const productData = Array.from(productAgg.values())
@@ -106,9 +128,10 @@ export default async function DashboardPage({
     sex:      sumOf(sexData),
     industry: sumOf(industryData),
     size:     sumOf(sizeData),
-    utm:      sumOf(utmData),
+    utmQuiz: sumOf(utmQuizData),
+    utmNewsletter: sumOf(utmNewsletterData),
+    utmPaid: sumOf(utmPaidData),
     geo:      allRows.filter(r => r.country).length,
-    tier:     sumOf(tierData),
     products: sumOf(productData),
   }
   const n = (k: number) => `N = ${k.toLocaleString()}`
@@ -160,23 +183,17 @@ export default async function DashboardPage({
 
             {/* ── MONEY / REVENUE ZONE (top of dashboard) ── */}
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Revenue</h2>
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <LifetimeValueChart values={allRows.map(r => r.lifetimeValueUsd)} />
-              <div className="flex flex-col gap-4">
+              {/* Products chart takes 2/3 of the row so long product names aren't cut */}
+              <div className="lg:col-span-2">
                 <HorizontalBarChart
                   title="Products bought"
                   subtitle={n(N.products) + ' paying customers'}
                   data={productData}
-                  maxRows={8}
+                  maxRows={10}
                   uniformColor={PALETTE.viridian}
                   expandable
-                />
-                <HorizontalBarChart
-                  title="Subscription tier"
-                  subtitle={n(N.tier)}
-                  data={tierData}
-                  maxRows={8}
-                  uniformColor={PALETTE.marianBlue}
                 />
               </div>
             </section>
@@ -223,13 +240,33 @@ export default async function DashboardPage({
 
             {/* ── ACQUISITION ZONE ── */}
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Acquisition</h2>
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+            <p className="text-[11px] text-[#9C9C9C] mb-3">
+              Three lenses on where the audience comes from. <strong>Paid conversions</strong> is the most actionable — coalesces Beehiiv source with quiz UTM, filtered to customers who actually paid.
+            </p>
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <HorizontalBarChart
-                title="UTM source"
-                subtitle={n(N.utm)}
-                data={utmData}
+                title="Paid conversions — channel"
+                subtitle={n(N.utmPaid) + ' paying customers'}
+                data={utmPaidData}
+                maxRows={10}
+                uniformColor={PALETTE.persianRed}
+                expandable
+              />
+              <HorizontalBarChart
+                title="Newsletter — Beehiiv UTM"
+                subtitle={n(N.utmNewsletter) + ' subscribers'}
+                data={utmNewsletterData}
+                maxRows={10}
+                uniformColor={PALETTE.marianBlue}
+                expandable
+              />
+              <HorizontalBarChart
+                title="Quiz — landing UTM"
+                subtitle={n(N.utmQuiz) + ' quiz takers'}
+                data={utmQuizData}
                 maxRows={10}
                 uniformColor={PALETTE.fulvous}
+                expandable
               />
             </section>
           </>
