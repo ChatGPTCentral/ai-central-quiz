@@ -90,17 +90,26 @@ export default async function DashboardPage({
   const utmData      = countBy(allRows, r => (r.utmSource || '').trim() || 'Direct / unknown')
   const tierData     = countBy(allRows, r => r.subscriptionTier)
 
-  // Products bought (Stripe) — aggregate count of customers per product name
-  const productCounts = new Map<string, number>()
+  // Products bought (Stripe) — aggregate by stripe product_id, label with
+  // canonical product name. Skips lines without a productId (trial-period
+  // rows, manual adjustments, etc. — they're noise, not real products).
+  const productAgg = new Map<string, { name: string; customers: number }>()
   for (const r of allRows) {
     if (!r.stripeProducts?.length) continue
+    const seenInRow = new Set<string>()
     for (const p of r.stripeProducts) {
-      const k = (p.name || 'Unknown').trim()
-      if (!k) continue
-      productCounts.set(k, (productCounts.get(k) || 0) + 1)
+      if (!p.productId) continue
+      if (seenInRow.has(p.productId)) continue  // count one customer per product, not one per purchase
+      seenInRow.add(p.productId)
+      const existing = productAgg.get(p.productId) || { name: p.name || p.productId, customers: 0 }
+      existing.customers += 1
+      if (p.name) existing.name = p.name
+      productAgg.set(p.productId, existing)
     }
   }
-  const productData = Array.from(productCounts.entries()).map(([label, value]) => ({ label, value }))
+  const productData = Array.from(productAgg.values())
+    .map(p => ({ label: p.name, value: p.customers }))
+    .sort((a, b) => b.value - a.value)
   const ageData      = countBy(allRows, r => {
     const v = r.ageBracket || r.ageAiEstimate
     return isUncertain(v) ? undefined : v

@@ -169,17 +169,24 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
         if (inv.status !== 'paid') continue
         invoiceCount++
         for (const line of inv.lines?.data || []) {
-          // line.price.product is either a string id or an expanded Product
-          const price = (line as unknown as { price?: { product?: string | { id?: string; name?: string } } }).price
-          const productId = typeof price?.product === 'string'
-            ? price.product
-            : price?.product?.id
-          const productName = typeof price?.product === 'object' ? price?.product?.name : undefined
-          const desc = line.description || productName || productId || 'unknown'
-          const key = productId || desc
-          const existing = productMap.get(key) || {
+          // Stripe API versions differ on where the product id lives:
+          //   legacy:  line.price.product (string id, or expanded object)
+          //   newer:   line.pricing.price_details.product
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const anyLine = line as any
+          const legacyProduct = anyLine.price?.product
+          const newProduct    = anyLine.pricing?.price_details?.product
+          const productId =
+            typeof legacyProduct === 'string' ? legacyProduct :
+            (legacyProduct && typeof legacyProduct === 'object' && legacyProduct.id) ? legacyProduct.id :
+            typeof newProduct === 'string' ? newProduct :
+            undefined
+          // Skip lines without a real productId (trial-period lines, manual adjustments, etc.)
+          if (!productId) continue
+          const existing = productMap.get(productId) || {
             productId,
-            name: productName || desc,
+            // Name is filled later (post-aggregation) from stripe.products.retrieve()
+            name: undefined as string | undefined,
             totalAmount: 0,
             count: 0,
           }
@@ -189,7 +196,7 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
           const tsIso = new Date(ts).toISOString()
           if (!existing.firstPaidAt || tsIso < existing.firstPaidAt) existing.firstPaidAt = tsIso
           if (!existing.lastPaidAt  || tsIso > existing.lastPaidAt)  existing.lastPaidAt  = tsIso
-          productMap.set(key, existing)
+          productMap.set(productId, existing)
         }
       }
 
@@ -256,6 +263,23 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
     }
   }))
   if (queue.length > 0) hasMore = true
+
+  // Back-fill canonical product names from stripe.products.list (small set;
+  // one paginated call covers everything).
+  const productIdsSeen = new Set<string>()
+  for (const a of result.values()) for (const p of a.products) if (p.productId) productIdsSeen.add(p.productId)
+  if (productIdsSeen.size > 0) {
+    const nameById = new Map<string, string>()
+    for await (const prod of s.products.list({ limit: 100, active: undefined })) {
+      if (productIdsSeen.has(prod.id) && prod.name) nameById.set(prod.id, prod.name)
+    }
+    for (const a of result.values()) {
+      for (const p of a.products) {
+        if (p.productId && nameById.has(p.productId)) p.name = nameById.get(p.productId)
+        if (!p.name) p.name = p.productId   // last-resort
+      }
+    }
+  }
 
   return { aggregated: result, totalEmails, hasMore }
 }
