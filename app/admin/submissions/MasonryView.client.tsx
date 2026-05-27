@@ -19,6 +19,7 @@ function toIdCard(s: StoredSubmission): IdCardPerson {
     jobTitleStandardized: s.jobTitleStandardized,
     companyName: s.companyName,
     companyIndustry: s.companyIndustry,
+    companySize: s.companySize,
     companyLinkedinUrl: s.companyLinkedinUrl,
     linkedinUrl: s.linkedinUrl,
     country: s.country,
@@ -31,6 +32,12 @@ function toIdCard(s: StoredSubmission): IdCardPerson {
     source: s.source,
     score: s.score,
     archetype: s.archetype,
+    // Revenue / membership — surfaces same data the table column shows
+    lifetimeValueUsd: s.lifetimeValueUsd,
+    subscriptionTier: s.subscriptionTier,
+    beehiivStatus: s.beehiivStatus,
+    stripeCustomerId: s.stripeCustomerId,
+    enrichmentStatus: s.enrichmentStatus,
   }
 }
 

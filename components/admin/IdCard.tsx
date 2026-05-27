@@ -14,6 +14,7 @@ export interface IdCardPerson {
   jobTitleStandardized?: string
   companyName?: string
   companyIndustry?: string
+  companySize?: string
   companyLinkedinUrl?: string
   linkedinUrl?: string
   country?: string
@@ -26,6 +27,12 @@ export interface IdCardPerson {
   source?: string
   score?: number
   archetype?: string | null
+  // Revenue / membership
+  lifetimeValueUsd?: number
+  subscriptionTier?: string
+  beehiivStatus?: string
+  stripeCustomerId?: string
+  enrichmentStatus?: string
 }
 
 interface Props {
@@ -135,6 +142,29 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
           </p>
         )}
 
+        {/* LTV row — prominent for paying customers */}
+        {typeof person.lifetimeValueUsd === 'number' && person.lifetimeValueUsd > 0 && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-black tabular-nums bg-[#62A758]/15 text-[#2D6A26] border border-[#62A758]/40">
+              ${person.lifetimeValueUsd.toFixed(2)} paid
+            </span>
+            {person.subscriptionTier && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[#3B4C99]/10 text-[#3B4C99] border border-[#3B4C99]/30 truncate max-w-[180px]" title={person.subscriptionTier}>
+                {person.subscriptionTier}
+              </span>
+            )}
+            {person.stripeCustomerId && (
+              <a
+                href={`https://dashboard.stripe.com/customers/${person.stripeCustomerId}`}
+                target="_blank" rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                title="Open in Stripe Dashboard"
+                className="text-[10px] font-bold text-[#635BFF] hover:underline"
+              >Stripe ↗</a>
+            )}
+          </div>
+        )}
+
         {/* Chips row */}
         <div className="flex flex-wrap items-center gap-1 mt-2">
           {(person.ageBracket || person.ageAiEstimate) && (
@@ -143,6 +173,14 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
           {person.sexAiEstimate && <Chip>{person.sexAiEstimate.charAt(0).toUpperCase() + person.sexAiEstimate.slice(1).toLowerCase()} ✨</Chip>}
           {person.seniority && <Chip>{person.seniority}</Chip>}
           {person.companyIndustry && <Chip>{person.companyIndustry}</Chip>}
+          {person.companySize && <Chip>{person.companySize} emp</Chip>}
+          {person.beehiivStatus && (
+            <Chip className={
+              person.beehiivStatus === 'active' ? 'bg-[#62A758]/15 text-[#2D6A26] border border-[#62A758]/40' :
+              person.beehiivStatus === 'unsubscribed' ? 'bg-[#BE3B3B]/15 text-[#8A1F1F] border border-[#BE3B3B]/40' :
+              ''
+            }>📧 {person.beehiivStatus}</Chip>
+          )}
         </div>
       </div>
 
@@ -179,9 +217,9 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
   )
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
+function Chip({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-[#F5F5F5] text-[#333333]">
+    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${className || 'bg-[#F5F5F5] text-[#333333]'}`}>
       {children}
     </span>
   )
