@@ -158,10 +158,26 @@ function RuleEditor({ rule, onChange, onRemove }: { rule: FilterRule; onChange: 
   const isEnum = meta?.type === 'enum'
   const isMulti = rule.op === 'in' || rule.op === 'not_in'
   const isBetween = rule.op === 'between'
+  const isNumeric = meta?.type === 'number'
+
+  // Changing the field can invalidate the current op (e.g. 'contains' on a
+  // numeric column blows up with "operator does not exist: numeric ~~*").
+  // Reset op + value to safe defaults whenever the new field can't host the
+  // current op.
+  function changeField(nextField: string) {
+    const nextMeta = FILTERABLE_FIELDS[nextField]
+    const nextOps = nextMeta ? OPS_FOR_TYPE[nextMeta.type] || OPS_FOR_TYPE.text : OPS_FOR_TYPE.text
+    const opStillValid = nextOps.includes(rule.op)
+    onChange({
+      field: nextField,
+      op: opStillValid ? rule.op : nextOps[0],
+      value: opStillValid ? rule.value : undefined,
+    })
+  }
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <select value={rule.field} onChange={e => onChange({ ...rule, field: e.target.value })}
+      <select value={rule.field} onChange={e => changeField(e.target.value)}
         className="text-[11px] border border-[#E8E4DF] rounded px-2 py-1 outline-none focus:border-[#046BB1] bg-white min-w-[140px]">
         {FIELD_ORDER.map(f => <option key={f} value={f}>{FIELD_LABEL[f] || f}</option>)}
       </select>
@@ -178,20 +194,42 @@ function RuleEditor({ rule, onChange, onRemove }: { rule: FilterRule; onChange: 
           </select>
         ) : (
           <input
+            type={isNumeric && !isMulti ? 'number' : 'text'}
+            step={isNumeric ? '0.01' : undefined}
+            inputMode={isNumeric ? 'decimal' : undefined}
             value={Array.isArray(rule.value) ? (rule.value as string[]).join(', ') : String(rule.value ?? '')}
-            onChange={e => onChange({ ...rule, value: isMulti ? e.target.value.split(',').map(s => s.trim()).filter(Boolean) : e.target.value })}
-            placeholder={isMulti ? 'comma-separated' : meta?.type === 'number' ? 'number' : 'value'}
+            onChange={e => {
+              const raw = e.target.value
+              const v = isMulti
+                ? raw.split(',').map(s => s.trim()).filter(Boolean).map(s => isNumeric ? Number(s) : s)
+                : (isNumeric && raw !== '' ? Number(raw) : raw)
+              onChange({ ...rule, value: v as FilterRule['value'] })
+            }}
+            placeholder={isMulti ? 'comma-separated' : isNumeric ? '0.00' : 'value'}
             className="text-[11px] border border-[#E8E4DF] rounded px-2 py-1 outline-none focus:border-[#046BB1] w-40"
           />
         )
       )}
       {needsValue && isBetween && (() => {
-        const v = Array.isArray(rule.value) ? rule.value as [string, string] : ['', '']
+        const v = Array.isArray(rule.value) ? rule.value as [string | number, string | number] : ['', '']
+        const parse = (s: string) => (isNumeric && s !== '' ? Number(s) : s)
         return (
           <>
-            <input value={v[0] ?? ''} onChange={e => onChange({ ...rule, value: [e.target.value, v[1]] })} placeholder="min" className="text-[11px] border border-[#E8E4DF] rounded px-2 py-1 outline-none focus:border-[#046BB1] w-24" />
+            <input
+              type={isNumeric ? 'number' : 'text'} step={isNumeric ? '0.01' : undefined}
+              value={String(v[0] ?? '')}
+              onChange={e => onChange({ ...rule, value: [parse(e.target.value), v[1]] as FilterRule['value'] })}
+              placeholder="min"
+              className="text-[11px] border border-[#E8E4DF] rounded px-2 py-1 outline-none focus:border-[#046BB1] w-24"
+            />
             <span className="text-[10px] text-[#9C9C9C]">and</span>
-            <input value={v[1] ?? ''} onChange={e => onChange({ ...rule, value: [v[0], e.target.value] })} placeholder="max" className="text-[11px] border border-[#E8E4DF] rounded px-2 py-1 outline-none focus:border-[#046BB1] w-24" />
+            <input
+              type={isNumeric ? 'number' : 'text'} step={isNumeric ? '0.01' : undefined}
+              value={String(v[1] ?? '')}
+              onChange={e => onChange({ ...rule, value: [v[0], parse(e.target.value)] as FilterRule['value'] })}
+              placeholder="max"
+              className="text-[11px] border border-[#E8E4DF] rounded px-2 py-1 outline-none focus:border-[#046BB1] w-24"
+            />
           </>
         )
       })()}
