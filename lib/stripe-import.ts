@@ -183,10 +183,10 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
             undefined
           // Skip lines without a real productId (trial-period lines, manual adjustments, etc.)
           if (!productId) continue
-          const existing = productMap.get(productId) || {
+          const existing: ProductLine = productMap.get(productId) || {
             productId,
             // Name is filled later (post-aggregation) from stripe.products.retrieve()
-            name: undefined as string | undefined,
+            name: undefined,
             totalAmount: 0,
             count: 0,
           }
