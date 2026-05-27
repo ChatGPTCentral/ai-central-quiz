@@ -203,7 +203,7 @@ export async function filteredSubmissions(
     .range(offset, offset + limit - 1)
   if (error) throw new Error(error.message)
   return {
-    items: (data || []).map(r => fromRow(r as DbRow)),
+    items: (data || []).map(r => fromRow(r as unknown as DbRow)),
     total: count || 0,
   }
 }
@@ -233,7 +233,7 @@ export async function filteredSubmissionsAll(filters: DashboardFilters): Promise
       .order('id', { ascending: false })   // stable secondary sort for paging
       .range(offset, offset + PAGE - 1)
     if (error) throw new Error(error.message)
-    const batch = (data || []).map(r => fromRow(r as DbRow))
+    const batch = (data || []).map(r => fromRow(r as unknown as DbRow))
     all.push(...batch)
     if (batch.length < PAGE) break
     offset += PAGE
