@@ -56,6 +56,11 @@ export interface StoredSubmission {
   stripeFirstChargeAt?: string
   stripeLastChargeAt?: string
   stripeImportedAt?: string
+  // Persona segmentation (lib/segmentation.ts)
+  segment?: string
+  segmentScore?: number
+  segmentReason?: string
+  segmentedAt?: string
   // Beehiiv + Stripe (email-keyed enrichment, free)
   utmSourceBeehiiv?: string
   subscriptionTier?: string
@@ -146,6 +151,10 @@ export interface DbRow {
   stripe_first_charge_at: string | null
   stripe_last_charge_at: string | null
   stripe_imported_at: string | null
+  segment: string | null
+  segment_score: number | null
+  segment_reason: string | null
+  segmented_at: string | null
   source: string | null
   age_bracket: string | null
   buying_intent: string | null
@@ -212,6 +221,10 @@ function toRow(s: StoredSubmission): DbRow {
     stripe_first_charge_at: s.stripeFirstChargeAt ?? null,
     stripe_last_charge_at: s.stripeLastChargeAt ?? null,
     stripe_imported_at: s.stripeImportedAt ?? null,
+    segment: s.segment ?? null,
+    segment_score: s.segmentScore ?? null,
+    segment_reason: s.segmentReason ?? null,
+    segmented_at: s.segmentedAt ?? null,
     source: s.source || 'quiz_v2',
     age_bracket: s.ageBracket || null,
     buying_intent: s.buyingIntent || null,
@@ -285,6 +298,10 @@ export function fromRow(r: DbRow): StoredSubmission {
     stripeFirstChargeAt: r.stripe_first_charge_at ?? undefined,
     stripeLastChargeAt: r.stripe_last_charge_at ?? undefined,
     stripeImportedAt: r.stripe_imported_at ?? undefined,
+    segment: r.segment ?? undefined,
+    segmentScore: r.segment_score ?? undefined,
+    segmentReason: r.segment_reason ?? undefined,
+    segmentedAt: r.segmented_at ?? undefined,
     source: (r.source as StoredSubmission['source']) ?? undefined,
     ageBracket: r.age_bracket ?? undefined,
     buyingIntent: r.buying_intent ?? undefined,

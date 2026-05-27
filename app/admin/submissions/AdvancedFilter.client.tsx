@@ -6,6 +6,7 @@ import { FILTERABLE_FIELDS, type FilterRule, type FilterGroup, type Op } from '@
 
 // Curated list of fields shown in the dropdown — order matters for UX.
 const FIELD_ORDER: string[] = [
+  'segment',
   'name', 'email', 'jobTitle', 'jobTitleStandardized', 'seniority', 'jobFunction', 'department',
   'companyName', 'companySize', 'companyIndustry', 'companyDomain',
   'country', 'region', 'city',
@@ -39,6 +40,14 @@ const FIELD_LABEL: Record<string, string> = Object.fromEntries(
 // Pre-canned filter specs that surface in the "Suggested" tab.
 // Order = priority. Add new ones over time.
 const SUGGESTED: { name: string; emoji: string; description: string; spec: FilterGroup }[] = [
+  { name: 'Senior Decision Makers', emoji: '👑', description: 'Founders / C-Suite / VP / Director persona',
+    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'decision_maker' }] } },
+  { name: 'Growth Operators', emoji: '🚀', description: 'Marketing / sales / growth persona',
+    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'growth_operator' }] } },
+  { name: 'Technical Builders', emoji: '🔬', description: 'Engineers / developers / data persona',
+    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'technical_builder' }] } },
+  { name: 'AI Power Users', emoji: '🧠', description: 'Advanced AI level + 3+ tools',
+    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'ai_power_user' }] } },
   {
     name: 'High-value customers', emoji: '💎',
     description: 'Lifetime $ paid ≥ $100',

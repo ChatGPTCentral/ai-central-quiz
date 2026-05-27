@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import PhotoLightbox, { PhotoCell, type CardPerson } from '@/components/admin/PhotoLightbox'
 import FieldEnrichTrigger from '@/components/admin/FieldEnrichTrigger'
 import ColumnEnrichTrigger from '@/components/admin/ColumnEnrichTrigger'
+import { segmentDef } from '@/lib/segmentation'
 import type { StoredSubmission } from '@/lib/kv'
 
 interface Props { items: StoredSubmission[] }
@@ -112,7 +113,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v10'  // bumped: ensure LTV + Stripe columns visible after import
+const STORAGE_KEY = 'admin_table_columns_v11'  // bumped: persona segment column
 
 type RowCtx = {
   s: StoredSubmission
@@ -249,6 +250,22 @@ const COLUMNS: Column[] = [
           onSaved={(v) => { s.name = v; bumpRow() }} />
       </Link>
     ),
+  },
+  {
+    id: 'segment', label: 'Segment', width: '180px',
+    cell: ({ s }) => {
+      const def = segmentDef(s.segment)
+      if (!def) return <span className="text-[12px] text-[#E8E4DF]">—</span>
+      return (
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[170px]"
+          style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+          title={s.segmentReason || def.label}
+        >
+          {def.emoji} {def.label}
+        </span>
+      )
+    },
   },
   {
     id: 'jobTitle', label: 'Headline',
@@ -493,7 +510,7 @@ const COLUMNS: Column[] = [
 
 // Default-visible columns (the rest are hidden until user toggles them on)
 const DEFAULT_VISIBLE_IDS = new Set([
-  'select', 'enrich', 'date', 'source', 'utmSource', 'photo', 'name',
+  'select', 'enrich', 'date', 'source', 'utmSource', 'photo', 'name', 'segment',
   'jobTitle', 'company', 'age', 'sex', 'tier', 'ltv', 'email', 'linkedin', 'menu',
 ])
 

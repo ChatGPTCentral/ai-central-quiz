@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 import { runV2 } from '@/lib/enrichment/pipeline-v2'
 import { isPlaceholderPhoto } from '@/lib/enrichment/photo-filter'
 import { titleCase, normalizeCountry } from '@/lib/normalize'
+import { assignSegment } from '@/lib/segmentation'
+import { fromRow, type DbRow } from '@/lib/kv'
 
 export const maxDuration = 180
 
@@ -206,6 +208,23 @@ export async function POST(req: NextRequest) {
     // which rows have already been processed (avoid wasteful re-runs).
     update.enrichment_status = v2.status
     update.enriched_at = new Date().toISOString()
+
+    // Re-segment with the newly merged data so the persona reflects the
+    // freshest signal set. Reads existing row + applies the updates we're
+    // about to write before calling assignSegment.
+    try {
+      const { data: existingRow } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
+      if (existingRow) {
+        // Project the about-to-be-written values onto the row for an
+        // accurate segment guess.
+        const merged = { ...(existingRow as unknown as DbRow), ...(update as Partial<DbRow>) }
+        const seg = assignSegment(fromRow(merged))
+        update.segment       = seg.segment
+        update.segment_score = seg.score
+        update.segment_reason = seg.reason
+        update.segmented_at  = new Date().toISOString()
+      }
+    } catch { /* segmentation is best-effort; never block the save */ }
 
     console.log(`[v2 save] row=${rowId} updating columns:`, Object.keys(update))
 

@@ -84,6 +84,9 @@ export const FILTERABLE_FIELDS: Record<string, { col: string; type: 'text' | 'nu
   enrichmentStatus:      { col: 'enrichment_status',     type: 'enum', enum: ['complete', 'partial', 'failed'] },
   enrichedAt:            { col: 'enriched_at',           type: 'timestamp' },
   createdAt:             { col: 'created_at',            type: 'timestamp' },
+  // Persona segmentation
+  segment:               { col: 'segment',               type: 'enum',
+                           enum: ['decision_maker', 'growth_operator', 'technical_builder', 'ai_power_user', 'mid_career_operator', 'curious_beginner', 'student_early_career', 'unclassified'] },
 }
 
 /**

@@ -32,6 +32,8 @@ const LIST_COLUMNS = [
   'stripe_customer_id', 'stripe_customer_ids', 'stripe_products', 'stripe_subscriptions',
   'stripe_first_charge_at', 'stripe_last_charge_at', 'stripe_imported_at',
   'lifetime_value_usd',
+  // Persona segmentation
+  'segment', 'segment_score', 'segment_reason', 'segmented_at',
 ].join(', ')
 
 let _client: SupabaseClient | null = null

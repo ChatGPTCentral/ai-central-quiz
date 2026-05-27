@@ -38,6 +38,9 @@ function toIdCard(s: StoredSubmission): IdCardPerson {
     beehiivStatus: s.beehiivStatus,
     stripeCustomerId: s.stripeCustomerId,
     enrichmentStatus: s.enrichmentStatus,
+    // Persona segment
+    segment: s.segment,
+    segmentReason: s.segmentReason,
   }
 }
 

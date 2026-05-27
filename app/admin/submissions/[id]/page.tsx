@@ -4,6 +4,7 @@ import { getSubmission } from '@/lib/kv'
 import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag } from '@/lib/country-flags'
+import { segmentDef } from '@/lib/segmentation'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
@@ -80,7 +81,20 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
           <LinkedInReplacer id={item.id} value={item.linkedinUrl} />
 
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            {(() => {
+              const def = segmentDef(item.segment)
+              if (!def) return null
+              return (
+                <span
+                  className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold"
+                  style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+                  title={item.segmentReason || def.label}
+                >
+                  {def.emoji} {def.label}
+                </span>
+              )
+            })()}
             {archetype && (
               <span
                 className="inline-block px-3 py-0.5 rounded-full text-xs font-bold"
@@ -108,6 +122,15 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               >{item.source}</span>
             )}
           </div>
+          {(() => {
+            const def = segmentDef(item.segment)
+            if (!def) return null
+            return (
+              <p className="text-[11px] text-[#9C9C9C] mt-2 italic max-w-2xl">
+                💡 <strong className="text-[#333333] not-italic">Sales angle:</strong> {def.salesHypothesis}
+              </p>
+            )
+          })()}
         </div>
       </section>
 

@@ -14,6 +14,7 @@ import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
 import RoleChart from '@/components/admin/RoleChart.client'
 import AgeChart from '@/components/admin/AgeChart.client'
 import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
+import { SEGMENTS, segmentDef } from '@/lib/segmentation'
 
 export const dynamic = 'force-dynamic'
 // Edge-cache for 30s — the dataset doesn't change between rapid navigations
@@ -180,6 +181,80 @@ export default async function DashboardPage({
 
             {/* Advanced filter — same UX as on /admin/submissions */}
             <AdvancedFilter />
+
+            {/* ── PERSONAS ZONE (top of dashboard — the analytical lens) ── */}
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Personas</h2>
+            <p className="text-[11px] text-[#9C9C9C] mb-3">Socio-demo-psycho-behavioural segments — money is NOT an input. Each row below the table shows how that persona actually converts.</p>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              {/* Bar chart of segment counts */}
+              <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
+                <header className="px-5 pt-5 pb-3">
+                  <h3 className="text-sm font-black text-[#333333]">Segment distribution</h3>
+                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">N = {allRows.length.toLocaleString()}</p>
+                </header>
+                <div className="px-5 pb-5 flex flex-col gap-2">
+                  {SEGMENTS.map(def => {
+                    const count = allRows.filter(r => r.segment === def.key).length
+                    const pct = allRows.length > 0 ? (count / allRows.length) * 100 : 0
+                    const max = Math.max(...SEGMENTS.map(d => allRows.filter(r => r.segment === d.key).length), 1)
+                    const width = (count / max) * 100
+                    return (
+                      <div key={def.key} className="flex items-center gap-3 text-[12px]">
+                        <div className="w-44 shrink-0 truncate font-medium text-[#333333]">
+                          {def.emoji} {def.label}
+                        </div>
+                        <div className="flex-1 relative h-5 bg-[#F5F5F5] rounded">
+                          <div className="absolute inset-y-0 left-0 rounded transition-all duration-500" style={{ width: `${width}%`, backgroundColor: def.color }} />
+                        </div>
+                        <div className="w-12 shrink-0 text-right tabular-nums font-semibold text-[#333333]">{count}</div>
+                        <div className="w-12 shrink-0 text-right tabular-nums text-[#9C9C9C]">{pct.toFixed(0)}%</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Cross-tab: segment × revenue */}
+              <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
+                <header className="px-5 pt-5 pb-3">
+                  <h3 className="text-sm font-black text-[#333333]">Segment × Revenue</h3>
+                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">How each persona converts — the analytical payoff</p>
+                </header>
+                <div className="px-1 pb-3 overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="border-b border-[#E8E4DF]">
+                        <th className="text-left px-4 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Segment</th>
+                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">N</th>
+                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Paying</th>
+                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Conv %</th>
+                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">ARPU</th>
+                        <th className="text-right px-4 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SEGMENTS.map(def => {
+                        const rows = allRows.filter(r => r.segment === def.key)
+                        const paying = rows.filter(r => typeof r.lifetimeValueUsd === 'number' && r.lifetimeValueUsd > 0)
+                        const revenue = paying.reduce((a, b) => a + (b.lifetimeValueUsd || 0), 0)
+                        const arpu = rows.length > 0 ? revenue / rows.length : 0
+                        const conv = rows.length > 0 ? (paying.length / rows.length) * 100 : 0
+                        return (
+                          <tr key={def.key} className="border-b border-[#F5F5F5]">
+                            <td className="px-4 py-1.5 truncate" style={{ color: def.color }}><span className="font-bold">{def.emoji} {def.label}</span></td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{rows.length}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">{paying.length}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">{conv.toFixed(1)}%</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">${arpu.toFixed(2)}</td>
+                            <td className="px-4 py-1.5 text-right tabular-nums font-bold text-[#62A758]">${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
 
             {/* ── MONEY / REVENUE ZONE (top of dashboard) ── */}
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Revenue</h2>
