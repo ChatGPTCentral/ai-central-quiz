@@ -267,13 +267,13 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
   // Back-fill canonical product names from stripe.products.list (small set;
   // one paginated call covers everything).
   const productIdsSeen = new Set<string>()
-  for (const a of result.values()) for (const p of a.products) if (p.productId) productIdsSeen.add(p.productId)
+  for (const a of Array.from(result.values())) for (const p of a.products) if (p.productId) productIdsSeen.add(p.productId)
   if (productIdsSeen.size > 0) {
     const nameById = new Map<string, string>()
     for await (const prod of s.products.list({ limit: 100 })) {
       if (productIdsSeen.has(prod.id) && prod.name) nameById.set(prod.id, prod.name)
     }
-    for (const a of result.values()) {
+    for (const a of Array.from(result.values())) {
       for (const p of a.products) {
         if (p.productId && nameById.has(p.productId)) p.name = nameById.get(p.productId)
         if (!p.name) p.name = p.productId   // last-resort
