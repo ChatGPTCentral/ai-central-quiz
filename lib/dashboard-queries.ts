@@ -2,6 +2,38 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { fromRow, type DbRow, type StoredSubmission } from './kv'
 import { applyFilterSpec, decodeSpec, type FilterSpec } from './advanced-filter'
 
+// ────────────────────────────────────────────────────────────────
+// Column projection — list-view queries skip the heavy jsonb columns.
+// `enrichment_raw` alone averages ~20KB per row (provider raw payloads).
+// Pulling all of it for the dashboard's 2.4k+ rows = ~50MB transfer.
+// Listing scalars explicitly drops the dashboard payload by ~95%.
+// Detail-page queries still use '*' to keep the raw audit blob available.
+// ────────────────────────────────────────────────────────────────
+const LIST_COLUMNS = [
+  // identity
+  'id', 'email', 'name', 'ts', 'created_at', 'ip', 'user_agent', 'archived_at',
+  // quiz
+  'ai_level', 'work_area', 'learning_style', 'time_commitment', 'main_goal', 'ai_tools', 'job_level',
+  'archetype', 'score',
+  // enrichment scalars
+  'linkedin_url', 'photo_url',
+  'job_title', 'job_title_standardized', 'seniority', 'job_function', 'department',
+  'company_name', 'company_domain', 'company_linkedin_url', 'company_website',
+  'company_size', 'company_industry', 'company_sub_industry',
+  'company_revenue', 'company_funding', 'company_founded_year',
+  'country', 'region', 'city',
+  'enrichment_status', 'enriched_at',
+  // demographics
+  'age_bracket', 'age_ai_estimate', 'sex_ai_estimate', 'ai_estimate_confidence',
+  // source / utm
+  'source', 'buying_intent', 'utm_source', 'utm_ref', 'utm_source_beehiiv',
+  // beehiiv + stripe
+  'subscription_tier', 'beehiiv_status',
+  'stripe_customer_id', 'stripe_customer_ids', 'stripe_products', 'stripe_subscriptions',
+  'stripe_first_charge_at', 'stripe_last_charge_at', 'stripe_imported_at',
+  'lifetime_value_usd',
+].join(', ')
+
 let _client: SupabaseClient | null = null
 function client(): SupabaseClient {
   if (_client) return _client
@@ -163,7 +195,7 @@ export async function filteredSubmissions(
   const offset = opts.offset ?? 0
   const limit = opts.limit ?? 50
   const c = client()
-  let q = c.from('submissions').select('*', { count: 'exact' })
+  let q = c.from('submissions').select(LIST_COLUMNS, { count: 'exact' })
   q = applyFilters(q, filters)
   const { data, error, count } = await q
     .order('ts', { ascending: false })
@@ -194,7 +226,7 @@ export async function filteredSubmissionsAll(filters: DashboardFilters): Promise
   let offset = 0
   // Safety cap: 50 pages = 50k rows. Bail before that — something else is wrong.
   for (let page = 0; page < 50; page++) {
-    let q = client().from('submissions').select('*')
+    let q = client().from('submissions').select(LIST_COLUMNS)
     q = applyFilters(q, filters)
     const { data, error } = await q
       .order('ts', { ascending: false })

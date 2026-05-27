@@ -14,10 +14,15 @@ import CountryChart from '@/components/admin/CountryChart'
 import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
 import RoleChart from '@/components/admin/RoleChart.client'
 import AgeChart from '@/components/admin/AgeChart.client'
+import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
 import Filters from './Filters.client'
 import { RightSidebar } from '@/components/admin/AdminShell.client'
 
 export const dynamic = 'force-dynamic'
+// Edge-cache for 30s — the dataset doesn't change between rapid navigations
+// and the dashboard's full-scan aggregations are the slowest page in the app.
+// Filter changes hit a different URL so they're not cached together.
+export const revalidate = 30
 
 const WORK_AREAS = [
   'Marketing', 'Sales', 'Coding', 'Data analytics', 'Finance', 'Legal',
@@ -175,14 +180,41 @@ export default async function DashboardPage({
         {!error && (
           <>
             {/* Summary stats */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatCard label="Total records"     value={allRows.length}   accent="jetBlack" />
               <StatCard label="Unique emails"     value={uniqueEmails}     accent="azul" />
               <StatCard label="Unique companies"  value={uniqueCompanies}  accent="viridian" />
               <StatCard label="Unique roles"      value={uniqueRoles}      accent="fulvous" />
             </section>
 
-            {/* Charts grid — row 1: Age · Sex · Country | row 2: Industry · Role · Company size */}
+            {/* Advanced filter — same UX as on /admin/submissions */}
+            <AdvancedFilter />
+
+            {/* ── MONEY / REVENUE ZONE (top of dashboard) ── */}
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Revenue</h2>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              <LifetimeValueChart values={allRows.map(r => r.lifetimeValueUsd)} />
+              <div className="flex flex-col gap-4">
+                <HorizontalBarChart
+                  title="Products bought"
+                  subtitle={n(N.products) + ' paying customers'}
+                  data={productData}
+                  maxRows={8}
+                  uniformColor={PALETTE.viridian}
+                  expandable
+                />
+                <HorizontalBarChart
+                  title="Subscription tier"
+                  subtitle={n(N.tier)}
+                  data={tierData}
+                  maxRows={8}
+                  uniformColor={PALETTE.marianBlue}
+                />
+              </div>
+            </section>
+
+            {/* ── DEMOGRAPHICS ZONE ── */}
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">People</h2>
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <AgeChart rows={allRows.map(r => ({
                 ageBracket: r.ageBracket,
@@ -219,7 +251,11 @@ export default async function DashboardPage({
                 orderedLabels={[...COMPANY_SIZE_ORDER]}
                 uniformColor={PALETTE.xanthous}
               />
+            </section>
 
+            {/* ── ACQUISITION ZONE ── */}
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Acquisition</h2>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
               <HorizontalBarChart
                 title="UTM source"
                 subtitle={n(N.utm)}
@@ -227,22 +263,6 @@ export default async function DashboardPage({
                 maxRows={10}
                 uniformColor={PALETTE.fulvous}
               />
-              <HorizontalBarChart
-                title="Subscription tier"
-                subtitle={n(N.tier)}
-                data={tierData}
-                maxRows={8}
-                uniformColor={PALETTE.marianBlue}
-              />
-              <HorizontalBarChart
-                title="Products bought"
-                subtitle={n(N.products) + ' paying purchases'}
-                data={productData}
-                maxRows={8}
-                uniformColor={PALETTE.viridian}
-                expandable
-              />
-              <LifetimeValueChart values={allRows.map(r => r.lifetimeValueUsd)} />
             </section>
           </>
         )}
