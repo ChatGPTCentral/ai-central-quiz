@@ -270,7 +270,7 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
   for (const a of result.values()) for (const p of a.products) if (p.productId) productIdsSeen.add(p.productId)
   if (productIdsSeen.size > 0) {
     const nameById = new Map<string, string>()
-    for await (const prod of s.products.list({ limit: 100, active: undefined })) {
+    for await (const prod of s.products.list({ limit: 100 })) {
       if (productIdsSeen.has(prod.id) && prod.name) nameById.set(prod.id, prod.name)
     }
     for (const a of result.values()) {
