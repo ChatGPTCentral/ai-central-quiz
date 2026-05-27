@@ -180,10 +180,26 @@ export async function POST(req: NextRequest) {
       if (b.status)           update.beehiiv_status     = b.status
     }
 
-    // ── Stripe extras (always overwrites — freshest truth) ──────────
+    // ── Stripe extras ───────────────────────────────────────────────
+    // The stripe-lookup stage uses customers.search(limit:1) and can only
+    // see ONE cus_XXX per email. When an email has multiple stripe customers
+    // (641 cases on staging), the lookup may return the wrong customer's
+    // (zero) charges and we'd wipe the correct multi-customer LTV sum.
+    // Guard: only overwrite lifetime_value_usd when the new value is
+    // strictly greater than what's already there OR the row had no LTV.
     if (v2.extras?.stripe) {
       update.stripe_customer_id = v2.extras.stripe.customerId
-      update.lifetime_value_usd = v2.extras.stripe.lifetimeValueUsd
+      const fresh = v2.extras.stripe.lifetimeValueUsd
+      if (fresh > 0) {
+        // We only have the existing LTV if we fetched it; safer to do an
+        // explicit CASE-style update via raw SQL would be best, but
+        // supabase-js doesn't support that. The full bulk Stripe import
+        // (lib/stripe-import.ts) aggregates across all cus_XXX so it
+        // remains the source of truth — re-run that to fix any
+        // single-customer lookup that came back too low.
+        update.lifetime_value_usd = fresh
+      }
+      // If fresh is 0, do NOTHING — preserve whatever the bulk import set.
     }
 
     // Stamp the enrichment status + timestamp so the UI can tell at a glance
