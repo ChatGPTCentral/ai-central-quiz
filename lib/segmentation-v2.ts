@@ -264,16 +264,42 @@ export function assignStage(r: StoredSubmission): {
     return { stage: 'S0_unaware', score: 0, reason: r.aiLevel || '—' }
   }
 
-  // Behavioural fallback: Stripe customers without quiz data probably
-  // use AI (they bought an AI newsletter / course). Default them to S2.
+  // ── Behavioural floor ──────────────────────────────────────────
+  // Anyone with ANY presence signal in our system has at minimum
+  // *heard of* AI - - they're on our list, in Stripe, or on Beehiiv.
+  // Lower the floor accordingly. Only rows with literally zero signal
+  // become 'unknown'.
+
+  // Paying customers → S2 (they paid for AI content / product)
   if (r.lifetimeValueUsd && r.lifetimeValueUsd > 0) {
-    return { stage: 'S2_experimenter', score: 2, reason: `Paying customer (no quiz data) - - assumed experimenter` }
+    return { stage: 'S2_experimenter', score: 2, reason: `Paying customer ($${r.lifetimeValueUsd.toFixed(0)}) - - assumed experimenter` }
   }
+  // Active newsletter reader → S2 (engaged with AI content weekly)
   if (r.beehiivStatus === 'active') {
-    return { stage: 'S1_curious', score: 1, reason: `Active reader (no quiz data) - - assumed curious` }
+    return { stage: 'S2_experimenter', score: 2, reason: `Active newsletter reader - - assumed experimenter` }
+  }
+  // Has a Stripe customer record (even if $0 - - subscriber, comp, refund) → S1
+  if (r.stripeCustomerId || (r.stripeCustomerIds && r.stripeCustomerIds.length > 0)) {
+    return { stage: 'S1_curious', score: 1, reason: `Stripe customer record present` }
+  }
+  // Newsletter subscriber (any status) → S1
+  if (r.beehiivStatus) {
+    return { stage: 'S1_curious', score: 1, reason: `Newsletter subscriber (${r.beehiivStatus})` }
+  }
+  // Has been enriched (LinkedIn / photo) → S1 at minimum
+  if (r.linkedinUrl || r.photoUrl) {
+    return { stage: 'S1_curious', score: 1, reason: `Enriched profile - - presence signal` }
+  }
+  // Took the quiz at all (even with empty answers) → S1
+  if (r.source === 'survey' || r.source === 'quiz_v2' || r.archetype) {
+    return { stage: 'S1_curious', score: 1, reason: `Quiz participant - - signed up` }
+  }
+  // Any email-based presence in our CRM → S1
+  if (r.email) {
+    return { stage: 'S1_curious', score: 1, reason: `In CRM - - default floor` }
   }
 
-  return { stage: 'unknown', score: -1, reason: 'No usage signal - - enrich or wait for survey v2' }
+  return { stage: 'unknown', score: -1, reason: 'No signal at all - - genuinely orphan row' }
 }
 
 // ── Persona inference (mostly from seniority + workArea) ─────────
@@ -282,55 +308,73 @@ export function assignPersona(r: StoredSubmission): {
   persona: PersonaKey
   reason: string
 } {
-  // Decision Maker — wins first
-  if (has(r.seniority, /^(Founder|C-Suite|VP\/Director)$/)) {
+  // Decision Maker — check both seniority AND jobLevel fields.
+  // Literal "C-Suite" matters because the seniority enum uses that exact string.
+  if (has(r.seniority, /founder|c-suite|vp|director|chief|head of/i)) {
     return { persona: 'decision_maker', reason: `Seniority: ${r.seniority}` }
   }
-  if (has(r.jobLevel, /founder|ceo|cfo|cto|coo|cmo|cpo|vp|director|head of|chief/i)) {
+  if (has(r.jobLevel, /founder|c-suite|ceo|cfo|cto|coo|cmo|cpo|cro|vp|director|head of|chief|partner|owner/i)) {
     return { persona: 'decision_maker', reason: `Job level: ${r.jobLevel}` }
   }
+  if (has(r.jobTitle, /\b(ceo|cfo|cto|coo|cmo|cpo|cro|chief|founder|president|owner|partner|vp|vice president|director|head of)\b/i)) {
+    return { persona: 'decision_maker', reason: `Title: ${r.jobTitle}` }
+  }
 
-  // Learner — students / interns
+  // Learner — students / interns / entry-level
   if (has(r.seniority, /student|intern/i)) {
     return { persona: 'learner', reason: `Seniority: ${r.seniority}` }
   }
-  if (has(r.jobLevel, /student|intern|entry/i)) {
+  if (has(r.jobLevel, /student|intern|entry|junior/i)) {
     return { persona: 'learner', reason: `Job level: ${r.jobLevel}` }
   }
+  if (has(r.jobTitle, /\b(intern|student)\b/i)) {
+    return { persona: 'learner', reason: `Title: ${r.jobTitle}` }
+  }
 
-  // Maker — engineers, designers, data, researchers, product
-  if (has(r.workArea, /coding|data|engineering|technical|research|design|product/i)) {
+  // Maker — engineers, designers, data, researchers, product, technical fields
+  if (has(r.workArea, /coding|data|engineering|technical|research|design|product|software/i)) {
     return { persona: 'maker', reason: `Work area: ${r.workArea}` }
   }
-  if (has(r.jobFunction, /engineering|data|product|research|design/i)) {
+  if (has(r.jobFunction, /engineering|data|product|research|design|technology|it\b/i)) {
     return { persona: 'maker', reason: `Function: ${r.jobFunction}` }
   }
-  if (has(r.jobTitle, /engineer|developer|designer|researcher|architect|scientist|analyst/i)) {
+  if (has(r.jobTitle, /engineer|developer|designer|researcher|architect|scientist|analyst|programmer|devops|sre/i)) {
     return { persona: 'maker', reason: `Title: ${r.jobTitle}` }
   }
+  if (has(r.companyIndustry, /software|computer|technology|saas|internet/i) && has(r.jobLevel, /individual contributor|ic/i)) {
+    return { persona: 'maker', reason: `IC in tech: ${r.companyIndustry}` }
+  }
 
-  // Operator — marketing, sales, growth, ops
-  if (has(r.workArea, /marketing|sales|growth|operation/i)) {
+  // Operator — marketing, sales, growth, ops, customer-facing
+  if (has(r.workArea, /marketing|sales|growth|operation|customer|support|revenue/i)) {
     return { persona: 'operator', reason: `Work area: ${r.workArea}` }
   }
-  if (has(r.jobFunction, /marketing|sales|growth|revenue|operation/i)) {
+  if (has(r.jobFunction, /marketing|sales|growth|revenue|operation|customer|support/i)) {
     return { persona: 'operator', reason: `Function: ${r.jobFunction}` }
   }
-  if (has(r.jobTitle, /marketing|sales|growth|operations|manager|account exec|coo|cmo|cro/i)) {
+  if (has(r.jobTitle, /marketing|sales|growth|operations|manager|account exec|account manager|customer success|coach|consultant|strategist/i)) {
     return { persona: 'operator', reason: `Title: ${r.jobTitle}` }
   }
 
-  // Generic Manager (no function signal) → operator by default
-  if (r.seniority === 'Manager') {
+  // Mid-level catch-alls — Manager (any field) → operator
+  if (r.seniority === 'Manager' || has(r.jobLevel, /manager|senior\b|mid/i)) {
     return { persona: 'operator', reason: `Manager (function unclear)` }
   }
 
-  // IC with no function → maker (working assumption: they ship things)
-  if (r.seniority === 'Individual contributor') {
+  // IC (any field) → maker (working assumption: they build / ship)
+  if (r.seniority === 'Individual contributor' || has(r.jobLevel, /individual contributor|^ic$/i)) {
     return { persona: 'maker', reason: `IC (function unclear)` }
   }
 
-  return { persona: 'unknown', reason: 'No role signal - - enrich first' }
+  // Last-resort fallback: anyone with ANY professional signal lands in
+  // operator by default. "Operator" is the broadest bucket and the
+  // safest default — better than dumping known-employed humans into
+  // 'unknown' where they get no sales angle.
+  if (r.jobTitle || r.jobLevel || r.companyName || r.companyIndustry || r.linkedinUrl) {
+    return { persona: 'operator', reason: `Default professional (low role signal)` }
+  }
+
+  return { persona: 'unknown', reason: 'No role signal at all - - enrich first' }
 }
 
 // ── Combined ─────────────────────────────────────────────────────
