@@ -45,11 +45,14 @@ export default async function SandboxPage() {
           <span className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">Non-destructive · parallel system</span>
         </div>
         <h1 className="text-2xl font-black text-[#333333] mb-1">Laddered segmentation v2</h1>
-        <p className="text-sm text-[#9C9C9C] max-w-3xl">
+        <p className="text-sm text-[#9C9C9C] max-w-3xl mb-3">
           Two-axis classification: <strong>Stage</strong> (the mutable AI-adoption ladder S0 - - S5) ×{' '}
           <strong>Persona</strong> (the fixed role context). Writes to new columns - - the production{' '}
           <code className="bg-[#F5F5F5] px-1 rounded text-[11px]">segment</code> system is untouched.
         </p>
+        <a href="/admin/sandbox/survey-v2" className="inline-flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded bg-[#046BB1] text-[#FFFDFA] hover:opacity-90">
+          📋 Try Survey v2 (the 6 laddering questions)
+        </a>
       </div>
 
       <SandboxPanel rows={rows} />

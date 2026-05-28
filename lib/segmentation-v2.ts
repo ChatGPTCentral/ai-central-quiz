@@ -215,6 +215,54 @@ export function assignStage(r: StoredSubmission): {
   score: number
   reason: string
 } {
+  // ── Survey v2 path: if the new fields are populated, they are
+  // ── ground truth. Use them instead of inferring from old data.
+  const fq = r.frequencyScore
+  const dp = r.depthScore
+  const br = r.breadthScore
+  const hasV2 = fq != null || dp != null || br != null
+
+  if (hasV2) {
+    const frequency = fq ?? 0
+    const depth     = dp ?? 0
+    const breadth   = br ?? 0
+
+    // S5 Builder — has shipped or built deep things
+    if (depth >= 4) {
+      return { stage: 'S5_builder', score: 5, reason: `Survey v2: depth ${depth}/5 - - builder confirmed` }
+    }
+    if (depth >= 3 && breadth >= 3) {
+      return { stage: 'S5_builder', score: 5, reason: `Survey v2: depth ${depth} + breadth ${breadth}` }
+    }
+
+    // S4 Power User — daily + multiple tools
+    if (frequency >= 3 && breadth >= 3) {
+      return { stage: 'S4_power_user', score: 4, reason: `Survey v2: daily AI · ${breadth} tools` }
+    }
+    if (depth >= 2 && breadth >= 4) {
+      return { stage: 'S4_power_user', score: 4, reason: `Survey v2: depth ${depth} · breadth ${breadth}` }
+    }
+
+    // S3 Practitioner — regular use OR meaningful depth
+    if (frequency >= 2) {
+      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2: most days (freq ${frequency})` }
+    }
+    if (depth >= 2 || (frequency >= 1 && breadth >= 2)) {
+      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2: depth ${depth} · breadth ${breadth}` }
+    }
+
+    // S2 Experimenter — occasional use
+    if (frequency >= 1 || depth >= 1 || breadth >= 1) {
+      return { stage: 'S2_experimenter', score: 2, reason: `Survey v2: light usage (freq ${frequency}, depth ${depth})` }
+    }
+
+    // S1 Curious — answered the survey but reports zero usage
+    if (frequency === 0 && depth === 0 && breadth === 0) {
+      return { stage: 'S1_curious', score: 1, reason: `Survey v2: aware but not using yet` }
+    }
+  }
+
+  // ── Legacy inference path (existing aiLevel + aiTools signals) ──
   const toolCount = aiToolsCount(r)
   const advanced = has(r.aiLevel, /advanced|power user|expert|fluent/i)
   const intermediate = has(r.aiLevel, /intermediate|comfortable|regular/i)
