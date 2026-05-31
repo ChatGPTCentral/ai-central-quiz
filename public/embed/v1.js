@@ -35,7 +35,7 @@
   // Survey-id → path lookup. Add new surveys here as they ship.
   const SURVEY_PATHS = {
     'quiz':    '/quiz',
-    'quiz-v2': '/quiz',   // until quiz-v2 is wired into the public flow
+    'quiz-v2': '/quiz-v2',
   }
 
   // ── Styles ─────────────────────────────────────────────────────

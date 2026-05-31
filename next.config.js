@@ -26,6 +26,13 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'ALLOWALL' },
         ],
       },
+      {
+        source: '/quiz-v2',
+        headers: [
+          { key: 'Content-Security-Policy', value: "frame-ancestors *" },
+          { key: 'X-Frame-Options', value: 'ALLOWALL' },
+        ],
+      },
       // The embed JS snippet must be CORS-friendly so it can be loaded
       // from any third-party page via <script src=...>.
       {
