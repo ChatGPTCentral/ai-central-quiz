@@ -29,6 +29,34 @@ function QuizContent() {
   const prefillFetched = useRef(false)
   const [prefillSources, setPrefillSources] = useState<Record<string, string>>({})
 
+  // Embed mode — when loaded inside an iframe via the AI Central embed
+  // snippet, strip the chrome and post resize/submit events to the parent.
+  const isEmbed = searchParams.get('embed') === '1' || searchParams.get('ac-embed-id') !== null
+  const embedId = searchParams.get('ac-embed-id') || ''
+
+  // Send a postMessage to whoever embedded us. The `embedId` lets the
+  // parent snippet filter messages to the correct iframe when multiple
+  // embeds are on the page.
+  const postToParent = useCallback((data: Record<string, unknown>) => {
+    if (typeof window === 'undefined' || window.parent === window) return
+    window.parent.postMessage({ ...data, embedId, source: 'ai-central-quiz' }, '*')
+  }, [embedId])
+
+  // Announce ready on mount + send current height; re-send on step change.
+  useEffect(() => {
+    if (!isEmbed) return
+    postToParent({ type: 'embed_ready' })
+  }, [isEmbed, postToParent])
+
+  useEffect(() => {
+    if (!isEmbed) return
+    // Resize message — parent listens to update the iframe container height
+    const send = () => postToParent({ type: 'form_resized', size: document.body.scrollHeight })
+    send()
+    const t = setTimeout(send, 400)  // after enter animation
+    return () => clearTimeout(t)
+  }, [step, isEmbed, postToParent])
+
   async function fetchPrefill(email: string) {
     if (prefillFetched.current) return
     if (!isValidEmail(email)) return
@@ -191,6 +219,21 @@ function QuizContent() {
         return
       }
       sessionStorage.setItem('ac_quiz_offer_start', String(Date.now()))
+      // In embed mode, post the result to the parent and let the
+      // snippet decide what to do (redirect parent, close popup, etc).
+      // Skip the calculating/result redirect because we're in an iframe.
+      if (isEmbed) {
+        postToParent({
+          type: 'form_submitted',
+          archetype: data.archetype,
+          name: data.name,
+          score,
+          email: String(answers.email || ''),
+        })
+        // Show a brief success state inside the iframe
+        setSubmitting(false)
+        return
+      }
       router.push(`/calculating?archetype=${data.archetype}&name=${encodeURIComponent(data.name)}&score=${score}`)
     } catch {
       setSubmitError('Network error. Please check your connection and try again.')
@@ -256,23 +299,30 @@ function QuizContent() {
   const isLargeGrid = isMulti && (q.options?.length ?? 0) > 4
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Progress bar */}
-      <div className="fixed top-0 left-0 right-0 h-[3px] bg-gray-100 z-50">
+    <div className={`${isEmbed ? 'min-h-0' : 'min-h-screen'} bg-white flex flex-col`}>
+      {/* Progress bar — fixed at top in standalone, absolute (within iframe) in embed */}
+      <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 h-[3px] bg-gray-100 z-50`}>
         <div
           className="h-full transition-all duration-500 ease-out"
           style={{ width: `${progressPct}%`, backgroundColor: ACCENT }}
         />
       </div>
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 pt-8 pb-2 shrink-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-full-light-bg.png" alt="AI Central" className="h-6 w-auto" />
-        <span className="text-sm font-medium text-gray-400 tabular-nums">
-          {step} <span className="text-gray-300">/ {TOTAL_STEPS}</span>
-        </span>
-      </header>
+      {/* Header — hidden in embed mode (parent page provides chrome) */}
+      {!isEmbed && (
+        <header className="flex items-center justify-between px-6 pt-8 pb-2 shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-full-light-bg.png" alt="AI Central" className="h-6 w-auto" />
+          <span className="text-sm font-medium text-gray-400 tabular-nums">
+            {step} <span className="text-gray-300">/ {TOTAL_STEPS}</span>
+          </span>
+        </header>
+      )}
+      {isEmbed && (
+        <div className="flex items-center justify-end px-6 pt-3 pb-1 text-[11px] text-gray-400 tabular-nums">
+          {step} / {TOTAL_STEPS}
+        </div>
+      )}
 
       {/* Main */}
       <main className="flex-1 flex items-center justify-center px-6 py-6 overflow-hidden">
@@ -472,7 +522,8 @@ function QuizContent() {
         </div>
       </main>
 
-      {/* Footer nav */}
+      {/* Footer nav — hidden in embed mode */}
+      {!isEmbed && (
       <footer className="shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-100">
         <span className="text-xs text-gray-400">
           {progressPct}% complete
@@ -504,6 +555,7 @@ function QuizContent() {
           </button>
         </div>
       </footer>
+      )}
     </div>
   )
 }
