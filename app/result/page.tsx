@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
+import { createClient } from '@supabase/supabase-js'
 import AICentralLogo from '@/components/AICentralLogo'
 import CountdownTimer from '@/components/CountdownTimer'
 import FomoPopup from '@/components/FomoPopup'
@@ -8,6 +9,26 @@ import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { SALES_CONTENT, TESTIMONIALS } from '@/lib/sales-content'
 import { scoreLabel } from '@/lib/score'
 import { toolsForArchetype, toolIcon } from '@/lib/affiliates'
+import { stageDef, personaDef } from '@/lib/segmentation-v2'
+import { getSegmentCopy } from '@/lib/segment-content'
+
+/** Server-side fetch of v2 segment fields for the row, if id is provided. */
+async function fetchSegmentFields(id: string | undefined): Promise<{
+  stage?: string | null
+  persona?: string | null
+  friction?: string | null
+  intent_30d?: string | null
+} | null> {
+  if (!id) return null
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+    if (!url || !key) return null
+    const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+    const { data } = await c.from('submissions').select('stage, persona, friction, intent_30d').eq('id', id).maybeSingle()
+    return data || null
+  } catch { return null }
+}
 
 const PAYMENT_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 const UPSELL_URL = process.env.NEXT_PUBLIC_UPSELL_URL || 'https://buy.stripe.com/7sIcQe7NAgLT8s8008'
@@ -127,12 +148,25 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const name = searchParams.name ? decodeURIComponent(searchParams.name) : ''
   const scoreRaw = parseInt(searchParams.score || '0', 10)
   const score = isNaN(scoreRaw) || scoreRaw <= 0 ? 50 : scoreRaw
+  const rowId = searchParams.id
 
   if (!archetypeKey || !ARCHETYPES[archetypeKey]) notFound()
 
   const archetype = ARCHETYPES[archetypeKey]
   const sales = SALES_CONTENT[archetypeKey]
   const label = scoreLabel(score)
+
+  // V2 segment fields — server-fetched from the row id, optional
+  const segFields = await fetchSegmentFields(rowId)
+  const seg = getSegmentCopy({
+    stage: segFields?.stage,
+    persona: segFields?.persona,
+    friction: segFields?.friction,
+    intent: segFields?.intent_30d,
+  })
+  const stageMeta = stageDef(segFields?.stage)
+  const personaMeta = personaDef(segFields?.persona)
+  const primaryCta = seg.ctaText
 
   const tutorials = await fetchTutorialsForArchetype(archetype.tutorialKeywords)
   const tools = toolsForArchetype(archetypeKey, 6)
@@ -141,53 +175,95 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
     <>
       <CountdownTimer paymentUrl={PAYMENT_URL} />
 
-      <div className="pt-10 min-h-screen flex flex-col bg-baby-powder">
-        {/* Nav */}
-        <nav className="border-b border-[#E8E4DF] px-6 py-4">
-          <AICentralLogo />
+      <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
+        {/* Nav with Fulvous accent border */}
+        <nav className="px-6 py-4 border-b" style={{ borderColor: '#E48715' }}>
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <AICentralLogo />
+            <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: '#9C9C9C' }}>
+              Your AI plan
+            </p>
+          </div>
         </nav>
 
-        {/* ── MODULE 1: YOUR SCORE (gauge) ───────────────────── */}
+        {/* ── HERO: segment chips + stage label + gauge ────── */}
         <section className="px-6 pt-10 pb-8 max-w-2xl mx-auto w-full">
-          <p className="text-xs font-bold tracking-widest uppercase text-battleship-grey mb-2 text-center">
-            Your AI Adoption Score
+          {/* Segment chip row */}
+          {(stageMeta || personaMeta) && (
+            <div className="flex items-center justify-center gap-2 mb-5 flex-wrap">
+              {stageMeta && stageMeta.key !== 'unknown' && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
+                  style={{ backgroundColor: stageMeta.color + '22', color: stageMeta.color, border: `1px solid ${stageMeta.color}40` }}
+                >
+                  <span>{stageMeta.emoji}</span>
+                  <span>{stageMeta.label}</span>
+                </span>
+              )}
+              {personaMeta && personaMeta.key !== 'unknown' && (
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
+                  style={{ backgroundColor: personaMeta.color + '22', color: personaMeta.color, border: `1px solid ${personaMeta.color}40` }}
+                >
+                  <span>{personaMeta.emoji}</span>
+                  <span>{personaMeta.label}</span>
+                </span>
+              )}
+            </div>
+          )}
+
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 text-center" style={{ color: '#E48715' }}>
+            An AI Central exclusive
           </p>
-          <h2 className="text-2xl sm:text-3xl font-black text-black text-center leading-tight mb-1">
-            You&apos;re ahead of {score}% of professionals
+          <h2 className="text-[28px] sm:text-[34px] font-black text-center leading-[1.05] mb-2" style={{ color: '#333333' }}>
+            {name ? `${name}, you're` : "You're"} ahead of {score}% of professionals
           </h2>
-          <p className="text-sm text-battleship-grey text-center mb-6">
-            Across your industry, in AI adoption today
+          <p className="text-[14px] text-center mb-7 max-w-md mx-auto" style={{ color: '#9C9C9C' }}>
+            {seg.stageLabel}
           </p>
           <GaugeChart value={score} label={label} />
         </section>
 
-        {/* ── MODULE 2: YOUR AI BUSINESS TYPE ────────────────── */}
-        <section className="px-6 pt-10 pb-6 max-w-2xl mx-auto w-full">
-          <p className="text-xs font-bold tracking-widest uppercase text-battleship-grey mb-2">
-            Your AI Business Type
+        {/* ── ARCHETYPE CARD ─────────────────────────────── */}
+        <section className="px-6 pt-6 pb-6 max-w-2xl mx-auto w-full">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: '#9C9C9C' }}>
+            Your AI archetype
           </p>
-          <div className="rounded-xl p-6 mb-4 bg-white border border-[#E8E4DF]">
-            <h1 className="text-3xl sm:text-4xl font-black text-black mb-3">
+          <div
+            className="rounded-2xl p-7 mb-4 relative overflow-hidden"
+            style={{ backgroundColor: '#FFFFFF', border: `1px solid #E8E4DF`, boxShadow: `0 4px 30px ${archetype.accentColor}1A` }}
+          >
+            <div
+              className="absolute top-0 left-0 right-0 h-1"
+              style={{ background: `linear-gradient(90deg, ${archetype.accentColor} 0%, #E48715 100%)` }}
+            />
+            <h1 className="text-[28px] sm:text-[34px] font-black mb-3 leading-tight" style={{ color: archetype.accentColor }}>
               {archetype.label}
             </h1>
-            <p className="text-[15px] text-jet-black leading-relaxed">
-              {archetype.description}
+            <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
+              {archetype.description.replace(/—/g, ' - -').replace(/–/g, ' - -')}
             </p>
+            {seg.personaLane.lane !== 'general' && (
+              <p className="text-[11px] mt-4 italic" style={{ color: '#9C9C9C' }}>
+                💡 {seg.personaLane.hook}
+              </p>
+            )}
           </div>
         </section>
 
-        {/* ── MODULE 3: PRIMARY CTA ─────────────────────────── */}
+        {/* ── PRIMARY CTA — Fulvous, intent-aware copy ───── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
           <a
             href={PAYMENT_URL}
-            className="block w-full text-center py-4 rounded-lg font-bold text-base text-white bg-black hover:bg-[#222] transition-colors"
+            className="block w-full text-center py-4 rounded-xl font-black text-[15px] transition-all hover:opacity-90 active:scale-[0.99]"
+            style={{ backgroundColor: '#E48715', color: '#FFFDFA', boxShadow: '0 6px 20px rgba(228, 135, 21, 0.25)' }}
           >
-            View my custom learning plan →
+            {primaryCta} →
           </a>
-          <p className="text-center text-xs text-battleship-grey mt-2">
+          <p className="text-center text-[12px] mt-3" style={{ color: '#9C9C9C' }}>
             $4.99 first month · Then $59.75/year · Cancel anytime
           </p>
-          <div className="flex items-center justify-center gap-4 mt-3 text-[11px] text-battleship-grey">
+          <div className="flex items-center justify-center gap-3 mt-2 text-[11px]" style={{ color: '#9C9C9C' }}>
             <span>⭐ 350+ five-star reviews</span>
             <span>·</span>
             <span>30-day guarantee</span>
@@ -196,13 +272,35 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
-        {/* ── MODULE 4: COMMENTARY ──────────────────────────── */}
+        {/* ── FRICTION BLOCKER (only shown when v2 friction known) ── */}
+        {seg.friction && (
+          <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+            <div
+              className="rounded-2xl p-7"
+              style={{ backgroundColor: '#FEF7E7', border: '1px solid #E7B02F' }}
+            >
+              <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: '#BE593B' }}>
+                {seg.friction.badge}
+              </p>
+              <h3 className="text-[22px] sm:text-[26px] font-black mb-3 leading-tight" style={{ color: '#333333' }}>
+                {seg.friction.blockerTitle}
+              </h3>
+              <p className="text-[14px] leading-relaxed" style={{ color: '#333333' }}>
+                {seg.friction.blockerBody}
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* ── COMMENTARY (archetype truth-paragraphs) ────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <h2 className="text-2xl font-black text-jet-black mb-6">
-            {sales.truthHeading}{name ? `, ${name}` : ''}.
+          <h2 className="text-[26px] font-black mb-6 leading-tight" style={{ color: '#333333' }}>
+            {sales.truthHeading.replace(/—/g, ' - -').replace(/–/g, ' - -')}{name ? `, ${name}` : ''}
           </h2>
           {sales.truthParagraphs.map((p, i) => (
-            <p key={i} className="text-base text-jet-black leading-relaxed mb-4">{p}</p>
+            <p key={i} className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>
+              {p.replace(/—/g, ' - -').replace(/–/g, ' - -')}
+            </p>
           ))}
         </section>
 
@@ -210,9 +308,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {tutorials.length > 0 && (
           <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
             <div className="h-px bg-[#E8E4DF] mb-8" />
-            <h2 className="text-xl font-black text-jet-black mb-1">Recommended AI tutorials</h2>
-            <p className="text-sm text-battleship-grey mb-6">
-              Curated for {archetype.label}s — included with your plan
+            <h2 className="text-xl font-black mb-1" style={{ color: '#333333' }}>Recommended AI tutorials</h2>
+            <p className="text-[13px] mb-6" style={{ color: '#9C9C9C' }}>
+              Curated for {archetype.label}s. Included with your plan
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {tutorials.slice(0, 3).map((t, i) => (
@@ -241,9 +339,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {tools.length > 0 && (
           <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
             <div className="h-px bg-[#E8E4DF] mb-8" />
-            <h2 className="text-xl font-black text-jet-black mb-1">Recommended AI tools</h2>
-            <p className="text-sm text-battleship-grey mb-6">
-              The tools we use ourselves — with exclusive AI Central deals
+            <h2 className="text-xl font-black mb-1" style={{ color: '#333333' }}>Recommended AI tools</h2>
+            <p className="text-[13px] mb-6" style={{ color: '#9C9C9C' }}>
+              The tools we use ourselves. Exclusive AI Central deals included
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {tools.map((tool) => (
@@ -273,8 +371,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── MODULE 7: TRUSTED BY (testimonials) ──────────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
           <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-xl font-black text-jet-black mb-2 text-center">Hear from our members</h2>
-          <p className="text-sm text-battleship-grey text-center mb-6">Real professionals. Real results. 350+ five-star reviews.</p>
+          <h2 className="text-xl font-black mb-2 text-center" style={{ color: '#333333' }}>Hear from our members</h2>
+          <p className="text-[13px] text-center mb-6" style={{ color: '#9C9C9C' }}>Real professionals. Real results. 350+ five-star reviews</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {TESTIMONIALS.map((t) => (
               <div key={t.name} className="p-4 bg-white border border-[#E8E4DF] rounded-xl flex flex-col gap-2">
@@ -292,11 +390,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── MODULE 8: UNLOCK YOUR PERSONALIZED PLAN ───────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full" id="pricing">
           <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-2xl sm:text-3xl font-black text-jet-black mb-2 text-center">
-            Unlock the Ultimate AI Library
+          <h2 className="text-[26px] sm:text-[32px] font-black mb-2 text-center leading-tight" style={{ color: '#333333' }}>
+            Unlock the AI Central library
           </h2>
-          <p className="text-sm text-battleship-grey text-center mb-2 max-w-md mx-auto">
-            1,200+ curated AI &amp; ChatGPT tutorials. Save months of trial-and-error.
+          <p className="text-[14px] text-center mb-2 max-w-md mx-auto" style={{ color: '#9C9C9C' }}>
+            1,200+ curated AI and ChatGPT tutorials. Save months of trial-and-error
           </p>
           {/* Stat strip — pulled from upgrade page */}
           <div className="grid grid-cols-4 gap-2 max-w-md mx-auto mb-6 mt-4 text-center">
@@ -313,20 +411,26 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             ))}
           </div>
 
-          <div className="border-2 border-jet-black rounded-xl overflow-hidden">
-            {/* Most Popular ribbon */}
-            <div className="bg-black text-white text-center py-2 text-[11px] font-black uppercase tracking-widest">
-              Most Popular
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ backgroundColor: '#FFFFFF', border: '2px solid #333333', boxShadow: '0 12px 40px rgba(228, 135, 21, 0.15)' }}
+          >
+            {/* Most-popular ribbon — Fulvous */}
+            <div
+              className="text-center py-2.5 text-[11px] font-black uppercase tracking-widest"
+              style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}
+            >
+              Most popular · 30-day guarantee
             </div>
 
-            <div className="p-5 border-b border-[#E8E4DF]">
-              <p className="text-xs font-bold uppercase tracking-widest text-battleship-grey mb-4">What&apos;s included</p>
+            <div className="p-6 border-b" style={{ borderColor: '#E8E4DF' }}>
+              <p className="text-[11px] font-black uppercase tracking-widest mb-4" style={{ color: '#9C9C9C' }}>What&apos;s included</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {PLAN_BENEFITS.map((label) => (
-                  <div key={label} className="flex items-start gap-2 text-sm text-jet-black">
+                  <div key={label} className="flex items-start gap-2 text-[14px]" style={{ color: '#333333' }}>
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0 mt-0.5">
-                      <circle cx="7" cy="7" r="7" fill="black" opacity="0.1"/>
-                      <path d="M4.5 7l1.8 1.8L9.5 5" stroke="black" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="7" cy="7" r="7" fill="#62A758"/>
+                      <path d="M4.5 7l1.8 1.8L9.5 5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                     <span className="leading-snug">{label}</span>
                   </div>
@@ -334,25 +438,26 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               </div>
             </div>
 
-            <div className="p-5 bg-[#F9F9F7]">
+            <div className="p-6" style={{ backgroundColor: '#FEF7E7' }}>
               <div className="flex items-end justify-between mb-1">
-                <span className="font-black text-jet-black text-lg">Your price today</span>
+                <span className="font-black text-[18px]" style={{ color: '#333333' }}>Your price today</span>
                 <div className="text-right leading-none">
-                  <span className="font-black text-jet-black text-4xl">{SALE_PRICE}</span>
-                  <p className="text-xs text-battleship-grey mt-1">first month</p>
+                  <span className="font-black text-[42px]" style={{ color: '#333333' }}>{SALE_PRICE}</span>
+                  <p className="text-[11px] mt-1" style={{ color: '#9C9C9C' }}>first month</p>
                 </div>
               </div>
-              <p className="text-xs text-battleship-grey text-right mb-5">{RENEWAL_COPY}</p>
+              <p className="text-[11px] text-right mb-5" style={{ color: '#9C9C9C' }}>{RENEWAL_COPY}</p>
 
               <a
                 href={PAYMENT_URL}
-                className="block w-full text-center py-4 rounded-lg font-black text-base text-white bg-black hover:bg-[#222] transition-colors"
+                className="block w-full text-center py-4 rounded-xl font-black text-[15px] transition-all hover:opacity-90 active:scale-[0.99]"
+                style={{ backgroundColor: '#333333', color: '#FFFDFA', boxShadow: '0 6px 20px rgba(0, 0, 0, 0.15)' }}
               >
                 Start my 1-month trial →
               </a>
 
               {/* Trust strip */}
-              <div className="flex items-center justify-center gap-4 mt-3 text-[11px] text-battleship-grey">
+              <div className="flex items-center justify-center gap-3 mt-3 text-[11px]" style={{ color: '#9C9C9C' }}>
                 <span className="inline-flex items-center gap-1">
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1L7.5 4 11 4.5 8.5 7 9 11 6 9 3 11 3.5 7 1 4.5 4.5 4z" fill="#E7B02F"/></svg>
                   30-day guarantee
@@ -366,7 +471,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   href={UPSELL_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-battleship-grey hover:text-jet-black transition-colors underline underline-offset-2"
+                  className="text-[12px] underline underline-offset-2 transition-opacity hover:opacity-70"
+                  style={{ color: '#9C9C9C' }}
                 >
                   Or get lifetime access →
                 </a>
@@ -378,7 +484,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── MODULE 9: FAQs ─────────────────────────────────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
           <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-xl font-black text-jet-black mb-6 text-center">Frequently asked questions</h2>
+          <h2 className="text-xl font-black mb-6 text-center" style={{ color: '#333333' }}>Frequently asked questions</h2>
           <div>
             {FAQS.map((item) => (
               <FAQItem key={item.q} q={item.q} a={item.a} />
@@ -386,20 +492,31 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
-        {/* ── MODULE 10: AI DOESN'T HAVE TO BE COMPLICATED ──── */}
+        {/* ── CLOSING: AI doesn't have to be complicated ──── */}
         <section className="px-6 pb-16 max-w-2xl mx-auto w-full">
-          <div className="rounded-xl p-8 sm:p-10 text-center bg-black">
-            <h2 className="text-2xl sm:text-3xl font-black text-white mb-3">AI doesn&apos;t have to be complicated</h2>
-            <p className="text-[15px] text-white opacity-80 mb-6 max-w-md mx-auto leading-relaxed">
-              Join 2,000+ professionals already using the AI Central library — 1,200+ curated tutorials, 15 minutes to your first result, no fluff.
+          <div
+            className="rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden"
+            style={{ backgroundColor: '#333333' }}
+          >
+            {/* Fulvous top accent */}
+            <div
+              className="absolute top-0 left-0 right-0 h-1"
+              style={{ background: 'linear-gradient(90deg, #E48715 0%, #E7B02F 100%)' }}
+            />
+            <h2 className="text-[26px] sm:text-[32px] font-black mb-3 leading-tight" style={{ color: '#FFFDFA' }}>
+              AI doesn&apos;t have to be complicated
+            </h2>
+            <p className="text-[15px] mb-7 max-w-md mx-auto leading-relaxed" style={{ color: '#FFFDFA', opacity: 0.8 }}>
+              Join 2,000+ professionals already using the AI Central library. 1,200+ curated tutorials. 15 minutes to your first result. No fluff
             </p>
             <a
               href={PAYMENT_URL}
-              className="inline-block px-8 py-4 bg-white font-black text-sm text-black rounded-lg transition-opacity hover:opacity-90"
+              className="inline-block px-8 py-4 font-black text-[14px] rounded-xl transition-opacity hover:opacity-90 active:scale-[0.99]"
+              style={{ backgroundColor: '#E48715', color: '#FFFDFA', boxShadow: '0 6px 20px rgba(228, 135, 21, 0.4)' }}
             >
-              Start my 1-month trial — $4.99 →
+              {primaryCta} for {SALE_PRICE} →
             </a>
-            <p className="text-[11px] text-white opacity-50 mt-3">
+            <p className="text-[11px] mt-4" style={{ color: '#FFFDFA', opacity: 0.5 }}>
               Then $59.75/year · Cancel anytime · 30-day money-back guarantee
             </p>
             <div className="mt-3">
@@ -407,7 +524,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 href={UPSELL_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-white opacity-50 hover:opacity-80 transition-opacity underline"
+                className="text-[11px] underline transition-opacity hover:opacity-80"
+                style={{ color: '#FFFDFA', opacity: 0.5 }}
               >
                 Or get lifetime access →
               </a>
@@ -415,28 +533,32 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="border-t border-[#E8E4DF] px-6 py-4 text-center">
-          <p className="text-xs text-battleship-grey">
+        {/* Footer with Fulvous accent border */}
+        <footer className="px-6 py-5 text-center border-t" style={{ borderColor: '#E48715' }}>
+          <p className="text-[11px]" style={{ color: '#9C9C9C' }}>
             AI Central ·{' '}
-            <a href="https://thecentral.ai/privacy" className="hover:text-jet-black transition-colors">Privacy Policy</a>
+            <a href="https://thecentral.ai/privacy" className="hover:opacity-70 transition-opacity" style={{ color: '#9C9C9C' }}>Privacy Policy</a>
             {' '}·{' '}
-            <a href="https://thecentral.ai" className="hover:text-jet-black transition-colors">thecentral.ai</a>
+            <a href="https://thecentral.ai" className="hover:opacity-70 transition-opacity" style={{ color: '#9C9C9C' }}>thecentral.ai</a>
           </p>
         </footer>
       </div>
 
-      {/* Sticky bottom bar (mobile) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[#E8E4DF] px-4 py-3 flex items-center justify-between gap-3 sm:hidden z-40">
+      {/* Sticky bottom bar (mobile) — Fulvous accent */}
+      <div
+        className="fixed bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between gap-3 sm:hidden z-40 border-t"
+        style={{ backgroundColor: '#FFFFFF', borderColor: '#E48715' }}
+      >
         <div>
-          <p className="text-xs font-bold text-jet-black">{SALE_PRICE}/mo today</p>
-          <p className="text-[10px] text-battleship-grey">30-day guarantee</p>
+          <p className="text-[12px] font-black" style={{ color: '#333333' }}>{SALE_PRICE}/mo today</p>
+          <p className="text-[10px]" style={{ color: '#9C9C9C' }}>30-day guarantee</p>
         </div>
         <a
           href={PAYMENT_URL}
-          className="flex-shrink-0 px-5 py-2.5 rounded-lg font-bold text-sm text-white bg-black hover:bg-[#222] transition-colors"
+          className="flex-shrink-0 px-5 py-2.5 rounded-xl font-black text-[13px] transition-all active:scale-[0.99]"
+          style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}
         >
-          Start trial →
+          {primaryCta.length > 18 ? 'Start trial' : primaryCta} →
         </a>
       </div>
 
@@ -448,8 +570,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 export default function ResultPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-baby-powder">
-        <div className="w-8 h-8 rounded-full border-4 border-[#E8E4DF] border-t-black animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFFDFA' }}>
+        <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#E8E4DF', borderTopColor: '#E48715' }} />
       </div>
     }>
       <ResultContent searchParams={searchParams} />

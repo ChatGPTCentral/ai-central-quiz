@@ -158,7 +158,13 @@ function QuizV2Content() {
         setSubmitting(false)
         return
       }
-      router.push(`/calculating?archetype=${data.archetype}&name=${encodeURIComponent(data.name)}&score=${data.score}`)
+      const params = new URLSearchParams({
+        archetype: data.archetype,
+        name: data.name,
+        score: String(data.score),
+      })
+      if (data.id) params.set('id', data.id)
+      router.push(`/calculating?${params.toString()}`)
     } catch {
       setSubmitError('Network error. Please check your connection and try again.')
       setSubmitting(false)
