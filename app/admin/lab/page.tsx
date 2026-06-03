@@ -5,7 +5,7 @@ import { useState } from 'react'
 type Status = 'skipped' | 'ok' | 'miss' | 'error'
 
 interface Stage {
-  name: 'name_from_email' | 'google_search' | 'linkedin_scrape' | 'apollo' | 'wiza' | 'photo_ai_demographics'
+  name: 'name_from_email' | 'google_search' | 'linkedin_scrape' | 'apollo' | 'wiza' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
   status: Status
   result?: unknown
   reason?: string
@@ -24,11 +24,13 @@ interface V2Result {
 
 const STAGE_LABEL: Record<Stage['name'], string> = {
   name_from_email:         '1 · Name from email',
-  google_search:           '2 · Google → LinkedIn',
+  google_search:           '2 · Google → LinkedIn URL discovery',
   linkedin_scrape:         '3 · LinkedIn profile scrape (Apify)',
-  apollo:                  '4 · Apollo',
-  wiza:                    '5 · Wiza',
-  photo_ai_demographics:   '6 · AI vision · age + sex',
+  apollo:                  '4 · Apollo person match',
+  wiza:                    '5 · Wiza email reverse-lookup',
+  photo_ai_demographics:   '6 · Claude vision · age + sex from photo',
+  beehiiv_lookup:          '7 · Beehiiv subscriber lookup',
+  stripe_lookup:           '8 · Stripe customer lookup',
 }
 
 const STATUS_COLOR: Record<Status, { bg: string; fg: string; label: string }> = {
@@ -74,9 +76,9 @@ export default function LabPage() {
     <div className="p-8 max-w-5xl">
       <h1 className="text-2xl font-black text-[#333333] mb-1">✨ Enrichment Lab</h1>
       <p className="text-sm text-[#9C9C9C] mb-6">
-        Test the v2 pipeline (name-from-email → Apollo → Google → LinkedIn scrape) on any
-        submission without touching the live data. Toggle <strong>Save</strong> to write
-        results back to the row.
+        Test the 8-stage v2 pipeline on any submission (or any email) without touching the live data.
+        Stages run in order: <strong>name from email → Google → LinkedIn scrape → Apollo → Wiza → AI vision → Beehiiv → Stripe</strong>.
+        Toggle <strong>Save</strong> to write merged results + run the segment classifier on the row.
       </p>
 
       <div className="flex gap-2 items-end mb-6">

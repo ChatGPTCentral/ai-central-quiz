@@ -23,7 +23,6 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
       { href: '/admin/debug', label: 'Debug lookup', icon: '⌖' },
       { href: '/admin/stats', label: 'Stats', icon: '◔' },
       { href: '/admin/flow', label: 'Flow', icon: '⇋' },
-      { href: '/admin/sandbox', label: 'Sandbox v2', icon: '🧪' },
     ],
   },
   {

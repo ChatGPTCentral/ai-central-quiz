@@ -28,6 +28,19 @@ export interface PrefillResult {
     submissionId?: string
     archetype?: string
     completedAt?: number
+    // v2 segmentation snapshot — included so the admin Debug page and the
+    // public quiz can both surface where the row sits today
+    stage?: string
+    stageReason?: string
+    persona?: string
+    personaReason?: string
+    // Raw Survey v2 inputs when present
+    frequencyScore?: number
+    depthScore?: number
+    breadthScore?: number
+    momentum?: number
+    friction?: string
+    intent30d?: string
   }
   beehiiv: BeehiivLookupResult
   apollo: ApolloEnrichmentResult
@@ -107,6 +120,16 @@ export async function getPrefillData(emailRaw: string): Promise<PrefillResult> {
           submissionId: history.id,
           archetype: history.archetype,
           completedAt: history.ts,
+          stage: history.stage,
+          stageReason: history.stageReason,
+          persona: history.persona,
+          personaReason: history.personaReason,
+          frequencyScore: history.frequencyScore,
+          depthScore: history.depthScore,
+          breadthScore: history.breadthScore,
+          momentum: history.momentum,
+          friction: history.friction,
+          intent30d: history.intent30d,
         }
       : { found: false },
     beehiiv,

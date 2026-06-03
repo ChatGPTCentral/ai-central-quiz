@@ -1,6 +1,8 @@
-import { QUESTIONS } from '@/lib/questions'
+import { QUESTIONS_V2_MERGED } from '@/lib/questions-v2-merged'
 import { ARCHETYPES } from '@/lib/archetypes'
 import ArchetypeTrace from './ArchetypeTrace.client'
+
+const QUESTIONS = QUESTIONS_V2_MERGED
 
 const ARCHETYPES_LIST = [
   { key: 'technical_pioneer', label: 'Technical Pioneer', color: '#2D8879' },
@@ -15,7 +17,7 @@ export default function AdminFlowPage() {
       <div className="max-w-5xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-black text-black mb-1">Quiz Flow Diagram</h1>
-          <p className="text-sm text-gray-500">AI Central — {QUESTIONS.length} steps → 4 archetypes</p>
+          <p className="text-sm text-gray-500">AI Central · Survey v2 · {QUESTIONS.length} steps → 4 archetypes + 6 stages + 4 personas</p>
         </div>
 
         {/* Flow steps */}
@@ -29,7 +31,7 @@ export default function AdminFlowPage() {
                   >
                     <div className="flex items-center gap-1.5 mb-2">
                       <span className="w-5 h-5 rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
-                        {q.step}
+                        {i + 1}
                       </span>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                         {q.type === 'text' ? 'Text' : q.type === 'email' ? 'Email' : q.type === 'chips' ? 'Single' : 'Multi'}
@@ -101,28 +103,31 @@ export default function AdminFlowPage() {
 
         {/* Routing logic */}
         <div className="bg-white rounded-2xl border border-[#E0E0E0] p-6">
-          <h2 className="text-sm font-black text-black uppercase tracking-wider mb-4">Archetype Routing Logic</h2>
+          <h2 className="text-sm font-black text-black uppercase tracking-wider mb-4">Archetype routing logic (v2)</h2>
+          <p className="text-[11px] text-gray-500 mb-4">
+            Computed by <code className="bg-[#F5F5F5] px-1 rounded">determineArchetype</code> from <code className="bg-[#F5F5F5] px-1 rounded">workArea</code> + <code className="bg-[#F5F5F5] px-1 rounded">jobLevel</code> + <code className="bg-[#F5F5F5] px-1 rounded">aiTools</code>. v2 dropped <code className="bg-[#F5F5F5] px-1 rounded">aiLevel</code>, <code className="bg-[#F5F5F5] px-1 rounded">timeCommitment</code>, and <code className="bg-[#F5F5F5] px-1 rounded">mainGoal</code> from the survey - - rules below reflect the v2 inputs only
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
               {
                 label: 'Technical Pioneer',
                 color: '#2D8879',
-                rule: 'aiLevel = Advanced OR (Coding/Data + 1-2h or 3+h time)',
+                rule: 'workArea includes Coding / Data analytics / Research, OR aiTools includes builder tools (Cursor, n8n, Zapier)',
               },
               {
                 label: 'Executive Strategist',
                 color: '#3B4C99',
-                rule: 'jobLevel = Founder/C-Suite/VP + mainGoal = Grow business or Professional growth',
+                rule: 'jobLevel = Founder / C-Suite / VP / Director',
               },
               {
                 label: 'Growth Operator',
                 color: '#E48715',
-                rule: 'workArea = Marketing/Sales/Ops + mainGoal = Professional growth or Grow business',
+                rule: 'workArea includes Marketing / Sales / Business operations',
               },
               {
                 label: 'Practical Learner',
                 color: '#62A758',
-                rule: 'Default fallback — does not match any of the above conditions',
+                rule: 'Default fallback - - does not match any of the above',
               },
             ].map(r => (
               <div
@@ -137,6 +142,28 @@ export default function AdminFlowPage() {
                 <p className="text-[11px] text-gray-600 leading-relaxed">{r.rule}</p>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Stage + Persona classifier — the v2 segmentation layer */}
+        <div className="bg-white rounded-2xl border border-[#E0E0E0] p-6 mt-6">
+          <h2 className="text-sm font-black text-black uppercase tracking-wider mb-2">Stage + Persona classifier (v2)</h2>
+          <p className="text-[11px] text-gray-500 mb-4">
+            Runs alongside archetype assignment via <code className="bg-[#F5F5F5] px-1 rounded">assignSegmentationV2</code> in <code className="bg-[#F5F5F5] px-1 rounded">lib/segmentation-v2.ts</code>. Two orthogonal axes:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-xl p-4 border border-[#E48715]/40 bg-[#E48715]/05">
+              <p className="text-xs font-black mb-2 text-[#E48715]">📈 STAGE (mutable, the ladder)</p>
+              <p className="text-[11px] text-gray-700 leading-relaxed">
+                S0 Unaware → S1 Curious → S2 Experimenter → S3 Practitioner → S4 Power User → S5 Builder. Computed from <code className="bg-[#F5F5F5] px-1 rounded">frequency_score</code> + <code className="bg-[#F5F5F5] px-1 rounded">depth_score</code> + <code className="bg-[#F5F5F5] px-1 rounded">breadth_score</code> when survey-v2 fields present, else inferred from legacy <code className="bg-[#F5F5F5] px-1 rounded">aiLevel</code> + <code className="bg-[#F5F5F5] px-1 rounded">aiTools</code>
+              </p>
+            </div>
+            <div className="rounded-xl p-4 border border-[#3B4C99]/40 bg-[#3B4C99]/05">
+              <p className="text-xs font-black mb-2 text-[#3B4C99]">👤 PERSONA (mostly fixed, role context)</p>
+              <p className="text-[11px] text-gray-700 leading-relaxed">
+                Decision Maker / Operator / Maker / Learner. Computed from <code className="bg-[#F5F5F5] px-1 rounded">seniority</code> + <code className="bg-[#F5F5F5] px-1 rounded">jobLevel</code> + <code className="bg-[#F5F5F5] px-1 rounded">workArea</code> + <code className="bg-[#F5F5F5] px-1 rounded">jobFunction</code>. Decision Maker wins first; Operator is the broad fallback for any signal we can&apos;t place
+              </p>
+            </div>
           </div>
         </div>
 

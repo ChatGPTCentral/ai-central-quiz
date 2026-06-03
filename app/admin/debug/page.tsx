@@ -1,12 +1,29 @@
 'use client'
 
 import { useState } from 'react'
+import { stageDef, personaDef } from '@/lib/segmentation-v2'
 
 type PrefillResult = {
   email: string
   blocked?: boolean
   fields: Record<string, { value: string | string[]; source: string } | undefined>
-  history: { found: boolean; submissionId?: string; archetype?: string; completedAt?: number }
+  history: {
+    found: boolean
+    submissionId?: string
+    archetype?: string
+    completedAt?: number
+    // v2 segmentation snapshot
+    stage?: string
+    stageReason?: string
+    persona?: string
+    personaReason?: string
+    frequencyScore?: number
+    depthScore?: number
+    breadthScore?: number
+    momentum?: number
+    friction?: string
+    intent30d?: string
+  }
   beehiiv: { found: boolean; subscriberId?: string; status?: string; customFields?: Record<string, string>; raw?: unknown; error?: string }
   apollo: {
     success: boolean
@@ -19,15 +36,18 @@ type PrefillResult = {
   }
 }
 
+// Field labels — kept for any legacy fields surfaced by Beehiiv / older
+// quiz history rows. v2 fields are rendered separately below
 const FIELD_LABELS: Record<string, string> = {
   name: 'Name',
-  aiLevel: 'AI level',
-  workArea: 'Work area',
-  learningStyle: 'Learning style',
-  timeCommitment: 'Time commitment',
-  mainGoal: 'Main goal',
-  aiTools: 'AI tools',
   jobLevel: 'Job level',
+  workArea: 'Work area',
+  aiTools: 'AI tools',
+  // Legacy v1 fields (kept for back-compat with pre-cutover Beehiiv data)
+  aiLevel: 'AI level (legacy)',
+  learningStyle: 'Learning style (legacy)',
+  timeCommitment: 'Time commitment (legacy)',
+  mainGoal: 'Main goal (legacy)',
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -67,7 +87,7 @@ export default function DebugPage() {
     <div className="p-8 max-w-4xl">
       <h1 className="text-2xl font-black text-black mb-1">Debug lookup</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Paste an email to see exactly what the prefill API would return — past submission, Beehiiv custom fields, Apollo enrichment, and the merged result.
+        Paste an email to see what the prefill API would return. Surfaces past submission, Survey v2 stage + persona, Beehiiv custom fields, Apollo enrichment, and the merged result
       </p>
 
       <form onSubmit={onLookup} className="flex gap-2 mb-8">
@@ -123,6 +143,62 @@ export default function DebugPage() {
               })}
             </div>
           </section>
+
+          {/* Segmentation v2 snapshot — stage + persona + raw v2 inputs */}
+          {result.history.found && (result.history.stage || result.history.persona) && (
+            <section className="bg-white border border-[#E0E0E0] rounded-xl p-5">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">📈 AI ladder · v2 segmentation</h2>
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                {(() => {
+                  const def = stageDef(result.history.stage)
+                  if (!def || def.key === 'unknown') return null
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
+                      style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+                      title={result.history.stageReason}
+                    >
+                      {def.emoji} {def.label}
+                    </span>
+                  )
+                })()}
+                {(() => {
+                  const def = personaDef(result.history.persona)
+                  if (!def || def.key === 'unknown') return null
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
+                      style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+                      title={result.history.personaReason}
+                    >
+                      {def.emoji} {def.label}
+                    </span>
+                  )
+                })()}
+              </div>
+              {result.history.stageReason && (
+                <p className="text-[11px] text-gray-500 mb-1"><strong>Why stage:</strong> {result.history.stageReason}</p>
+              )}
+              {result.history.personaReason && (
+                <p className="text-[11px] text-gray-500 mb-3"><strong>Why persona:</strong> {result.history.personaReason}</p>
+              )}
+
+              {/* Raw v2 signals */}
+              {(result.history.frequencyScore != null || result.history.depthScore != null || result.history.breadthScore != null || result.history.momentum != null || result.history.friction || result.history.intent30d) ? (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Survey v2:</span>
+                  {result.history.frequencyScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333] text-[10px]">freq {result.history.frequencyScore}/3</span>}
+                  {result.history.depthScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333] text-[10px]">depth {result.history.depthScore}/6</span>}
+                  {result.history.breadthScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333] text-[10px]">breadth {result.history.breadthScore}</span>}
+                  {result.history.momentum != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333] text-[10px]">momentum {result.history.momentum > 0 ? '+' : ''}{result.history.momentum}</span>}
+                  {result.history.friction && <span className="px-1.5 py-0.5 rounded bg-[#FEF7E7] text-[#BE593B] text-[10px]" title="What's blocking them">🛑 {result.history.friction.replace(/_/g, ' ')}</span>}
+                  {result.history.intent30d && <span className="px-1.5 py-0.5 rounded bg-[#62A758]/15 text-[#2D6A26] text-[10px]" title="30-day intent">🎯 {result.history.intent30d.replace(/_/g, ' ')}</span>}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-400 italic mt-2">No Survey v2 signals yet · stage / persona inferred from legacy fields</p>
+              )}
+            </section>
+          )}
 
           {/* History */}
           <section className="bg-white border border-[#E0E0E0] rounded-xl p-5">

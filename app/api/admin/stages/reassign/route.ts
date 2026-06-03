@@ -14,9 +14,9 @@ function sb() {
 }
 
 /**
- * POST /api/admin/sandbox/stage-reassign
+ * POST /api/admin/stages/reassign
  *
- * SANDBOX: re-runs the v2 (laddered Stage + Persona) classifier on every
+ * Re-runs the v2 (laddered Stage + Persona) classifier on every
  * row. Writes to stage / stage_score / stage_reason / persona /
  * persona_reason / staged_at — leaves the original `segment` columns
  * untouched.
