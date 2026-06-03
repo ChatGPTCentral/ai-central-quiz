@@ -5,6 +5,7 @@ import { runV2 } from '@/lib/enrichment/pipeline-v2'
 import { isPlaceholderPhoto } from '@/lib/enrichment/photo-filter'
 import { titleCase, normalizeCountry } from '@/lib/normalize'
 import { assignSegment } from '@/lib/segmentation'
+import { assignSegmentationV2 } from '@/lib/segmentation-v2'
 import { fromRow, type DbRow } from '@/lib/kv'
 
 export const maxDuration = 180
@@ -209,20 +210,30 @@ export async function POST(req: NextRequest) {
     update.enrichment_status = v2.status
     update.enriched_at = new Date().toISOString()
 
-    // Re-segment with the newly merged data so the persona reflects the
-    // freshest signal set. Reads existing row + applies the updates we're
-    // about to write before calling assignSegment.
+    // Re-classify (v1 + v2) with the newly merged data so persona / stage
+    // reflect the freshest signal set. Reads existing row + applies the
+    // updates we're about to write before calling the classifiers.
     try {
       const { data: existingRow } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
       if (existingRow) {
         // Project the about-to-be-written values onto the row for an
-        // accurate segment guess.
+        // accurate classification.
         const merged = { ...(existingRow as unknown as DbRow), ...(update as Partial<DbRow>) }
-        const seg = assignSegment(fromRow(merged))
+        const projected = fromRow(merged)
+        // v1 - - kept dual-write so the segment column stays current
+        const seg = assignSegment(projected)
         update.segment       = seg.segment
         update.segment_score = seg.score
         update.segment_reason = seg.reason
         update.segmented_at  = new Date().toISOString()
+        // v2 - - the canonical classifier now
+        const v2seg = assignSegmentationV2(projected)
+        update.stage         = v2seg.stage
+        update.stage_score   = v2seg.stageScore
+        update.stage_reason  = v2seg.stageReason
+        update.persona       = v2seg.persona
+        update.persona_reason = v2seg.personaReason
+        update.staged_at     = new Date().toISOString()
       }
     } catch { /* segmentation is best-effort; never block the save */ }
 

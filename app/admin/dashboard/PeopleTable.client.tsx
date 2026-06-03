@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import PhotoLightbox, { PhotoCell, type CardPerson } from '@/components/admin/PhotoLightbox'
 import FieldEnrichTrigger from '@/components/admin/FieldEnrichTrigger'
 import ColumnEnrichTrigger from '@/components/admin/ColumnEnrichTrigger'
-import { segmentDef } from '@/lib/segmentation'
+import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import type { StoredSubmission } from '@/lib/kv'
 
 interface Props { items: StoredSubmission[] }
@@ -113,7 +113,7 @@ function EditableCell({
 // ── Column descriptors ──────────────────────────────────────────
 type ProviderKey = 'v2'
 
-const STORAGE_KEY = 'admin_table_columns_v11'  // bumped: persona segment column
+const STORAGE_KEY = 'admin_table_columns_v12'  // bumped: stage + persona columns replace v1 segment
 
 type RowCtx = {
   s: StoredSubmission
@@ -252,15 +252,31 @@ const COLUMNS: Column[] = [
     ),
   },
   {
-    id: 'segment', label: 'Segment', width: '180px',
+    id: 'stage', label: 'Stage', width: '160px',
     cell: ({ s }) => {
-      const def = segmentDef(s.segment)
-      if (!def) return <span className="text-[12px] text-[#E8E4DF]">—</span>
+      const def = stageDef(s.stage)
+      if (!def || def.key === 'unknown') return <span className="text-[12px] text-[#E8E4DF]">·</span>
       return (
         <span
-          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[170px]"
+          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[150px]"
           style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
-          title={s.segmentReason || def.label}
+          title={s.stageReason || def.label}
+        >
+          {def.emoji} {def.label}
+        </span>
+      )
+    },
+  },
+  {
+    id: 'persona', label: 'Persona', width: '160px',
+    cell: ({ s }) => {
+      const def = personaDef(s.persona)
+      if (!def || def.key === 'unknown') return <span className="text-[12px] text-[#E8E4DF]">·</span>
+      return (
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider truncate max-w-[150px]"
+          style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+          title={s.personaReason || def.label}
         >
           {def.emoji} {def.label}
         </span>
@@ -510,7 +526,7 @@ const COLUMNS: Column[] = [
 
 // Default-visible columns (the rest are hidden until user toggles them on)
 const DEFAULT_VISIBLE_IDS = new Set([
-  'select', 'enrich', 'date', 'source', 'utmSource', 'photo', 'name', 'segment',
+  'select', 'enrich', 'date', 'source', 'utmSource', 'photo', 'name', 'stage', 'persona',
   'jobTitle', 'company', 'age', 'sex', 'tier', 'ltv', 'email', 'linkedin', 'menu',
 ])
 

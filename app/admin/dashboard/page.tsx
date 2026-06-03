@@ -14,7 +14,7 @@ import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
 import RoleChart from '@/components/admin/RoleChart.client'
 import AgeChart from '@/components/admin/AgeChart.client'
 import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
-import { SEGMENTS, segmentDef } from '@/lib/segmentation'
+import { STAGES, PERSONAS, stageDef, personaDef, type StageKey, type PersonaKey } from '@/lib/segmentation-v2'
 
 export const dynamic = 'force-dynamic'
 // Edge-cache for 30s — the dataset doesn't change between rapid navigations
@@ -182,21 +182,23 @@ export default async function DashboardPage({
             {/* Advanced filter — same UX as on /admin/submissions */}
             <AdvancedFilter />
 
-            {/* ── PERSONAS ZONE (top of dashboard — the analytical lens) ── */}
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Personas</h2>
-            <p className="text-[11px] text-[#9C9C9C] mb-3">Socio-demo-psycho-behavioural segments — money is NOT an input. Each row below the table shows how that persona actually converts.</p>
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-              {/* Bar chart of segment counts */}
+            {/* ── STAGE LADDER ZONE (top of dashboard — the analytical lens) ── */}
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">AI adoption ladder</h2>
+            <p className="text-[11px] text-[#9C9C9C] mb-3">
+              Where each person sits on the 6-rung ladder. Stage moves over time. Money is NOT an input - - it&apos;s what we measure per stage to find which rungs convert
+            </p>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              {/* Bar chart of stage counts */}
               <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
                 <header className="px-5 pt-5 pb-3">
-                  <h3 className="text-sm font-black text-[#333333]">Segment distribution</h3>
+                  <h3 className="text-sm font-black text-[#333333]">Stage distribution</h3>
                   <p className="text-[11px] text-[#9C9C9C] mt-0.5">N = {allRows.length.toLocaleString()}</p>
                 </header>
                 <div className="px-5 pb-5 flex flex-col gap-2">
-                  {SEGMENTS.map(def => {
-                    const count = allRows.filter(r => r.segment === def.key).length
+                  {STAGES.map(def => {
+                    const count = allRows.filter(r => r.stage === def.key).length
                     const pct = allRows.length > 0 ? (count / allRows.length) * 100 : 0
-                    const max = Math.max(...SEGMENTS.map(d => allRows.filter(r => r.segment === d.key).length), 1)
+                    const max = Math.max(...STAGES.map(d => allRows.filter(r => r.stage === d.key).length), 1)
                     const width = (count / max) * 100
                     return (
                       <div key={def.key} className="flex items-center gap-3 text-[12px]">
@@ -214,17 +216,17 @@ export default async function DashboardPage({
                 </div>
               </div>
 
-              {/* Cross-tab: segment × revenue */}
+              {/* Cross-tab: stage × revenue */}
               <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
                 <header className="px-5 pt-5 pb-3">
-                  <h3 className="text-sm font-black text-[#333333]">Segment × Revenue</h3>
-                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">How each persona converts — the analytical payoff</p>
+                  <h3 className="text-sm font-black text-[#333333]">Stage × Revenue</h3>
+                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">Which rung actually converts - - the analytical payoff</p>
                 </header>
                 <div className="px-1 pb-3 overflow-x-auto">
                   <table className="w-full text-[11px]">
                     <thead>
                       <tr className="border-b border-[#E8E4DF]">
-                        <th className="text-left px-4 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Segment</th>
+                        <th className="text-left px-4 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Stage</th>
                         <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">N</th>
                         <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Paying</th>
                         <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Conv %</th>
@@ -233,8 +235,9 @@ export default async function DashboardPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {SEGMENTS.map(def => {
-                        const rows = allRows.filter(r => r.segment === def.key)
+                      {STAGES.map(def => {
+                        const rows = allRows.filter(r => r.stage === def.key)
+                        if (rows.length === 0) return null
                         const paying = rows.filter(r => typeof r.lifetimeValueUsd === 'number' && r.lifetimeValueUsd > 0)
                         const revenue = paying.reduce((a, b) => a + (b.lifetimeValueUsd || 0), 0)
                         const arpu = rows.length > 0 ? revenue / rows.length : 0
@@ -247,6 +250,79 @@ export default async function DashboardPage({
                             <td className="px-2 py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">{conv.toFixed(1)}%</td>
                             <td className="px-2 py-1.5 text-right tabular-nums">${arpu.toFixed(2)}</td>
                             <td className="px-4 py-1.5 text-right tabular-nums font-bold text-[#62A758]">${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            {/* ── PERSONA FACET ZONE ── */}
+            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Persona facet</h2>
+            <p className="text-[11px] text-[#9C9C9C] mb-3">Role context (mostly fixed). Cross-tabs with Stage to answer &quot;which kind of person climbs the ladder fastest?&quot;</p>
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+              {/* Persona distribution */}
+              <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
+                <header className="px-5 pt-5 pb-3">
+                  <h3 className="text-sm font-black text-[#333333]">Persona distribution</h3>
+                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">N = {allRows.length.toLocaleString()}</p>
+                </header>
+                <div className="px-5 pb-5 flex flex-col gap-2">
+                  {PERSONAS.map(def => {
+                    const count = allRows.filter(r => r.persona === def.key).length
+                    const pct = allRows.length > 0 ? (count / allRows.length) * 100 : 0
+                    const max = Math.max(...PERSONAS.map(d => allRows.filter(r => r.persona === d.key).length), 1)
+                    const width = (count / max) * 100
+                    return (
+                      <div key={def.key} className="flex items-center gap-3 text-[12px]">
+                        <div className="w-44 shrink-0 truncate font-medium text-[#333333]">
+                          {def.emoji} {def.label}
+                        </div>
+                        <div className="flex-1 relative h-5 bg-[#F5F5F5] rounded">
+                          <div className="absolute inset-y-0 left-0 rounded transition-all duration-500" style={{ width: `${width}%`, backgroundColor: def.color }} />
+                        </div>
+                        <div className="w-12 shrink-0 text-right tabular-nums font-semibold text-[#333333]">{count}</div>
+                        <div className="w-12 shrink-0 text-right tabular-nums text-[#9C9C9C]">{pct.toFixed(0)}%</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Persona × Stage heatmap */}
+              <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
+                <header className="px-5 pt-5 pb-3">
+                  <h3 className="text-sm font-black text-[#333333]">Stage × Persona</h3>
+                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">Darker cells = bigger cohorts. Find the stuck personas</p>
+                </header>
+                <div className="px-1 pb-3 overflow-x-auto">
+                  <table className="w-full text-[10px]">
+                    <thead>
+                      <tr className="border-b border-[#E8E4DF]">
+                        <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Stage \ Persona</th>
+                        {(PERSONAS as { key: PersonaKey; emoji: string }[]).map(p => (
+                          <th key={p.key} className="text-center px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">{p.emoji}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(STAGES as { key: StageKey; emoji: string; label: string; color: string }[]).map(s => {
+                        const rowRows = allRows.filter(r => r.stage === s.key)
+                        if (rowRows.length === 0) return null
+                        return (
+                          <tr key={s.key} className="border-b border-[#F5F5F5]">
+                            <td className="px-3 py-1.5 truncate font-bold whitespace-nowrap" style={{ color: s.color }}>{s.emoji} {s.label}</td>
+                            {(PERSONAS as { key: PersonaKey; color: string }[]).map(p => {
+                              const n = rowRows.filter(r => r.persona === p.key).length
+                              const intensity = allRows.length > 0 ? Math.min((n / allRows.length) * 6, 1) : 0
+                              return (
+                                <td key={p.key} className="text-center px-2 py-1.5 tabular-nums" style={{ backgroundColor: n > 0 ? `${p.color}${Math.floor(intensity * 80).toString(16).padStart(2, '0')}` : undefined }}>
+                                  {n > 0 ? n : <span className="text-[#E8E4DF]">·</span>}
+                                </td>
+                              )
+                            })}
                           </tr>
                         )
                       })}

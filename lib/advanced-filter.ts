@@ -84,9 +84,18 @@ export const FILTERABLE_FIELDS: Record<string, { col: string; type: 'text' | 'nu
   enrichmentStatus:      { col: 'enrichment_status',     type: 'enum', enum: ['complete', 'partial', 'failed'] },
   enrichedAt:            { col: 'enriched_at',           type: 'timestamp' },
   createdAt:             { col: 'created_at',            type: 'timestamp' },
-  // Persona segmentation
+  // Persona segmentation (v1 - - kept for backwards compat / debugging)
   segment:               { col: 'segment',               type: 'enum',
                            enum: ['decision_maker', 'growth_operator', 'technical_builder', 'ai_power_user', 'mid_career_operator', 'curious_beginner', 'student_early_career', 'unclassified'] },
+  // AI adoption ladder (v2)
+  stage:                 { col: 'stage',                 type: 'enum',
+                           enum: ['S0_unaware', 'S1_curious', 'S2_experimenter', 'S3_practitioner', 'S4_power_user', 'S5_builder', 'unknown'] },
+  persona:               { col: 'persona',               type: 'enum',
+                           enum: ['decision_maker', 'operator', 'maker', 'learner', 'unknown'] },
+  friction:              { col: 'friction',              type: 'enum',
+                           enum: ['no_starting_point', 'no_time', 'too_noisy', 'no_trust', 'cant_build', 'no_friction'] },
+  intent30d:             { col: 'intent_30d',            type: 'enum',
+                           enum: ['learn_basics', 'use_more', 'first_automation', 'ship_to_customers', 'teach_team'] },
 }
 
 /**

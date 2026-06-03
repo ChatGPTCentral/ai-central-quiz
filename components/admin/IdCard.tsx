@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { countryFlag } from '@/lib/country-flags'
-import { segmentDef } from '@/lib/segmentation'
+import { stageDef, personaDef } from '@/lib/segmentation-v2'
 
 export interface IdCardPerson {
   id: string
@@ -34,9 +34,11 @@ export interface IdCardPerson {
   beehiivStatus?: string
   stripeCustomerId?: string
   enrichmentStatus?: string
-  // Persona segmentation
-  segment?: string
-  segmentReason?: string
+  // Persona segmentation (v2: stage ladder + persona facet)
+  stage?: string
+  stageReason?: string
+  persona?: string
+  personaReason?: string
 }
 
 interface Props {
@@ -172,13 +174,26 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
         {/* Chips row */}
         <div className="flex flex-wrap items-center gap-1 mt-2">
           {(() => {
-            const def = segmentDef(person.segment)
-            if (!def) return null
+            const def = stageDef(person.stage)
+            if (!def || def.key === 'unknown') return null
             return (
               <span
                 className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
                 style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
-                title={person.segmentReason || def.label}
+                title={person.stageReason || def.label}
+              >
+                {def.emoji} {def.label}
+              </span>
+            )
+          })()}
+          {(() => {
+            const def = personaDef(person.persona)
+            if (!def || def.key === 'unknown') return null
+            return (
+              <span
+                className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
+                style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+                title={person.personaReason || def.label}
               >
                 {def.emoji} {def.label}
               </span>

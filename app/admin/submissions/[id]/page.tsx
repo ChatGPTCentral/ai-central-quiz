@@ -4,7 +4,7 @@ import { getSubmission } from '@/lib/kv'
 import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag } from '@/lib/country-flags'
-import { segmentDef } from '@/lib/segmentation'
+import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
@@ -83,13 +83,26 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
           <div className="mt-3 flex items-center gap-2 flex-wrap">
             {(() => {
-              const def = segmentDef(item.segment)
-              if (!def) return null
+              const def = stageDef(item.stage)
+              if (!def || def.key === 'unknown') return null
               return (
                 <span
                   className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold"
                   style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
-                  title={item.segmentReason || def.label}
+                  title={item.stageReason || def.label}
+                >
+                  {def.emoji} {def.label}
+                </span>
+              )
+            })()}
+            {(() => {
+              const def = personaDef(item.persona)
+              if (!def || def.key === 'unknown') return null
+              return (
+                <span
+                  className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold"
+                  style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
+                  title={item.personaReason || def.label}
                 >
                   {def.emoji} {def.label}
                 </span>
@@ -123,14 +136,33 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             )}
           </div>
           {(() => {
-            const def = segmentDef(item.segment)
-            if (!def) return null
+            const stage = stageDef(item.stage)
+            const persona = personaDef(item.persona)
+            if ((!stage || stage.key === 'unknown') && (!persona || persona.key === 'unknown')) return null
             return (
-              <p className="text-[11px] text-[#9C9C9C] mt-2 italic max-w-2xl">
-                💡 <strong className="text-[#333333] not-italic">Sales angle:</strong> {def.salesHypothesis}
-              </p>
+              <div className="text-[11px] text-[#9C9C9C] mt-2 italic max-w-2xl space-y-0.5">
+                {stage && stage.key !== 'unknown' && (
+                  <p>📈 <strong className="text-[#333333] not-italic">Stage:</strong> {stage.salesHook}</p>
+                )}
+                {persona && persona.key !== 'unknown' && (
+                  <p>👤 <strong className="text-[#333333] not-italic">Persona:</strong> {persona.description}</p>
+                )}
+              </div>
             )
           })()}
+
+          {/* Survey v2 readout — frequency, depth, breadth, momentum, friction, intent */}
+          {(item.frequencyScore != null || item.depthScore != null || item.breadthScore != null || item.momentum != null || item.friction || item.intent30d) && (
+            <div className="mt-3 inline-flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="font-bold uppercase tracking-widest text-[#9C9C9C]">Survey v2:</span>
+              {item.frequencyScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">freq {item.frequencyScore}/3</span>}
+              {item.depthScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">depth {item.depthScore}/6</span>}
+              {item.breadthScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">breadth {item.breadthScore}</span>}
+              {item.momentum != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">momentum {item.momentum > 0 ? '+' : ''}{item.momentum}</span>}
+              {item.friction && <span className="px-1.5 py-0.5 rounded bg-[#FEF7E7] text-[#BE593B]" title="What's blocking them">🛑 {item.friction.replace(/_/g, ' ')}</span>}
+              {item.intent30d && <span className="px-1.5 py-0.5 rounded bg-[#62A758]/15 text-[#2D6A26]" title="30-day intent">🎯 {item.intent30d.replace(/_/g, ' ')}</span>}
+            </div>
+          )}
         </div>
       </section>
 
