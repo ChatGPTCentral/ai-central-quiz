@@ -95,9 +95,10 @@ export interface AggregatedCustomer {
  *
  * Options:
  *   skipEmails — emails already imported (skip the slow per-customer fetch)
+ *   onlyEmails — restrict processing to these emails (used by incremental sync)
  *   deadlineMs — wall-clock budget; stop processing once exceeded, return what we have
  */
-export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; deadlineMs?: number } = {}): Promise<{
+export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; onlyEmails?: Set<string>; deadlineMs?: number } = {}): Promise<{
   aggregated: Map<string, AggregatedCustomer>
   totalEmails: number
   hasMore: boolean
@@ -123,9 +124,15 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; d
   const result = new Map<string, AggregatedCustomer>()
   const totalEmails = customersByEmail.size
 
-  // Filter out already-imported emails BEFORE the slow per-customer loop
+  // Filter to the working set: skip already-imported emails AND, when
+  // onlyEmails is set (incremental sync), keep only those specific emails.
   const skipEmails = opts.skipEmails || new Set()
-  const entries = Array.from(customersByEmail.entries()).filter(([email]) => !skipEmails.has(email))
+  const onlyEmails = opts.onlyEmails
+  const entries = Array.from(customersByEmail.entries()).filter(([email]) => {
+    if (skipEmails.has(email)) return false
+    if (onlyEmails && !onlyEmails.has(email)) return false
+    return true
+  })
   const deadline = opts.deadlineMs ? Date.now() + opts.deadlineMs : Infinity
   let hasMore = false
   const s: Stripe = stripe  // narrow for use inside the closure (TypeScript loses the null-check across the async boundary)
@@ -288,6 +295,90 @@ async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {
   const out: T[] = []
   for await (const x of it) out.push(x)
   return out
+}
+
+/**
+ * Incremental Stripe sync.
+ *
+ * Pulls only the emails with NEW activity since `sinceMs`:
+ *   • charges created since the cutoff → derive customer IDs with new payments
+ *   • customers created since the cutoff → new accounts with or without charges
+ *   • refunds created since the cutoff → customers whose LTV may have shrunk
+ *
+ * Then runs the standard per-email aggregation on that subset only.
+ * Multi-customer-per-email dedupe still works because aggregateStripeByEmail
+ * walks the full customer list to build the email map - - the speedup comes
+ * from skipping the slow per-customer charges/invoices/subscriptions fetch
+ * for emails with no recent activity.
+ *
+ * Typical run: 5,000 customers in Stripe with 30 changes in the last week
+ *   = ~30 emails get re-aggregated instead of all 5,000.
+ *   Wall-clock: ~30s instead of ~5min.
+ */
+export async function aggregateStripeIncrementalSince(
+  sinceMs: number,
+  opts: { deadlineMs?: number } = {},
+): Promise<{
+  aggregated: Map<string, AggregatedCustomer>
+  totalEmails: number
+  hasMore: boolean
+  affectedEmails: number
+  sinceMs: number
+}> {
+  const stripe = stripeClient()
+  if (!stripe) throw new Error('STRIPE_SECRET_KEY not set')
+  const sinceSec = Math.floor(sinceMs / 1000)
+
+  // Collect every customer ID with activity since the cutoff.
+  const affectedCustomerIds = new Set<string>()
+
+  // New charges → customer IDs whose LTV may have grown
+  for await (const charge of stripe.charges.list({ created: { gte: sinceSec }, limit: 100 })) {
+    if (typeof charge.customer === 'string') affectedCustomerIds.add(charge.customer)
+  }
+  // New customers → may not have charges yet
+  for await (const customer of stripe.customers.list({ created: { gte: sinceSec }, limit: 100 })) {
+    affectedCustomerIds.add(customer.id)
+  }
+  // Refunds → LTV may have shrunk; refund.customer not always set so we
+  // derive via the parent charge
+  for await (const refund of stripe.refunds.list({ created: { gte: sinceSec }, limit: 100 })) {
+    if (typeof refund.charge === 'string') {
+      try {
+        const ch = await stripe.charges.retrieve(refund.charge)
+        if (typeof ch.customer === 'string') affectedCustomerIds.add(ch.customer)
+      } catch { /* charge may be missing; ignore */ }
+    }
+  }
+
+  if (affectedCustomerIds.size === 0) {
+    return { aggregated: new Map(), totalEmails: 0, hasMore: false, affectedEmails: 0, sinceMs }
+  }
+
+  // Resolve customer IDs → emails
+  const affectedEmails = new Set<string>()
+  for (const cid of Array.from(affectedCustomerIds)) {
+    try {
+      const customer = await stripe.customers.retrieve(cid)
+      if (customer.deleted) continue
+      const email = customer.email?.trim().toLowerCase()
+      if (email) affectedEmails.add(email)
+    } catch { /* deleted / inaccessible; skip */ }
+  }
+
+  // Run the per-email aggregation on this subset. Note: aggregateStripeByEmail
+  // still walks the full customer list to build the email→customer map
+  // (cheap), but only does the slow charges/invoices/subs fetch for the
+  // emails we passed in.
+  const sub = await aggregateStripeByEmail({ onlyEmails: affectedEmails, deadlineMs: opts.deadlineMs })
+
+  return {
+    aggregated: sub.aggregated,
+    totalEmails: sub.totalEmails,
+    hasMore: sub.hasMore,
+    affectedEmails: affectedEmails.size,
+    sinceMs,
+  }
 }
 
 // ISO-3166 alpha-2 → human country name (minimum coverage matching
