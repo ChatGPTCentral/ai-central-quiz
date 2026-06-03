@@ -34,7 +34,10 @@
 
   // Survey-id → path lookup. Add new surveys here as they ship.
   const SURVEY_PATHS = {
-    'quiz':    '/quiz',
+    // Both ids point to /quiz-v2 now — v2 is the canonical public quiz.
+    // 'quiz' kept as an alias so existing GTM/embed snippets keep working
+    // without a site update.
+    'quiz':    '/quiz-v2',
     'quiz-v2': '/quiz-v2',
   }
 
