@@ -222,6 +222,16 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             {seg.stageLabel}
           </p>
           <GaugeChart value={score} label={label} />
+
+          {/* Signature stat box — Cosmic Latte, template-style trust strip */}
+          <div
+            className="mt-8 px-5 py-4 rounded-xl text-center"
+            style={{ backgroundColor: '#FEF7E7', border: '1px solid #E7B02F' }}
+          >
+            <p className="text-[13px] leading-relaxed" style={{ color: '#333333' }}>
+              Backed by <strong>45,000+ readers</strong>, <strong>2,000+ paying members</strong>, <strong>1,200+ curated tutorials</strong>, and a <strong style={{ color: '#BE593B' }}>91% recommendation rate</strong>
+            </p>
+          </div>
         </section>
 
         {/* ── ARCHETYPE CARD ─────────────────────────────── */}
@@ -292,13 +302,145 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </section>
         )}
 
+        {/* ── WHAT IS THE AI CENTRAL LIBRARY (template's "What is X" section) ── */}
+        <section className="px-6 pt-4 pb-12 max-w-2xl mx-auto w-full">
+          <h2 className="text-[28px] sm:text-[34px] font-black mb-4 leading-[1.1]" style={{ color: '#333333' }}>
+            What is the <span style={{ color: '#E48715' }}>AI Central library</span>?
+          </h2>
+          <p className="text-[16px] leading-relaxed mb-5" style={{ color: '#333333' }}>
+            The <strong>1,200+ tutorial library</strong> built for senior professionals who want to actually <em>use</em> AI at work, not read about it. Curated by editors, sequenced into a path, tied to real business outcomes
+          </p>
+
+          <ul className="flex flex-col gap-3.5 mb-5">
+            {[
+              <>Get <strong>1,200+ tested AI workflows</strong> covering ChatGPT, Claude, Gemini, custom GPTs, automations, agents, and the playbooks behind them</>,
+              <>Access <strong>50+ ready-to-deploy templates</strong> for prompts, email sequences, decks, briefs, and standard ops — copy, paste, ship</>,
+              <>Join a <strong>community of 2,000+ paying members</strong> doing the same work you are — operators, founders, makers, decision-makers</>,
+              <>Weekly drops from the <strong>AI Central editorial team</strong> on the new tools, models, and patterns worth your attention</>,
+            ].map((item, i) => (
+              <li key={i} className="flex items-start gap-3 text-[15px]" style={{ color: '#333333' }}>
+                <span className="font-black text-[15px] mt-0.5 flex-shrink-0" style={{ color: '#E48715' }}>→</span>
+                <span className="leading-relaxed">{item}</span>
+              </li>
+            ))}
+          </ul>
+
+          <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
+            Unlike free AI content online, every workflow inside the library is{' '}
+            <mark style={{ background: 'linear-gradient(180deg, transparent 60%, #FEF7E7 60%)', padding: '0 2px' }}>
+              <strong>tested by editors and tied to a real business outcome</strong>
+            </mark>
+            . You get a sequenced path, not a search bar
+          </p>
+        </section>
+
+        {/* ── 4 PILLARS GRID (template's 2x2 pillar layout) ── */}
+        <section className="px-6 pb-12 max-w-2xl mx-auto w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[
+              { eyebrow: 'Tutorials',     title: '1,200+ tested workflows',  body: 'Every tutorial walks you through a real business outcome step by step. No fluff, no theory chapters.' },
+              { eyebrow: 'Templates',     title: '50+ ready to deploy',      body: 'Prompts, decks, briefs, automations. Copy, paste, ship. Built by operators who use them in production.' },
+              { eyebrow: 'Community',     title: '2,000+ paying members',    body: 'Operators, founders, makers, and decision-makers actually using AI at work. Share what\'s working in your role.' },
+              { eyebrow: 'Editorial',     title: 'Weekly drops, no noise',   body: 'The AI Central team filters the 14,000+ tools and 50+ weekly papers down to the handful actually worth your attention.' },
+            ].map((p) => (
+              <div key={p.eyebrow} className="p-6 rounded-xl" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF' }}>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: '#E48715' }}>{p.eyebrow}</p>
+                <h3 className="text-[18px] font-black mb-2 leading-tight" style={{ color: '#333333' }}>{p.title}</h3>
+                <p className="text-[13px] leading-relaxed" style={{ color: '#555' }}>{p.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── FOUNDER LETTER (template's "A letter from Matt" pattern) ── */}
+        <section className="px-6 pt-4 pb-12 max-w-2xl mx-auto w-full">
+          <p className="text-[14px] italic mb-3" style={{ color: '#9C9C9C' }}>A letter from Alex…</p>
+
+          <h2 className="text-[28px] sm:text-[34px] font-black mb-6 leading-[1.1]" style={{ color: '#333333' }}>
+            After building AI Central into a <span style={{ color: '#E48715' }}>45,000-reader network</span> and watching <span style={{ color: '#E48715' }}>2,000+ professionals</span> upgrade into our paid library, here&apos;s what I&apos;ve learned about who actually wins with AI
+          </h2>
+
+          <div className="flex flex-col gap-4 text-[15px] leading-relaxed" style={{ color: '#333333' }}>
+            <p>
+              Most people researching AI today are stuck in the same loop. They read a viral thread, they install a new tool, they fiddle for an hour, they put it down. Six months later, nothing has shipped
+            </p>
+            <p>
+              The ones who actually win, the ones who quietly become the AI person on their team, do one thing differently. They stop researching and pick one workflow that compounds
+            </p>
+            <p>
+              <mark style={{ background: 'linear-gradient(180deg, transparent 60%, #FEF7E7 60%)', padding: '0 2px' }}>
+                <strong>One workflow shipped beats ten tutorials watched</strong>
+              </mark>
+            </p>
+            <p>
+              That&apos;s the entire premise of the AI Central library. Every tutorial is a workflow, not a lecture. Every workflow is sequenced into a path that fits your role and where you currently sit on the AI ladder
+            </p>
+            <p>
+              You just took the quiz. We now know your stage, your persona, and what&apos;s blocking you. Your plan above isn&apos;t a generic course recommendation. It&apos;s a 30-day path mapped to your actual starting line
+            </p>
+            <p>
+              If you join the library today, you keep that path. If you don&apos;t, you go back to research mode and we both know how that ends
+            </p>
+            <p className="italic" style={{ color: '#555' }}>See you inside,<br/>Alex Fiore<br/><span className="text-[12px]" style={{ color: '#9C9C9C' }}>Founder, AI Central</span></p>
+          </div>
+        </section>
+
+        {/* ── AI ADOPTION LADDER (the segmentation visual, made tangible) ── */}
+        <section className="px-6 pb-12 max-w-2xl mx-auto w-full">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3 text-center" style={{ color: '#9C9C9C' }}>
+            The AI adoption ladder
+          </p>
+          <h2 className="text-[24px] sm:text-[28px] font-black mb-6 text-center leading-tight" style={{ color: '#333333' }}>
+            {stageMeta && stageMeta.key !== 'unknown'
+              ? <>You&apos;re standing on rung <span style={{ color: stageMeta.color }}>{stageMeta.score + 1} of 6</span>. Here&apos;s the climb</>
+              : <>The 6 rungs of the AI adoption ladder</>}
+          </h2>
+
+          <div className="flex flex-col gap-2.5">
+            {[
+              { key: 'S0_unaware',      emoji: '🌑', label: 'Unaware',      desc: 'Heard the name, not on the ladder yet' },
+              { key: 'S1_curious',      emoji: '🌱', label: 'Curious',      desc: 'Heard about AI. Hasn\'t used it' },
+              { key: 'S2_experimenter', emoji: '🧪', label: 'Experimenter', desc: 'Plays with ChatGPT occasionally' },
+              { key: 'S3_practitioner', emoji: '⚙️', label: 'Practitioner', desc: 'Uses AI weekly for real work' },
+              { key: 'S4_power_user',   emoji: '🚀', label: 'Power User',   desc: 'Daily. Multiple tools. Saved prompts' },
+              { key: 'S5_builder',      emoji: '🏗️', label: 'Builder',      desc: 'Ships AI workflows to customers and team' },
+            ].map((rung) => {
+              const isCurrent = stageMeta?.key === rung.key
+              return (
+                <div
+                  key={rung.key}
+                  className="flex items-center gap-4 p-3.5 rounded-xl transition-all"
+                  style={{
+                    backgroundColor: isCurrent ? '#FEF7E7' : '#FFFFFF',
+                    border: isCurrent ? '2px solid #E48715' : '1px solid #E8E4DF',
+                    boxShadow: isCurrent ? '0 4px 14px rgba(228, 135, 21, 0.15)' : 'none',
+                  }}
+                >
+                  <span className="text-[24px] flex-shrink-0">{rung.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[14px] font-black" style={{ color: '#333333' }}>{rung.label}</span>
+                      {isCurrent && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider" style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}>
+                          You are here
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px]" style={{ color: '#9C9C9C' }}>{rung.desc}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
         {/* ── COMMENTARY (archetype truth-paragraphs) ────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <h2 className="text-[26px] font-black mb-6 leading-tight" style={{ color: '#333333' }}>
+          <h2 className="text-[28px] sm:text-[32px] font-black mb-6 leading-[1.1]" style={{ color: '#333333' }}>
             {sales.truthHeading.replace(/—/g, ' - -').replace(/–/g, ' - -')}{name ? `, ${name}` : ''}
           </h2>
           {sales.truthParagraphs.map((p, i) => (
-            <p key={i} className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>
+            <p key={i} className="text-[16px] leading-relaxed mb-4" style={{ color: '#333333' }}>
               {p.replace(/—/g, ' - -').replace(/–/g, ' - -')}
             </p>
           ))}
@@ -484,7 +626,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── MODULE 9: FAQs ─────────────────────────────────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
           <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-xl font-black mb-6 text-center" style={{ color: '#333333' }}>Frequently asked questions</h2>
+          <h2 className="text-[28px] sm:text-[32px] font-black mb-2 text-center leading-tight" style={{ color: '#333333' }}>
+            Frequently asked <span style={{ color: '#E48715' }}>questions</span>
+          </h2>
+          <p className="text-[14px] text-center mb-8" style={{ color: '#9C9C9C' }}>The stuff people actually ask before they join</p>
           <div>
             {FAQS.map((item) => (
               <FAQItem key={item.q} q={item.q} a={item.a} />
