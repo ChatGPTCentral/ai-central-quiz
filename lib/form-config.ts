@@ -80,7 +80,13 @@ export async function getLivePublishedConfig(slug: string): Promise<FormConfig |
         .select('live_version_id, form_configs!inner(id, slug, version, status, questions, theme, updated_at, updated_by_email)')
         .eq('slug', slug)
         .maybeSingle()
-      if (error) throw new Error(`form_publish_pointer fetch failed: ${error.message}`)
+      if (error) {
+        if (error.code === '42P01') {
+          console.warn(`[form-config] tables not migrated yet for slug=${slug}; falling back to seed`)
+          return null
+        }
+        throw new Error(`form_publish_pointer fetch failed: ${error.message}`)
+      }
       if (!data) return null
       const cfg = (data as unknown as { form_configs: DbRow }).form_configs
       return fromRow(cfg)
@@ -100,7 +106,13 @@ export async function getLatestDraft(slug: string): Promise<FormConfig | null> {
     .order('version', { ascending: false })
     .limit(1)
     .maybeSingle()
-  if (error) throw new Error(`form_configs draft fetch failed: ${error.message}`)
+  if (error) {
+    if (error.code === '42P01') {
+      console.warn(`[form-config] form_configs table missing; returning null draft for slug=${slug}`)
+      return null
+    }
+    throw new Error(`form_configs draft fetch failed: ${error.message}`)
+  }
   return data ? fromRow(data as DbRow) : null
 }
 
