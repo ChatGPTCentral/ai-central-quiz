@@ -5,7 +5,8 @@ import { createBeehiivSubscriber } from '@/lib/beehiiv'
 import { determineArchetype } from '@/lib/archetypes'
 import { findSubmissionByEmail, fromRow, type StoredSubmission } from '@/lib/kv'
 import { runEnrichment } from '@/lib/enrichment/waterfall'
-import { answersToDb, calculateScoreV2 } from '@/lib/questions-v2-merged'
+import { answersToDb, calculateScoreV2, QUESTIONS_V2_MERGED } from '@/lib/questions-v2-merged'
+import { getLivePublishedConfig } from '@/lib/form-config'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
 import { createClient } from '@supabase/supabase-js'
 
@@ -53,7 +54,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid body' }, { status: 400 })
   }
   const answers = body.answers || {}
-  const v = answersToDb(answers)
+  // Convert answers against the live published config (so editor changes apply
+  // immediately) — fall back to the seed array if the config fetch fails.
+  let questionsForMap = QUESTIONS_V2_MERGED
+  try {
+    const cfg = await getLivePublishedConfig('quiz-v2')
+    if (cfg && Array.isArray(cfg.questions) && cfg.questions.length > 0) {
+      questionsForMap = cfg.questions
+    }
+  } catch (err) {
+    console.error('[submit-quiz-v2] live config fetch failed, using seed:', err)
+  }
+  const v = answersToDb(answers, questionsForMap)
 
   if (!v.email || !v.name) {
     return NextResponse.json({ success: false, error: 'Name and email required' }, { status: 400 })

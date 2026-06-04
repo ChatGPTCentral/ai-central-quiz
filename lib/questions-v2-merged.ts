@@ -232,9 +232,12 @@ export interface V2DbValues {
   intent_30d?: string
 }
 
-export function answersToDb(answers: Record<string, string | string[]>): V2DbValues {
+export function answersToDb(
+  answers: Record<string, string | string[]>,
+  questions: V2Question[] = QUESTIONS_V2_MERGED,
+): V2DbValues {
   const out: V2DbValues = {}
-  for (const q of QUESTIONS_V2_MERGED) {
+  for (const q of questions) {
     if (!q.dbColumn) continue
     const raw = answers[q.id]
     if (raw === undefined) continue
