@@ -109,6 +109,15 @@ export default function EditorClient({
   const [previewAnswer, setPreviewAnswer] = useState<string>('')
   const [previewMulti, setPreviewMulti] = useState<string[]>([])
 
+  // AI assist state
+  type AISuggestionState =
+    | { mode: 'label'; items: string[] }
+    | { mode: 'options'; items: Array<{ label: string; value: string }> }
+    | null
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestionState>(null)
+  const [aiBusy, setAiBusy] = useState<'label' | 'options' | null>(null)
+  const [aiError, setAiError] = useState<string | null>(null)
+
   const onSelect = (id: string) => {
     setSelectedId(id)
     setPreviewAnswer('')
@@ -363,6 +372,50 @@ export default function EditorClient({
     setError(null)
   }
 
+  // ── AI assist ─────────────────────────────────────────────────────
+  const callAi = async (action: 'rewrite_label' | 'suggest_options') => {
+    setAiBusy(action === 'rewrite_label' ? 'label' : 'options')
+    setAiError(null)
+    setAiSuggestions(null)
+    try {
+      const neighbors = [
+        questions[selectedIdx - 1],
+        questions[selectedIdx + 1],
+      ].filter(Boolean)
+      const res = await fetch('/api/admin/form-config/ai-rewrite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, question: selected, neighbors }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'AI request failed')
+      if (action === 'rewrite_label') {
+        setAiSuggestions({ mode: 'label', items: data.suggestions as string[] })
+      } else {
+        setAiSuggestions({ mode: 'options', items: data.suggestions as Array<{ label: string; value: string }> })
+      }
+    } catch (e) {
+      setAiError(String(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  const applyAiLabel = (label: string) => {
+    patchQuestion(selectedIdx, { label })
+    setAiSuggestions(null)
+  }
+  const applyAiOption = (opt: { label: string; value: string }) => {
+    setQuestions(prev => {
+      const next = [...prev]
+      const opts = (next[selectedIdx].options ?? []).slice()
+      opts.push(opt)
+      next[selectedIdx] = { ...next[selectedIdx], options: opts }
+      return next
+    })
+    markDirty()
+  }
+
   const headerLabel = useMemo(() => {
     if (draftVersion && draftVersion > (liveVersion ?? 0)) return `Draft v${draftVersion}`
     if (liveVersion) return `Live v${liveVersion}`
@@ -506,6 +559,29 @@ export default function EditorClient({
               rows={2}
               className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1] resize-none"
             />
+            <button
+              onClick={() => callAi('rewrite_label')}
+              disabled={aiBusy === 'label'}
+              className="mt-1 text-[10px] text-[#046BB1] hover:underline disabled:text-[#9C9C9C]"
+            >
+              {aiBusy === 'label' ? 'Thinking…' : '✨ Rewrite with AI'}
+            </button>
+            {aiSuggestions?.mode === 'label' && (
+              <div className="mt-2 space-y-1.5">
+                {aiSuggestions.items.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => applyAiLabel(s)}
+                    className="block w-full text-left text-xs border border-[#E8E4DF] rounded px-2 py-1.5 bg-[#FFFDFA] hover:border-[#046BB1] hover:bg-[#046BB1]/5"
+                  >
+                    {s}
+                  </button>
+                ))}
+                <button onClick={() => setAiSuggestions(null)} className="text-[10px] text-[#9C9C9C] hover:text-[#333333]">
+                  Dismiss
+                </button>
+              </div>
+            )}
           </Field>
 
           <Field label="Sublabel">
@@ -582,8 +658,38 @@ export default function EditorClient({
                 >
                   + Add option
                 </button>
+                <button
+                  onClick={() => callAi('suggest_options')}
+                  disabled={aiBusy === 'options'}
+                  className="text-[10px] text-[#046BB1] hover:underline disabled:text-[#9C9C9C] ml-3"
+                >
+                  {aiBusy === 'options' ? 'Thinking…' : '✨ Suggest 5 more'}
+                </button>
+                {aiSuggestions?.mode === 'options' && (
+                  <div className="mt-2 space-y-1.5 border-t border-[#E8E4DF] pt-2">
+                    {aiSuggestions.items.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => applyAiOption(s)}
+                        className="flex items-center gap-2 w-full text-left text-xs border border-[#E8E4DF] rounded px-2 py-1.5 bg-[#FFFDFA] hover:border-[#046BB1] hover:bg-[#046BB1]/5"
+                        title="Click to add this option"
+                      >
+                        <span className="flex-1">{s.label}</span>
+                        <span className="font-mono text-[10px] text-[#9C9C9C]">{s.value}</span>
+                      </button>
+                    ))}
+                    <button onClick={() => setAiSuggestions(null)} className="text-[10px] text-[#9C9C9C] hover:text-[#333333]">
+                      Dismiss
+                    </button>
+                  </div>
+                )}
               </div>
             </Field>
+          )}
+          {aiError && (
+            <div className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5">
+              {aiError}
+            </div>
           )}
 
           {/* Design (form-level — persists with config) */}
