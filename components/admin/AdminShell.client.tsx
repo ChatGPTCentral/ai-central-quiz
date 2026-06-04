@@ -26,6 +26,12 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
     ],
   },
   {
+    label: 'Forms',
+    items: [
+      { href: '/admin/editor', label: 'Editor', icon: '✎' },
+    ],
+  },
+  {
     label: 'Settings',
     items: [
       { href: '/admin/settings', label: 'Classifications', icon: '⚙' },
