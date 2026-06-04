@@ -13,34 +13,8 @@
 //   persona anchors (workArea, jobLevel) →
 //   commitment close (intent_30d)
 
-export type V2QuestionType = 'text' | 'email' | 'chips' | 'multi-chips'
-
-export interface V2Option {
-  label: string
-  value: string
-  emoji?: string
-  logo?: string
-  /** Numeric score for chips that map to a numeric column */
-  score?: number
-}
-
-export interface V2Question {
-  id: string
-  type: V2QuestionType
-  label: string
-  sublabel?: string
-  required: boolean
-  placeholder?: string
-  options?: V2Option[]
-  /** Maps onto a DB column when present */
-  dbColumn?:
-    | 'name' | 'email'
-    | 'frequency_score' | 'depth_score' | 'breadth_score'
-    | 'momentum' | 'friction' | 'intent_30d'
-    | 'ai_tools' | 'work_area' | 'job_level'
-  /** How the answer is converted to its DB value */
-  scoring?: 'count' | 'value' | 'enum' | 'csv'
-}
+import type { V2Question } from './form-schema'
+export type { V2Question, V2QuestionType, V2Option, V2DbColumn } from './form-schema'
 
 export const QUESTIONS_V2_MERGED: V2Question[] = [
   // ── Identity ────────────────────────────────────────────────────

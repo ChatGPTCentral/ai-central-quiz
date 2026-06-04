@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { QUESTIONS_V2_MERGED } from '@/lib/questions-v2-merged'
+import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 
 type Answers = Record<string, string | string[]>
 const QUESTIONS = QUESTIONS_V2_MERGED
@@ -24,7 +25,6 @@ function QuizV2Content() {
   const [direction, setDirection] = useState<'fwd' | 'back'>('fwd')
   const [animKey, setAnimKey] = useState(0)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
   const emailPrefilled = useRef(false)
 
   // Embed-mode plumbing (same protocol as /quiz)
@@ -65,12 +65,6 @@ function QuizV2Content() {
   const showContinue = !isAutoAdvance
 
   const progressPct = Math.round((step / TOTAL_STEPS) * 100)
-
-  useEffect(() => {
-    if (isText && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 380)
-    }
-  }, [step, isText])
 
   const canProceed = useCallback((): boolean => {
     if (isMulti) return !q.required || multiAnswer.length > 0
@@ -211,12 +205,6 @@ function QuizV2Content() {
     return () => window.removeEventListener('keydown', onKey)
   }, [step, singleAnswer, isSingle]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') { e.preventDefault(); advance() }
-  }
-  const letter = (i: number) => String.fromCharCode(65 + i)
-  const isLargeGrid = isMulti && (q.options?.length ?? 0) > 4
-
   return (
     <div className={`${isEmbed ? 'min-h-0' : 'min-h-screen'} bg-white flex flex-col`}>
       <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 h-[3px] bg-gray-100 z-50`}>
@@ -242,80 +230,19 @@ function QuizV2Content() {
       <main className="flex-1 flex items-center justify-center px-6 py-6 overflow-hidden">
         <div className="w-full max-w-[580px]">
           <div key={animKey} className={direction === 'fwd' ? 'tf-enter-fwd' : 'tf-enter-back'}>
-            <div className="flex items-center gap-1.5 mb-5">
-              <span className="text-[13px] font-bold" style={{ color: ACCENT }}>{step}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </div>
-
-            <h1 className="text-[26px] sm:text-[30px] font-bold text-gray-900 leading-tight mb-2">{q.label}</h1>
-            {q.sublabel ? <p className="text-[15px] text-gray-500 mb-2">{q.sublabel}</p> : <div className="mb-6" />}
-            {q.sublabel && <div className="mb-3" />}
-
-            {isText && (
-              <div className="mb-7" onKeyDown={onInputKeyDown}>
-                <input
-                  ref={inputRef}
-                  type={q.type === 'email' ? 'email' : 'text'}
-                  value={singleAnswer}
-                  onChange={e => handleTextChange(e.target.value)}
-                  placeholder={q.placeholder}
-                  className={`w-full text-[17px] text-gray-900 placeholder-gray-300 bg-transparent border-b-2 pb-3 outline-none transition-colors duration-200 ${inputError ? 'border-red-400' : 'border-gray-200 focus:border-[#046BB1]'}`}
-                />
-                {inputError && <p className="mt-2 text-sm text-red-500">{inputError}</p>}
-                <p className="mt-3 text-xs text-gray-400">Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] text-gray-500 font-mono">Enter ↵</kbd> to continue</p>
-              </div>
-            )}
-
-            {isSingle && q.options && (
-              <div className="flex flex-col gap-2.5 mb-7">
-                {q.options.map((opt, i) => {
-                  const sel = singleAnswer === opt.value
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleSingleSelect(opt.value)}
-                      className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'border-[#046BB1] bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
-                    >
-                      <span className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold transition-all duration-150 ${sel ? 'text-white' : 'bg-gray-100 text-gray-500'}`} style={sel ? { backgroundColor: ACCENT } : {}}>
-                        {letter(i)}
-                      </span>
-                      {opt.emoji && <span className="text-[17px] leading-none">{opt.emoji}</span>}
-                      <span className={`font-medium text-[15px] ${sel ? 'text-[#046BB1]' : 'text-gray-800'}`}>{opt.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
-            {isMulti && q.options && (
-              <div className={`mb-7 ${isLargeGrid ? 'grid grid-cols-2 gap-2.5' : 'flex flex-col gap-2.5'}`}>
-                {q.options.map(opt => {
-                  const sel = multiAnswer.includes(opt.value)
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => handleMultiToggle(opt.value)}
-                      className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'border-[#046BB1] bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
-                    >
-                      <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center border-2 transition-all duration-150 ${sel ? 'border-[#046BB1]' : 'border-gray-300 bg-white'}`} style={sel ? { backgroundColor: ACCENT } : {}}>
-                        {sel && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5.5L3.8 7.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                      </span>
-                      {opt.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={opt.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
-                      ) : opt.emoji ? (
-                        <span className="text-[17px] leading-none">{opt.emoji}</span>
-                      ) : null}
-                      <span className={`font-medium text-[14px] leading-snug ${sel ? 'text-[#046BB1]' : 'text-gray-800'}`}>{opt.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+            <QuestionRenderer
+              question={q}
+              singleAnswer={singleAnswer}
+              multiAnswer={multiAnswer}
+              stepNumber={step}
+              inputError={inputError}
+              accent={ACCENT}
+              autoFocus
+              onSingleSelect={handleSingleSelect}
+              onMultiToggle={handleMultiToggle}
+              onTextChange={handleTextChange}
+              onEnterKey={advance}
+            />
 
             {submitError && <div className="mb-5 p-3.5 bg-red-50 rounded-xl border border-red-100"><p className="text-sm text-red-600">{submitError}</p></div>}
 
