@@ -16,14 +16,15 @@ export default async function FormEditorPage({ params }: { params: { slug: strin
   ])
 
   // Editor opens to the latest draft if newer than live; else clones live.
-  const editingQuestions = (draft && draft.version > (live?.version ?? 0))
-    ? draft.questions
-    : (live?.questions ?? QUESTIONS_V2_MERGED)
+  const editingSource = (draft && draft.version > (live?.version ?? 0)) ? draft : live
+  const editingQuestions = editingSource?.questions ?? QUESTIONS_V2_MERGED
+  const editingTheme = editingSource?.theme ?? null
 
   return (
     <EditorClient
       slug={params.slug}
       initialQuestions={editingQuestions}
+      initialTheme={editingTheme}
       liveVersion={live?.version ?? null}
       draftVersion={(draft && draft.version > (live?.version ?? 0)) ? draft.version : null}
       draftVersionId={(draft && draft.version > (live?.version ?? 0)) ? draft.id : null}

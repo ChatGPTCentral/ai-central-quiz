@@ -26,15 +26,19 @@ import type {
   V2Question,
   V2QuestionType,
 } from '@/lib/form-schema'
+import type { FormTheme } from '@/lib/form-config'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 
 interface Props {
   slug: string
   initialQuestions: V2Question[]
+  initialTheme: FormTheme | null
   liveVersion: number | null
   draftVersion: number | null
   draftVersionId: string | null
 }
+
+const DEFAULT_ACCENT = '#046BB1'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -72,6 +76,7 @@ const OP_LABELS: Record<BranchingOp, string> = {
 export default function EditorClient({
   slug,
   initialQuestions,
+  initialTheme,
   liveVersion,
   draftVersion: initialDraftVersion,
   draftVersionId: initialDraftId,
@@ -79,6 +84,8 @@ export default function EditorClient({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [questions, setQuestions] = useState<V2Question[]>(initialQuestions)
+  const [theme, setTheme] = useState<FormTheme>(initialTheme ?? {})
+  const accent = theme.accent || DEFAULT_ACCENT
   const [selectedId, setSelectedId] = useState<string>(
     searchParams.get('q') ?? initialQuestions[0]?.id ?? '',
   )
@@ -304,7 +311,7 @@ export default function EditorClient({
       const res = await fetch('/api/admin/form-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, questions }),
+        body: JSON.stringify({ slug, questions, theme }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
@@ -450,7 +457,7 @@ export default function EditorClient({
               singleAnswer={previewAnswer}
               multiAnswer={previewMulti}
               stepNumber={selectedIdx + 1}
-              accent="#046BB1"
+              accent={accent}
               onSingleSelect={setPreviewAnswer}
               onMultiToggle={v => setPreviewMulti(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])}
               onTextChange={setPreviewAnswer}
@@ -578,6 +585,35 @@ export default function EditorClient({
               </div>
             </Field>
           )}
+
+          {/* Design (form-level — persists with config) */}
+          <div className="border-t border-[#E8E4DF] pt-4">
+            <Field label="Design (form-wide)">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={accent}
+                    onChange={e => { setTheme(t => ({ ...t, accent: e.target.value })); markDirty() }}
+                    className="w-8 h-8 border border-[#E8E4DF] rounded cursor-pointer"
+                  />
+                  <input
+                    value={accent}
+                    onChange={e => { setTheme(t => ({ ...t, accent: e.target.value })); markDirty() }}
+                    className="flex-1 text-xs font-mono border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+                  />
+                  {accent !== DEFAULT_ACCENT && (
+                    <button
+                      onClick={() => { setTheme(t => ({ ...t, accent: undefined })); markDirty() }}
+                      title="Reset to default"
+                      className="text-[#9C9C9C] hover:text-[#333333] text-xs"
+                    >↺</button>
+                  )}
+                </div>
+                <p className="text-[10px] text-[#9C9C9C]">Accent color — buttons, progress bar, focus states.</p>
+              </div>
+            </Field>
+          </div>
 
           {/* Branching */}
           <Field label="Logic">
