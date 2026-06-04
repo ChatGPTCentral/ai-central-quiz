@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { V2Question } from '@/lib/form-schema'
+import { resolveNextStep, type V2Question } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 
 type Answers = Record<string, string | string[]>
@@ -26,6 +26,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
+  const [history, setHistory] = useState<number[]>([1])
   const [answers, setAnswers] = useState<Answers>({})
   const [inputError, setInputError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -65,13 +66,17 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const singleAnswer = (answers[q.id] as string) || ''
   const multiAnswer = (answers[q.id] as string[]) || []
 
-  const isLastStep = step === TOTAL_STEPS
+  // Branching-aware "what's next" for this step + answers snapshot.
+  const nextResolved = resolveNextStep(step - 1, QUESTIONS, answers)
+  const isLastStep = nextResolved === 'end'
   const isText = q.type === 'text' || q.type === 'email'
   const isMulti = q.type === 'multi-chips'
   const isSingle = q.type === 'chips'
   const isAutoAdvance = isSingle && !isLastStep
   const showContinue = !isAutoAdvance
 
+  // Visit-count-based progress (fall back to linear) so skipped questions
+  // don't show as 0% complete.
   const progressPct = Math.round((step / TOTAL_STEPS) * 100)
 
   const canProceed = useCallback((): boolean => {
@@ -91,28 +96,32 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return true
   }
 
-  const goForward = useCallback((targetStep?: number) => {
+  // Push a new step onto the visited history and animate forward.
+  const goForward = useCallback((targetStep: number) => {
     setDirection('fwd')
     setAnimKey(k => k + 1)
-    if (targetStep !== undefined) setStep(targetStep)
-    else setStep(s => s + 1)
+    setStep(targetStep)
+    setHistory(h => h[h.length - 1] === targetStep ? h : [...h, targetStep])
   }, [])
 
+  // Pop the visited history so branching paths replay correctly.
   const goBack = useCallback(() => {
     if (advanceTimeout.current) clearTimeout(advanceTimeout.current)
-    if (step <= 1) return
+    if (history.length <= 1) return
     setDirection('back')
     setAnimKey(k => k + 1)
-    setStep(s => s - 1)
+    const prev = history.slice(0, -1)
+    setHistory(prev)
+    setStep(prev[prev.length - 1])
     setInputError('')
     setSubmitError('')
-  }, [step])
+  }, [history])
 
   const advance = useCallback(async () => {
     if (!canProceed() || !validateStep()) return
 
-    if (step < TOTAL_STEPS) {
-      // If on step 1 (name) and email was pre-filled, skip step 2
+    if (!isLastStep) {
+      // Skip step 2 (email) if pre-filled via ?email= param
       if (step === 1) {
         const urlEmail = searchParams.get('email')?.trim().toLowerCase()
         if (urlEmail && isValidEmail(urlEmail)) {
@@ -120,7 +129,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
           return
         }
       }
-      goForward()
+      // Linear or branched next step (nextResolved is narrowed to number here).
+      goForward(nextResolved + 1)
       return
     }
 
@@ -171,14 +181,18 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       setSubmitError('Network error. Please check your connection and try again.')
       setSubmitting(false)
     }
-  }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent, isLastStep, nextResolved]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSingleSelect = (value: string) => {
-    setAnswers(prev => ({ ...prev, [q.id]: value }))
+    const newAnswers = { ...answers, [q.id]: value }
+    setAnswers(newAnswers)
     setInputError('')
     if (isAutoAdvance) {
       if (advanceTimeout.current) clearTimeout(advanceTimeout.current)
-      advanceTimeout.current = setTimeout(goForward, 300)
+      // Re-resolve next using the new value (branching may depend on it).
+      const nr = resolveNextStep(step - 1, QUESTIONS, newAnswers)
+      if (nr === 'end') return
+      advanceTimeout.current = setTimeout(() => goForward(nr + 1), 300)
     }
   }
   const handleMultiToggle = (value: string) => {
@@ -193,7 +207,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     setAnswers(prev => ({ ...prev, [q.id]: value }))
     setInputError('')
   }
-  const handleSkip = () => { if (!q.required && step < TOTAL_STEPS) goForward() }
+  const handleSkip = () => {
+    if (q.required || isLastStep) return
+    goForward(nextResolved + 1)
+  }
 
   useEffect(() => {
     if (!isSingle || !q.options) return
@@ -286,7 +303,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         <footer className="shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-100">
           <span className="text-xs text-gray-400">{progressPct}% complete</span>
           <div className="flex items-center gap-1">
-            <button onClick={goBack} disabled={step === 1} title="Previous" className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 ${step === 1 ? 'text-gray-200 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <button onClick={goBack} disabled={history.length <= 1} title="Previous" className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 ${history.length <= 1 ? 'text-gray-200 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-100'}`}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
             <button onClick={advance} disabled={!canProceed()} title="Next" className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 ${canProceed() ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-200 cursor-not-allowed'}`}>

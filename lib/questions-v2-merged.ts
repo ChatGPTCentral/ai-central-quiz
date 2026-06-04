@@ -14,7 +14,7 @@
 //   commitment close (intent_30d)
 
 import type { V2Question } from './form-schema'
-export type { V2Question, V2QuestionType, V2Option, V2DbColumn } from './form-schema'
+export type { V2Question, V2QuestionType, V2Option, V2DbColumn, BranchingRule, BranchingCondition, BranchingOp } from './form-schema'
 
 export const QUESTIONS_V2_MERGED: V2Question[] = [
   // ── Identity ────────────────────────────────────────────────────

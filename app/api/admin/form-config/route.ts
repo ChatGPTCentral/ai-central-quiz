@@ -39,6 +39,26 @@ function validateQuestions(qs: unknown): string | null {
       return `question[${q.id}].dbColumn '${q.dbColumn}' is not in the allowed set`
     }
   }
+  // Second pass — branching targets must exist and only point forward.
+  const idIndex = new Map(((qs as V2Question[]).map((q, i) => [q.id, i] as const)))
+  for (let i = 0; i < qs.length; i++) {
+    const q = qs[i] as V2Question
+    if (!q.branching) continue
+    for (let r = 0; r < q.branching.length; r++) {
+      const rule = q.branching[r]
+      if (rule.goto !== 'end') {
+        const targetIdx = idIndex.get(rule.goto)
+        if (targetIdx === undefined) return `question[${q.id}] rule ${r}: goto '${rule.goto}' not found`
+        if (targetIdx <= i) return `question[${q.id}] rule ${r}: cannot jump backward to '${rule.goto}'`
+      }
+      for (let c = 0; c < rule.when.length; c++) {
+        const cond = rule.when[c]
+        const refIdx = idIndex.get(cond.questionId)
+        if (refIdx === undefined) return `question[${q.id}] rule ${r} cond ${c}: refers to unknown question '${cond.questionId}'`
+        if (refIdx >= i) return `question[${q.id}] rule ${r} cond ${c}: must reference an upstream question`
+      }
+    }
+  }
   return null
 }
 
