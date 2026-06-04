@@ -11,7 +11,6 @@ import { scoreLabel } from '@/lib/score'
 import { toolsForArchetype, toolIcon } from '@/lib/affiliates'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
-import styles from './template.module.css'
 
 /** Server-side fetch of v2 segment fields for the row, if id is provided. */
 async function fetchSegmentFields(id: string | undefined): Promise<{
@@ -176,7 +175,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
     <>
       <CountdownTimer paymentUrl={PAYMENT_URL} />
 
-      <div className={`${styles.tmpl} pt-10 min-h-screen flex flex-col`}>
+      <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
         {/* Nav with Fulvous accent border */}
         <nav className="px-6 py-4 border-b" style={{ borderColor: '#E48715' }}>
           <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -213,20 +212,23 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             </div>
           )}
 
-          <p className="tpl-eyebrow text-center mb-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 text-center" style={{ color: '#E48715' }}>
             An AI Central exclusive
           </p>
-          <h1 className="tpl-h1 text-center mb-3">
-            {name ? `${name}, you're` : "You're"} ahead of <span className="tpl-accent">{score}%</span> of professionals
+          <h1 className="text-[32px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
+            {name ? `${name}, you're` : "You're"} ahead of <span style={{ color: '#E48715' }}>{score}%</span> of professionals
           </h1>
-          <p className="tpl-p-sm text-center mb-7 max-w-md mx-auto">
+          <p className="text-[15px] leading-relaxed mb-7 max-w-md mx-auto text-center" style={{ color: '#9C9C9C' }}>
             {seg.stageLabel}
           </p>
           <GaugeChart value={score} label={label} />
 
-          {/* Signature trust callout — template's yellow stat box */}
-          <div className="tpl-callout mt-8">
-            Backed by <strong>45,000+ readers</strong>, <strong>2,000+ paying members</strong>, <strong>1,200+ curated tutorials</strong>, and a <strong className="tpl-accent">91% recommendation rate</strong>
+          {/* Signature trust callout — Cosmic Latte stat strip, matches cover's value-bullets section */}
+          <div
+            className="mt-8 px-5 py-4 rounded-xl text-center text-[14px] leading-relaxed"
+            style={{ backgroundColor: '#FEF7E7', border: '1px solid #E7B02F', color: '#333333' }}
+          >
+            Backed by <strong>45,000+ readers</strong>, <strong>2,000+ paying members</strong>, <strong>1,200+ curated tutorials</strong>, and a <strong style={{ color: '#E48715' }}>91% recommendation rate</strong>
           </div>
         </section>
 
@@ -259,7 +261,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 
         {/* ── PRIMARY CTA — Fulvous, intent-aware copy ───── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <a href={PAYMENT_URL} className="tpl-btn-primary">
+          <a
+            href={PAYMENT_URL}
+            className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
+            style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
+          >
             {primaryCta} →
           </a>
           <p className="text-center text-[12px] mt-3" style={{ color: '#9C9C9C' }}>
@@ -294,76 +300,96 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </section>
         )}
 
-        {/* ── WHAT IS THE AI CENTRAL LIBRARY (template "What is X" section) ── */}
-        <section className="tpl-section tpl-section-tight">
-          <h2 className="tpl-h2 mb-5">
-            What is the <span className="tpl-accent">AI Central library</span>?
+        {/* ── WHAT IS THE AI CENTRAL LIBRARY ── */}
+        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-5" style={{ color: '#333333' }}>
+            What is the <span style={{ color: '#E48715' }}>AI Central library</span>?
           </h2>
-          <p className="tpl-p mb-6">
+          <p className="text-[15px] leading-relaxed mb-6" style={{ color: '#333333' }}>
             The <strong>1,200+ tutorial library</strong> built for senior professionals who want to actually <em>use</em> AI at work, not read about it. Curated by editors, sequenced into a path, tied to real business outcomes
           </p>
 
-          <ul className="tpl-list mb-6">
-            <li><span>Get <strong>1,200+ tested AI workflows</strong> covering ChatGPT, Claude, Gemini, custom GPTs, automations, agents, and the playbooks behind them</span></li>
-            <li><span>Access <strong>50+ ready-to-deploy templates</strong> for prompts, email sequences, decks, briefs, and standard ops. Copy, paste, ship</span></li>
-            <li><span>Join a <strong>community of 2,000+ paying members</strong> doing the same work you are. Operators, founders, makers, decision-makers</span></li>
-            <li><span>Weekly drops from the <strong>AI Central editorial team</strong> on the new tools, models, and patterns worth your attention</span></li>
+          <ul className="flex flex-col gap-3 mb-6">
+            {[
+              <>Get <strong>1,200+ tested AI workflows</strong> covering ChatGPT, Claude, Gemini, custom GPTs, automations, agents, and the playbooks behind them</>,
+              <>Access <strong>50+ ready-to-deploy templates</strong> for prompts, email sequences, decks, briefs, and standard ops. Copy, paste, ship</>,
+              <>Join a <strong>community of 2,000+ paying members</strong> doing the same work you are. Operators, founders, makers, decision-makers</>,
+              <>Weekly drops from the <strong>AI Central editorial team</strong> on the new tools, models, and patterns worth your attention</>,
+            ].map((item, i) => (
+              <li key={i} className="flex items-start gap-3 text-[14px]" style={{ color: '#333333' }}>
+                <span className="font-black text-[14px] mt-px flex-shrink-0" style={{ color: '#E48715' }}>→</span>
+                <span className="leading-snug">{item}</span>
+              </li>
+            ))}
           </ul>
 
-          <p className="tpl-p">
+          <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
             Unlike free AI content online, every workflow inside the library is{' '}
-            <mark className="tpl-mark"><strong>tested by editors and tied to a real business outcome</strong></mark>
+            <mark style={{ background: 'linear-gradient(180deg, transparent 60%, #FAEFC8 60%)', padding: '0 4px', borderRadius: '2px', color: 'inherit' }}>
+              <strong>tested by editors and tied to a real business outcome</strong>
+            </mark>
             . You get a sequenced path, not a search bar
           </p>
         </section>
 
-        {/* ── 4 PILLARS GRID (template's 2x2 pillar layout) ── */}
-        <section className="tpl-section tpl-section-tight">
+        {/* ── 4 PILLARS GRID ── */}
+        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[
-              { eyebrow: 'Tutorials',     title: '1,200+ tested workflows',  body: 'Every tutorial walks you through a real business outcome step by step. No fluff, no theory chapters.' },
-              { eyebrow: 'Templates',     title: '50+ ready to deploy',      body: 'Prompts, decks, briefs, automations. Copy, paste, ship. Built by operators who use them in production.' },
-              { eyebrow: 'Community',     title: '2,000+ paying members',    body: 'Operators, founders, makers, and decision-makers actually using AI at work. Share what\'s working in your role.' },
-              { eyebrow: 'Editorial',     title: 'Weekly drops, no noise',   body: 'The AI Central team filters the 14,000+ tools and 50+ weekly papers down to the handful actually worth your attention.' },
+              { eyebrow: 'Tutorials',     title: '1,200+ tested workflows',  body: 'Every tutorial walks you through a real business outcome step by step. No fluff, no theory chapters' },
+              { eyebrow: 'Templates',     title: '50+ ready to deploy',      body: 'Prompts, decks, briefs, automations. Copy, paste, ship. Built by operators who use them in production' },
+              { eyebrow: 'Community',     title: '2,000+ paying members',    body: 'Operators, founders, makers, and decision-makers actually using AI at work. Share what\'s working in your role' },
+              { eyebrow: 'Editorial',     title: 'Weekly drops, no noise',   body: 'The AI Central team filters the 14,000+ tools and 50+ weekly papers down to the handful actually worth your attention' },
             ].map((p) => (
-              <div key={p.eyebrow} className="tpl-pillar">
-                <p className="tpl-eyebrow mb-2">{p.eyebrow}</p>
-                <h3 className="tpl-h3 mb-2">{p.title}</h3>
-                <p className="tpl-p-sm">{p.body}</p>
+              <div
+                key={p.eyebrow}
+                className="p-6 rounded-2xl transition-all"
+                style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF', boxShadow: '0 4px 30px rgba(228, 135, 21, 0.05)' }}
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: '#E48715' }}>{p.eyebrow}</p>
+                <h3 className="text-[18px] font-black leading-snug mb-2" style={{ color: '#333333' }}>{p.title}</h3>
+                <p className="text-[13px] leading-relaxed" style={{ color: '#555' }}>{p.body}</p>
               </div>
             ))}
           </div>
         </section>
 
-        {/* ── FOUNDER LETTER (template's "A letter from Matt" pattern) ── */}
-        <section className="tpl-section tpl-section-tight">
-          <p className="tpl-p-sm italic mb-3">A letter from Alex…</p>
+        {/* ── FOUNDER LETTER ── */}
+        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+          <p className="text-[13px] italic mb-3" style={{ color: '#9C9C9C' }}>A letter from Alex…</p>
 
-          <h2 className="tpl-h2 mb-6">
-            After building AI Central into a <span className="tpl-accent">45,000-reader network</span> and watching <span className="tpl-accent">2,000+ professionals</span> upgrade into our paid library, here&apos;s what I&apos;ve learned about who actually wins with AI
+          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-6" style={{ color: '#333333' }}>
+            After building AI Central into a <span style={{ color: '#E48715' }}>45,000-reader network</span> and watching <span style={{ color: '#E48715' }}>2,000+ professionals</span> upgrade into our paid library, here&apos;s what I&apos;ve learned about who actually wins with AI
           </h2>
 
-          <p className="tpl-p mb-4">
-            Most people researching AI today are stuck in the same loop. They read a viral thread, they install a new tool, they fiddle for an hour, they put it down. Six months later, nothing has shipped
+          {[
+            'Most people researching AI today are stuck in the same loop. They read a viral thread, they install a new tool, they fiddle for an hour, they put it down. Six months later, nothing has shipped',
+            'The ones who actually win, the ones who quietly become the AI person on their team, do one thing differently. They stop researching and pick one workflow that compounds',
+          ].map((p, i) => (
+            <p key={i} className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>{p}</p>
+          ))}
+
+          <p className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>
+            <mark style={{ background: 'linear-gradient(180deg, transparent 60%, #FAEFC8 60%)', padding: '0 4px', borderRadius: '2px', color: 'inherit' }}>
+              <strong>One workflow shipped beats ten tutorials watched</strong>
+            </mark>
           </p>
-          <p className="tpl-p mb-4">
-            The ones who actually win, the ones who quietly become the AI person on their team, do one thing differently. They stop researching and pick one workflow that compounds
-          </p>
-          <p className="tpl-p mb-4">
-            <mark className="tpl-mark"><strong>One workflow shipped beats ten tutorials watched</strong></mark>
-          </p>
-          <p className="tpl-p mb-4">
-            That&apos;s the entire premise of the AI Central library. Every tutorial is a workflow, not a lecture. Every workflow is sequenced into a path that fits your role and where you currently sit on the AI ladder
-          </p>
-          <p className="tpl-p mb-4">
-            You just took the quiz. We now know your stage, your persona, and what&apos;s blocking you. Your plan above isn&apos;t a generic course recommendation. It&apos;s a 30-day path mapped to your actual starting line
-          </p>
-          <p className="tpl-p mb-2">
-            If you join the library today, you keep that path. If you don&apos;t, you go back to research mode and we both know how that ends
-          </p>
-          <p className="tpl-signature">
-            See you inside,<br/><strong>Alex Fiore</strong><br/>Founder, AI Central
-          </p>
+
+          {[
+            "That's the entire premise of the AI Central library. Every tutorial is a workflow, not a lecture. Every workflow is sequenced into a path that fits your role and where you currently sit on the AI ladder",
+            "You just took the quiz. We now know your stage, your persona, and what's blocking you. Your plan above isn't a generic course recommendation. It's a 30-day path mapped to your actual starting line",
+            "If you join the library today, you keep that path. If you don't, you go back to research mode and we both know how that ends",
+          ].map((p, i) => (
+            <p key={i} className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>{p}</p>
+          ))}
+
+          <div
+            className="mt-6 pl-4 text-[14px] italic leading-relaxed"
+            style={{ color: '#555', borderLeft: '3px solid #E48715' }}
+          >
+            See you inside,<br/><strong style={{ color: '#333333', fontStyle: 'normal' }}>Alex Fiore</strong><br/>
+            <span className="text-[12px]" style={{ color: '#9C9C9C' }}>Founder, AI Central</span>
+          </div>
         </section>
 
         {/* ── AI ADOPTION LADDER (the segmentation visual, made tangible) ── */}
@@ -416,12 +442,12 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         </section>
 
         {/* ── COMMENTARY (archetype truth-paragraphs) ────── */}
-        <section className="tpl-section tpl-section-tight">
-          <h2 className="tpl-h2 mb-6">
+        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-6" style={{ color: '#333333' }}>
             {sales.truthHeading.replace(/—/g, ' - -').replace(/–/g, ' - -')}{name ? `, ${name}` : ''}
           </h2>
           {sales.truthParagraphs.map((p, i) => (
-            <p key={i} className="tpl-p mb-4">
+            <p key={i} className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>
               {p.replace(/—/g, ' - -').replace(/–/g, ' - -')}
             </p>
           ))}
@@ -513,10 +539,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── MODULE 8: UNLOCK YOUR PERSONALIZED PLAN ───────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full" id="pricing">
           <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="tpl-h2 mb-3 text-center">
-            Unlock the <span className="tpl-accent">AI Central</span> library
+          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-3 text-center" style={{ color: '#333333' }}>
+            Unlock the <span style={{ color: '#E48715' }}>AI Central</span> library
           </h2>
-          <p className="tpl-p-sm text-center mb-2 max-w-md mx-auto">
+          <p className="text-[14px] leading-relaxed text-center mb-2 max-w-md mx-auto" style={{ color: '#9C9C9C' }}>
             1,200+ curated AI and ChatGPT tutorials. Save months of trial-and-error
           </p>
           {/* Stat strip — pulled from upgrade page */}
@@ -571,7 +597,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               </div>
               <p className="text-[11px] text-right mb-5" style={{ color: '#9C9C9C' }}>{RENEWAL_COPY}</p>
 
-              <a href={PAYMENT_URL} className="tpl-btn-dark">
+              <a
+                href={PAYMENT_URL}
+                className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
+                style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
+              >
                 Start my 1-month trial →
               </a>
 
@@ -625,10 +655,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               className="absolute top-0 left-0 right-0 h-1"
               style={{ background: 'linear-gradient(90deg, #E48715 0%, #E7B02F 100%)' }}
             />
-            <h2 className="tpl-h2 mb-3" style={{ color: '#FFFDFA' }}>
+            <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-3" style={{ color: '#FFFDFA' }}>
               AI doesn&apos;t have to be <span style={{ color: '#E48715' }}>complicated</span>
             </h2>
-            <p className="tpl-p mb-7 max-w-md mx-auto" style={{ color: '#FFFDFA', opacity: 0.85 }}>
+            <p className="text-[15px] leading-relaxed mb-7 max-w-md mx-auto" style={{ color: '#FFFDFA', opacity: 0.85 }}>
               Join 2,000+ professionals already using the AI Central library. 1,200+ curated tutorials. 15 minutes to your first result. No fluff
             </p>
             <a
