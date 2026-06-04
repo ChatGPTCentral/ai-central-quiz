@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   DndContext,
   PointerSensor,
@@ -76,8 +77,18 @@ export default function EditorClient({
   draftVersionId: initialDraftId,
 }: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [questions, setQuestions] = useState<V2Question[]>(initialQuestions)
-  const [selectedId, setSelectedId] = useState<string>(initialQuestions[0]?.id ?? '')
+  const [selectedId, setSelectedId] = useState<string>(
+    searchParams.get('q') ?? initialQuestions[0]?.id ?? '',
+  )
+
+  // Sync ?q= → selectedId on initial mount only (avoid loops)
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q && questions.some(x => x.id === q)) setSelectedId(q)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [draftVersion, setDraftVersion] = useState<number | null>(initialDraftVersion)
@@ -395,6 +406,9 @@ export default function EditorClient({
             <span className="text-xs text-[#333333] font-semibold">{headerLabel}</span>
             {dirty && <span className="text-[10px] uppercase tracking-wider font-bold text-[#E48715]">unsaved</span>}
             {publishedJustNow && !dirty && <span className="text-[10px] uppercase tracking-wider font-bold text-[#62A758]">published</span>}
+            <Link href={`/admin/editor/${slug}/map`} className="text-xs text-[#9C9C9C] hover:text-[#046BB1] ml-2">
+              Logic map →
+            </Link>
           </div>
           <div className="flex items-center gap-2">
             {dirty && (
@@ -521,6 +535,9 @@ export default function EditorClient({
 
           {(selected.type === 'chips' || selected.type === 'multi-chips') && selected.options && (
             <Field label={`Options (${selected.options.length})`}>
+              {selected.scoring === 'value' && (
+                <p className="text-[10px] text-[#9C9C9C] mb-1.5">Score column. Edit the per-option score on the right.</p>
+              )}
               <div className="space-y-1.5">
                 {selected.options.map((opt, oIdx) => (
                   <div key={oIdx} className="flex items-start gap-1.5 group">
@@ -532,9 +549,19 @@ export default function EditorClient({
                     <input
                       value={opt.value}
                       onChange={e => patchOption(selectedIdx, oIdx, { value: e.target.value })}
-                      className="w-24 text-[10px] font-mono border border-[#E8E4DF] rounded px-1.5 py-1.5 focus:outline-none focus:border-[#046BB1] text-[#9C9C9C]"
+                      className="w-20 text-[10px] font-mono border border-[#E8E4DF] rounded px-1.5 py-1.5 focus:outline-none focus:border-[#046BB1] text-[#9C9C9C]"
                       title="Internal value (saved to DB)"
                     />
+                    {selected.scoring === 'value' && (
+                      <input
+                        type="number"
+                        value={opt.score ?? ''}
+                        onChange={e => patchOption(selectedIdx, oIdx, { score: e.target.value === '' ? undefined : Number(e.target.value) })}
+                        className="w-12 text-[10px] font-mono border border-[#E8E4DF] rounded px-1.5 py-1.5 focus:outline-none focus:border-[#046BB1] text-[#333333]"
+                        title="Score (writes to the numeric DB column)"
+                        placeholder="—"
+                      />
+                    )}
                     <button
                       onClick={() => removeOption(selectedIdx, oIdx)}
                       title="Remove"
