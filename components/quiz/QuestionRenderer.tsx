@@ -52,6 +52,7 @@ export function QuestionRenderer({
   const label = resolveTokens(q.label, tokens ?? {})
   const sublabel = q.sublabel ? resolveTokens(q.sublabel, tokens ?? {}) : undefined
   const inputRef = useRef<HTMLInputElement>(null)
+  const isWelcome = q.type === 'welcome'
   const isText = q.type === 'text' || q.type === 'email'
   const isSingle = q.type === 'chips'
   const isMulti = q.type === 'multi-chips'
@@ -72,6 +73,35 @@ export function QuestionRenderer({
   }
 
   const letter = (i: number) => String.fromCharCode(65 + i)
+
+  // Welcome screen — full-bleed hero with a single CTA. No step number,
+  // no input. Clicking the CTA advances via the same onEnterKey hook
+  // QuizV2Client uses for text-input Enter.
+  if (isWelcome) {
+    return (
+      <div className="text-center py-10">
+        <h1 className="text-[32px] sm:text-[40px] font-black text-gray-900 leading-[1.05] mb-4">
+          {label}
+        </h1>
+        {sublabel && (
+          <p className="text-[16px] sm:text-[17px] text-gray-500 leading-relaxed mb-9 max-w-md mx-auto whitespace-pre-wrap">
+            {sublabel}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => onEnterKey?.()}
+          className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl font-bold text-[15px] text-white transition-all active:scale-[0.99] hover:opacity-90"
+          style={{ backgroundColor: accent }}
+        >
+          {q.ctaText?.trim() || 'Get started'} →
+        </button>
+        <p className="mt-5 text-[11px] text-gray-400">
+          Takes about 90 seconds · Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] text-gray-500 font-mono">Enter ↵</kbd> to begin
+        </p>
+      </div>
+    )
+  }
 
   return (
     <>

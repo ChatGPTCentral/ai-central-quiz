@@ -52,14 +52,17 @@ const DEFAULT_ACCENT = '#046BB1'
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
+// Note: TYPE_LABELS / TYPE_ORDER / isSafeTypeChange — adding a new
+// V2QuestionType requires updating all three.
 const TYPE_LABELS: Record<V2QuestionType, string> = {
+  welcome: 'Welcome screen',
   text: 'Short text',
   email: 'Email',
   chips: 'Single choice',
   'multi-chips': 'Multiple choice',
 }
 
-const TYPE_ORDER: V2QuestionType[] = ['text', 'email', 'chips', 'multi-chips']
+const TYPE_ORDER: V2QuestionType[] = ['welcome', 'text', 'email', 'chips', 'multi-chips']
 
 // Safety matrix — true means the transition is safe (no data loss).
 // Lossy transitions are still allowed but show a warning.
@@ -67,6 +70,9 @@ function isSafeTypeChange(from: V2QuestionType, to: V2QuestionType): boolean {
   if (from === to) return true
   if (from === 'chips' && to === 'multi-chips') return true
   if (from === 'text' && to === 'email') return true
+  // Welcome screens collect no data, so to/from welcome is always
+  // data-safe (the dropped options/dbColumn are config, not user data).
+  if (from === 'welcome' || to === 'welcome') return true
   return false
 }
 
@@ -715,16 +721,29 @@ export default function EditorClient({
             </Field>
           )}
 
-          <Field label="Required">
-            <label className="flex items-center gap-2 text-xs">
+          {selected.type === 'welcome' && (
+            <Field label="CTA button text">
               <input
-                type="checkbox"
-                checked={selected.required}
-                onChange={e => patchQuestion(selectedIdx, { required: e.target.checked })}
+                value={selected.ctaText ?? ''}
+                onChange={e => patchQuestion(selectedIdx, { ctaText: e.target.value || undefined })}
+                className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+                placeholder="Get started"
               />
-              Required to advance
-            </label>
-          </Field>
+            </Field>
+          )}
+
+          {selected.type !== 'welcome' && (
+            <Field label="Required">
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={selected.required}
+                  onChange={e => patchQuestion(selectedIdx, { required: e.target.checked })}
+                />
+                Required to advance
+              </label>
+            </Field>
+          )}
 
           {(selected.type === 'chips' || selected.type === 'multi-chips') && selected.options && (
             <Field label={`Options (${selected.options.length})`}>

@@ -69,21 +69,25 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   // Branching-aware "what's next" for this step + answers snapshot.
   const nextResolved = resolveNextStep(step - 1, QUESTIONS, answers)
   const isLastStep = nextResolved === 'end'
+  const isWelcome = q.type === 'welcome'
   const isText = q.type === 'text' || q.type === 'email'
   const isMulti = q.type === 'multi-chips'
   const isSingle = q.type === 'chips'
   const isAutoAdvance = isSingle && !isLastStep
-  const showContinue = !isAutoAdvance
+  // Welcome screens supply their own CTA inside the renderer; hide the
+  // standard Continue button.
+  const showContinue = !isAutoAdvance && !isWelcome
 
   // Visit-count-based progress (fall back to linear) so skipped questions
   // don't show as 0% complete.
   const progressPct = Math.round((step / TOTAL_STEPS) * 100)
 
   const canProceed = useCallback((): boolean => {
+    if (isWelcome) return true
     if (isMulti) return !q.required || multiAnswer.length > 0
     if (!q.required) return true
     return singleAnswer.trim().length > 0
-  }, [isMulti, q.required, multiAnswer, singleAnswer])
+  }, [isWelcome, isMulti, q.required, multiAnswer, singleAnswer])
 
   const validateStep = (): boolean => {
     if (q.type === 'email') {

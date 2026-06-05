@@ -2,7 +2,7 @@
 // submission pipeline. Decoupled from any concrete question set so the
 // editor can build/validate arbitrary configs.
 
-export type V2QuestionType = 'text' | 'email' | 'chips' | 'multi-chips'
+export type V2QuestionType = 'welcome' | 'text' | 'email' | 'chips' | 'multi-chips'
 
 export interface V2Option {
   label: string
@@ -39,6 +39,9 @@ export interface V2Question {
   /** Per-question branching rules. First matching rule wins. Empty/missing
    *  means fall through to the next question. */
   branching?: BranchingRule[]
+  /** Welcome-screen specific: text on the proceed button. Defaults to "Get
+   *  started" when empty. Ignored for non-welcome types. */
+  ctaText?: string
 }
 
 export type BranchingOp = 'eq' | 'neq' | 'in' | 'gt' | 'lt' | 'contains'
