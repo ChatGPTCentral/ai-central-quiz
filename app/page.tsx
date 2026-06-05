@@ -21,7 +21,19 @@ const DEMO_AXES = [
   { label: 'Confidence', value: 28 },
 ]
 
-export default function HomePage() {
+export default function HomePage({
+  searchParams,
+}: { searchParams: Record<string, string | string[] | undefined> }) {
+  // Forward every incoming query param verbatim onto the "Start the quiz"
+  // CTA, so a single shareable URL like /?email=…&utm_source=… still
+  // triggers the email-skip + UTM capture once the user lands on /quiz-v2.
+  const params = new URLSearchParams()
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (typeof v === 'string' && v.trim() !== '') params.set(k, v)
+  }
+  const qs = params.toString()
+  const quizHref = qs ? `/quiz-v2?${qs}` : '/quiz-v2'
+
   return (
     <div
       className="relative min-h-[100dvh] flex flex-col overflow-hidden"
@@ -78,7 +90,7 @@ export default function HomePage() {
               work today, not how a generic course assumes you do.
             </p>
             <Link
-              href="/quiz-v2"
+              href={quizHref}
               className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 rounded-2xl text-[16px] sm:text-[18px] font-black transition-all active:scale-[0.99] hover:opacity-95 shadow-sm"
               style={{ backgroundColor: INK, color: '#FFFDFA' }}
             >
