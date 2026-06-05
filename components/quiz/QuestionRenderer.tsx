@@ -93,12 +93,12 @@ export function QuestionRenderer({
   // QuizV2Client uses for text-input Enter.
   if (isWelcome) {
     return (
-      <div className="text-center py-10">
-        <h1 className="text-[32px] sm:text-[40px] font-black text-gray-900 leading-[1.05] mb-4">
+      <div className="text-center py-4 sm:py-10">
+        <h1 className="text-[28px] sm:text-[36px] md:text-[40px] font-black text-gray-900 leading-[1.05] mb-3 sm:mb-4">
           {label}
         </h1>
         {sublabel && (
-          <p className="text-[16px] sm:text-[17px] text-gray-500 leading-relaxed mb-9 max-w-md mx-auto whitespace-pre-wrap">
+          <p className="text-[15px] sm:text-[17px] text-gray-500 leading-relaxed mb-6 sm:mb-9 max-w-md mx-auto whitespace-pre-wrap">
             {sublabel}
           </p>
         )}
@@ -119,16 +119,15 @@ export function QuestionRenderer({
 
   return (
     <>
-      <div className="flex items-center gap-1.5 mb-5">
-        <span className="text-[13px] font-bold" style={{ color: accent }}>{stepNumber}</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <div className="flex items-center gap-1.5 mb-3 sm:mb-5">
+        <span className="text-[12px] sm:text-[13px] font-bold" style={{ color: accent }}>{stepNumber}</span>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </div>
 
-      <h1 className="text-[26px] sm:text-[30px] font-bold text-gray-900 leading-tight mb-2">{label}</h1>
-      {sublabel ? <p className="text-[15px] text-gray-500 mb-2">{sublabel}</p> : <div className="mb-6" />}
-      {sublabel && <div className="mb-3" />}
+      <h1 className="text-[22px] sm:text-[26px] md:text-[30px] font-bold text-gray-900 leading-tight mb-1.5 sm:mb-2">{label}</h1>
+      {sublabel ? <p className="text-[13px] sm:text-[15px] text-gray-500 mb-3 sm:mb-4">{sublabel}</p> : <div className="mb-4 sm:mb-6" />}
 
       {isText && (
         <div className="mb-7" onKeyDown={onInputKeyDown}>
@@ -187,7 +186,7 @@ export function QuestionRenderer({
       )}
 
       {isSingle && q.options && (
-        <div className="flex flex-col gap-2.5 mb-7">
+        <div className="flex flex-col gap-2 sm:gap-2.5 mb-4 sm:mb-7">
           {q.options.map((opt, i) => {
             const sel = singleAnswer === opt.value
             return (
@@ -195,7 +194,7 @@ export function QuestionRenderer({
                 key={opt.value}
                 type="button"
                 onClick={() => onSingleSelect(opt.value)}
-                className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
+                className={`flex items-center gap-3 w-full px-3.5 sm:px-4 py-2.5 sm:py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                 style={sel ? { borderColor: accent } : {}}
               >
                 <span className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold transition-all duration-150 ${sel ? 'text-white' : 'bg-gray-100 text-gray-500'}`} style={sel ? { backgroundColor: accent } : {}}>
@@ -210,7 +209,7 @@ export function QuestionRenderer({
       )}
 
       {isMulti && q.options && (
-        <div className={`mb-7 ${isLargeGrid ? 'grid grid-cols-2 gap-2.5' : 'flex flex-col gap-2.5'}`}>
+        <div className={`mb-4 sm:mb-7 ${isLargeGrid ? 'grid grid-cols-2 gap-2 sm:gap-2.5' : 'flex flex-col gap-2 sm:gap-2.5'}`}>
           {q.options.map(opt => {
             const sel = multiAnswer.includes(opt.value)
             return (
@@ -218,7 +217,7 @@ export function QuestionRenderer({
                 key={opt.value}
                 type="button"
                 onClick={() => onMultiToggle(opt.value)}
-                className={`flex items-center gap-3 w-full px-4 py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
+                className={`flex items-center gap-3 w-full px-3.5 sm:px-4 py-2.5 sm:py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                 style={sel ? { borderColor: accent } : {}}
               >
                 <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center border-2 transition-all duration-150 ${sel ? '' : 'border-gray-300 bg-white'}`} style={sel ? { borderColor: accent, backgroundColor: accent } : {}}>

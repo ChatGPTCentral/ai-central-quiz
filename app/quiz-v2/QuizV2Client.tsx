@@ -52,7 +52,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return () => clearTimeout(t)
   }, [step, isEmbed, postToParent])
 
-  // Pre-fill email from ?email=
+  // Pre-fill email from ?email= and skip past the email step entirely
+  // when the prefilled value is valid. The user never sees that question.
   useEffect(() => {
     if (emailPrefilled.current) return
     const urlEmail = searchParams.get('email')
@@ -60,6 +61,14 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     emailPrefilled.current = true
     const cleaned = urlEmail.trim().toLowerCase()
     setAnswers(prev => ({ ...prev, email: cleaned }))
+    if (isValidEmail(cleaned)) {
+      const emailIdx = QUESTIONS.findIndex(q => q.id === 'email' || q.type === 'email')
+      if (emailIdx >= 0 && emailIdx + 1 < QUESTIONS.length) {
+        const next = emailIdx + 2 // skip past email; step is 1-indexed
+        setStep(next)
+        setHistory([next])
+      }
+    }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const q = QUESTIONS[step - 1]
@@ -240,29 +249,28 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   }, [step, singleAnswer, isSingle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className={`${isEmbed ? 'min-h-0' : 'min-h-screen'} bg-white flex flex-col`}>
+    <div className={`${isEmbed ? 'min-h-0' : 'min-h-[100dvh] h-[100dvh]'} bg-white flex flex-col overflow-hidden`}>
       <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 h-[3px] bg-gray-100 z-50`}>
         <div className="h-full transition-all duration-500 ease-out" style={{ width: `${progressPct}%`, backgroundColor: ACCENT }} />
       </div>
 
       {!isEmbed && (
-        <header className="flex items-center justify-between px-6 pt-8 pb-2 shrink-0">
+        <header className="flex items-center justify-between px-4 sm:px-6 pt-3 sm:pt-6 pb-1 sm:pb-2 shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-full-light-bg.png" alt="AI Central" className="h-6 w-auto" />
-          <span className="text-sm font-medium text-gray-400 tabular-nums">
+          <img src="/logo-full-light-bg.png" alt="AI Central" className="h-5 sm:h-6 w-auto" />
+          <span className="text-xs sm:text-sm font-medium text-gray-400 tabular-nums">
             {step} <span className="text-gray-300">/ {TOTAL_STEPS}</span>
-            <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-[#E48715]/15 text-[#E48715] text-[10px] font-bold uppercase tracking-wider">v2</span>
           </span>
         </header>
       )}
       {isEmbed && (
-        <div className="flex items-center justify-end px-6 pt-3 pb-1 text-[11px] text-gray-400 tabular-nums">
+        <div className="flex items-center justify-end px-4 sm:px-6 pt-3 pb-1 text-[11px] text-gray-400 tabular-nums">
           {step} / {TOTAL_STEPS}
         </div>
       )}
 
-      <main className="flex-1 flex items-center justify-center px-6 py-6 overflow-hidden">
-        <div className="w-full max-w-[580px]">
+      <main className="flex-1 flex items-start sm:items-center justify-center px-4 sm:px-6 py-3 sm:py-6 overflow-y-auto">
+        <div className="w-full max-w-[560px]">
           <div key={animKey} className={direction === 'fwd' ? 'tf-enter-fwd' : 'tf-enter-back'}>
             <QuestionRenderer
               question={q}

@@ -178,11 +178,17 @@ export async function POST(req: NextRequest) {
     if (error) console.error('v2 update failed:', error.message)
   } else {
     rowId = randomUUID()
+    // Vercel injects x-vercel-ip-country (ISO 3166 alpha-2) on every edge
+    // request — capture it as the user's submit-time geolocation, distinct
+    // from `country` which downstream enrichment overwrites with company /
+    // role location.
+    const ipCountry = req.headers.get('x-vercel-ip-country') || null
     const { error } = await c.from('submissions').insert({
       id: rowId,
       ts: Date.now(),
       created_at: new Date().toISOString(),
       ip,
+      ip_country: ipCountry,
       user_agent: req.headers.get('user-agent') || null,
       ...dbUpdate,
     })
