@@ -5,6 +5,7 @@ import CountdownTimer from '@/components/CountdownTimer'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
+import { BrandWordmark } from '@/components/BrandWordmark'
 import { DocSearch } from '@/components/result/DocSearch'
 import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
 import { resolveTokens } from '@/lib/piping'
@@ -217,47 +218,62 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
       <CountdownTimer paymentUrl={PAYMENT_URL} />
 
       <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
-        {/* ── HERO: positive headline + skill radar ────────── */}
-        <section className="px-6 pt-10 pb-8 max-w-2xl mx-auto w-full">
-          {/* Stage chip */}
-          {stageMeta && stageMeta.key !== 'unknown' && (
-            <div className="flex items-center justify-center gap-2 mb-5 flex-wrap">
-              <span
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
-                style={{ backgroundColor: stageMeta.color + '22', color: stageMeta.color, border: `1px solid ${stageMeta.color}40` }}
-              >
-                <span>{stageMeta.emoji}</span>
-                <span>{stageMeta.label}</span>
-              </span>
+        {/* ── HERO: 2-column — text left, radar right ─────── */}
+        <section className="px-6 pt-10 pb-8 max-w-5xl mx-auto w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
+            {/* LEFT — copy */}
+            <div className="text-center md:text-left">
+              {/* Stage chip */}
+              {stageMeta && stageMeta.key !== 'unknown' && (
+                <div className="flex items-center justify-center md:justify-start gap-2 mb-5 flex-wrap">
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
+                    style={{ backgroundColor: stageMeta.color + '22', color: stageMeta.color, border: `1px solid ${stageMeta.color}40` }}
+                  >
+                    <span>{stageMeta.emoji}</span>
+                    <span>{stageMeta.label}</span>
+                  </span>
+                </div>
+              )}
+
+              {/* Brand wordmark — AI Central with green offset shadow */}
+              <div className="mb-4 md:mb-5">
+                <BrandWordmark size={28} />
+              </div>
+
+              {heroHeadline ? (
+                <h1 className="text-[30px] sm:text-[36px] md:text-[42px] font-black leading-[1.05] mb-3" style={{ color: '#333333' }}>
+                  {resolveTokens(heroHeadline, tokens)}
+                </h1>
+              ) : (
+                <h1 className="text-[30px] sm:text-[36px] md:text-[42px] font-black leading-[1.05] mb-3" style={{ color: '#333333' }}>
+                  {firstName ? `${firstName}, you're a ` : "You're a "}
+                  <span style={{ color: '#E48715' }}>{stageMeta && stageMeta.key !== 'unknown' ? stageMeta.label : 'rising AI user'}</span>.
+                  {' '}Here&apos;s how far AI Central takes you
+                </h1>
+              )}
+
+              <p className="text-[15px] sm:text-[16px] leading-relaxed max-w-md mx-auto md:mx-0" style={{ color: '#9C9C9C' }}>
+                {heroSubheadline
+                  ? resolveTokens(heroSubheadline, tokens)
+                  : 'Your skill profile today, and the headroom the library unlocks'}
+              </p>
             </div>
-          )}
 
-          {heroHeadline ? (
-            <h1 className="text-[30px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
-              {resolveTokens(heroHeadline, tokens)}
-            </h1>
-          ) : (
-            <h1 className="text-[30px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
-              {firstName ? `${firstName}, you're a ` : "You're a "}
-              <span style={{ color: '#E48715' }}>{stageMeta && stageMeta.key !== 'unknown' ? stageMeta.label : 'rising AI user'}</span>.
-              {' '}Here&apos;s how far AI Central takes you
-            </h1>
-          )}
-
-          <p className="text-[15px] leading-relaxed mb-7 max-w-md mx-auto text-center" style={{ color: '#9C9C9C' }}>
-            {heroSubheadline
-              ? resolveTokens(heroSubheadline, tokens)
-              : 'Your skill profile today, and the headroom the library unlocks'}
-          </p>
-
-          <RadarChart
-            axes={axes}
-            mode="result"
-            accent="#1A53FF"
-            size={360}
-            title={`${firstName ? `${firstName}'s` : 'Your'} AI profile${stageMeta && stageMeta.key !== 'unknown' ? `: ${stageMeta.label}` : ''}`}
-            subtitle="Your current scoring on five axes, and the lift AI Central unlocks"
-          />
+            {/* RIGHT — radar */}
+            <div className="flex justify-center md:justify-end">
+              <div className="w-full max-w-[420px]">
+                <RadarChart
+                  axes={axes}
+                  mode="result"
+                  accent="#1A53FF"
+                  size={360}
+                  title={`${firstName ? `${firstName}'s` : 'Your'} AI profile${stageMeta && stageMeta.key !== 'unknown' ? `: ${stageMeta.label}` : ''}`}
+                  subtitle="Your current scoring on five axes, and the lift AI Central unlocks"
+                />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* ── EDITOR-DRIVEN BODY BLOCKS (if any) ─────────── */}

@@ -110,11 +110,9 @@ export default function FomoPopup({ variant = 'offer' }: FomoProps) {
       style={{ maxWidth: 320 }}
     >
       <div className="bg-white rounded-xl shadow-2xl border border-gray-100 p-3.5 flex items-start gap-3">
-        <div className="shrink-0 w-8 h-8 rounded-lg overflow-hidden bg-black flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="6" fill="black"/>
-            <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="20" fontWeight="900" fontFamily="Inter, sans-serif">Ai</text>
-          </svg>
+        <div className="shrink-0 w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-square.svg" alt="AI Central" className="w-8 h-8 object-contain" />
         </div>
         <div className="flex-1 min-w-0">
           {variant === 'offer' ? (

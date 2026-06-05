@@ -84,9 +84,11 @@ export function RadarChart({
   const target = projected ?? defaultProjection(current)
   const n = axes.length
 
+  // Reserve a generous label gutter so the rotated axis labels at the
+  // pentagon vertices never get clipped by the viewBox.
   const cx = size / 2
   const cy = size / 2
-  const r = size * 0.36         // outer pentagon radius
+  const r = size * 0.30         // outer pentagon radius (was 0.36)
   const RING_COUNT = 5
 
   const [progress, setProgress] = useState(0)
@@ -153,7 +155,13 @@ export function RadarChart({
         </div>
       )}
 
-      <svg width="100%" viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: size }} role="img" aria-label="Skill radar">
+      <svg
+        width="100%"
+        viewBox={`0 0 ${size} ${size}`}
+        style={{ maxWidth: size, overflow: 'visible' }}
+        role="img"
+        aria-label="Skill radar"
+      >
         {/* Alternating sector backgrounds — gives the "spec sheet" feel. */}
         {axes.map((_, i) => (
           <path
@@ -214,7 +222,7 @@ export function RadarChart({
         {/* Axis labels — rotated to follow each spoke, with +/- direction tag. */}
         {axes.map((a, i) => {
           const ang = angleFor(i, n)
-          const lr = r + 10                              // label baseline radius
+          const lr = r + 16                              // label baseline radius
           const lx = cx + lr * Math.cos(ang)
           const ly = cy + lr * Math.sin(ang)
           const deg = (ang * 180) / Math.PI
