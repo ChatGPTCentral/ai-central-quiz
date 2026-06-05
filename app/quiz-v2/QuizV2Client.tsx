@@ -263,6 +263,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
               inputError={inputError}
               accent={ACCENT}
               autoFocus
+              tokens={{ answers }}
               onSingleSelect={handleSingleSelect}
               onMultiToggle={handleMultiToggle}
               onTextChange={handleTextChange}

@@ -11,6 +11,7 @@ import type {
   ImageBlock,
   ButtonBlock,
 } from '@/lib/form-schema'
+import { TokenPicker } from '@/components/admin/TokenPicker'
 
 interface Props {
   endScreen: EndScreen
@@ -57,22 +58,36 @@ export function ResultPageEditor({
         <section className="bg-white border border-[#E8E4DF] rounded-xl p-5 space-y-4">
           <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">Hero band</div>
 
-          <Field label="Headline" hint="Leave empty for the archetype-driven default.">
+          <Field label="Headline" hint="Leave empty for the archetype-driven default. Supports {firstName}, {persona}, {stage}, {score}.">
             <input
               value={endScreen.heroHeadline ?? ''}
               onChange={e => onPatchEndScreen({ heroHeadline: e.target.value || undefined })}
-              placeholder="e.g. You're an Experimenter."
+              placeholder="e.g. Nice work, {firstName}. You scored {score}."
               className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1]"
+            />
+            <TokenPicker
+              availability="result"
+              onInsert={literal => {
+                const cur = endScreen.heroHeadline ?? ''
+                onPatchEndScreen({ heroHeadline: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` })
+              }}
             />
           </Field>
 
-          <Field label="Sub copy">
+          <Field label="Sub copy" hint="Supports the same tokens.">
             <textarea
               value={endScreen.heroSubheadline ?? ''}
               onChange={e => onPatchEndScreen({ heroSubheadline: e.target.value || undefined })}
               placeholder="A one-line description that shows under the headline."
               rows={2}
               className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] resize-none"
+            />
+            <TokenPicker
+              availability="result"
+              onInsert={literal => {
+                const cur = endScreen.heroSubheadline ?? ''
+                onPatchEndScreen({ heroSubheadline: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` })
+              }}
             />
           </Field>
 
@@ -209,13 +224,19 @@ function BlockCard({
       )}
 
       {block.type === 'paragraph' && (
-        <textarea
-          value={block.text}
-          onChange={e => onPatch({ text: e.target.value } as Partial<ParagraphBlock>)}
-          placeholder="Body text. Line breaks are preserved."
-          rows={4}
-          className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] resize-y"
-        />
+        <>
+          <textarea
+            value={block.text}
+            onChange={e => onPatch({ text: e.target.value } as Partial<ParagraphBlock>)}
+            placeholder="Body text. Line breaks are preserved. Tokens like {firstName} and {persona} resolve at view time."
+            rows={4}
+            className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] resize-y"
+          />
+          <TokenPicker
+            availability="result"
+            onInsert={literal => onPatch({ text: `${block.text}${block.text && !block.text.endsWith(' ') ? ' ' : ''}${literal}` } as Partial<ParagraphBlock>)}
+          />
+        </>
       )}
 
       {block.type === 'bullets' && (

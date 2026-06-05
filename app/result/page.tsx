@@ -6,6 +6,7 @@ import CountdownTimer from '@/components/CountdownTimer'
 import FomoPopup from '@/components/FomoPopup'
 import GaugeChart from '@/components/GaugeChart'
 import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
+import { resolveTokens } from '@/lib/piping'
 import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { SALES_CONTENT, TESTIMONIALS } from '@/lib/sales-content'
 import { scoreLabel } from '@/lib/score'
@@ -183,11 +184,23 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   } catch (err) {
     console.warn('[result] failed to load editor endScreen, using defaults:', err)
   }
+  // Token context for piping — passed to both the hero text and the
+  // editor-defined body blocks. Empty answers fall back to '' so labels
+  // like "Nice work, {firstName}!" gracefully degrade.
+  const tokens = {
+    answers: { name: name || '' },
+    persona: segFields?.persona ?? null,
+    personaLabel: personaMeta?.key !== 'unknown' ? personaMeta?.label ?? null : null,
+    stage: segFields?.stage ?? null,
+    stageLabel: stageMeta?.key !== 'unknown' ? stageMeta?.label ?? null : null,
+    score,
+    intentLabel: segFields?.intent_30d ?? null,
+    frictionLabel: segFields?.friction ?? null,
+  }
   const heroHeadline = endScreen?.heroHeadline
   const heroSubheadline = endScreen?.heroSubheadline
   const ctaText = endScreen?.ctaText ?? primaryCta
   const ctaUrl = endScreen?.ctaUrl ?? PAYMENT_URL
-  const heroTokens = { firstName: name || '' }
 
   return (
     <>
@@ -235,7 +248,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </p>
           {heroHeadline ? (
             <h1 className="text-[32px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
-              {heroHeadline.replace('{firstName}', heroTokens.firstName)}
+              {resolveTokens(heroHeadline, tokens)}
             </h1>
           ) : (
             <h1 className="text-[32px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
@@ -243,7 +256,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             </h1>
           )}
           <p className="text-[15px] leading-relaxed mb-7 max-w-md mx-auto text-center" style={{ color: '#9C9C9C' }}>
-            {heroSubheadline ? heroSubheadline.replace('{firstName}', heroTokens.firstName) : seg.stageLabel}
+            {heroSubheadline ? resolveTokens(heroSubheadline, tokens) : seg.stageLabel}
           </p>
           <GaugeChart value={score} label={label} />
 
@@ -259,7 +272,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── EDITOR-DRIVEN BODY BLOCKS (if any) ─────────── */}
         {endScreen && endScreen.blocks.length > 0 && (
           <section className="px-6 pb-6 max-w-2xl mx-auto w-full">
-            <EndScreenBlocks blocks={endScreen.blocks} tokens={heroTokens} accent="#E48715" />
+            <EndScreenBlocks blocks={endScreen.blocks} tokens={tokens} accent="#E48715" />
           </section>
         )}
 

@@ -33,6 +33,8 @@ import { emptyEndScreen } from '@/lib/form-schema'
 import type { FormTheme } from '@/lib/form-config'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { ResultPageEditor } from './ResultPageEditor'
+import { TokenPicker } from '@/components/admin/TokenPicker'
+import { dynamicQuestionTokens } from '@/lib/piping'
 
 interface Props {
   slug: string
@@ -654,6 +656,11 @@ export default function EditorClient({
               rows={2}
               className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1] resize-none"
             />
+            <TokenPicker
+              availability="quiz"
+              extras={dynamicQuestionTokens(questions.slice(0, selectedIdx))}
+              onInsert={literal => patchQuestion(selectedIdx, { label: `${selected.label}${selected.label.endsWith(' ') ? '' : ' '}${literal}` })}
+            />
             <button
               onClick={() => callAi('rewrite_label')}
               disabled={aiBusy === 'label'}
@@ -686,6 +693,14 @@ export default function EditorClient({
               rows={2}
               className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1] resize-none"
               placeholder="Optional"
+            />
+            <TokenPicker
+              availability="quiz"
+              extras={dynamicQuestionTokens(questions.slice(0, selectedIdx))}
+              onInsert={literal => {
+                const cur = selected.sublabel ?? ''
+                patchQuestion(selectedIdx, { sublabel: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` || undefined })
+              }}
             />
           </Field>
 

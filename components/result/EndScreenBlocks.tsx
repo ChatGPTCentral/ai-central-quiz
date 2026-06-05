@@ -1,18 +1,11 @@
 import type { EndScreenBlock } from '@/lib/form-schema'
-
-interface Tokens {
-  firstName: string
-}
+import { resolveTokens, type TokenContext } from '@/lib/piping'
 
 interface Props {
   blocks: EndScreenBlock[]
-  tokens: Tokens
+  tokens: TokenContext
   /** Accent color for primary buttons (defaults to AI Central Fulvous). */
   accent?: string
-}
-
-function resolveTokens(text: string, tokens: Tokens): string {
-  return text.replace('{firstName}', tokens.firstName)
 }
 
 export function EndScreenBlocks({ blocks, tokens, accent = '#E48715' }: Props) {

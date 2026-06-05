@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from 'react'
 import type { V2Question } from '@/lib/form-schema'
+import { resolveTokens, type TokenContext } from '@/lib/piping'
 
 interface Props {
   question: V2Question
@@ -17,6 +18,10 @@ interface Props {
   accent?: string
   /** Whether to autofocus the text input on mount/step-change */
   autoFocus?: boolean
+  /** Token context for piping in label/sublabel. Quiz-time tokens like
+   *  {firstName} resolve from in-progress answers; result-only tokens
+   *  ({persona}, {score}) fall back to empty. */
+  tokens?: TokenContext
   /** Single-select / text handlers */
   onSingleSelect: (value: string) => void
   onMultiToggle: (value: string) => void
@@ -35,11 +40,17 @@ export function QuestionRenderer({
   inputError,
   accent = DEFAULT_ACCENT,
   autoFocus = false,
+  tokens,
   onSingleSelect,
   onMultiToggle,
   onTextChange,
   onEnterKey,
 }: Props) {
+  // Resolve tokens in label + sublabel. When `tokens` is undefined,
+  // resolveTokens with an empty ctx still strips unknown tokens — which
+  // is the right behavior for the editor preview before any state hookup.
+  const label = resolveTokens(q.label, tokens ?? {})
+  const sublabel = q.sublabel ? resolveTokens(q.sublabel, tokens ?? {}) : undefined
   const inputRef = useRef<HTMLInputElement>(null)
   const isText = q.type === 'text' || q.type === 'email'
   const isSingle = q.type === 'chips'
@@ -71,9 +82,9 @@ export function QuestionRenderer({
         </svg>
       </div>
 
-      <h1 className="text-[26px] sm:text-[30px] font-bold text-gray-900 leading-tight mb-2">{q.label}</h1>
-      {q.sublabel ? <p className="text-[15px] text-gray-500 mb-2">{q.sublabel}</p> : <div className="mb-6" />}
-      {q.sublabel && <div className="mb-3" />}
+      <h1 className="text-[26px] sm:text-[30px] font-bold text-gray-900 leading-tight mb-2">{label}</h1>
+      {sublabel ? <p className="text-[15px] text-gray-500 mb-2">{sublabel}</p> : <div className="mb-6" />}
+      {sublabel && <div className="mb-3" />}
 
       {isText && (
         <div className="mb-7" onKeyDown={onInputKeyDown}>
