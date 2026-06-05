@@ -42,6 +42,10 @@ export interface V2Question {
   /** Welcome-screen specific: text on the proceed button. Defaults to "Get
    *  started" when empty. Ignored for non-welcome types. */
   ctaText?: string
+  /** Render variant for chips-type questions. 'horizontal' lays them out as
+   *  a single horizontal row (use for ordered scales like momentum where
+   *  the options are evenly ranked). Defaults to vertical row layout. */
+  layout?: 'rows' | 'horizontal'
   /** split-text only: label + placeholder for the left field. */
   firstFieldLabel?: string
   firstFieldPlaceholder?: string

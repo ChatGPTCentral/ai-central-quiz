@@ -217,8 +217,32 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 
       <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
         {/* ── HERO: 2-column — text left, radar right ─────── */}
-        <section className="px-6 pt-10 pb-8 max-w-5xl mx-auto w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
+        <section
+          className="relative px-6 pt-10 pb-12 sm:pb-16 w-full overflow-hidden border-b"
+          style={{
+            borderColor: '#E8E4DF',
+            background: `
+              radial-gradient(60% 60% at 80% 15%, #62A75822 0%, transparent 60%),
+              radial-gradient(50% 50% at 12% 95%, #E4871522 0%, transparent 60%),
+              linear-gradient(180deg, #F4F1EA 0%, #FBFAF5 60%, #FFFDFA 100%)
+            `,
+          }}
+        >
+          {/* Apple-style perspective grid overlay */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: `
+                linear-gradient(to right, rgba(51,51,51,0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(51,51,51,0.05) 1px, transparent 1px)
+              `,
+              backgroundSize: '44px 44px',
+              maskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
+              WebkitMaskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
+            }}
+            aria-hidden
+          />
+          <div className="relative grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center max-w-5xl mx-auto">
             {/* LEFT — copy */}
             <div className="text-center md:text-left">
               {heroHeadline ? (
@@ -273,32 +297,37 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </section>
         )}
 
-        {/* ── ARCHETYPE CARD ─────────────────────────────── */}
-        <section className="px-6 pt-6 pb-6 max-w-2xl mx-auto w-full">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: '#9C9C9C' }}>
-            Your AI archetype
-          </p>
-          <div
-            className="rounded-2xl p-7 mb-4 relative overflow-hidden"
-            style={{ backgroundColor: '#FFFFFF', border: `1px solid #E8E4DF`, boxShadow: `0 4px 30px ${archetype.accentColor}1A` }}
-          >
-            <div
-              className="absolute top-0 left-0 right-0 h-1"
-              style={{ background: `linear-gradient(90deg, ${archetype.accentColor} 0%, #E48715 100%)` }}
-            />
-            <h1 className="text-[28px] sm:text-[34px] font-black mb-3 leading-tight" style={{ color: archetype.accentColor }}>
-              {archetype.label}
-            </h1>
-            <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
-              {noDash(archetype.description)}
+        {/* ── ARCHETYPE CARD — the archetype IS the ladder rung. ── */}
+        {stageMeta && stageMeta.key !== 'unknown' && (
+          <section className="px-6 pt-6 pb-6 max-w-2xl mx-auto w-full">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: '#9C9C9C' }}>
+              Your AI archetype
             </p>
-            {seg.personaLane.lane !== 'general' && (
-              <p className="text-[11px] mt-4 italic" style={{ color: '#9C9C9C' }}>
-                💡 {seg.personaLane.hook}
+            <div
+              className="rounded-2xl p-7 mb-4 relative overflow-hidden"
+              style={{ backgroundColor: '#FFFFFF', border: `1px solid #E8E4DF`, boxShadow: `0 4px 30px ${stageMeta.color}1A` }}
+            >
+              <div
+                className="absolute top-0 left-0 right-0 h-1"
+                style={{ background: `linear-gradient(90deg, ${stageMeta.color} 0%, #E48715 100%)` }}
+              />
+              <div className="flex items-baseline gap-3 mb-3">
+                <span className="text-[32px] leading-none">{stageMeta.emoji}</span>
+                <h1 className="text-[28px] sm:text-[34px] font-black leading-tight" style={{ color: stageMeta.color }}>
+                  {stageMeta.label}
+                </h1>
+              </div>
+              <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
+                {noDash(stageMeta.description)}
               </p>
-            )}
-          </div>
-        </section>
+              {seg.personaLane.lane !== 'general' && (
+                <p className="text-[11px] mt-4 italic" style={{ color: '#9C9C9C' }}>
+                  💡 {seg.personaLane.hook}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* ── PRIMARY CTA — Fulvous, intent-aware copy ───── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
@@ -451,9 +480,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             style={{ backgroundColor: '#FCFAF4', border: '1px solid #E8E4DF', boxShadow: '0 4px 30px rgba(228,135,21,0.05)' }}
           >
             {/* Letterhead */}
-            <div className="flex items-center justify-between mb-6 pb-4" style={{ borderBottom: '1px solid #EDE7DC' }}>
-              <span className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: '#E48715' }}>AI Central</span>
-              <span className="text-[11px]" style={{ color: '#9C9C9C', fontFamily: 'Georgia, serif' }}>A note from the founder</span>
+            <div className="mb-6 pb-4" style={{ borderBottom: '1px solid #EDE7DC' }}>
+              <span className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: '#9C9C9C' }}>
+                A note from the founder
+              </span>
             </div>
 
             <div style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
@@ -486,9 +516,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 <p key={i} className="text-[16px] leading-[1.7] mb-4" style={{ color: '#333333' }}>{p}</p>
               ))}
 
-              <p className="text-[16px] leading-[1.7] mt-6 mb-1" style={{ color: '#333333' }}>See you inside,</p>
-              <p className="text-[26px] mb-0" style={{ color: '#333333', fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>Alex Fiore</p>
-              <p className="text-[12px]" style={{ color: '#9C9C9C' }}>Founder, AI Central</p>
+              <p className="text-[16px] leading-[1.7] mt-6 mb-1" style={{ color: '#333333', fontStyle: 'italic' }}>See you inside, Alex</p>
+              <p className="text-[12px] mt-1" style={{ color: '#9C9C9C' }}>Founder &amp; Chief Editor, AI Central</p>
             </div>
           </div>
         </section>

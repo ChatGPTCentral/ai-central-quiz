@@ -56,8 +56,18 @@ interface ResolvedSource {
   titleProp: string
   /** Notion property type for every column, keyed by property name. */
   propTypes: Record<string, string>
+  /** Lowercase-trimmed property name → actual property name. Lets us look
+   *  up "cover title" / "Cover Title" / " cover title " all the same way. */
+  byLower: Record<string, string>
 }
 let _resolved: ResolvedSource | null = null
+
+/** Case + whitespace insensitive property lookup. Returns the actual property
+ *  key as it exists in the schema, or undefined if no match. */
+function actualProp(resolved: ResolvedSource, name: string): string | undefined {
+  if (resolved.propTypes[name]) return name
+  return resolved.byLower[name.trim().toLowerCase()]
+}
 
 async function resolveSource(c: Client): Promise<ResolvedSource | null> {
   if (_resolved) return _resolved
@@ -75,8 +85,12 @@ async function resolveSource(c: Client): Promise<ResolvedSource | null> {
     }
     const titleProp = Object.entries(ds.properties).find(([, v]) => v.type === 'title')?.[0] || 'Name'
     const propTypes: Record<string, string> = {}
-    for (const [name, def] of Object.entries(ds.properties)) propTypes[name] = def.type
-    _resolved = { dataSourceId, titleProp, propTypes }
+    const byLower: Record<string, string> = {}
+    for (const [name, def] of Object.entries(ds.properties)) {
+      propTypes[name] = def.type
+      byLower[name.trim().toLowerCase()] = name
+    }
+    _resolved = { dataSourceId, titleProp, propTypes, byLower }
     return _resolved
   } catch (err) {
     console.error('[notion] resolveSource failed:', err)
@@ -137,20 +151,20 @@ function toTitleCase(raw: string): string {
 
 function mapPage(page: any, resolved: ResolvedSource): NotionDoc {
   const props = page.properties || {}
-  // Display title prefers `cover title` (user-curated, then title-cased so
-  // every entry reads cleanly); falls back to the database's actual title
-  // property so we never render "Untitled".
-  const displayRaw = plainText(props[PROP_DISPLAY_TITLE]).trim()
-  const fallback = plainText(props[resolved.titleProp]).trim()
-  const title = displayRaw ? toTitleCase(displayRaw) : (fallback || 'Untitled')
-  const summary = plainText(props[PROP_SUMMARY])
-  const externalUrl = plainText(props[PROP_URL])
+  // Display title comes from `cover title` (user-curated, title-cased so
+  // every entry reads cleanly). Lookup is case + whitespace insensitive,
+  // so 'cover title' / 'Cover Title' / ' cover title ' all resolve.
+  const coverKey = actualProp(resolved, PROP_DISPLAY_TITLE)
+  const displayRaw = coverKey ? plainText(props[coverKey]).trim() : ''
+  const summaryKey = actualProp(resolved, PROP_SUMMARY)
+  const urlKey = actualProp(resolved, PROP_URL)
+  const tagsKey = actualProp(resolved, PROP_TAGS)
   return {
     id: page.id,
-    title,
-    summary,
-    url: externalUrl || page.url || '',
-    tags: tagsOf(props[PROP_TAGS]),
+    title: displayRaw ? toTitleCase(displayRaw) : '',
+    summary: summaryKey ? plainText(props[summaryKey]) : '',
+    url: (urlKey ? plainText(props[urlKey]) : '') || page.url || '',
+    tags: tagsKey ? tagsOf(props[tagsKey]) : [],
   }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -186,7 +200,10 @@ export async function searchDocs(query: string, limit = 8): Promise<NotionDoc[]>
   try {
     const filters = q
       ? SEARCH_PROPS
-          .map(p => filterForProp(p, resolved.propTypes[p], q))
+          .map(p => {
+            const actual = actualProp(resolved, p)
+            return actual ? filterForProp(actual, resolved.propTypes[actual], q) : null
+          })
           .filter((f): f is object => f !== null)
       : []
     const res = await c.dataSources.query({
@@ -196,7 +213,9 @@ export async function searchDocs(query: string, limit = 8): Promise<NotionDoc[]>
         ? { filter: (filters.length === 1 ? filters[0] : { or: filters }) as never }
         : {}),
     })
-    return (res.results as unknown[]).map(p => mapPage(p, resolved))
+    // Drop rows where `cover title` is empty — the user explicitly wants
+    // the cover title shown (not the numeric/internal title fallback).
+    return (res.results as unknown[]).map(p => mapPage(p, resolved)).filter(d => d.title)
   } catch (err) {
     console.error('[notion] searchDocs failed:', err)
     return []
@@ -215,7 +234,7 @@ export async function suggestedDocs(keywords: string[], limit = 4): Promise<Noti
       data_source_id: resolved.dataSourceId,
       page_size: 40,
     })
-    const docs = (res.results as unknown[]).map(p => mapPage(p, resolved))
+    const docs = (res.results as unknown[]).map(p => mapPage(p, resolved)).filter(d => d.title)
     const kw = keywords.map(k => k.toLowerCase())
     const scored = docs.map(d => {
       const hay = `${d.title} ${d.summary} ${d.tags.join(' ')}`.toLowerCase()

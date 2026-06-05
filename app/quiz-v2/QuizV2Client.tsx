@@ -250,8 +250,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
 
   return (
     <div className={`${isEmbed ? 'min-h-0' : 'min-h-[100dvh] h-[100dvh]'} bg-white flex flex-col overflow-hidden`}>
-      <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 h-[3px] bg-gray-100 z-50`}>
-        <div className="h-full transition-all duration-500 ease-out" style={{ width: `${progressPct}%`, backgroundColor: ACCENT }} />
+      <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 h-[6px] bg-[#EFEAE2] z-50`}>
+        <div className="h-full transition-all duration-500 ease-out shadow-sm" style={{ width: `${progressPct}%`, backgroundColor: ACCENT }} />
       </div>
 
       {!isEmbed && (

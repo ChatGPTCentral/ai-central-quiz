@@ -189,7 +189,38 @@ export function QuestionRenderer({
         </div>
       )}
 
-      {isSingle && q.options && (
+      {isSingle && q.options && q.layout === 'horizontal' && (
+        <div className="mb-5 sm:mb-7">
+          {/* Connector track that runs through all the chip centers. */}
+          <div className="relative">
+            <div className="absolute left-3 right-3 top-1/2 -translate-y-1/2 h-[2px] bg-gray-200" aria-hidden />
+            <div className="relative grid gap-2" style={{ gridTemplateColumns: `repeat(${q.options.length}, minmax(0, 1fr))` }}>
+              {q.options.map((opt, i) => {
+                const sel = singleAnswer === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onSingleSelect(opt.value)}
+                    className={`relative flex flex-col items-center justify-center gap-1.5 py-3 sm:py-4 rounded-xl border-2 transition-all duration-150 active:scale-[0.97] ${sel ? '' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+                    style={sel ? { borderColor: accent, backgroundColor: `${accent}10` } : {}}
+                  >
+                    <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-black transition-all duration-150 ${sel ? 'text-white' : 'bg-gray-100 text-gray-500'}`} style={sel ? { backgroundColor: accent } : {}}>
+                      {i + 1}
+                    </span>
+                    {opt.emoji && <span className="text-[16px] leading-none">{opt.emoji}</span>}
+                    <span className={`text-[11px] sm:text-[12px] font-bold text-center leading-tight px-1 ${sel ? '' : 'text-gray-700'}`} style={sel ? { color: accent } : {}}>
+                      {opt.label}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSingle && q.options && q.layout !== 'horizontal' && (
         <div className="flex flex-col gap-2 sm:gap-2.5 mb-4 sm:mb-7">
           {q.options.map((opt, i) => {
             const sel = singleAnswer === opt.value

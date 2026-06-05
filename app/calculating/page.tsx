@@ -10,10 +10,10 @@ import FomoPopup from '@/components/FomoPopup'
 const ACCENT = '#2D8879'
 
 const STEPS = [
- { label: 'Analyzing your responses',        duration: 900 },
+ { label: 'Analyzing your responses',               duration: 900 },
  { label: 'Placing you on the AI adoption ladder',  duration: 900 },
  { label: 'Matching your persona to our playbooks', duration: 900 },
- { label: 'Building your personalized plan',     duration: 900 },
+ { label: 'Building your personalized plan',        duration: 900 },
 ]
 
 function CalculatingContent() {
@@ -66,48 +66,74 @@ function CalculatingContent() {
  const progressPct = Math.min(100, Math.round((elapsed / totalDuration) * 100))
 
  return (
-  <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
+  <div className="min-h-[100dvh] flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
    {/* Top progress bar */}
-   <div className="fixed top-0 left-0 right-0 h-[3px] z-50" style={{ backgroundColor: '#F5F5F5' }}>
+   <div className="fixed top-0 left-0 right-0 h-[6px] z-50" style={{ backgroundColor: '#EFEAE2' }}>
     <div className="h-full transition-all duration-500 ease-out" style={{ width: `${progressPct}%`, backgroundColor: ACCENT }} />
    </div>
 
    {/* Header */}
-   <header className="flex items-center justify-between px-6 pt-8 pb-2 shrink-0">
+   <header className="flex items-center justify-center px-6 pt-8 pb-2 shrink-0">
     {/* eslint-disable-next-line @next/next/no-img-element */}
     <img src="/logo-full-light-bg.png" alt="AI Central" className="h-6 w-auto" />
-    <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: '#9C9C9C' }}>
-     Building your plan
-    </span>
    </header>
 
-   {/* Main */}
+   {/* Main — vertically + horizontally centered */}
    <main className="flex-1 flex items-center justify-center px-6 py-6">
-    <div className="w-full max-w-[580px]">
-     <div className="flex items-center gap-1.5 mb-5">
-      <span className="text-[13px] font-bold" style={{ color: ACCENT }}>✦</span>
-      <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: ACCENT }}>
-       Generating your results
-      </span>
+    <div className="w-full max-w-[520px] text-center">
+     {/* Animated halo / spinner — sleeker than the bullet list */}
+     <div className="relative mx-auto mb-7 sm:mb-9" style={{ width: 84, height: 84 }}>
+      {/* Outer pulsing ring */}
+      <span
+       className="absolute inset-0 rounded-full"
+       style={{ border: `1.5px solid ${ACCENT}55`, animation: 'ac-ping 2s cubic-bezier(0,0,0.2,1) infinite' }}
+      />
+      {/* Rotating arc */}
+      <svg
+       className="absolute inset-0"
+       viewBox="0 0 100 100"
+       style={{ animation: 'ac-spin 1.4s linear infinite', transformOrigin: '50% 50%' }}
+       aria-hidden
+      >
+       <circle cx="50" cy="50" r="42" fill="none" stroke="#EFEAE2" strokeWidth="6" />
+       <circle
+        cx="50" cy="50" r="42"
+        fill="none" stroke={ACCENT} strokeWidth="6" strokeLinecap="round"
+        strokeDasharray={2 * Math.PI * 42}
+        strokeDashoffset={2 * Math.PI * 42 * 0.72}
+       />
+      </svg>
+      {/* Center percentage */}
+      <div className="absolute inset-0 flex items-center justify-center">
+       <span className="text-[16px] font-black tabular-nums" style={{ color: ACCENT }}>{progressPct}%</span>
+      </div>
+      <style>{`
+       @keyframes ac-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+       @keyframes ac-ping {
+        0%   { transform: scale(1);    opacity: 0.85; }
+        80%  { transform: scale(1.35); opacity: 0; }
+        100% { transform: scale(1.35); opacity: 0; }
+       }
+      `}</style>
      </div>
 
-     <h1 className="text-[28px] sm:text-[32px] font-black leading-[1.1] mb-3" style={{ color: '#333333' }}>
+     <p className="text-[11px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: ACCENT }}>
+      Generating your results
+     </p>
+     <h1 className="text-[28px] sm:text-[34px] font-black leading-[1.1] mb-3" style={{ color: '#333333' }}>
       Building your personalized plan
      </h1>
-     <p className="text-[15px] mb-8" style={{ color: '#555' }}>
-      Hang tight. We&apos;re tailoring your AI roadmap based on your answers
+     <p className="text-[15px] mb-9 mx-auto max-w-[420px]" style={{ color: '#555' }}>
+      Hang tight. We&apos;re tailoring your AI roadmap based on your answers.
      </p>
 
-     {/* Steps list */}
-     <div className="flex flex-col gap-3">
+     {/* Steps — centered, current one highlighted */}
+     <div className="flex flex-col items-center gap-3">
       {STEPS.map((step, i) => {
        const done = completedSteps.includes(i)
        const active = currentStep === i
-       // Distinct opacity tiers so the eye tracks the spotlight: the active
-       // step is full-strength, finished steps recede (still legible via the
-       // checkmark), pending steps sit lowest.
        const stateColor = active ? '#333333' : done ? '#555555' : '#9C9C9C'
-       const stateOpacity = active ? 1 : done ? 0.45 : 0.35
+       const stateOpacity = active ? 1 : done ? 0.45 : 0.3
        return (
         <div
          key={step.label}
@@ -115,11 +141,11 @@ function CalculatingContent() {
          style={{ color: stateColor, opacity: stateOpacity }}
         >
          <div
-          className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-300 ${active ? 'animate-pulse' : ''}`}
+          className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-300 ${active ? 'animate-pulse' : ''}`}
           style={done || active ? { backgroundColor: ACCENT } : { backgroundColor: '#F5F5F5' }}
          >
           {done && (
-           <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M2 5.5L3.8 7.5L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
            </svg>
           )}
@@ -131,15 +157,6 @@ function CalculatingContent() {
      </div>
     </div>
    </main>
-
-   {/* Footer */}
-   <footer
-    className="shrink-0 flex items-center justify-between px-6 py-4 border-t"
-    style={{ borderColor: '#E8E4DF' }}
-   >
-    <span className="text-[11px] tabular-nums" style={{ color: '#9C9C9C' }}>{progressPct}% complete</span>
-    <span className="text-[11px]" style={{ color: '#9C9C9C' }}>Almost there</span>
-   </footer>
 
    <FomoPopup variant="completed" />
   </div>
