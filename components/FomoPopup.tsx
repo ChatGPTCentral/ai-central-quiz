@@ -60,7 +60,14 @@ function timeAgo() {
 
 const PAYMENT_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || '#'
 
-export default function FomoPopup() {
+interface FomoProps {
+  /** 'offer' (default) shows the $4.99 claim with a payment link — used on
+   *  the result page. 'completed' shows "just completed the AI quiz" with no
+   *  link — used on the cover + calculating screens. */
+  variant?: 'offer' | 'completed'
+}
+
+export default function FomoPopup({ variant = 'offer' }: FomoProps) {
   const [visible, setVisible] = useState(false)
   const [person, setPerson] = useState(pickPerson())
   const [ago, setAgo] = useState(timeAgo())
@@ -97,7 +104,7 @@ export default function FomoPopup() {
 
   return (
     <div
-      className={`fixed bottom-5 left-5 z-50 transition-all duration-500 ease-out ${
+      className={`fixed bottom-5 right-5 z-50 transition-all duration-500 ease-out ${
         visible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'
       }`}
       style={{ maxWidth: 320 }}
@@ -110,17 +117,23 @@ export default function FomoPopup() {
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] text-gray-800 leading-snug">
-            🎉 <span className="font-semibold">{person.name}</span> from {person.flag} {person.city} claimed the{' '}
-            <a
-              href={PAYMENT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-black font-semibold underline underline-offset-2"
-            >
-              Limited Time $4.99 Special Offer
-            </a>
-          </p>
+          {variant === 'offer' ? (
+            <p className="text-[13px] text-gray-800 leading-snug">
+              🎉 <span className="font-semibold">{person.name}</span> from {person.flag} {person.city} claimed the{' '}
+              <a
+                href={PAYMENT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-black font-semibold underline underline-offset-2"
+              >
+                Limited Time $4.99 Special Offer
+              </a>
+            </p>
+          ) : (
+            <p className="text-[13px] text-gray-800 leading-snug">
+              ✅ <span className="font-semibold">{person.name}</span> from {person.flag} {person.city} just completed the AI quiz
+            </p>
+          )}
           <p className="text-[11px] text-gray-400 mt-1">{ago}</p>
         </div>
         <button

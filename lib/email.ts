@@ -9,6 +9,9 @@
 //   ADMIN_NOTIFY_FROM     — sender; must be from a domain verified on your
 //                           Resend account (e.g. AI Central <noreply@app.thecentral.ai>)
 
+import { stageDef } from './segmentation-v2'
+import { answerDisplay, answerDisplayList, formatDisplay } from './answer-labels'
+
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 /** Raw row shape from public.submissions (snake_case). Optional everywhere
@@ -26,6 +29,10 @@ export interface SubmissionRow {
   ai_tools?: string | null
   work_area?: string | null
   job_level?: string | null
+  frequency_score?: number | null
+  momentum?: number | null
+  depth_score?: number | null
+  breadth_score?: number | null
   // Apollo / waterfall enrichment
   linkedin_url?: string | null
   photo_url?: string | null
@@ -162,17 +169,22 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
   const fullName = r.name || '(no name)'
   const subjectName = fullName
   const personLocation = [r.city, r.region, r.country].filter(present).join(', ')
-  const enrichmentBadge = r.enrichment_status === 'enriched'
-    ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#E8F5E9;color:#2E7D32;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-left:8px;">enriched</span>`
-    : r.enrichment_status === 'not_attempted'
-    ? `<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:#FFF3E0;color:#E65100;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-left:8px;">personal email · not enriched</span>`
-    : ''
 
-  // Hero — score gauge + persona/stage chips
+  // Prominent Apollo enrichment status strip — the reader needs to know
+  // upfront whether the company/title data below is enriched or just the
+  // self-reported quiz answers.
+  const enrichmentStrip = r.enrichment_status === 'enriched'
+    ? `<tr><td style="padding:10px 24px;background:#E8F5E9;color:#2E7D32;font-size:12px;font-weight:700;letter-spacing:0.03em;">✓ Apollo enriched — company &amp; role data verified</td></tr>`
+    : r.enrichment_status === 'not_attempted'
+    ? `<tr><td style="padding:10px 24px;background:#FFF3E0;color:#E65100;font-size:12px;font-weight:700;letter-spacing:0.03em;">○ Not enriched — personal email, quiz answers only</td></tr>`
+    : `<tr><td style="padding:10px 24px;background:#F5F5F5;color:#9C9C9C;font-size:12px;font-weight:700;letter-spacing:0.03em;">— Enrichment unavailable for this submission</td></tr>`
+
+  // Hero chip — the single ladder result (Stage), with its emoji + color.
+  const sd = r.stage ? stageDef(r.stage) : null
   const heroChips: string[] = []
-  if (r.persona) heroChips.push(`<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#F3E5F5;color:#6A1B9A;font-size:11px;font-weight:700;">${escape(r.persona)}</span>`)
-  if (r.stage) heroChips.push(`<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#E3F2FD;color:#1565C0;font-size:11px;font-weight:700;">${escape(r.stage)}</span>`)
-  if (r.archetype) heroChips.push(`<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:#FFF8E1;color:#F57F17;font-size:11px;font-weight:700;">${escape(r.archetype)}</span>`)
+  if (sd && sd.key !== 'unknown') {
+    heroChips.push(`<span style="display:inline-block;padding:4px 12px;border-radius:999px;background:${sd.color}22;color:${sd.color};font-size:12px;font-weight:800;">${sd.emoji} ${escape(sd.label)}</span>`)
+  }
 
   const personPhoto = r.photo_url
     ? `<img src="${escape(r.photo_url)}" alt="" width="56" height="56" style="display:block;width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid #E8E4DF;">`
@@ -222,15 +234,25 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
     engagementRows.push(row('Attribution', escape(utm)))
   }
 
-  // Quiz signals
+  // Quiz signals — every answer shown with the label + emoji the user saw,
+  // never the raw enum value.
   const quizRows: string[] = []
   if (present(r.score)) {
     quizRows.push(row('Score', `<strong style="color:#E48715;font-size:18px;">${r.score}</strong> <span style="color:#9C9C9C;font-size:12px;">/ 100</span>`))
   }
-  if (present(r.intent_30d)) quizRows.push(row('Intent (30d)', escape(r.intent_30d!)))
-  if (present(r.friction)) quizRows.push(row('Friction', escape(r.friction!)))
-  if (present(r.work_area)) quizRows.push(row('Work area', escape(fmtList(r.work_area!))))
-  if (present(r.ai_tools)) quizRows.push(row('Tools in rotation', escape(fmtList(r.ai_tools!, 8))))
+  if (present(r.frequency_score)) quizRows.push(row('Frequency', escape(formatDisplay(answerDisplay('frequency', r.frequency_score!)))))
+  if (present(r.momentum)) quizRows.push(row('Momentum', escape(formatDisplay(answerDisplay('momentum', r.momentum!)))))
+  if (present(r.depth_score)) quizRows.push(row('Depth', `${r.depth_score} of 6 actions`))
+  if (present(r.intent_30d)) quizRows.push(row('Intent (30d)', escape(formatDisplay(answerDisplay('intent_30d', r.intent_30d!)))))
+  if (present(r.friction)) quizRows.push(row('Friction', escape(formatDisplay(answerDisplay('friction', r.friction!)))))
+  if (present(r.work_area)) {
+    const list = answerDisplayList('workArea', r.work_area!).map(formatDisplay)
+    quizRows.push(row('Work area', escape(list.slice(0, 6).join(', ') + (list.length > 6 ? ` · +${list.length - 6}` : ''))))
+  }
+  if (present(r.ai_tools)) {
+    const list = answerDisplayList('aiTools', r.ai_tools!).map(formatDisplay)
+    quizRows.push(row('Tools in rotation', escape(list.slice(0, 8).join(', ') + (list.length > 8 ? ` · +${list.length - 8}` : ''))))
+  }
 
   // CTAs
   const ctas: string[] = []
@@ -242,7 +264,7 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
   const headlineParts: string[] = []
   if (r.job_title) headlineParts.push(escape(r.job_title))
   if (r.company_name) headlineParts.push(escape(r.company_name))
-  const headline = headlineParts.join(' — ')
+  const headline = headlineParts.join(' · ')
 
   return `<!DOCTYPE html>
 <html>
@@ -262,6 +284,9 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
             </td>
           </tr>
 
+          <!-- APOLLO ENRICHMENT STATUS -->
+          ${enrichmentStrip}
+
           <!-- HERO -->
           <tr>
             <td style="padding:24px;">
@@ -269,7 +294,7 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
                 <tr>
                   <td style="vertical-align:top;width:64px;padding-right:16px;">${personPhoto}</td>
                   <td style="vertical-align:top;">
-                    <div style="font-size:22px;font-weight:800;color:#333333;line-height:1.2;">${escape(fullName)}${enrichmentBadge}</div>
+                    <div style="font-size:22px;font-weight:800;color:#333333;line-height:1.2;">${escape(fullName)}</div>
                     ${headline ? `<div style="margin-top:4px;color:#333333;font-size:14px;">${headline}</div>` : ''}
                     ${personLocation ? `<div style="margin-top:2px;color:#9C9C9C;font-size:13px;">${escape(personLocation)}</div>` : ''}
                   </td>
@@ -313,17 +338,21 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
 function renderText(r: SubmissionRow, adminLink: string | null): string {
   const lines: string[] = []
   lines.push(`${r.name || '(no name)'} <${r.email || ''}>`)
-  if (r.job_title || r.company_name) lines.push([r.job_title, r.company_name].filter(present).join(' — '))
+  if (r.job_title || r.company_name) lines.push([r.job_title, r.company_name].filter(present).join(' · '))
   const loc = [r.city, r.region, r.country].filter(present).join(', ')
   if (loc) lines.push(loc)
   lines.push('')
+  const enrichLine = r.enrichment_status === 'enriched' ? 'Apollo enriched: yes'
+    : r.enrichment_status === 'not_attempted' ? 'Apollo enriched: no (personal email)'
+    : 'Apollo enriched: unavailable'
+  lines.push(enrichLine)
   if (present(r.score)) lines.push(`Score:      ${r.score}/100`)
-  if (r.archetype) lines.push(`Archetype:  ${r.archetype}`)
-  if (r.persona) lines.push(`Persona:    ${r.persona}`)
-  if (r.stage) lines.push(`Stage:      ${r.stage}`)
-  if (r.intent_30d) lines.push(`Intent:     ${r.intent_30d}`)
-  if (r.friction) lines.push(`Friction:   ${r.friction}`)
-  if (r.ai_tools) lines.push(`Tools:      ${fmtList(r.ai_tools, 8)}`)
+  if (r.stage) { const sd = stageDef(r.stage); if (sd && sd.key !== 'unknown') lines.push(`Stage:      ${sd.emoji} ${sd.label}`) }
+  if (present(r.frequency_score)) lines.push(`Frequency:  ${formatDisplay(answerDisplay('frequency', r.frequency_score!))}`)
+  if (present(r.momentum)) lines.push(`Momentum:   ${formatDisplay(answerDisplay('momentum', r.momentum!))}`)
+  if (r.intent_30d) lines.push(`Intent:     ${formatDisplay(answerDisplay('intent_30d', r.intent_30d))}`)
+  if (r.friction) lines.push(`Friction:   ${formatDisplay(answerDisplay('friction', r.friction))}`)
+  if (r.ai_tools) lines.push(`Tools:      ${answerDisplayList('aiTools', r.ai_tools).map(formatDisplay).slice(0, 8).join(', ')}`)
   if (r.linkedin_url) { lines.push(''); lines.push(`LinkedIn:   ${r.linkedin_url}`) }
   if (r.company_website) lines.push(`Company:    ${r.company_website}`)
   if (r.beehiiv_status) lines.push(`Beehiiv:    ${r.beehiiv_status}`)

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import FomoPopup from '@/components/FomoPopup'
 
 // Viridian for "computation in progress" - - distinct from Azul (form focus)
 // and Fulvous (energy / CTA). Keeps the three surfaces visually
@@ -102,12 +103,16 @@ function CalculatingContent() {
       {STEPS.map((step, i) => {
        const done = completedSteps.includes(i)
        const active = currentStep === i
-       const stateColor = done || active ? '#333333' : '#9C9C9C'
+       // Distinct opacity tiers so the eye tracks the spotlight: the active
+       // step is full-strength, finished steps recede (still legible via the
+       // checkmark), pending steps sit lowest.
+       const stateColor = active ? '#333333' : done ? '#555555' : '#9C9C9C'
+       const stateOpacity = active ? 1 : done ? 0.45 : 0.35
        return (
         <div
          key={step.label}
-         className="flex items-center gap-3 text-[14px] transition-all duration-300"
-         style={{ color: stateColor, opacity: done || active ? 1 : 0.5 }}
+         className="flex items-center gap-3 text-[14px] transition-all duration-500"
+         style={{ color: stateColor, opacity: stateOpacity }}
         >
          <div
           className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-300 ${active ? 'animate-pulse' : ''}`}
@@ -135,6 +140,8 @@ function CalculatingContent() {
     <span className="text-[11px] tabular-nums" style={{ color: '#9C9C9C' }}>{progressPct}% complete</span>
     <span className="text-[11px]" style={{ color: '#9C9C9C' }}>Almost there</span>
    </footer>
+
+   <FomoPopup variant="completed" />
   </div>
  )
 }
