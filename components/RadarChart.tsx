@@ -29,7 +29,7 @@ interface Props {
   subtitle?: string
 }
 
-const DEFAULT_ACCENT = '#1A53FF'      // technical blue — matches the reference
+const DEFAULT_ACCENT = '#62A758'      // AI Central pigment green
 const INK = '#111111'
 const RING_STROKE = '#C9C7BF'
 const SECTOR_FILL_A = 'transparent'
@@ -157,8 +157,12 @@ export function RadarChart({
 
       <svg
         width="100%"
-        viewBox={`0 0 ${size} ${size}`}
-        style={{ maxWidth: size, overflow: 'visible' }}
+        // Padded viewBox so the rotated vertex labels at the top/right/bottom
+        // stay inside the box and never get clipped by any ancestor with
+        // overflow:hidden. The padding scales with `size` so it works at any
+        // requested chart size.
+        viewBox={`${-size * 0.22} ${-size * 0.18} ${size * 1.44} ${size * 1.36}`}
+        style={{ maxWidth: size * 1.44, display: 'block' }}
         role="img"
         aria-label="Skill radar"
       >

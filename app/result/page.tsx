@@ -5,12 +5,11 @@ import CountdownTimer from '@/components/CountdownTimer'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
-import { BrandWordmark } from '@/components/BrandWordmark'
 import { DocSearch } from '@/components/result/DocSearch'
 import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
 import { resolveTokens } from '@/lib/piping'
 import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
-import { SALES_CONTENT, TESTIMONIALS } from '@/lib/sales-content'
+import { TESTIMONIALS } from '@/lib/sales-content'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
@@ -153,7 +152,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   if (!archetypeKey || !ARCHETYPES[archetypeKey]) notFound()
 
   const archetype = ARCHETYPES[archetypeKey]
-  const sales = SALES_CONTENT[archetypeKey]
   const firstName = (name || '').trim().split(/\s+/)[0] || ''
 
   // V2 segment fields — server-fetched from the row id, optional
@@ -223,24 +221,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
             {/* LEFT — copy */}
             <div className="text-center md:text-left">
-              {/* Stage chip */}
-              {stageMeta && stageMeta.key !== 'unknown' && (
-                <div className="flex items-center justify-center md:justify-start gap-2 mb-5 flex-wrap">
-                  <span
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
-                    style={{ backgroundColor: stageMeta.color + '22', color: stageMeta.color, border: `1px solid ${stageMeta.color}40` }}
-                  >
-                    <span>{stageMeta.emoji}</span>
-                    <span>{stageMeta.label}</span>
-                  </span>
-                </div>
-              )}
-
-              {/* Brand wordmark — AI Central with green offset shadow */}
-              <div className="mb-4 md:mb-5">
-                <BrandWordmark size={28} />
-              </div>
-
               {heroHeadline ? (
                 <h1 className="text-[30px] sm:text-[36px] md:text-[42px] font-black leading-[1.05] mb-3" style={{ color: '#333333' }}>
                   {resolveTokens(heroHeadline, tokens)}
@@ -253,20 +233,32 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 </h1>
               )}
 
-              <p className="text-[15px] sm:text-[16px] leading-relaxed max-w-md mx-auto md:mx-0" style={{ color: '#9C9C9C' }}>
+              <p className="text-[15px] sm:text-[16px] leading-relaxed max-w-md mx-auto md:mx-0 mb-6 sm:mb-7" style={{ color: '#9C9C9C' }}>
                 {heroSubheadline
                   ? resolveTokens(heroSubheadline, tokens)
                   : 'Your skill profile today, and the headroom the library unlocks'}
               </p>
+
+              <a
+                href={ctaUrl}
+                className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl font-black text-[15px] sm:text-[16px] transition-all active:scale-[0.99] hover:opacity-90 shadow-sm"
+                style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
+              >
+                Unlock 1,200+ AI tutorials
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              </a>
             </div>
 
             {/* RIGHT — radar */}
             <div className="flex justify-center md:justify-end">
-              <div className="w-full max-w-[420px]">
+              <div className="w-full max-w-[460px]">
                 <RadarChart
                   axes={axes}
                   mode="result"
-                  accent="#1A53FF"
+                  accent="#62A758"
                   size={360}
                   title={`${firstName ? `${firstName}'s` : 'Your'} AI profile${stageMeta && stageMeta.key !== 'unknown' ? `: ${stageMeta.label}` : ''}`}
                   subtitle="Your current scoring on five axes, and the lift AI Central unlocks"
@@ -503,17 +495,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
-        {/* ── COMMENTARY (archetype truth-paragraphs) ────── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-6" style={{ color: '#333333' }}>
-            {noDash(sales.truthHeading)}{firstName ? `, ${firstName}` : ''}
-          </h2>
-          {sales.truthParagraphs.map((p, i) => (
-            <p key={i} className="text-[15px] leading-relaxed mb-4" style={{ color: '#333333' }}>
-              {noDash(p)}
-            </p>
-          ))}
-        </section>
 
         {/* ── EXPLORE THE LIBRARY (Notion-backed search) ──────── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">

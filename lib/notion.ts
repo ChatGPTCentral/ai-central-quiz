@@ -108,13 +108,41 @@ function tagsOf(prop: any): string[] {
   return []
 }
 
+// Lowercase connectives that should stay lower-case in Title Case output
+// unless they're the first or last word.
+const TITLE_CASE_SMALL = new Set([
+  'a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'from', 'in', 'nor',
+  'of', 'on', 'or', 'per', 'so', 'the', 'to', 'vs', 'via', 'with', 'yet',
+])
+
+/** "your first chatgpt prompt" → "Your First ChatGPT Prompt"
+ *  Preserves ALL-CAPS / mixed-case tokens (ChatGPT, GPT-4, API), so we
+ *  don't lowercase brand acronyms by accident. */
+function toTitleCase(raw: string): string {
+  const s = raw.trim().replace(/\s+/g, ' ')
+  if (!s) return s
+  const tokens = s.split(' ')
+  return tokens
+    .map((tok, i) => {
+      // Keep tokens that already contain internal uppercase as-is (e.g.
+      // ChatGPT, OpenAI, GPT-4, n8n) — those are intentional casings.
+      if (/[A-Z]/.test(tok.slice(1))) return tok
+      const lower = tok.toLowerCase()
+      const isEdge = i === 0 || i === tokens.length - 1
+      if (!isEdge && TITLE_CASE_SMALL.has(lower)) return lower
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join(' ')
+}
+
 function mapPage(page: any, resolved: ResolvedSource): NotionDoc {
   const props = page.properties || {}
-  // Display title prefers `cover title` (user-curated); falls back to the
-  // database's actual title property so we never render "Untitled".
-  const display = plainText(props[PROP_DISPLAY_TITLE]).trim()
+  // Display title prefers `cover title` (user-curated, then title-cased so
+  // every entry reads cleanly); falls back to the database's actual title
+  // property so we never render "Untitled".
+  const displayRaw = plainText(props[PROP_DISPLAY_TITLE]).trim()
   const fallback = plainText(props[resolved.titleProp]).trim()
-  const title = display || fallback || 'Untitled'
+  const title = displayRaw ? toTitleCase(displayRaw) : (fallback || 'Untitled')
   const summary = plainText(props[PROP_SUMMARY])
   const externalUrl = plainText(props[PROP_URL])
   return {
