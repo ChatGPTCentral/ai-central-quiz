@@ -260,8 +260,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   mode="result"
                   accent="#62A758"
                   size={360}
-                  title={`${firstName ? `${firstName}'s` : 'Your'} AI profile${stageMeta && stageMeta.key !== 'unknown' ? `: ${stageMeta.label}` : ''}`}
-                  subtitle="Your current scoring on five axes, and the lift AI Central unlocks"
                 />
               </div>
             </div>
