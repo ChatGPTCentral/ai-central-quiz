@@ -57,7 +57,11 @@ export function QuestionRenderer({
   const isSplit = q.type === 'split-text'
   const isSingle = q.type === 'chips'
   const isMulti = q.type === 'multi-chips'
-  const isLargeGrid = isMulti && (q.options?.length ?? 0) > 4
+  // Switch to a 2-col grid only when the option list is long enough that a
+  // single column would dominate the viewport (tools/work-area, 14+ items).
+  // Mid-sized multi-chips with verbose labels (depth, 6 items with long
+  // sentences) stay single-column so each label can breathe on its own row.
+  const isLargeGrid = isMulti && (q.options?.length ?? 0) > 8
 
   // Split the underlying string answer into two halves for the
   // split-text renderer. We use the first whitespace run as the boundary
