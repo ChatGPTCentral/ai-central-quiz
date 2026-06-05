@@ -129,3 +129,84 @@ export function resolveNextStep(
   if (next >= questions.length) return 'end'
   return next
 }
+
+// ── End-screen blocks (result page) ─────────────────────────────────
+// The result page is composed of a hero band (always rendered) plus an
+// ordered list of body blocks. Existing hardcoded sections (gauge,
+// archetype, testimonials, pricing) stay; blocks slot between the hero
+// and the archetype card.
+
+export type EndScreenBlockType =
+  | 'heading'
+  | 'paragraph'
+  | 'bullets'
+  | 'image'
+  | 'button'
+  | 'divider'
+
+export interface EndScreenBlockBase {
+  id: string
+  type: EndScreenBlockType
+}
+
+export interface HeadingBlock extends EndScreenBlockBase {
+  type: 'heading'
+  text: string
+  level: 1 | 2 | 3
+}
+
+export interface ParagraphBlock extends EndScreenBlockBase {
+  type: 'paragraph'
+  text: string
+}
+
+export interface BulletsBlock extends EndScreenBlockBase {
+  type: 'bullets'
+  items: string[]
+}
+
+export interface ImageBlock extends EndScreenBlockBase {
+  type: 'image'
+  src: string
+  alt: string
+  caption?: string
+}
+
+export interface ButtonBlock extends EndScreenBlockBase {
+  type: 'button'
+  text: string
+  url: string
+  variant: 'primary' | 'secondary'
+}
+
+export interface DividerBlock extends EndScreenBlockBase {
+  type: 'divider'
+}
+
+export type EndScreenBlock =
+  | HeadingBlock
+  | ParagraphBlock
+  | BulletsBlock
+  | ImageBlock
+  | ButtonBlock
+  | DividerBlock
+
+export interface EndScreen {
+  /** Headline at the top of the result page. Falls back to the
+   *  archetype-driven default when empty. Supports {firstName} token. */
+  heroHeadline?: string
+  /** Sub copy under the headline. */
+  heroSubheadline?: string
+  /** Primary CTA button text. Defaults to the existing intent-aware copy. */
+  ctaText?: string
+  /** Primary CTA URL. Defaults to PAYMENT_URL. */
+  ctaUrl?: string
+  /** Body blocks rendered between the hero and the archetype card. */
+  blocks: EndScreenBlock[]
+}
+
+/** Default empty end screen — used when the form config has no endScreen
+ *  set, so the editor opens to an empty state instead of null. */
+export function emptyEndScreen(): EndScreen {
+  return { blocks: [] }
+}

@@ -5,12 +5,15 @@ import AICentralLogo from '@/components/AICentralLogo'
 import CountdownTimer from '@/components/CountdownTimer'
 import FomoPopup from '@/components/FomoPopup'
 import GaugeChart from '@/components/GaugeChart'
+import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
 import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { SALES_CONTENT, TESTIMONIALS } from '@/lib/sales-content'
 import { scoreLabel } from '@/lib/score'
 import { toolsForArchetype, toolIcon } from '@/lib/affiliates'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
+import { getLivePublishedConfig } from '@/lib/form-config'
+import type { EndScreen } from '@/lib/form-schema'
 
 /** Server-side fetch of v2 segment fields for the row, if id is provided. */
 async function fetchSegmentFields(id: string | undefined): Promise<{
@@ -171,6 +174,21 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const tutorials = await fetchTutorialsForArchetype(archetype.tutorialKeywords)
   const tools = toolsForArchetype(archetypeKey, 6)
 
+  // Editor-driven overrides: hero copy + body blocks. Falls through to the
+  // archetype/segment-driven defaults below when fields are missing.
+  let endScreen: EndScreen | null = null
+  try {
+    const liveConfig = await getLivePublishedConfig('quiz-v2')
+    endScreen = liveConfig?.endScreen ?? null
+  } catch (err) {
+    console.warn('[result] failed to load editor endScreen, using defaults:', err)
+  }
+  const heroHeadline = endScreen?.heroHeadline
+  const heroSubheadline = endScreen?.heroSubheadline
+  const ctaText = endScreen?.ctaText ?? primaryCta
+  const ctaUrl = endScreen?.ctaUrl ?? PAYMENT_URL
+  const heroTokens = { firstName: name || '' }
+
   return (
     <>
       <CountdownTimer paymentUrl={PAYMENT_URL} />
@@ -215,11 +233,17 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 text-center" style={{ color: '#E48715' }}>
             An AI Central exclusive
           </p>
-          <h1 className="text-[32px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
-            {name ? `${name}, you're` : "You're"} ahead of <span style={{ color: '#E48715' }}>{score}%</span> of professionals
-          </h1>
+          {heroHeadline ? (
+            <h1 className="text-[32px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
+              {heroHeadline.replace('{firstName}', heroTokens.firstName)}
+            </h1>
+          ) : (
+            <h1 className="text-[32px] sm:text-[36px] font-black leading-[1.05] mb-3 text-center" style={{ color: '#333333' }}>
+              {name ? `${name}, you're` : "You're"} ahead of <span style={{ color: '#E48715' }}>{score}%</span> of professionals
+            </h1>
+          )}
           <p className="text-[15px] leading-relaxed mb-7 max-w-md mx-auto text-center" style={{ color: '#9C9C9C' }}>
-            {seg.stageLabel}
+            {heroSubheadline ? heroSubheadline.replace('{firstName}', heroTokens.firstName) : seg.stageLabel}
           </p>
           <GaugeChart value={score} label={label} />
 
@@ -231,6 +255,13 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             Backed by <strong>45,000+ readers</strong>, <strong>2,000+ paying members</strong>, <strong>1,200+ curated tutorials</strong>, and a <strong style={{ color: '#E48715' }}>91% recommendation rate</strong>
           </div>
         </section>
+
+        {/* ── EDITOR-DRIVEN BODY BLOCKS (if any) ─────────── */}
+        {endScreen && endScreen.blocks.length > 0 && (
+          <section className="px-6 pb-6 max-w-2xl mx-auto w-full">
+            <EndScreenBlocks blocks={endScreen.blocks} tokens={heroTokens} accent="#E48715" />
+          </section>
+        )}
 
         {/* ── ARCHETYPE CARD ─────────────────────────────── */}
         <section className="px-6 pt-6 pb-6 max-w-2xl mx-auto w-full">
@@ -262,11 +293,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         {/* ── PRIMARY CTA — Fulvous, intent-aware copy ───── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
           <a
-            href={PAYMENT_URL}
+            href={ctaUrl}
             className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
             style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
           >
-            {primaryCta} →
+            {ctaText} →
           </a>
           <p className="text-center text-[12px] mt-3" style={{ color: '#9C9C9C' }}>
             $4.99 first month · Then $59.75/year · Cancel anytime

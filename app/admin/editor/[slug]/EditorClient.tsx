@@ -25,18 +25,26 @@ import type {
   V2Option,
   V2Question,
   V2QuestionType,
+  EndScreen,
+  EndScreenBlock,
+  EndScreenBlockType,
 } from '@/lib/form-schema'
+import { emptyEndScreen } from '@/lib/form-schema'
 import type { FormTheme } from '@/lib/form-config'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
+import { ResultPageEditor } from './ResultPageEditor'
 
 interface Props {
   slug: string
   initialQuestions: V2Question[]
   initialTheme: FormTheme | null
+  initialEndScreen: EndScreen | null
   liveVersion: number | null
   draftVersion: number | null
   draftVersionId: string | null
 }
+
+type EditorView = 'questions' | 'result-page'
 
 const DEFAULT_ACCENT = '#046BB1'
 
@@ -77,14 +85,19 @@ export default function EditorClient({
   slug,
   initialQuestions,
   initialTheme,
+  initialEndScreen,
   liveVersion,
   draftVersion: initialDraftVersion,
   draftVersionId: initialDraftId,
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const [view, setView] = useState<EditorView>(
+    (searchParams.get('view') === 'result-page' ? 'result-page' : 'questions'),
+  )
   const [questions, setQuestions] = useState<V2Question[]>(initialQuestions)
   const [theme, setTheme] = useState<FormTheme>(initialTheme ?? {})
+  const [endScreen, setEndScreen] = useState<EndScreen>(initialEndScreen ?? emptyEndScreen())
   const accent = theme.accent || DEFAULT_ACCENT
   const [selectedId, setSelectedId] = useState<string>(
     searchParams.get('q') ?? initialQuestions[0]?.id ?? '',
@@ -164,6 +177,55 @@ export default function EditorClient({
       opts.push({ label: 'New option', value: `opt_${opts.length + 1}` })
       next[qIdx] = { ...next[qIdx], options: opts }
       return next
+    })
+    markDirty()
+  }
+
+  // ── End-screen mutators (result page) ─────────────────────────────
+  const patchEndScreen = useCallback((patch: Partial<EndScreen>) => {
+    setEndScreen(prev => ({ ...prev, ...patch }))
+    markDirty()
+  }, [])
+
+  const patchBlock = useCallback((idx: number, patch: Partial<EndScreenBlock>) => {
+    setEndScreen(prev => {
+      const next = { ...prev, blocks: prev.blocks.slice() }
+      // Use a type assertion to satisfy the discriminated union — the
+      // patcher only ever sends partial fields of the existing block's type.
+      next.blocks[idx] = { ...next.blocks[idx], ...patch } as EndScreenBlock
+      return next
+    })
+    markDirty()
+  }, [])
+
+  const addBlock = (type: EndScreenBlockType) => {
+    setEndScreen(prev => {
+      const id = `blk_${Date.now().toString(36)}`
+      let block: EndScreenBlock
+      switch (type) {
+        case 'heading': block = { id, type, text: 'Heading', level: 2 }; break
+        case 'paragraph': block = { id, type, text: 'Body text…' }; break
+        case 'bullets': block = { id, type, items: ['First point', 'Second point'] }; break
+        case 'image': block = { id, type, src: '', alt: '' }; break
+        case 'button': block = { id, type, text: 'Click me', url: '', variant: 'primary' }; break
+        case 'divider': block = { id, type }; break
+      }
+      return { ...prev, blocks: [...prev.blocks, block] }
+    })
+    markDirty()
+  }
+
+  const removeBlock = (idx: number) => {
+    setEndScreen(prev => ({ ...prev, blocks: prev.blocks.filter((_, i) => i !== idx) }))
+    markDirty()
+  }
+
+  const moveBlock = (from: number, to: number) => {
+    setEndScreen(prev => {
+      const blocks = prev.blocks.slice()
+      const [item] = blocks.splice(from, 1)
+      blocks.splice(to, 0, item)
+      return { ...prev, blocks }
     })
     markDirty()
   }
@@ -320,7 +382,7 @@ export default function EditorClient({
       const res = await fetch('/api/admin/form-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, questions, theme }),
+        body: JSON.stringify({ slug, questions, theme, endScreen }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
@@ -368,6 +430,7 @@ export default function EditorClient({
     if (!confirm('Discard all unsaved edits?')) return
     setQuestions(initialQuestions)
     setSelectedId(initialQuestions[0]?.id ?? '')
+    setEndScreen(initialEndScreen ?? emptyEndScreen())
     setDirty(false)
     setError(null)
   }
@@ -427,6 +490,7 @@ export default function EditorClient({
   return (
     <div className="flex h-screen bg-[#FFFDFA]">
       {/* LEFT — Question list */}
+      {view === 'questions' && (
       <aside className="w-72 shrink-0 bg-white border-r border-[#E8E4DF] flex flex-col">
         <div className="px-4 py-3 border-b border-[#E8E4DF] flex items-center justify-between">
           <div>
@@ -457,8 +521,9 @@ export default function EditorClient({
           </DndContext>
         </div>
       </aside>
+      )}
 
-      {/* CENTER — Preview pane */}
+      {/* CENTER — Preview pane (Questions view) or block editor (Result page view) */}
       <main className="flex-1 min-w-0 flex flex-col">
         <div className="px-6 py-3 border-b border-[#E8E4DF] bg-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -469,6 +534,24 @@ export default function EditorClient({
             <Link href={`/admin/editor/${slug}/map`} className="text-xs text-[#9C9C9C] hover:text-[#046BB1] ml-2">
               Logic map →
             </Link>
+            <div className="ml-4 flex items-center gap-0 bg-[#F5F5F5] rounded-md p-0.5">
+              <button
+                onClick={() => setView('questions')}
+                className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors ${
+                  view === 'questions' ? 'bg-white text-[#333333] shadow-sm' : 'text-[#9C9C9C] hover:text-[#333333]'
+                }`}
+              >
+                Questions
+              </button>
+              <button
+                onClick={() => setView('result-page')}
+                className={`text-[11px] font-semibold px-3 py-1 rounded transition-colors ${
+                  view === 'result-page' ? 'bg-white text-[#333333] shadow-sm' : 'text-[#9C9C9C] hover:text-[#333333]'
+                }`}
+              >
+                Result page
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {dirty && (
@@ -503,26 +586,38 @@ export default function EditorClient({
         {error && (
           <div className="px-6 py-2 bg-red-50 border-b border-red-100 text-xs text-red-700">{error}</div>
         )}
-        <div className="flex-1 overflow-y-auto flex items-start justify-center pt-12 pb-12">
-          <div className="w-full max-w-[580px] px-6">
-            <QuestionRenderer
-              question={selected}
-              singleAnswer={previewAnswer}
-              multiAnswer={previewMulti}
-              stepNumber={selectedIdx + 1}
-              accent={accent}
-              onSingleSelect={setPreviewAnswer}
-              onMultiToggle={v => setPreviewMulti(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])}
-              onTextChange={setPreviewAnswer}
-            />
-            <p className="text-[10px] uppercase tracking-widest text-[#9C9C9C] mt-6">
-              Preview · uses live <code className="font-mono">QuestionRenderer</code>
-            </p>
+        {view === 'questions' ? (
+          <div className="flex-1 overflow-y-auto flex items-start justify-center pt-12 pb-12">
+            <div className="w-full max-w-[580px] px-6">
+              <QuestionRenderer
+                question={selected}
+                singleAnswer={previewAnswer}
+                multiAnswer={previewMulti}
+                stepNumber={selectedIdx + 1}
+                accent={accent}
+                onSingleSelect={setPreviewAnswer}
+                onMultiToggle={v => setPreviewMulti(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])}
+                onTextChange={setPreviewAnswer}
+              />
+              <p className="text-[10px] uppercase tracking-widest text-[#9C9C9C] mt-6">
+                Preview · uses live <code className="font-mono">QuestionRenderer</code>
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <ResultPageEditor
+            endScreen={endScreen}
+            onPatchEndScreen={patchEndScreen}
+            onAddBlock={addBlock}
+            onRemoveBlock={removeBlock}
+            onMoveBlock={moveBlock}
+            onPatchBlock={patchBlock}
+          />
+        )}
       </main>
 
-      {/* RIGHT — Options panel */}
+      {/* RIGHT — Options panel (Questions view only) */}
+      {view === 'questions' && (
       <aside className="w-80 shrink-0 bg-white border-l border-[#E8E4DF] overflow-y-auto">
         <div className="p-5 space-y-5">
           <div>
@@ -750,6 +845,7 @@ export default function EditorClient({
           </Field>
         </div>
       </aside>
+      )}
     </div>
   )
 }

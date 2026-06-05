@@ -4,7 +4,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { unstable_cache, revalidateTag } from 'next/cache'
-import type { V2Question } from './form-schema'
+import type { V2Question, EndScreen } from './form-schema'
 
 export interface FormTheme {
   accent?: string
@@ -20,6 +20,7 @@ export interface FormConfig {
   status: 'draft' | 'published' | 'archived'
   questions: V2Question[]
   theme: FormTheme | null
+  endScreen: EndScreen | null
   updatedAt: string
   updatedByEmail: string | null
 }
@@ -50,6 +51,7 @@ interface DbRow {
   status: 'draft' | 'published' | 'archived'
   questions: V2Question[]
   theme: FormTheme | null
+  end_screen: EndScreen | null
   updated_at: string
   updated_by_email: string | null
 }
@@ -62,6 +64,7 @@ function fromRow(r: DbRow): FormConfig {
     status: r.status,
     questions: r.questions,
     theme: r.theme,
+    endScreen: r.end_screen ?? null,
     updatedAt: r.updated_at,
     updatedByEmail: r.updated_by_email,
   }
@@ -77,7 +80,7 @@ export async function getLivePublishedConfig(slug: string): Promise<FormConfig |
     async () => {
       const { data, error } = await client()
         .from('form_publish_pointer')
-        .select('live_version_id, form_configs!inner(id, slug, version, status, questions, theme, updated_at, updated_by_email)')
+        .select('live_version_id, form_configs!inner(id, slug, version, status, questions, theme, end_screen, updated_at, updated_by_email)')
         .eq('slug', slug)
         .maybeSingle()
       if (error) {
@@ -133,6 +136,7 @@ export async function saveDraft(
   slug: string,
   questions: V2Question[],
   theme: FormTheme | null,
+  endScreen: EndScreen | null,
   updatedByEmail: string,
 ): Promise<FormConfig> {
   const { data: maxRow, error: maxErr } = await client()
@@ -153,6 +157,7 @@ export async function saveDraft(
       status: 'draft',
       questions,
       theme,
+      end_screen: endScreen,
       updated_by_email: updatedByEmail,
     })
     .select('*')

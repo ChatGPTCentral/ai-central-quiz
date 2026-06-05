@@ -7,7 +7,7 @@ import {
   publishDraft,
   listVersions,
 } from '@/lib/form-config'
-import type { V2Question } from '@/lib/form-schema'
+import type { V2Question, EndScreen } from '@/lib/form-schema'
 
 const ALLOWED_DB_COLUMNS = new Set([
   'name', 'email',
@@ -78,17 +78,23 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Save a draft. Body: { slug, questions, theme? }
+// Save a draft. Body: { slug, questions, theme?, endScreen? }
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  let body: { slug?: string; questions?: V2Question[]; theme?: unknown }
+  let body: { slug?: string; questions?: V2Question[]; theme?: unknown; endScreen?: EndScreen | null }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid body' }, { status: 400 }) }
   const slug = body.slug || 'quiz-v2'
   const err = validateQuestions(body.questions)
   if (err) return NextResponse.json({ error: err }, { status: 400 })
   try {
-    const cfg = await saveDraft(slug, body.questions!, (body.theme as Record<string, unknown> | null) ?? null, 'admin@editor')
+    const cfg = await saveDraft(
+      slug,
+      body.questions!,
+      (body.theme as Record<string, unknown> | null) ?? null,
+      body.endScreen ?? null,
+      'admin@editor',
+    )
     return NextResponse.json({ config: cfg })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
