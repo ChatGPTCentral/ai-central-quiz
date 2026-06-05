@@ -229,25 +229,16 @@ export async function POST(req: NextRequest) {
 
   // Admin notification — awaited (not fire-and-forget) because Vercel's
   // serverless lifecycle freezes the lambda the moment the response goes
-  // out, killing any in-flight promises. The cost is one extra ~300ms HTTP
-  // round-trip on new submissions; .catch() ensures the response still
-  // ships even if Resend errors out.
+  // out, killing any in-flight promises. Pull the final row so the email
+  // includes enrichment (Apollo/waterfall), Beehiiv status, Stripe info,
+  // etc. — all populated by the time we get here. .catch() ensures the
+  // response still ships even if Resend errors out.
   if (!existing) {
-    const seg2 = rowAfter ? assignSegmentationV2(fromRow(rowAfter as Parameters<typeof fromRow>[0])) : null
-    await sendSubmitNotification({
-      id: rowId,
-      name: v.name,
-      email: v.email,
-      score,
-      archetype,
-      persona: seg2?.persona ?? null,
-      stage: seg2?.stage ?? null,
-      intent: v.intent_30d ?? null,
-      friction: v.friction ?? null,
-      jobLevel: v.job_level ?? null,
-      company: null,
-      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || undefined,
-    }).catch(err => console.error('[email] notification failed:', err))
+    const { data: finalRow } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
+    await sendSubmitNotification(
+      (finalRow ?? { id: rowId, name: v.name, email: v.email, score, archetype }) as Parameters<typeof sendSubmitNotification>[0],
+      process.env.NEXT_PUBLIC_SITE_URL,
+    ).catch(err => console.error('[email] notification failed:', err))
   }
 
   return NextResponse.json({
