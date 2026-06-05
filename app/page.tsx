@@ -98,8 +98,10 @@ export default function HomePage() {
               <RadarChart
                 axes={DEMO_AXES}
                 mode="demo"
-                accent={FULVOUS}
-                size={340}
+                accent="#1A53FF"
+                size={360}
+                title="Your AI profile, scored"
+                subtitle="From where most start to where AI Central takes you"
                 todayLabel="Where most start"
                 projectedLabel="With AI Central"
               />

@@ -250,7 +250,14 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               : 'Your skill profile today, and the headroom the library unlocks'}
           </p>
 
-          <RadarChart axes={axes} mode="result" accent="#E48715" size={340} />
+          <RadarChart
+            axes={axes}
+            mode="result"
+            accent="#1A53FF"
+            size={360}
+            title={`${firstName ? `${firstName}'s` : 'Your'} AI profile${stageMeta && stageMeta.key !== 'unknown' ? `: ${stageMeta.label}` : ''}`}
+            subtitle="Your current scoring on five axes, and the lift AI Central unlocks"
+          />
         </section>
 
         {/* ── EDITOR-DRIVEN BODY BLOCKS (if any) ─────────── */}
