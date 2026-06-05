@@ -112,10 +112,11 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     scoring: 'value',
     layout: 'horizontal',
     options: [
-      { label: 'Much less',       value: '-1', emoji: '📉', score: -1 },
-      { label: 'About the same',  value: '0',  emoji: '➖', score: 0 },
-      { label: 'More',            value: '1',  emoji: '📈', score: 1 },
-      { label: 'A lot more',      value: '2',  emoji: '🚀', score: 2 },
+      { label: 'Much less',       value: '-2', score: -2 },
+      { label: 'A bit less',      value: '-1', score: -1 },
+      { label: 'About the same',  value: '0',  score: 0  },
+      { label: 'A bit more',      value: '1',  score: 1  },
+      { label: 'A lot more',      value: '2',  score: 2  },
     ],
   },
 

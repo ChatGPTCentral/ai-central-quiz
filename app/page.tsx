@@ -23,27 +23,28 @@ const DEMO_AXES = [
 
 export default function HomePage() {
   return (
-    <div className="relative min-h-[100dvh] flex flex-col overflow-hidden" style={{ backgroundColor: '#FBFAF7' }}>
-      {/* Apple-style layered background: soft warm glow + perspective grid. */}
+    <div
+      className="relative min-h-[100dvh] flex flex-col overflow-hidden"
+      style={{
+        // Same gradient stack as the result-page hero — green + Fulvous radial
+        // glows over a cream→latte vertical wash. Keeps the cover and the
+        // result page visually continuous.
+        background: `
+          radial-gradient(60% 60% at 80% 15%, #62A75822 0%, transparent 60%),
+          radial-gradient(50% 50% at 12% 95%, ${FULVOUS}22 0%, transparent 60%),
+          linear-gradient(180deg, #F4F1EA 0%, #FBFAF5 60%, #FFFDFA 100%)
+        `,
+      }}
+    >
+      {/* Apple-style perspective grid overlay, masked so it fades into the body. */}
       <div
-        className="absolute inset-0 -z-10 pointer-events-none"
-        style={{
-          background: `
-            radial-gradient(60% 50% at 75% 18%, ${FULVOUS}18 0%, transparent 60%),
-            radial-gradient(55% 45% at 15% 85%, #046BB114 0%, transparent 60%),
-            linear-gradient(180deg, #FFFFFF 0%, #FBFAF7 55%, #F5F1EA 100%)
-          `,
-        }}
-        aria-hidden
-      />
-      <div
-        className="absolute inset-0 -z-10 pointer-events-none"
+        className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: `
-            linear-gradient(to right, rgba(51,51,51,0.045) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(51,51,51,0.045) 1px, transparent 1px)
+            linear-gradient(to right, rgba(51,51,51,0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(51,51,51,0.05) 1px, transparent 1px)
           `,
-          backgroundSize: '46px 46px',
+          backgroundSize: '44px 44px',
           maskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
           WebkitMaskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
         }}
@@ -92,16 +93,15 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Right — animated demo radar */}
+          {/* Right — animated demo radar (matches result-page styling: green
+              accent + same chart aesthetic, sized 30% larger). */}
           <div className="order-1 md:order-2 flex justify-center">
-            <div className="w-full max-w-[360px]">
+            <div className="w-full max-w-[600px]">
               <RadarChart
                 axes={DEMO_AXES}
                 mode="demo"
-                accent="#1A53FF"
-                size={360}
-                title="Your AI profile, scored"
-                subtitle="From where most start to where AI Central takes you"
+                accent="#62A758"
+                size={470}
                 todayLabel="Where most start"
                 projectedLabel="With AI Central"
               />

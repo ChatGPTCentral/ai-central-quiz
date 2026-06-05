@@ -58,7 +58,7 @@ function radarAxes(f: SegFields | null, overallScore: number): { label: string; 
   const freq = Math.min(100, ((f?.frequency_score ?? 0) / 3) * 100)
   const depth = Math.min(100, ((f?.depth_score ?? 0) / 6) * 100)
   const breadth = Math.min(100, ((f?.breadth_score ?? 0) / 6) * 100)
-  const mom = Math.min(100, (((f?.momentum ?? 0) + 1) / 3) * 100)
+  const mom = Math.min(100, (((f?.momentum ?? 0) + 2) / 4) * 100)   // momentum is now -2..2
   return [
     { label: 'Frequency', value: Math.max(8, freq) },
     { label: 'Depth', value: Math.max(8, depth) },
@@ -299,7 +299,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 
         {/* ── ARCHETYPE CARD — the archetype IS the ladder rung. ── */}
         {stageMeta && stageMeta.key !== 'unknown' && (
-          <section className="px-6 pt-6 pb-6 max-w-2xl mx-auto w-full">
+          <section className="px-6 pt-10 pb-6 max-w-2xl mx-auto w-full">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: '#9C9C9C' }}>
               Your AI archetype
             </p>
@@ -419,8 +419,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </section>
         )}
 
+        {/* ── BAND: latte tint behind library intro + pillars ── */}
+        <div className="w-full" style={{ background: '#F4F1EA' }}>
         {/* ── WHAT IS THE AI CENTRAL LIBRARY ── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full">
           <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-5" style={{ color: '#333333' }}>
             What is the <span style={{ color: '#E48715' }}>AI Central library</span>?
           </h2>
@@ -472,9 +474,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             ))}
           </div>
         </section>
+        </div>{/* end latte band: library intro + pillars */}
 
         {/* ── FOUNDER LETTER (styled as an actual letter) ── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full">
           <div
             className="rounded-2xl px-7 py-8 sm:px-10 sm:py-10"
             style={{ backgroundColor: '#FCFAF4', border: '1px solid #E8E4DF', boxShadow: '0 4px 30px rgba(228,135,21,0.05)' }}
@@ -523,8 +526,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         </section>
 
 
+        {/* ── BAND: latte tint behind Notion search + testimonials ── */}
+        <div className="w-full" style={{ background: '#F4F1EA' }}>
         {/* ── EXPLORE THE LIBRARY (Notion-backed search) ──────── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
+        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full">
           <div className="h-px bg-[#E8E4DF] mb-8" />
           <h2 className="text-xl font-black mb-1 text-center" style={{ color: '#333333' }}>Explore the AI Central library</h2>
           <p className="text-[13px] mb-6 text-center" style={{ color: '#9C9C9C' }}>
@@ -553,9 +558,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             ))}
           </div>
         </section>
+        </div>{/* end latte band: Notion search + testimonials */}
 
         {/* ── MODULE 8: UNLOCK YOUR PERSONALIZED PLAN ───────── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full" id="pricing">
+        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full" id="pricing">
           <div className="h-px bg-[#E8E4DF] mb-8" />
           <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-3 text-center" style={{ color: '#333333' }}>
             Unlock the <span style={{ color: '#E48715' }}>AI Central</span> library
