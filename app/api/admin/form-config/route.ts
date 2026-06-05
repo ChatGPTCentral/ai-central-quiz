@@ -78,10 +78,10 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Save a draft. Body: { slug, questions, theme?, endScreen? }
+// Save a draft. Body: { slug, questions, theme?, endScreens? }
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  let body: { slug?: string; questions?: V2Question[]; theme?: unknown; endScreen?: EndScreen | null }
+  let body: { slug?: string; questions?: V2Question[]; theme?: unknown; endScreens?: EndScreen[] }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid body' }, { status: 400 }) }
   const slug = body.slug || 'quiz-v2'
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       slug,
       body.questions!,
       (body.theme as Record<string, unknown> | null) ?? null,
-      body.endScreen ?? null,
+      Array.isArray(body.endScreens) ? body.endScreens : [],
       'admin@editor',
     )
     return NextResponse.json({ config: cfg })

@@ -8,6 +8,7 @@ import { runEnrichment } from '@/lib/enrichment/waterfall'
 import { answersToDb, calculateScoreV2, QUESTIONS_V2_MERGED } from '@/lib/questions-v2-merged'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
+import { sendSubmitNotification } from '@/lib/email'
 import { createClient } from '@supabase/supabase-js'
 
 export const maxDuration = 60
@@ -224,6 +225,26 @@ export async function POST(req: NextRequest) {
     if (!result.success && result.error !== 'ALREADY_SUBSCRIBED') {
       console.error('v2 beehiiv failed:', result.error)
     }
+  }
+
+  // Admin notification — fire-and-forget so submit latency isn't impacted.
+  // Only for genuinely new submissions (not updates to existing rows).
+  if (!existing) {
+    const seg2 = rowAfter ? assignSegmentationV2(fromRow(rowAfter as Parameters<typeof fromRow>[0])) : null
+    sendSubmitNotification({
+      id: rowId,
+      name: v.name,
+      email: v.email,
+      score,
+      archetype,
+      persona: seg2?.persona ?? null,
+      stage: seg2?.stage ?? null,
+      intent: v.intent_30d ?? null,
+      friction: v.friction ?? null,
+      jobLevel: v.job_level ?? null,
+      company: null,
+      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || undefined,
+    }).catch(err => console.error('[email] notification failed:', err))
   }
 
   return NextResponse.json({

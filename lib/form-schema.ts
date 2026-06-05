@@ -195,6 +195,9 @@ export type EndScreenBlock =
   | DividerBlock
 
 export interface EndScreen {
+  id: string
+  /** Human label shown in the editor tab strip (not user-visible). */
+  name: string
   /** Headline at the top of the result page. Falls back to the
    *  archetype-driven default when empty. Supports {firstName} token. */
   heroHeadline?: string
@@ -206,10 +209,66 @@ export interface EndScreen {
   ctaUrl?: string
   /** Body blocks rendered between the hero and the archetype card. */
   blocks: EndScreenBlock[]
+  /** AND-combined predicates. Empty = matches everything (default fallback).
+   *  Evaluation is array-order — first match wins; place the default last. */
+  when: EndScreenCondition[]
 }
 
-/** Default empty end screen — used when the form config has no endScreen
- *  set, so the editor opens to an empty state instead of null. */
+export type EndScreenConditionField =
+  | 'score' | 'persona' | 'stage' | 'archetype' | 'intent' | 'friction'
+
+export type EndScreenConditionOp = 'eq' | 'neq' | 'gte' | 'lte' | 'in'
+
+export interface EndScreenCondition {
+  field: EndScreenConditionField
+  op: EndScreenConditionOp
+  value: string | string[] | number
+}
+
+export interface EndScreenEvalContext {
+  score?: number | null
+  persona?: string | null
+  stage?: string | null
+  archetype?: string | null
+  intent?: string | null
+  friction?: string | null
+}
+
+export function evalEndScreenCondition(c: EndScreenCondition, ctx: EndScreenEvalContext): boolean {
+  const raw = ctx[c.field]
+  if (raw === undefined || raw === null) return false
+  switch (c.op) {
+    case 'eq':
+      return String(raw).toLowerCase() === String(c.value).toLowerCase()
+    case 'neq':
+      return String(raw).toLowerCase() !== String(c.value).toLowerCase()
+    case 'gte':
+      return Number(raw) >= Number(c.value)
+    case 'lte':
+      return Number(raw) <= Number(c.value)
+    case 'in': {
+      const targets = Array.isArray(c.value) ? c.value : [String(c.value)]
+      return targets.map(t => String(t).toLowerCase()).includes(String(raw).toLowerCase())
+    }
+  }
+}
+
+/** Pick the first matching end-screen. An end-screen with empty `when`
+ *  always matches — treat it as the default and place it last. */
+export function pickEndScreen(screens: EndScreen[], ctx: EndScreenEvalContext): EndScreen | null {
+  for (const s of screens) {
+    if (s.when.length === 0) return s
+    if (s.when.every(c => evalEndScreenCondition(c, ctx))) return s
+  }
+  return null
+}
+
+export function defaultEndScreens(): EndScreen[] {
+  return [{ id: 'default', name: 'Default', blocks: [], when: [] }]
+}
+
+/** Default empty end screen — kept as a helper for backwards
+ *  compatibility with code that wants a single screen. */
 export function emptyEndScreen(): EndScreen {
-  return { blocks: [] }
+  return { id: 'default', name: 'Default', blocks: [], when: [] }
 }

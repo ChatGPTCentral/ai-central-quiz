@@ -28,8 +28,9 @@ import type {
   EndScreen,
   EndScreenBlock,
   EndScreenBlockType,
+  EndScreenCondition,
 } from '@/lib/form-schema'
-import { emptyEndScreen } from '@/lib/form-schema'
+import { defaultEndScreens } from '@/lib/form-schema'
 import type { FormTheme } from '@/lib/form-config'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { ResultPageEditor } from './ResultPageEditor'
@@ -40,7 +41,7 @@ interface Props {
   slug: string
   initialQuestions: V2Question[]
   initialTheme: FormTheme | null
-  initialEndScreen: EndScreen | null
+  initialEndScreens: EndScreen[]
   liveVersion: number | null
   draftVersion: number | null
   draftVersionId: string | null
@@ -93,7 +94,7 @@ export default function EditorClient({
   slug,
   initialQuestions,
   initialTheme,
-  initialEndScreen,
+  initialEndScreens,
   liveVersion,
   draftVersion: initialDraftVersion,
   draftVersionId: initialDraftId,
@@ -105,7 +106,10 @@ export default function EditorClient({
   )
   const [questions, setQuestions] = useState<V2Question[]>(initialQuestions)
   const [theme, setTheme] = useState<FormTheme>(initialTheme ?? {})
-  const [endScreen, setEndScreen] = useState<EndScreen>(initialEndScreen ?? emptyEndScreen())
+  const [endScreens, setEndScreens] = useState<EndScreen[]>(
+    initialEndScreens.length > 0 ? initialEndScreens : defaultEndScreens(),
+  )
+  const [selectedEndScreenIdx, setSelectedEndScreenIdx] = useState(0)
   const accent = theme.accent || DEFAULT_ACCENT
   const [selectedId, setSelectedId] = useState<string>(
     searchParams.get('q') ?? initialQuestions[0]?.id ?? '',
@@ -190,24 +194,26 @@ export default function EditorClient({
   }
 
   // ── End-screen mutators (result page) ─────────────────────────────
-  const patchEndScreen = useCallback((patch: Partial<EndScreen>) => {
-    setEndScreen(prev => ({ ...prev, ...patch }))
+  // All these operate on the currently-selected end-screen (idx).
+  const mutateSelected = useCallback((idx: number, fn: (s: EndScreen) => EndScreen) => {
+    setEndScreens(prev => prev.map((s, i) => (i === idx ? fn(s) : s)))
     markDirty()
   }, [])
+
+  const patchEndScreen = useCallback((patch: Partial<EndScreen>) => {
+    mutateSelected(selectedEndScreenIdx, s => ({ ...s, ...patch }))
+  }, [mutateSelected, selectedEndScreenIdx])
 
   const patchBlock = useCallback((idx: number, patch: Partial<EndScreenBlock>) => {
-    setEndScreen(prev => {
-      const next = { ...prev, blocks: prev.blocks.slice() }
-      // Use a type assertion to satisfy the discriminated union — the
-      // patcher only ever sends partial fields of the existing block's type.
-      next.blocks[idx] = { ...next.blocks[idx], ...patch } as EndScreenBlock
-      return next
+    mutateSelected(selectedEndScreenIdx, s => {
+      const blocks = s.blocks.slice()
+      blocks[idx] = { ...blocks[idx], ...patch } as EndScreenBlock
+      return { ...s, blocks }
     })
-    markDirty()
-  }, [])
+  }, [mutateSelected, selectedEndScreenIdx])
 
   const addBlock = (type: EndScreenBlockType) => {
-    setEndScreen(prev => {
+    mutateSelected(selectedEndScreenIdx, s => {
       const id = `blk_${Date.now().toString(36)}`
       let block: EndScreenBlock
       switch (type) {
@@ -218,24 +224,67 @@ export default function EditorClient({
         case 'button': block = { id, type, text: 'Click me', url: '', variant: 'primary' }; break
         case 'divider': block = { id, type }; break
       }
-      return { ...prev, blocks: [...prev.blocks, block] }
+      return { ...s, blocks: [...s.blocks, block] }
     })
-    markDirty()
   }
 
   const removeBlock = (idx: number) => {
-    setEndScreen(prev => ({ ...prev, blocks: prev.blocks.filter((_, i) => i !== idx) }))
-    markDirty()
+    mutateSelected(selectedEndScreenIdx, s => ({ ...s, blocks: s.blocks.filter((_, i) => i !== idx) }))
   }
 
   const moveBlock = (from: number, to: number) => {
-    setEndScreen(prev => {
-      const blocks = prev.blocks.slice()
+    mutateSelected(selectedEndScreenIdx, s => {
+      const blocks = s.blocks.slice()
       const [item] = blocks.splice(from, 1)
       blocks.splice(to, 0, item)
-      return { ...prev, blocks }
+      return { ...s, blocks }
+    })
+  }
+
+  // ── Conditions on the selected end-screen ─────────────────────────
+  const addEndScreenCondition = () => {
+    mutateSelected(selectedEndScreenIdx, s => ({
+      ...s,
+      when: [...s.when, { field: 'score', op: 'gte', value: 50 }],
+    }))
+  }
+
+  const patchEndScreenCondition = (cIdx: number, patch: Partial<EndScreenCondition>) => {
+    mutateSelected(selectedEndScreenIdx, s => {
+      const when = s.when.slice()
+      when[cIdx] = { ...when[cIdx], ...patch } as EndScreenCondition
+      return { ...s, when }
+    })
+  }
+
+  const removeEndScreenCondition = (cIdx: number) => {
+    mutateSelected(selectedEndScreenIdx, s => ({ ...s, when: s.when.filter((_, i) => i !== cIdx) }))
+  }
+
+  // ── End-screen list-level mutators ────────────────────────────────
+  const addEndScreen = () => {
+    setEndScreens(prev => {
+      const id = `screen_${Date.now().toString(36)}`
+      const next: EndScreen[] = [
+        ...prev,
+        { id, name: `Outcome ${prev.length}`, blocks: [], when: [{ field: 'score', op: 'gte', value: 50 }] },
+      ]
+      setSelectedEndScreenIdx(next.length - 1)
+      return next
     })
     markDirty()
+  }
+
+  const removeEndScreen = (idx: number) => {
+    if (endScreens.length <= 1) return
+    if (!confirm(`Delete end-screen "${endScreens[idx].name}"?`)) return
+    setEndScreens(prev => prev.filter((_, i) => i !== idx))
+    setSelectedEndScreenIdx(i => Math.max(0, Math.min(i, endScreens.length - 2)))
+    markDirty()
+  }
+
+  const renameEndScreen = (idx: number, name: string) => {
+    mutateSelected(idx, s => ({ ...s, name }))
   }
 
   const addQuestion = () => {
@@ -390,7 +439,7 @@ export default function EditorClient({
       const res = await fetch('/api/admin/form-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, questions, theme, endScreen }),
+        body: JSON.stringify({ slug, questions, theme, endScreens }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Save failed')
@@ -438,7 +487,8 @@ export default function EditorClient({
     if (!confirm('Discard all unsaved edits?')) return
     setQuestions(initialQuestions)
     setSelectedId(initialQuestions[0]?.id ?? '')
-    setEndScreen(initialEndScreen ?? emptyEndScreen())
+    setEndScreens(initialEndScreens.length > 0 ? initialEndScreens : defaultEndScreens())
+    setSelectedEndScreenIdx(0)
     setDirty(false)
     setError(null)
   }
@@ -614,12 +664,20 @@ export default function EditorClient({
           </div>
         ) : (
           <ResultPageEditor
-            endScreen={endScreen}
+            endScreens={endScreens}
+            selectedIdx={selectedEndScreenIdx}
+            onSelectScreen={setSelectedEndScreenIdx}
+            onAddScreen={addEndScreen}
+            onRemoveScreen={removeEndScreen}
+            onRenameScreen={renameEndScreen}
             onPatchEndScreen={patchEndScreen}
             onAddBlock={addBlock}
             onRemoveBlock={removeBlock}
             onMoveBlock={moveBlock}
             onPatchBlock={patchBlock}
+            onAddCondition={addEndScreenCondition}
+            onPatchCondition={patchEndScreenCondition}
+            onRemoveCondition={removeEndScreenCondition}
           />
         )}
       </main>

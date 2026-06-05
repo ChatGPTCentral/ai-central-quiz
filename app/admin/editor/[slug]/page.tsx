@@ -26,14 +26,14 @@ export default async function FormEditorPage({ params }: { params: { slug: strin
   const editingSource = (draft && draft.version > (live?.version ?? 0)) ? draft : live
   const editingQuestions = editingSource?.questions ?? QUESTIONS_V2_MERGED
   const editingTheme = editingSource?.theme ?? null
-  const editingEndScreen = editingSource?.endScreen ?? null
+  const editingEndScreens = editingSource?.endScreens ?? []
 
   return (
     <EditorClient
       slug={params.slug}
       initialQuestions={editingQuestions}
       initialTheme={editingTheme}
-      initialEndScreen={editingEndScreen}
+      initialEndScreens={editingEndScreens}
       liveVersion={live?.version ?? null}
       draftVersion={(draft && draft.version > (live?.version ?? 0)) ? draft.version : null}
       draftVersionId={(draft && draft.version > (live?.version ?? 0)) ? draft.id : null}

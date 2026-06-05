@@ -5,6 +5,9 @@ import type {
   EndScreen,
   EndScreenBlock,
   EndScreenBlockType,
+  EndScreenCondition,
+  EndScreenConditionField,
+  EndScreenConditionOp,
   HeadingBlock,
   ParagraphBlock,
   BulletsBlock,
@@ -14,12 +17,20 @@ import type {
 import { TokenPicker } from '@/components/admin/TokenPicker'
 
 interface Props {
-  endScreen: EndScreen
+  endScreens: EndScreen[]
+  selectedIdx: number
+  onSelectScreen: (idx: number) => void
+  onAddScreen: () => void
+  onRemoveScreen: (idx: number) => void
+  onRenameScreen: (idx: number, name: string) => void
   onPatchEndScreen: (patch: Partial<EndScreen>) => void
   onAddBlock: (type: EndScreenBlockType) => void
   onRemoveBlock: (idx: number) => void
   onMoveBlock: (from: number, to: number) => void
   onPatchBlock: (idx: number, patch: Partial<EndScreenBlock>) => void
+  onAddCondition: () => void
+  onPatchCondition: (cIdx: number, patch: Partial<EndScreenCondition>) => void
+  onRemoveCondition: (cIdx: number) => void
 }
 
 const BLOCK_TYPE_LABELS: Record<EndScreenBlockType, string> = {
@@ -33,137 +44,293 @@ const BLOCK_TYPE_LABELS: Record<EndScreenBlockType, string> = {
 
 const BLOCK_TYPES: EndScreenBlockType[] = ['heading', 'paragraph', 'bullets', 'image', 'button', 'divider']
 
-export function ResultPageEditor({
-  endScreen,
-  onPatchEndScreen,
-  onAddBlock,
-  onRemoveBlock,
-  onMoveBlock,
-  onPatchBlock,
-}: Props) {
+const FIELD_LABELS: Record<EndScreenConditionField, string> = {
+  score: 'Score (0–100)',
+  persona: 'Persona',
+  stage: 'Stage',
+  archetype: 'Archetype',
+  intent: 'Intent (30-day)',
+  friction: 'Friction',
+}
+
+const OP_LABELS: Record<EndScreenConditionOp, string> = {
+  eq: 'is',
+  neq: 'is not',
+  gte: '≥',
+  lte: '≤',
+  in: 'is one of',
+}
+
+export function ResultPageEditor(props: Props) {
+  const {
+    endScreens,
+    selectedIdx,
+    onSelectScreen,
+    onAddScreen,
+    onRemoveScreen,
+    onRenameScreen,
+    onPatchEndScreen,
+    onAddBlock,
+    onRemoveBlock,
+    onMoveBlock,
+    onPatchBlock,
+    onAddCondition,
+    onPatchCondition,
+    onRemoveCondition,
+  } = props
   const [addingMenuOpen, setAddingMenuOpen] = useState(false)
+  const endScreen = endScreens[selectedIdx]
+  const isDefault = !endScreen || endScreen.when.length === 0
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#FFFDFA]">
-      <div className="max-w-2xl mx-auto px-8 py-10 space-y-10">
-        <header>
-          <h1 className="text-xl font-bold text-[#333333]">Result page</h1>
-          <p className="text-xs text-[#9C9C9C] mt-1">
-            What users see after they finish the quiz. Hero copy and CTA replace the default
-            archetype-driven version when set. Body blocks slot between the hero and the archetype card.
-          </p>
-        </header>
-
-        {/* ── HERO ──────────────────────────────────────────── */}
-        <section className="bg-white border border-[#E8E4DF] rounded-xl p-5 space-y-4">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">Hero band</div>
-
-          <Field label="Headline" hint="Leave empty for the archetype-driven default. Supports {firstName}, {persona}, {stage}, {score}.">
-            <input
-              value={endScreen.heroHeadline ?? ''}
-              onChange={e => onPatchEndScreen({ heroHeadline: e.target.value || undefined })}
-              placeholder="e.g. Nice work, {firstName}. You scored {score}."
-              className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1]"
-            />
-            <TokenPicker
-              availability="result"
-              onInsert={literal => {
-                const cur = endScreen.heroHeadline ?? ''
-                onPatchEndScreen({ heroHeadline: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` })
-              }}
-            />
-          </Field>
-
-          <Field label="Sub copy" hint="Supports the same tokens.">
-            <textarea
-              value={endScreen.heroSubheadline ?? ''}
-              onChange={e => onPatchEndScreen({ heroSubheadline: e.target.value || undefined })}
-              placeholder="A one-line description that shows under the headline."
-              rows={2}
-              className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] resize-none"
-            />
-            <TokenPicker
-              availability="result"
-              onInsert={literal => {
-                const cur = endScreen.heroSubheadline ?? ''
-                onPatchEndScreen({ heroSubheadline: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` })
-              }}
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Primary CTA text">
-              <input
-                value={endScreen.ctaText ?? ''}
-                onChange={e => onPatchEndScreen({ ctaText: e.target.value || undefined })}
-                placeholder="e.g. Get my plan"
-                className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1]"
-              />
-            </Field>
-            <Field label="Primary CTA URL">
-              <input
-                value={endScreen.ctaUrl ?? ''}
-                onChange={e => onPatchEndScreen({ ctaUrl: e.target.value || undefined })}
-                placeholder="https://…"
-                className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] font-mono text-xs"
-              />
-            </Field>
-          </div>
-        </section>
-
-        {/* ── BLOCKS ────────────────────────────────────────── */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">
-              Body blocks ({endScreen.blocks.length})
-            </div>
-            <div className="relative">
-              <button
-                onClick={() => setAddingMenuOpen(o => !o)}
-                className="text-xs font-semibold text-[#046BB1] hover:bg-[#046BB1]/10 px-3 py-1.5 rounded-md border border-[#046BB1]/30"
-              >
-                + Add block
-              </button>
-              {addingMenuOpen && (
-                <div className="absolute right-0 mt-1 bg-white border border-[#E8E4DF] rounded-md shadow-lg z-10 min-w-[160px]">
-                  {BLOCK_TYPES.map(t => (
-                    <button
-                      key={t}
-                      onClick={() => { onAddBlock(t); setAddingMenuOpen(false) }}
-                      className="block w-full text-left text-xs px-3 py-2 hover:bg-[#F5F5F5]"
-                    >
-                      {BLOCK_TYPE_LABELS[t]}
-                    </button>
-                  ))}
-                </div>
+      <div className="max-w-3xl mx-auto px-8 py-8 space-y-8">
+        {/* ── Tab strip — outcome screens ─────────────────── */}
+        <div className="flex items-center gap-1 border-b border-[#E8E4DF] overflow-x-auto">
+          {endScreens.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => onSelectScreen(i)}
+              className={`text-xs font-semibold px-4 py-2 -mb-px border-b-2 transition-colors whitespace-nowrap ${
+                i === selectedIdx
+                  ? 'border-[#046BB1] text-[#046BB1]'
+                  : 'border-transparent text-[#9C9C9C] hover:text-[#333333]'
+              }`}
+            >
+              {s.name}
+              {s.when.length === 0 && (
+                <span className="ml-1 text-[9px] uppercase tracking-wider opacity-60">default</span>
               )}
-            </div>
-          </div>
+            </button>
+          ))}
+          <button
+            onClick={onAddScreen}
+            className="text-xs font-semibold text-[#046BB1] hover:bg-[#046BB1]/10 px-3 py-2 rounded-md"
+            title="Add a new outcome"
+          >+ Outcome</button>
+        </div>
 
-          {endScreen.blocks.length === 0 ? (
-            <div className="bg-white border border-dashed border-[#E8E4DF] rounded-xl px-6 py-10 text-center">
+        {endScreen && (
+          <>
+            <header className="space-y-3">
+              <div className="flex items-center gap-3">
+                <input
+                  value={endScreen.name}
+                  onChange={e => onRenameScreen(selectedIdx, e.target.value)}
+                  className="text-lg font-bold text-[#333333] border-b border-transparent focus:border-[#046BB1] focus:outline-none px-0 py-0.5 bg-transparent"
+                />
+                {endScreens.length > 1 && (
+                  <button
+                    onClick={() => onRemoveScreen(selectedIdx)}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >Delete this outcome</button>
+                )}
+              </div>
               <p className="text-xs text-[#9C9C9C]">
-                No body blocks yet. The result page will render with the default archetype-driven layout.
-                Add a block to start customizing.
+                {isDefault
+                  ? 'No conditions — this outcome renders when no other matches. Always last.'
+                  : 'This outcome renders when all its conditions match. Earlier-listed outcomes win ties.'}
               </p>
-            </div>
-          ) : (
-            endScreen.blocks.map((block, idx) => (
-              <BlockCard
-                key={block.id}
-                block={block}
-                idx={idx}
-                isFirst={idx === 0}
-                isLast={idx === endScreen.blocks.length - 1}
-                onPatch={patch => onPatchBlock(idx, patch)}
-                onRemove={() => onRemoveBlock(idx)}
-                onMoveUp={() => onMoveBlock(idx, idx - 1)}
-                onMoveDown={() => onMoveBlock(idx, idx + 1)}
-              />
-            ))
-          )}
-        </section>
+            </header>
+
+            {/* ── Conditions (when[]) ──────────────────────── */}
+            {!isDefault && (
+              <section className="bg-white border border-[#E8E4DF] rounded-xl p-5 space-y-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">When</div>
+                {endScreen.when.map((c, cIdx) => (
+                  <ConditionRow
+                    key={cIdx}
+                    condition={c}
+                    onPatch={p => onPatchCondition(cIdx, p)}
+                    onRemove={() => onRemoveCondition(cIdx)}
+                  />
+                ))}
+                <button
+                  onClick={onAddCondition}
+                  className="text-xs text-[#046BB1] hover:underline"
+                >+ Add condition</button>
+              </section>
+            )}
+            {isDefault && endScreen.when.length === 0 && (
+              <section className="bg-white border border-[#E8E4DF] rounded-xl p-5 space-y-3">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">When</div>
+                <p className="text-xs text-[#9C9C9C]">No conditions — fallback. <button onClick={onAddCondition} className="text-[#046BB1] hover:underline">Add a condition</button> to make this targeted.</p>
+              </section>
+            )}
+
+            {/* ── HERO ──────────────────────────────────── */}
+            <section className="bg-white border border-[#E8E4DF] rounded-xl p-5 space-y-4">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">Hero band</div>
+
+              <Field label="Headline" hint="Leave empty for the archetype-driven default. Supports {firstName}, {persona}, {stage}, {score}.">
+                <input
+                  value={endScreen.heroHeadline ?? ''}
+                  onChange={e => onPatchEndScreen({ heroHeadline: e.target.value || undefined })}
+                  placeholder="e.g. Nice work, {firstName}. You scored {score}."
+                  className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1]"
+                />
+                <TokenPicker
+                  availability="result"
+                  onInsert={literal => {
+                    const cur = endScreen.heroHeadline ?? ''
+                    onPatchEndScreen({ heroHeadline: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` })
+                  }}
+                />
+              </Field>
+
+              <Field label="Sub copy" hint="Supports the same tokens.">
+                <textarea
+                  value={endScreen.heroSubheadline ?? ''}
+                  onChange={e => onPatchEndScreen({ heroSubheadline: e.target.value || undefined })}
+                  placeholder="A one-line description that shows under the headline."
+                  rows={2}
+                  className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] resize-none"
+                />
+                <TokenPicker
+                  availability="result"
+                  onInsert={literal => {
+                    const cur = endScreen.heroSubheadline ?? ''
+                    onPatchEndScreen({ heroSubheadline: `${cur}${cur && !cur.endsWith(' ') ? ' ' : ''}${literal}` })
+                  }}
+                />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Primary CTA text">
+                  <input
+                    value={endScreen.ctaText ?? ''}
+                    onChange={e => onPatchEndScreen({ ctaText: e.target.value || undefined })}
+                    placeholder="e.g. Get my plan"
+                    className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1]"
+                  />
+                </Field>
+                <Field label="Primary CTA URL">
+                  <input
+                    value={endScreen.ctaUrl ?? ''}
+                    onChange={e => onPatchEndScreen({ ctaUrl: e.target.value || undefined })}
+                    placeholder="https://…"
+                    className="w-full text-sm border border-[#E8E4DF] rounded px-3 py-2 focus:outline-none focus:border-[#046BB1] font-mono text-xs"
+                  />
+                </Field>
+              </div>
+            </section>
+
+            {/* ── BLOCKS ────────────────────────────────── */}
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">
+                  Body blocks ({endScreen.blocks.length})
+                </div>
+                <div className="relative">
+                  <button
+                    onClick={() => setAddingMenuOpen(o => !o)}
+                    className="text-xs font-semibold text-[#046BB1] hover:bg-[#046BB1]/10 px-3 py-1.5 rounded-md border border-[#046BB1]/30"
+                  >
+                    + Add block
+                  </button>
+                  {addingMenuOpen && (
+                    <div className="absolute right-0 mt-1 bg-white border border-[#E8E4DF] rounded-md shadow-lg z-10 min-w-[160px]">
+                      {BLOCK_TYPES.map(t => (
+                        <button
+                          key={t}
+                          onClick={() => { onAddBlock(t); setAddingMenuOpen(false) }}
+                          className="block w-full text-left text-xs px-3 py-2 hover:bg-[#F5F5F5]"
+                        >
+                          {BLOCK_TYPE_LABELS[t]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {endScreen.blocks.length === 0 ? (
+                <div className="bg-white border border-dashed border-[#E8E4DF] rounded-xl px-6 py-10 text-center">
+                  <p className="text-xs text-[#9C9C9C]">
+                    No body blocks yet. The result page will render with the default archetype-driven layout.
+                    Add a block to start customizing.
+                  </p>
+                </div>
+              ) : (
+                endScreen.blocks.map((block, idx) => (
+                  <BlockCard
+                    key={block.id}
+                    block={block}
+                    idx={idx}
+                    isFirst={idx === 0}
+                    isLast={idx === endScreen.blocks.length - 1}
+                    onPatch={patch => onPatchBlock(idx, patch)}
+                    onRemove={() => onRemoveBlock(idx)}
+                    onMoveUp={() => onMoveBlock(idx, idx - 1)}
+                    onMoveDown={() => onMoveBlock(idx, idx + 1)}
+                  />
+                ))
+              )}
+            </section>
+          </>
+        )}
       </div>
+    </div>
+  )
+}
+
+// ── Condition row ─────────────────────────────────────────────────
+function ConditionRow({
+  condition,
+  onPatch,
+  onRemove,
+}: {
+  condition: EndScreenCondition
+  onPatch: (patch: Partial<EndScreenCondition>) => void
+  onRemove: () => void
+}) {
+  const isNumeric = condition.field === 'score'
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={condition.field}
+        onChange={e => onPatch({ field: e.target.value as EndScreenConditionField })}
+        className="text-xs border border-[#E8E4DF] rounded px-2 py-1.5"
+      >
+        {(Object.keys(FIELD_LABELS) as EndScreenConditionField[]).map(f => (
+          <option key={f} value={f}>{FIELD_LABELS[f]}</option>
+        ))}
+      </select>
+      <select
+        value={condition.op}
+        onChange={e => onPatch({ op: e.target.value as EndScreenConditionOp })}
+        className="text-xs border border-[#E8E4DF] rounded px-2 py-1.5"
+      >
+        {(Object.keys(OP_LABELS) as EndScreenConditionOp[])
+          .filter(op => isNumeric ? true : (op === 'eq' || op === 'neq' || op === 'in'))
+          .map(op => <option key={op} value={op}>{OP_LABELS[op]}</option>)}
+      </select>
+      {condition.op === 'in' ? (
+        <input
+          value={Array.isArray(condition.value) ? condition.value.join(', ') : String(condition.value)}
+          onChange={e => onPatch({ value: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+          placeholder="comma, separated, values"
+          className="flex-1 text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+        />
+      ) : isNumeric ? (
+        <input
+          type="number"
+          value={String(condition.value)}
+          onChange={e => onPatch({ value: Number(e.target.value) })}
+          className="w-24 text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+        />
+      ) : (
+        <input
+          value={String(condition.value)}
+          onChange={e => onPatch({ value: e.target.value })}
+          placeholder="value"
+          className="flex-1 text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+        />
+      )}
+      <button
+        onClick={onRemove}
+        className="text-xs text-red-500 hover:text-red-700 px-1.5"
+      >×</button>
     </div>
   )
 }

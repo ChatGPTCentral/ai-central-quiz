@@ -20,9 +20,44 @@ export interface FormConfig {
   status: 'draft' | 'published' | 'archived'
   questions: V2Question[]
   theme: FormTheme | null
-  endScreen: EndScreen | null
+  /** Ordered list of end-screens. First match wins; empty-`when`
+   *  screens always match (treat as default; place last). */
+  endScreens: EndScreen[]
   updatedAt: string
   updatedByEmail: string | null
+}
+
+/** Coerce a legacy single end-screen object or an array into the
+ *  canonical array shape. Phase 9 wrote `{ blocks, heroHeadline, ... }`
+ *  (no id/name/when); Phase 12+ writes `[{ id, name, when, ... }]`.
+ *  This bridge lets the editor open old drafts cleanly. */
+function coerceEndScreens(raw: unknown): EndScreen[] {
+  if (Array.isArray(raw)) {
+    return raw.map((s, i) => ({
+      id: (s as EndScreen).id ?? `screen_${i}`,
+      name: (s as EndScreen).name ?? (i === 0 ? 'Default' : `Outcome ${i}`),
+      heroHeadline: (s as EndScreen).heroHeadline,
+      heroSubheadline: (s as EndScreen).heroSubheadline,
+      ctaText: (s as EndScreen).ctaText,
+      ctaUrl: (s as EndScreen).ctaUrl,
+      blocks: (s as EndScreen).blocks ?? [],
+      when: (s as EndScreen).when ?? [],
+    }))
+  }
+  if (raw && typeof raw === 'object') {
+    const legacy = raw as Partial<EndScreen>
+    return [{
+      id: 'default',
+      name: 'Default',
+      heroHeadline: legacy.heroHeadline,
+      heroSubheadline: legacy.heroSubheadline,
+      ctaText: legacy.ctaText,
+      ctaUrl: legacy.ctaUrl,
+      blocks: legacy.blocks ?? [],
+      when: [],
+    }]
+  }
+  return []
 }
 
 let _client: SupabaseClient | null = null
@@ -51,7 +86,7 @@ interface DbRow {
   status: 'draft' | 'published' | 'archived'
   questions: V2Question[]
   theme: FormTheme | null
-  end_screen: EndScreen | null
+  end_screen: unknown
   updated_at: string
   updated_by_email: string | null
 }
@@ -64,7 +99,7 @@ function fromRow(r: DbRow): FormConfig {
     status: r.status,
     questions: r.questions,
     theme: r.theme,
-    endScreen: r.end_screen ?? null,
+    endScreens: coerceEndScreens(r.end_screen),
     updatedAt: r.updated_at,
     updatedByEmail: r.updated_by_email,
   }
@@ -136,7 +171,7 @@ export async function saveDraft(
   slug: string,
   questions: V2Question[],
   theme: FormTheme | null,
-  endScreen: EndScreen | null,
+  endScreens: EndScreen[],
   updatedByEmail: string,
 ): Promise<FormConfig> {
   const { data: maxRow, error: maxErr } = await client()
@@ -157,7 +192,7 @@ export async function saveDraft(
       status: 'draft',
       questions,
       theme,
-      end_screen: endScreen,
+      end_screen: endScreens,
       updated_by_email: updatedByEmail,
     })
     .select('*')

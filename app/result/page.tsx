@@ -15,6 +15,7 @@ import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
+import { pickEndScreen } from '@/lib/form-schema'
 
 /** Server-side fetch of v2 segment fields for the row, if id is provided. */
 async function fetchSegmentFields(id: string | undefined): Promise<{
@@ -175,14 +176,23 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const tutorials = await fetchTutorialsForArchetype(archetype.tutorialKeywords)
   const tools = toolsForArchetype(archetypeKey, 6)
 
-  // Editor-driven overrides: hero copy + body blocks. Falls through to the
-  // archetype/segment-driven defaults below when fields are missing.
+  // Editor-driven overrides: hero copy + body blocks. Picks the first
+  // outcome whose `when` conditions match this submission's score/persona/
+  // stage/archetype; falls back to a no-condition default outcome; falls
+  // through to the archetype/segment-driven defaults below when nothing matches.
   let endScreen: EndScreen | null = null
   try {
     const liveConfig = await getLivePublishedConfig('quiz-v2')
-    endScreen = liveConfig?.endScreen ?? null
+    endScreen = pickEndScreen(liveConfig?.endScreens ?? [], {
+      score,
+      persona: segFields?.persona ?? null,
+      stage: segFields?.stage ?? null,
+      archetype: archetypeKey,
+      intent: segFields?.intent_30d ?? null,
+      friction: segFields?.friction ?? null,
+    })
   } catch (err) {
-    console.warn('[result] failed to load editor endScreen, using defaults:', err)
+    console.warn('[result] failed to load editor endScreens, using defaults:', err)
   }
   // Token context for piping — passed to both the hero text and the
   // editor-defined body blocks. Empty answers fall back to '' so labels
