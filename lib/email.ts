@@ -58,6 +58,11 @@ export async function sendSubmitNotification(n: SubmitNotification): Promise<voi
     return
   }
 
+  // Diagnostic: log resolved sender/destination so we can verify env vars
+  // are landing correctly in production. Once email is confirmed working,
+  // these can be deleted.
+  console.log(`[email-debug] from="${from}" to="${to}" key_len=${apiKey.length}`)
+
   try {
     const res = await fetch(RESEND_ENDPOINT, {
       method: 'POST',
@@ -75,7 +80,12 @@ export async function sendSubmitNotification(n: SubmitNotification): Promise<voi
     })
     const body = await res.text().catch(() => '')
     if (!res.ok) {
-      console.error(`[email] resend send failed (${res.status}): ${body.slice(0, 240)}`)
+      // Log status separately, then the full body in 200-char chunks so the
+      // Vercel log MCP / dashboard truncation doesn't hide the actual error.
+      console.error(`[email] resend send failed status=${res.status}`)
+      for (let i = 0, n = 0; i < body.length; i += 200, n++) {
+        console.error(`[email] resend body chunk ${n}: ${body.slice(i, i + 200)}`)
+      }
       return
     }
     console.log(`[email] sent "${subject}" to ${to} — resend response: ${body.slice(0, 120)}`)
