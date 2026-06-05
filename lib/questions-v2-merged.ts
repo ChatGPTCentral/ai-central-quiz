@@ -20,11 +20,14 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   // ── Identity ────────────────────────────────────────────────────
   {
     id: 'name',
-    type: 'text',
+    type: 'split-text',
     label: "First, what's your name?",
     required: true,
-    placeholder: 'Type your answer here…',
     dbColumn: 'name',
+    firstFieldLabel: 'First name',
+    firstFieldPlaceholder: 'Alex',
+    secondFieldLabel: 'Last name',
+    secondFieldPlaceholder: 'Fiore',
   },
   {
     id: 'email',
@@ -57,7 +60,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     type: 'multi-chips',
     label: 'Which AI tools are in your active rotation?',
     sublabel: 'Tick everything you use - - the count is what matters',
-    required: false,
+    required: true,
     dbColumn: 'ai_tools',
     scoring: 'csv',  // also writes ai_tools as CSV; breadth_score = length
     options: [
@@ -87,7 +90,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     type: 'multi-chips',
     label: "What's actually in your AI toolkit?",
     sublabel: "Tick everything you've done at least once - - count is the signal",
-    required: false,
+    required: true,
     dbColumn: 'depth_score',
     scoring: 'count',
     options: [

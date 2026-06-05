@@ -26,7 +26,7 @@ function validateQuestions(qs: unknown): string | null {
     if (!q.id || typeof q.id !== 'string') return `question[${i}].id is required`
     if (ids.has(q.id)) return `duplicate question id: ${q.id}`
     ids.add(q.id)
-    if (!q.type || !['welcome', 'text', 'email', 'chips', 'multi-chips'].includes(q.type as string)) {
+    if (!q.type || !['welcome', 'text', 'email', 'chips', 'multi-chips', 'split-text'].includes(q.type as string)) {
       return `question[${q.id}].type is invalid`
     }
     if (typeof q.label !== 'string' || !q.label.trim()) {

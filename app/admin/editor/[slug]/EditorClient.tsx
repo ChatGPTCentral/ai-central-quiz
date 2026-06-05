@@ -59,11 +59,12 @@ const TYPE_LABELS: Record<V2QuestionType, string> = {
   welcome: 'Welcome screen',
   text: 'Short text',
   email: 'Email',
+  'split-text': 'Two text fields',
   chips: 'Single choice',
   'multi-chips': 'Multiple choice',
 }
 
-const TYPE_ORDER: V2QuestionType[] = ['welcome', 'text', 'email', 'chips', 'multi-chips']
+const TYPE_ORDER: V2QuestionType[] = ['welcome', 'text', 'email', 'split-text', 'chips', 'multi-chips']
 
 // Safety matrix — true means the transition is safe (no data loss).
 // Lossy transitions are still allowed but show a warning.
@@ -71,6 +72,9 @@ function isSafeTypeChange(from: V2QuestionType, to: V2QuestionType): boolean {
   if (from === to) return true
   if (from === 'chips' && to === 'multi-chips') return true
   if (from === 'text' && to === 'email') return true
+  // split-text → text preserves the combined string. text → split-text
+  // re-parses the existing answer on first space, which is data-safe.
+  if ((from === 'text' || from === 'split-text') && (to === 'text' || to === 'split-text')) return true
   // Welcome screens collect no data, so to/from welcome is always
   // data-safe (the dropped options/dbColumn are config, not user data).
   if (from === 'welcome' || to === 'welcome') return true
@@ -788,6 +792,43 @@ export default function EditorClient({
                 placeholder="Get started"
               />
             </Field>
+          )}
+
+          {selected.type === 'split-text' && (
+            <>
+              <Field label="Left field — label">
+                <input
+                  value={selected.firstFieldLabel ?? ''}
+                  onChange={e => patchQuestion(selectedIdx, { firstFieldLabel: e.target.value || undefined })}
+                  className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+                  placeholder="First name"
+                />
+              </Field>
+              <Field label="Left field — placeholder">
+                <input
+                  value={selected.firstFieldPlaceholder ?? ''}
+                  onChange={e => patchQuestion(selectedIdx, { firstFieldPlaceholder: e.target.value || undefined })}
+                  className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+                  placeholder="Alex"
+                />
+              </Field>
+              <Field label="Right field — label">
+                <input
+                  value={selected.secondFieldLabel ?? ''}
+                  onChange={e => patchQuestion(selectedIdx, { secondFieldLabel: e.target.value || undefined })}
+                  className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+                  placeholder="Last name"
+                />
+              </Field>
+              <Field label="Right field — placeholder">
+                <input
+                  value={selected.secondFieldPlaceholder ?? ''}
+                  onChange={e => patchQuestion(selectedIdx, { secondFieldPlaceholder: e.target.value || undefined })}
+                  className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
+                  placeholder="Fiore"
+                />
+              </Field>
+            </>
           )}
 
           {selected.type !== 'welcome' && (

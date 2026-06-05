@@ -2,7 +2,7 @@
 // submission pipeline. Decoupled from any concrete question set so the
 // editor can build/validate arbitrary configs.
 
-export type V2QuestionType = 'welcome' | 'text' | 'email' | 'chips' | 'multi-chips'
+export type V2QuestionType = 'welcome' | 'text' | 'email' | 'chips' | 'multi-chips' | 'split-text'
 
 export interface V2Option {
   label: string
@@ -42,6 +42,12 @@ export interface V2Question {
   /** Welcome-screen specific: text on the proceed button. Defaults to "Get
    *  started" when empty. Ignored for non-welcome types. */
   ctaText?: string
+  /** split-text only: label + placeholder for the left field. */
+  firstFieldLabel?: string
+  firstFieldPlaceholder?: string
+  /** split-text only: label + placeholder for the right field. */
+  secondFieldLabel?: string
+  secondFieldPlaceholder?: string
 }
 
 export type BranchingOp = 'eq' | 'neq' | 'in' | 'gt' | 'lt' | 'contains'

@@ -54,16 +54,30 @@ export function QuestionRenderer({
   const inputRef = useRef<HTMLInputElement>(null)
   const isWelcome = q.type === 'welcome'
   const isText = q.type === 'text' || q.type === 'email'
+  const isSplit = q.type === 'split-text'
   const isSingle = q.type === 'chips'
   const isMulti = q.type === 'multi-chips'
   const isLargeGrid = isMulti && (q.options?.length ?? 0) > 4
 
+  // Split the underlying string answer into two halves for the
+  // split-text renderer. We use the first whitespace run as the boundary
+  // so "Alex Fiore" → first="Alex", second="Fiore". Multi-token last
+  // names work ("Van Der Berg" → first="Van", second="Der Berg").
+  const splitParts = (() => {
+    if (!isSplit) return { first: '', second: '' }
+    const idx = singleAnswer.indexOf(' ')
+    if (idx === -1) return { first: singleAnswer, second: '' }
+    return { first: singleAnswer.slice(0, idx), second: singleAnswer.slice(idx + 1) }
+  })()
+  const onFirstChange = (v: string) => onTextChange(`${v} ${splitParts.second}`.replace(/\s+$/, ''))
+  const onSecondChange = (v: string) => onTextChange(`${splitParts.first} ${v}`.replace(/^\s+/, ''))
+
   useEffect(() => {
-    if (isText && autoFocus && inputRef.current) {
+    if ((isText || isSplit) && autoFocus && inputRef.current) {
       const t = setTimeout(() => inputRef.current?.focus(), 380)
       return () => clearTimeout(t)
     }
-  }, [isText, autoFocus, q.id])
+  }, [isText, isSplit, autoFocus, q.id])
 
   const onInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -129,6 +143,44 @@ export function QuestionRenderer({
             onFocus={e => { if (!inputError) e.currentTarget.style.borderBottomColor = accent }}
             onBlur={e => { e.currentTarget.style.borderBottomColor = '' }}
           />
+          {inputError && <p className="mt-2 text-sm text-red-500">{inputError}</p>}
+          <p className="mt-3 text-xs text-gray-400">Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] text-gray-500 font-mono">Enter ↵</kbd> to continue</p>
+        </div>
+      )}
+
+      {isSplit && (
+        <div className="mb-7" onKeyDown={onInputKeyDown}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <label className="block">
+              {q.firstFieldLabel && (
+                <span className="block text-[11px] uppercase tracking-widest text-gray-400 mb-1.5">{q.firstFieldLabel}</span>
+              )}
+              <input
+                ref={inputRef}
+                type="text"
+                value={splitParts.first}
+                onChange={e => onFirstChange(e.target.value)}
+                placeholder={q.firstFieldPlaceholder}
+                className="w-full text-[17px] text-gray-900 placeholder-gray-300 bg-transparent border-b-2 pb-3 outline-none transition-colors duration-200 border-gray-200"
+                onFocus={e => { e.currentTarget.style.borderBottomColor = accent }}
+                onBlur={e => { e.currentTarget.style.borderBottomColor = '' }}
+              />
+            </label>
+            <label className="block">
+              {q.secondFieldLabel && (
+                <span className="block text-[11px] uppercase tracking-widest text-gray-400 mb-1.5">{q.secondFieldLabel}</span>
+              )}
+              <input
+                type="text"
+                value={splitParts.second}
+                onChange={e => onSecondChange(e.target.value)}
+                placeholder={q.secondFieldPlaceholder}
+                className="w-full text-[17px] text-gray-900 placeholder-gray-300 bg-transparent border-b-2 pb-3 outline-none transition-colors duration-200 border-gray-200"
+                onFocus={e => { e.currentTarget.style.borderBottomColor = accent }}
+                onBlur={e => { e.currentTarget.style.borderBottomColor = '' }}
+              />
+            </label>
+          </div>
           {inputError && <p className="mt-2 text-sm text-red-500">{inputError}</p>}
           <p className="mt-3 text-xs text-gray-400">Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] text-gray-500 font-mono">Enter ↵</kbd> to continue</p>
         </div>

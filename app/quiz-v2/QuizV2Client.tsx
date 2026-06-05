@@ -86,8 +86,13 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     if (isWelcome) return true
     if (isMulti) return !q.required || multiAnswer.length > 0
     if (!q.required) return true
+    // split-text requires BOTH halves filled in (non-whitespace on each side).
+    if (q.type === 'split-text') {
+      const parts = singleAnswer.split(/\s+/).filter(Boolean)
+      return parts.length >= 2
+    }
     return singleAnswer.trim().length > 0
-  }, [isWelcome, isMulti, q.required, multiAnswer, singleAnswer])
+  }, [isWelcome, isMulti, q.required, q.type, multiAnswer, singleAnswer])
 
   const validateStep = (): boolean => {
     if (q.type === 'email') {
