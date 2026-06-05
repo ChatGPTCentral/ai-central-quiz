@@ -227,11 +227,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Admin notification — fire-and-forget so submit latency isn't impacted.
-  // Only for genuinely new submissions (not updates to existing rows).
+  // Admin notification — awaited (not fire-and-forget) because Vercel's
+  // serverless lifecycle freezes the lambda the moment the response goes
+  // out, killing any in-flight promises. The cost is one extra ~300ms HTTP
+  // round-trip on new submissions; .catch() ensures the response still
+  // ships even if Resend errors out.
   if (!existing) {
     const seg2 = rowAfter ? assignSegmentationV2(fromRow(rowAfter as Parameters<typeof fromRow>[0])) : null
-    sendSubmitNotification({
+    await sendSubmitNotification({
       id: rowId,
       name: v.name,
       email: v.email,

@@ -73,11 +73,12 @@ export async function sendSubmitNotification(n: SubmitNotification): Promise<voi
         reply_to: n.email || undefined,
       }),
     })
+    const body = await res.text().catch(() => '')
     if (!res.ok) {
-      const detail = await res.text().catch(() => '')
-      console.error(`[email] resend send failed (${res.status}): ${detail.slice(0, 240)}`)
+      console.error(`[email] resend send failed (${res.status}): ${body.slice(0, 240)}`)
       return
     }
+    console.log(`[email] sent "${subject}" to ${to} — resend response: ${body.slice(0, 120)}`)
   } catch (err) {
     console.error('[email] resend send threw:', err)
   }
