@@ -25,9 +25,9 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     required: true,
     dbColumn: 'name',
     firstFieldLabel: 'First name',
-    firstFieldPlaceholder: 'Alex',
+    firstFieldPlaceholder: 'Elon',
     secondFieldLabel: 'Last name',
-    secondFieldPlaceholder: 'Fiore',
+    secondFieldPlaceholder: 'Musk',
   },
   {
     id: 'email',
