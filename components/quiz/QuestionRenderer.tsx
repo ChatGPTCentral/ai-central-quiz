@@ -36,7 +36,6 @@ export function QuestionRenderer({
   question: q,
   singleAnswer,
   multiAnswer,
-  stepNumber,
   inputError,
   accent = DEFAULT_ACCENT,
   autoFocus = false,
@@ -123,9 +122,10 @@ export function QuestionRenderer({
 
   return (
     <>
+      {/* A small accent chevron marks the prompt without exposing a question
+          number — numbering is misleading once steps can be skipped. */}
       <div className="flex items-center gap-1.5 mb-3 sm:mb-5">
-        <span className="text-[12px] sm:text-[13px] font-bold" style={{ color: accent }}>{stepNumber}</span>
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="9 18 15 12 9 6" />
         </svg>
       </div>

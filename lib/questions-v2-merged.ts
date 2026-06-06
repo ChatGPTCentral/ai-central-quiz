@@ -72,8 +72,6 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
       { label: 'Lovable',    value: 'Lovable',    logo: '/logos/lovable-color.svg' },
       { label: 'Midjourney', value: 'Midjourney', logo: '/logos/midjourney.svg' },
       { label: 'Runway',     value: 'Runway',     logo: '/logos/runway.svg' },
-      { label: 'KLING',      value: 'KLING',      logo: '/logos/kling-color.svg' },
-      { label: 'HeyGen',     value: 'HeyGen',     logo: '/logos/heygen_logo.svg' },
       { label: 'ElevenLabs', value: 'ElevenLabs', logo: '/logos/elevenlabs_logo.svg' },
       { label: 'NotebookLM', value: 'NotebookLM', logo: '/logos/notebooklm.svg' },
       { label: 'n8n',        value: 'n8n',        logo: '/logos/n8n-color.svg' },
@@ -110,7 +108,6 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     required: true,
     dbColumn: 'momentum',
     scoring: 'value',
-    layout: 'horizontal',
     options: [
       { label: 'Much less',       value: '-2', score: -2 },
       { label: 'A bit less',      value: '-1', score: -1 },
@@ -135,7 +132,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
       { label: 'Too many tools, too much noise',             value: 'too_noisy',         emoji: '🌪️' },
       { label: "I don't trust the outputs",                  value: 'no_trust',          emoji: '🛑' },
       { label: "I want to build something but don't know how", value: 'cant_build',      emoji: '🏗️' },
-      { label: "Nothing - - I'm flying",                     value: 'no_friction',       emoji: '✈️' },
+      { label: "Nothing, I'm flying",                        value: 'no_friction',       emoji: '✈️' },
     ],
   },
 

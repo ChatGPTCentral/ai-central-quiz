@@ -13,6 +13,9 @@ interface Props {
 }
 
 const DEFAULT_ACCENT = '#046BB1'
+// localStorage key for the in-progress draft (answers + step), so a refresh
+// or accidental navigation never loses what's been entered.
+const DRAFT_KEY = 'ac_quiz_v2_draft'
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -52,24 +55,45 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return () => clearTimeout(t)
   }, [step, isEmbed, postToParent])
 
-  // Pre-fill email from ?email= and skip past the email step entirely
-  // when the prefilled value is valid. The user never sees that question.
+  // Mount: (1) restore an in-progress draft so a refresh / accidental nav
+  // doesn't lose answers, then (2) pre-fill the email answer from ?email=
+  // (the URL param wins over a stale draft email). We do NOT jump the step
+  // for the email param — the user still starts at Q1 (name); the advance
+  // logic below skips the email question when it's reached.
   useEffect(() => {
     if (emailPrefilled.current) return
-    const urlEmail = searchParams.get('email')
-    if (!urlEmail) return
     emailPrefilled.current = true
-    const cleaned = urlEmail.trim().toLowerCase()
-    setAnswers(prev => ({ ...prev, email: cleaned }))
-    if (isValidEmail(cleaned)) {
-      const emailIdx = QUESTIONS.findIndex(q => q.id === 'email' || q.type === 'email')
-      if (emailIdx >= 0 && emailIdx + 1 < QUESTIONS.length) {
-        const next = emailIdx + 2 // skip past email; step is 1-indexed
-        setStep(next)
-        setHistory([next])
+
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (raw) {
+        const draft = JSON.parse(raw) as { answers?: Answers; step?: number; history?: number[]; ts?: number }
+        const fresh = draft.ts && Date.now() - draft.ts < 1000 * 60 * 60 * 24 // 24h
+        if (fresh && draft.answers && Object.keys(draft.answers).length > 0) {
+          setAnswers(draft.answers)
+          if (typeof draft.step === 'number' && draft.step >= 1 && draft.step <= TOTAL_STEPS) {
+            setStep(draft.step)
+            setHistory(Array.isArray(draft.history) && draft.history.length ? draft.history : [draft.step])
+          }
+        }
       }
+    } catch { /* ignore corrupt draft */ }
+
+    const urlEmail = searchParams.get('email')
+    if (urlEmail) {
+      const cleaned = urlEmail.trim().toLowerCase()
+      setAnswers(prev => ({ ...prev, email: cleaned }))
     }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist the in-progress draft on every answer/step change so nothing is
+  // lost if the tab is closed or refreshed. Cleared on successful submit.
+  useEffect(() => {
+    if (Object.keys(answers).length === 0) return
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ answers, step, history, ts: Date.now() }))
+    } catch { /* storage full / unavailable — non-fatal */ }
+  }, [answers, step, history])
 
   const q = QUESTIONS[step - 1]
   const singleAnswer = (answers[q.id] as string) || ''
@@ -139,16 +163,22 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     if (!canProceed() || !validateStep()) return
 
     if (!isLastStep) {
-      // Skip step 2 (email) if pre-filled via ?email= param
-      if (step === 1) {
-        const urlEmail = searchParams.get('email')?.trim().toLowerCase()
-        if (urlEmail && isValidEmail(urlEmail)) {
-          goForward(3)
-          return
-        }
+      // nextResolved is narrowed to a number here (1-indexed target = +1).
+      const target = nextResolved + 1
+      const targetQ = QUESTIONS[target - 1]
+      // If the next question IS the email step and we have a valid pre-filled
+      // email, skip over it (position-independent — works wherever email sits).
+      const urlEmail = searchParams.get('email')?.trim().toLowerCase()
+      if (
+        targetQ &&
+        (targetQ.id === 'email' || targetQ.type === 'email') &&
+        urlEmail && isValidEmail(urlEmail)
+      ) {
+        const afterEmail = resolveNextStep(target - 1, QUESTIONS, answers)
+        goForward(afterEmail === 'end' ? target : afterEmail + 1)
+        return
       }
-      // Linear or branched next step (nextResolved is narrowed to number here).
-      goForward(nextResolved + 1)
+      goForward(target)
       return
     }
 
@@ -176,6 +206,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         setSubmitting(false)
         return
       }
+      // Submitted successfully — clear the in-progress draft.
+      try { localStorage.removeItem(DRAFT_KEY) } catch { /* non-fatal */ }
       sessionStorage.setItem('ac_quiz_offer_start', String(Date.now()))
       if (isEmbed) {
         postToParent({
@@ -255,18 +287,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       </div>
 
       {!isEmbed && (
-        <header className="flex items-center justify-between px-4 sm:px-6 pt-3 sm:pt-6 pb-1 sm:pb-2 shrink-0">
+        <header className="flex items-center justify-center px-4 sm:px-6 pt-3 sm:pt-6 pb-1 sm:pb-2 shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-full-light-bg.png" alt="AI Central" className="h-5 sm:h-6 w-auto" />
-          <span className="text-xs sm:text-sm font-medium text-gray-400 tabular-nums">
-            {step} <span className="text-gray-300">/ {TOTAL_STEPS}</span>
-          </span>
         </header>
-      )}
-      {isEmbed && (
-        <div className="flex items-center justify-end px-4 sm:px-6 pt-3 pb-1 text-[11px] text-gray-400 tabular-nums">
-          {step} / {TOTAL_STEPS}
-        </div>
       )}
 
       <main className="flex-1 flex items-start sm:items-center justify-center px-4 sm:px-6 py-3 sm:py-6 overflow-y-auto">
