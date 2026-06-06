@@ -9,6 +9,7 @@ import { answersToDb, calculateScoreV2, QUESTIONS_V2_MERGED } from '@/lib/questi
 import { getLivePublishedConfig } from '@/lib/form-config'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
 import { sendSubmitNotification } from '@/lib/email'
+import { deletePartial } from '@/lib/partials'
 import { createClient } from '@supabase/supabase-js'
 
 export const maxDuration = 60
@@ -194,6 +195,10 @@ export async function POST(req: NextRequest) {
     })
     if (error) console.error('v2 insert failed:', error.message)
   }
+
+  // Promote out of "In progress": a completed submission removes any matching
+  // partial capture so it no longer shows in the in-progress admin section.
+  deletePartial(v.email).catch(err => console.error('[partials] cleanup failed:', err))
 
   // Re-read and classify
   const { data: rowAfter } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()

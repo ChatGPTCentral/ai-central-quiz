@@ -38,6 +38,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [animKey, setAnimKey] = useState(0)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const emailPrefilled = useRef(false)
+  const partialSent = useRef(false)
 
   // Embed-mode plumbing (same protocol as /quiz)
   const isEmbed = searchParams.get('embed') === '1' || searchParams.get('ac-embed-id') !== null
@@ -94,6 +95,27 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ answers, step, history, ts: Date.now() }))
     } catch { /* storage full / unavailable — non-fatal */ }
   }, [answers, step, history])
+
+  // Server-side in-progress capture: once we have a name + a valid email,
+  // POST a partial (once) so the lead is collected even if they abandon.
+  // No enrichment / Beehiiv / email runs on this — it's deleted on complete.
+  useEffect(() => {
+    if (partialSent.current) return
+    const name = String(answers.name || '').trim()
+    const email = String(answers.email || '').trim().toLowerCase()
+    if (!name || !isValidEmail(email)) return
+    partialSent.current = true
+    const utmSource =
+      searchParams.get('utm_source') || searchParams.get('utmSource') || searchParams.get('source') || ''
+    const utmRef =
+      searchParams.get('utm_ref') || searchParams.get('ref') || searchParams.get('utm_medium') || searchParams.get('utm_campaign') || ''
+    fetch('/api/submit-quiz-v2/partial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers, utmSource, utmRef }),
+      keepalive: true,
+    }).catch(() => { /* fire-and-forget */ })
+  }, [answers, searchParams])
 
   const q = QUESTIONS[step - 1]
   const singleAnswer = (answers[q.id] as string) || ''

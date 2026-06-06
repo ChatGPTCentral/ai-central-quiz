@@ -14,6 +14,7 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: '◧' },
       { href: '/admin/submissions', label: 'Submissions', icon: '☰' },
+      { href: '/admin/in-progress', label: 'In progress', icon: '◴' },
       { href: '/admin/lab', label: 'Enrich', icon: '✨' },
     ],
   },
