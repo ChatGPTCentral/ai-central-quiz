@@ -70,44 +70,60 @@ export default function HomePage({
         </div>
       </nav>
 
-      {/* Hero — 2-column on desktop, stacked on mobile. */}
-      <main className="flex-1 flex items-center justify-center px-5 sm:px-8 py-6 sm:py-10">
-        <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center">
-          {/* Left — copy + CTA */}
-          <div className="text-center md:text-left order-2 md:order-1">
-            <h1
-              className="text-[34px] sm:text-[48px] md:text-[58px] font-black leading-[1.02] tracking-tight mb-4 sm:mb-6"
-              style={{ color: INK }}
-            >
-              Where do you sit on the{' '}
-              <span style={{ color: FULVOUS }}>AI adoption ladder?</span>
-            </h1>
-            <p
-              className="text-[16px] sm:text-[19px] leading-relaxed mb-8 sm:mb-10 max-w-[480px] mx-auto md:mx-0"
-              style={{ color: '#555' }}
-            >
-              10 short questions. A senior-coded plan tuned to how you actually
-              work today, not how a generic course assumes you do.
-            </p>
-            <Link
-              href={quizHref}
-              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 rounded-2xl text-[16px] sm:text-[18px] font-black transition-all active:scale-[0.99] hover:opacity-95 shadow-sm"
-              style={{ backgroundColor: INK, color: '#FFFDFA' }}
-            >
-              Start the quiz
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
+      {/* Hero — single vertical stack: text → button → social proof → radar. */}
+      <main className="flex-1 flex items-start justify-center px-5 sm:px-8 py-6 sm:py-10">
+        <div className="w-full max-w-3xl text-center">
+          <h1
+            className="text-[34px] sm:text-[48px] md:text-[58px] font-black leading-[1.02] tracking-tight mb-4 sm:mb-6"
+            style={{ color: INK }}
+          >
+            Where do you sit on the{' '}
+            <span style={{ color: FULVOUS }}>AI adoption ladder?</span>
+          </h1>
+          <p
+            className="text-[16px] sm:text-[19px] leading-relaxed mb-7 sm:mb-9 max-w-[560px] mx-auto"
+            style={{ color: '#555' }}
+          >
+            10 short questions. A senior-coded plan tuned to how you actually
+            work today, not how a generic course assumes you do.
+          </p>
+          <Link
+            href={quizHref}
+            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 rounded-2xl text-[16px] sm:text-[18px] font-black transition-all active:scale-[0.99] hover:opacity-95 shadow-sm"
+            style={{ backgroundColor: INK, color: '#FFFDFA' }}
+          >
+            Start the quiz
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </Link>
+          <p className="mt-4 text-[12px] sm:text-[13px]" style={{ color: MUTE }}>
+            Free · No card · 90 seconds
+          </p>
+
+          {/* Survey time + completions count — quick social-proof strip. */}
+          <div
+            className="mt-7 sm:mt-9 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 rounded-full text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.14em]"
+            style={{ background: '#FFFFFFCC', border: '1px solid #E8E4DF', color: '#555' }}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={FULVOUS} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <polyline points="12 7 12 12 15 14" />
               </svg>
-            </Link>
-            <p className="mt-4 text-[12px] sm:text-[13px]" style={{ color: MUTE }}>
-              Free · No card · 90 seconds
-            </p>
+              ~90 sec to complete
+            </span>
+            <span aria-hidden style={{ color: '#C9C7BF' }}>·</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span style={{ color: '#62A758' }}>●</span>
+              2,768 people completed
+            </span>
           </div>
 
-          {/* Right — animated demo radar (matches result-page styling: green
-              accent + same chart aesthetic, sized 30% larger). */}
-          <div className="order-1 md:order-2 flex justify-center">
+          {/* Radar — animated demo loop. Sits below the fold-promise so the
+              CTA + social proof carry the conversion above it. */}
+          <div className="mt-8 sm:mt-10 flex justify-center">
             <div className="w-full max-w-[600px]">
               <RadarChart
                 axes={DEMO_AXES}
