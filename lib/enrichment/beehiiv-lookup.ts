@@ -12,6 +12,8 @@ const BEEHIIV_API_BASE = 'https://api.beehiiv.com/v2'
 const PUBLICATION_ID = process.env.BEEHIIV_PUBLICATION_ID || 'pub_685dd277-3d37-4105-9320-d248c9e28f76'
 
 export interface BeehiivLookupResult {
+  /** Beehiiv subscription id — used by stage-update PATCH/tag calls. */
+  subscriptionId?: string
   firstName?: string
   lastName?: string
   country?: string
@@ -76,6 +78,7 @@ export async function findBeehiivSubscriberByEmail(email: string): Promise<Beehi
     }
 
     return {
+      subscriptionId: sub.id || undefined,
       firstName: firstName?.trim() || undefined,
       lastName:  lastName?.trim()  || undefined,
       country:   (cf['country'] || cf['region'] || undefined)?.trim() || undefined,

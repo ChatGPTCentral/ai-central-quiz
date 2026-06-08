@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { checkRateLimit } from '@/lib/validation'
-import { createBeehiivSubscriber } from '@/lib/beehiiv'
+import { subscribeWithStage, updateSubscriberStage } from '@/lib/beehiiv'
 import { determineArchetype } from '@/lib/archetypes'
 import { findSubmissionByEmail, fromRow, type StoredSubmission } from '@/lib/kv'
 import { runEnrichment } from '@/lib/enrichment/waterfall'
@@ -202,8 +202,10 @@ export async function POST(req: NextRequest) {
 
   // Re-read and classify
   const { data: rowAfter } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
+  let computedStage: string | null = null
   if (rowAfter) {
     const seg = assignSegmentationV2(fromRow(rowAfter as Parameters<typeof fromRow>[0]))
+    computedStage = seg.stage
     await c.from('submissions').update({
       stage: seg.stage,
       stage_score: seg.stageScore,
@@ -221,20 +223,43 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Beehiiv subscription (fire-and-forget except for known-fail)
+  // Beehiiv stage sync — stage-only, retake-aware. New submissions create
+  // the subscriber; retakes PATCH the stage. If a new submission collides
+  // with an already-subscribed email, we still update so the stage doesn't
+  // get dropped (the v1 short-circuit bug).
   const hasBeehiiv = !!process.env.BEEHIIV_API_KEY && process.env.BEEHIIV_API_KEY !== 'your_beehiiv_api_key_here'
   let alreadySubscribed = false
-  if (hasBeehiiv) {
-    const result = await createBeehiivSubscriber({
-      name: v.name!, email: v.email!, archetype,
-      aiLevel: '', workArea: v.work_area || '', learningStyle: '',
-      timeCommitment: '', mainGoal: '', aiTools: v.ai_tools || '',
-      jobLevel: v.job_level || '',
-      apolloData: { success: false },
-    })
-    if (result.error === 'ALREADY_SUBSCRIBED') alreadySubscribed = true
-    if (!result.success && result.error !== 'ALREADY_SUBSCRIBED') {
-      console.error('v2 beehiiv failed:', result.error)
+  if (hasBeehiiv && computedStage) {
+    if (existing) {
+      const upd = await updateSubscriberStage({ email: v.email!, stage: computedStage })
+      if (!upd.success && upd.error !== 'NOT_SUBSCRIBED') {
+        console.error('v2 beehiiv update failed:', upd.error)
+      }
+      // If they retake but were never subscribed (e.g. unsubscribed and the
+      // row is gone), fall through to a fresh subscribe.
+      if (upd.error === 'NOT_SUBSCRIBED') {
+        const sub = await subscribeWithStage({
+          email: v.email!, name: v.name!, stage: computedStage, archetype,
+          utm: { source: utmSource ?? undefined },
+        })
+        if (!sub.success && sub.error !== 'ALREADY_SUBSCRIBED') {
+          console.error('v2 beehiiv subscribe failed:', sub.error)
+        }
+      }
+    } else {
+      const sub = await subscribeWithStage({
+        email: v.email!, name: v.name!, stage: computedStage, archetype,
+        utm: { source: utmSource ?? undefined },
+      })
+      if (sub.error === 'ALREADY_SUBSCRIBED') {
+        alreadySubscribed = true
+        // Fresh quiz fill but already on the newsletter from another funnel —
+        // make sure the stage gets onto their record.
+        const upd = await updateSubscriberStage({ email: v.email!, stage: computedStage })
+        if (!upd.success) console.error('v2 beehiiv post-collide update failed:', upd.error)
+      } else if (!sub.success) {
+        console.error('v2 beehiiv subscribe failed:', sub.error)
+      }
     }
   }
 

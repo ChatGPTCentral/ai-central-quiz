@@ -18,6 +18,7 @@ import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
 
 interface SegFields {
+  email?: string | null
   stage?: string | null
   persona?: string | null
   friction?: string | null
@@ -39,7 +40,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
     const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
     const { data } = await c
       .from('submissions')
-      .select('stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, score')
+      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, score')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -68,8 +69,22 @@ function radarAxes(f: SegFields | null, overallScore: number): { label: string; 
   ]
 }
 
-const PAYMENT_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 const UPSELL_URL = process.env.NEXT_PUBLIC_UPSELL_URL || 'https://buy.stripe.com/7sIcQe7NAgLT8s8008'
+const LIBRARY_BASE = process.env.NEXT_PUBLIC_LIBRARY_URL || 'https://app.thecentral.ai'
+
+/**
+ * Build the library handoff URL for the trial CTA. Routes through the
+ * library's own /login → /pricing → /api/stripe/checkout flow so the buyer
+ * ends up in the library's Supabase (the legacy buy.stripe.com link
+ * created a charge with no gated access). Pre-fills email when known so
+ * the user doesn't retype it.
+ */
+function libraryCheckoutUrl(email?: string | null): string {
+  const u = new URL(`${LIBRARY_BASE}/login`)
+  u.searchParams.set('next', '/pricing')
+  if (email) u.searchParams.set('email', email)
+  return u.toString()
+}
 
 // Pricing & benefits — sourced verbatim from upgrade.thecentral.ai
 const PLAN_BENEFITS = [
@@ -209,11 +224,14 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const heroHeadline = endScreen?.heroHeadline
   const heroSubheadline = endScreen?.heroSubheadline
   const ctaText = endScreen?.ctaText ?? primaryCta
-  const ctaUrl = endScreen?.ctaUrl ?? PAYMENT_URL
+  // Trial CTAs all route into the library funnel by default; an editor
+  // end-screen can still override with its own ctaUrl when needed.
+  const libraryUrl = libraryCheckoutUrl(segFields?.email)
+  const ctaUrl = endScreen?.ctaUrl ?? libraryUrl
 
   return (
     <>
-      <CountdownTimer paymentUrl={PAYMENT_URL} />
+      <CountdownTimer paymentUrl={libraryUrl} />
 
       <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
         {/* ── HERO: 2-column — text left, radar right ─────── */}
@@ -537,7 +555,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               ? `Hand-picked for ${archetype.label}s. Search 1,200+ more`
               : 'Search 1,200+ tested AI workflows and templates'}
           </p>
-          <DocSearch initialDocs={suggested} paymentUrl={PAYMENT_URL} accent="#E48715" />
+          <DocSearch initialDocs={suggested} paymentUrl={libraryUrl} accent="#E48715" />
         </section>
 
         {/* ── MODULE 7: TRUSTED BY (testimonials) ──────────── */}
@@ -624,7 +642,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               <p className="text-[11px] text-right mb-5" style={{ color: '#9C9C9C' }}>{RENEWAL_COPY}</p>
 
               <a
-                href={PAYMENT_URL}
+                href={libraryUrl}
                 className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
                 style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
               >
@@ -688,7 +706,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               Join 2,000+ professionals already using the AI Central library. 1,200+ curated tutorials. 15 minutes to your first result. No fluff
             </p>
             <a
-              href={PAYMENT_URL}
+              href={libraryUrl}
               className="inline-block px-8 py-4 font-black text-[14px] rounded-xl transition-opacity hover:opacity-90 active:scale-[0.99]"
               style={{ backgroundColor: '#E48715', color: '#FFFDFA', boxShadow: '0 6px 20px rgba(228, 135, 21, 0.4)' }}
             >
@@ -723,7 +741,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           <p className="text-[10px]" style={{ color: '#9C9C9C' }}>30-day guarantee</p>
         </div>
         <a
-          href={PAYMENT_URL}
+          href={libraryUrl}
           className="flex-shrink-0 px-5 py-2.5 rounded-xl font-black text-[13px] transition-all active:scale-[0.99]"
           style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}
         >

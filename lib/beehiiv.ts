@@ -1,9 +1,15 @@
 import type { ApolloEnrichmentResult } from './apollo'
 import type { ArchetypeKey } from './archetypes'
 import { ARCHETYPES } from './archetypes'
+import { findBeehiivSubscriberByEmail } from './enrichment/beehiiv-lookup'
 
 const BEEHIIV_API_BASE = 'https://api.beehiiv.com/v2'
 const PUBLICATION_ID = process.env.BEEHIIV_PUBLICATION_ID || 'pub_685dd277-3d37-4105-9320-d248c9e28f76'
+
+/** Tag prefix for the AI Adoption Ladder rung — `stage_S2_experimenter` etc. */
+export function stageTag(stageKey: string): string {
+  return `stage_${stageKey}`
+}
 
 interface CustomField {
   name: string
@@ -90,4 +96,198 @@ export async function createBeehiivSubscriber(payload: CreateSubscriberPayload):
     console.error('beehiiv request failed:', err)
     return { success: false, error: 'Network error' }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Stage-centric API (Survey v2)
+//
+// The v1 createBeehiivSubscriber above ships every quiz answer to Beehiiv
+// as a custom field. v2 inverts that: the only signal marketing branches
+// on inside Beehiiv is the AI Adoption Ladder rung (stage), so we sync
+// just that — once at signup, and again on every retake. The archetype
+// tag tags along as a low-cost secondary classifier; everything else
+// stays in our DB.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface StageSubscribePayload {
+  email: string
+  name: string
+  /** AI Adoption Ladder rung, e.g. 'S2_experimenter'. Pass null if unknown. */
+  stage: string | null
+  /** Archetype key for the archetype_<key> tag + ARCHETYPES.tags. Optional. */
+  archetype?: ArchetypeKey | null
+  utm?: {
+    source?: string | null
+    medium?: string | null
+    campaign?: string | null
+  }
+}
+
+export interface StageResult {
+  success: boolean
+  /** 'ALREADY_SUBSCRIBED' is a sentinel — callers should follow up with
+   *  updateSubscriberStage so we don't drop the stage on a duplicate. */
+  error?: string
+  subscriptionId?: string
+}
+
+function stageCustomFields(name: string, stage: string | null): CustomField[] {
+  const fields: CustomField[] = []
+  if (name) {
+    // Preserve the v1 quiz_name field for backwards-compat with existing
+    // beehiiv-lookup name parsing.
+    fields.push({ name: 'quiz_name', value: name })
+    const parts = name.trim().split(/\s+/)
+    if (parts[0]) fields.push({ name: 'first_name', value: parts[0] })
+    if (parts.length > 1) fields.push({ name: 'last_name', value: parts.slice(1).join(' ') })
+  }
+  if (stage) fields.push({ name: 'stage', value: stage })
+  return fields
+}
+
+function stageTags(stage: string | null, archetype: ArchetypeKey | null | undefined): string[] {
+  const tags: string[] = []
+  if (stage) tags.push(stageTag(stage))
+  if (archetype) {
+    tags.push(`archetype_${archetype}`)
+    // ARCHETYPES already maintains a tag list (e.g. seniority_executive) —
+    // keep them flowing through so existing automations don't lose context.
+    for (const t of ARCHETYPES[archetype].tags) {
+      if (!tags.includes(t)) tags.push(t)
+    }
+  }
+  return tags
+}
+
+/**
+ * Create a Beehiiv subscriber with stage-only segmentation. Used on the
+ * first completion of the v2 quiz. On 400/ALREADY_SUBSCRIBED, returns the
+ * sentinel so the caller can fall through to updateSubscriberStage —
+ * that's the bug v1 hit (it silently dropped retakes).
+ */
+export async function subscribeWithStage(payload: StageSubscribePayload): Promise<StageResult> {
+  const apiKey = process.env.BEEHIIV_API_KEY
+  if (!apiKey) {
+    console.error('beehiiv API key not configured')
+    return { success: false, error: 'Server configuration error' }
+  }
+
+  const body = {
+    email: payload.email,
+    reactivate_existing: false,
+    send_welcome_email: true,
+    utm_source: payload.utm?.source ?? 'quiz',
+    utm_medium: payload.utm?.medium ?? 'personalized_signup',
+    utm_campaign: payload.utm?.campaign ?? 'quiz_v2',
+    tags: stageTags(payload.stage, payload.archetype),
+    custom_fields: stageCustomFields(payload.name, payload.stage),
+  }
+
+  try {
+    const response = await fetch(`${BEEHIIV_API_BASE}/publications/${PUBLICATION_ID}/subscriptions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
+    })
+    const data = await response.json().catch(() => ({}))
+
+    if (response.status === 201 || response.status === 200) {
+      const id = (data?.data?.id as string | undefined) ?? undefined
+      return { success: true, subscriptionId: id }
+    }
+
+    if (response.status === 400 && data?.errors?.some((e: { message: string }) => e.message?.includes('already'))) {
+      return { success: false, error: 'ALREADY_SUBSCRIBED' }
+    }
+
+    console.error('beehiiv subscribeWithStage error:', response.status, data)
+    return { success: false, error: 'Subscription failed' }
+  } catch (err) {
+    console.error('beehiiv subscribeWithStage failed:', err)
+    return { success: false, error: 'Network error' }
+  }
+}
+
+/**
+ * Update an existing Beehiiv subscriber's stage. PATCHes the `stage`
+ * custom field on the subscription and adds the new stage_<key> tag.
+ *
+ * Note on tag rotation: Beehiiv's v2 API removes tags only by tag id (not
+ * by name), and we already do one lookup to get the subscription id. We
+ * intentionally do NOT pay for a second round-trip to remove the prior
+ * stage_<key> tag — old tags accumulate, but the source of truth for
+ * downstream automations is the `stage` custom field, and the newly added
+ * tag is the trigger event marketing branches on. If we later need a
+ * single tag per subscriber, swap this for a stale-tag sweep job.
+ */
+export async function updateSubscriberStage(input: {
+  email: string
+  stage: string
+}): Promise<StageResult> {
+  const apiKey = process.env.BEEHIIV_API_KEY
+  if (!apiKey) {
+    console.error('beehiiv API key not configured')
+    return { success: false, error: 'Server configuration error' }
+  }
+
+  const lookup = await findBeehiivSubscriberByEmail(input.email)
+  const subId = lookup?.subscriptionId
+  if (!subId) {
+    return { success: false, error: 'NOT_SUBSCRIBED' }
+  }
+
+  // 1) PATCH the stage custom field.
+  try {
+    const patchRes = await fetch(
+      `${BEEHIIV_API_BASE}/publications/${PUBLICATION_ID}/subscriptions/${subId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          custom_fields: [{ name: 'stage', value: input.stage }],
+        }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    )
+    if (!patchRes.ok) {
+      const text = await patchRes.text().catch(() => '')
+      console.error('beehiiv updateSubscriberStage PATCH failed:', patchRes.status, text.slice(0, 200))
+      return { success: false, error: 'Update failed', subscriptionId: subId }
+    }
+  } catch (err) {
+    console.error('beehiiv updateSubscriberStage PATCH threw:', err)
+    return { success: false, error: 'Network error', subscriptionId: subId }
+  }
+
+  // 2) Add the new stage_<key> tag. Non-fatal — the custom field is the
+  //    source of truth; the tag is a convenience trigger.
+  try {
+    const tagRes = await fetch(
+      `${BEEHIIV_API_BASE}/publications/${PUBLICATION_ID}/subscriptions/${subId}/tags`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ tags: [stageTag(input.stage)] }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    )
+    if (!tagRes.ok && tagRes.status !== 409 /* already has tag */) {
+      const text = await tagRes.text().catch(() => '')
+      console.error('beehiiv updateSubscriberStage tag add failed:', tagRes.status, text.slice(0, 200))
+    }
+  } catch (err) {
+    console.error('beehiiv updateSubscriberStage tag add threw:', err)
+  }
+
+  return { success: true, subscriptionId: subId }
 }
