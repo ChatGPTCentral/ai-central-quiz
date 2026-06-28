@@ -58,7 +58,7 @@ function timeAgo() {
   return `${mins} min ago`
 }
 
-const PAYMENT_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || '#'
+const PAYMENT_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 
 interface FomoProps {
   /** 'offer' (default) shows the $4.99 claim with a payment link — used on

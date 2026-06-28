@@ -6,6 +6,7 @@ import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
 import { DocSearch } from '@/components/result/DocSearch'
 import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
+import { AdoptionGauge } from '@/components/result/AdoptionGauge'
 import { resolveTokens } from '@/lib/piping'
 import { personaContent } from '@/lib/persona-content'
 import { TESTIMONIALS } from '@/lib/sales-content'
@@ -70,6 +71,10 @@ function radarAxes(f: SegFields | null, overallScore: number): { label: string; 
 
 const UPSELL_URL = process.env.NEXT_PUBLIC_UPSELL_URL || 'https://buy.stripe.com/7sIcQe7NAgLT8s8008'
 const LIBRARY_BASE = process.env.NEXT_PUBLIC_LIBRARY_URL || 'https://app.thecentral.ai'
+// Direct $4.99 trial Stripe link — used by the FOMO badge + the library
+// doc-search result cards (low-friction touchpoints that go straight to
+// checkout rather than through the library signup funnel).
+const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 
 /**
  * Build the library handoff URL for the trial CTA. Routes through the
@@ -336,9 +341,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
                 {noDash(stageMeta.description)}
               </p>
-              {seg.personaLane.lane !== 'general' && (
-                <p className="text-[11px] mt-4 italic" style={{ color: '#9C9C9C' }}>
-                  💡 {seg.personaLane.hook}
+              {personaMeta && personaMeta.key !== 'unknown' && (
+                <p className="text-[14px] leading-relaxed mt-4 pt-4" style={{ color: '#333333', borderTop: '1px solid #F0EBE2' }}>
+                  <strong style={{ color: content.accentColor }}>You&apos;re {/^[aeiou]/i.test(content.label) ? 'an' : 'a'} {content.label}.</strong>{' '}
+                  {noDash(content.outlook)}
                 </p>
               )}
             </div>
@@ -414,6 +420,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             })}
           </div>
         </section>
+
+        {/* ── GLOBAL ADOPTION — "you're early; it's an opportunity" ── */}
+        <AdoptionGauge firstName={firstName} />
 
         {/* ── FRICTION BLOCKER (only shown when v2 friction known) ── */}
         {seg.friction && (
@@ -553,7 +562,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               ? `Hand-picked for ${content.label}s. Search 1,200+ more`
               : 'Search 1,200+ tested AI workflows and templates'}
           </p>
-          <DocSearch initialDocs={suggested} paymentUrl={libraryUrl} accent="#E48715" />
+          <DocSearch initialDocs={suggested} paymentUrl={STRIPE_TRIAL_URL} accent="#E48715" />
         </section>
 
         {/* ── MODULE 7: TRUSTED BY (testimonials) ──────────── */}
