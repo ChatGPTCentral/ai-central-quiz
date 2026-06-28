@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSubmission } from '@/lib/kv'
-import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag } from '@/lib/country-flags'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
@@ -19,7 +18,6 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
   try { item = await getSubmission(params.id) } catch { item = null }
   if (!item) notFound()
 
-  const archetype = item.archetype ? ARCHETYPES[item.archetype as ArchetypeKey] : null
   const continent = continentOf(item.country)
   const hasState = showState(item.country)
 
@@ -66,7 +64,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
           email={item.email}
         />
 
-        {/* Name + subtitle + linkedin + archetype */}
+        {/* Name + subtitle + linkedin + stage/persona */}
         <div className="flex-1 min-w-0">
           <div className="text-2xl font-black text-[#333333] leading-tight">
             <InlineField rowId={item.id} field="name" value={item.name || ''} placeholder="full name" />
@@ -108,19 +106,6 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
                 </span>
               )
             })()}
-            {archetype && (
-              <span
-                className="inline-block px-3 py-0.5 rounded-full text-xs font-bold"
-                style={{ backgroundColor: `${archetype.accentColor}18`, color: archetype.accentColor }}
-              >
-                {archetype.label}
-              </span>
-            )}
-            {!archetype && (
-              <span className="inline-block px-3 py-0.5 rounded-full text-xs font-medium bg-[#F5F5F5] text-[#9C9C9C]">
-                No archetype
-              </span>
-            )}
             {item.score !== undefined && (
               <span className="inline-block px-3 py-0.5 rounded-full text-xs font-bold bg-[#333333] text-[#FFFDFA]">
                 Score {item.score}

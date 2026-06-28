@@ -222,7 +222,7 @@ export async function searchDocs(query: string, limit = 8): Promise<NotionDoc[]>
   }
 }
 
-/** Archetype/stage-biased suggestions. Pulls a pool and ranks client-side by
+/** Persona/stage-biased suggestions. Pulls a pool and ranks client-side by
  *  keyword overlap, so we don't depend on a specific tag taxonomy existing. */
 export async function suggestedDocs(keywords: string[], limit = 4): Promise<NotionDoc[]> {
   const c = client()

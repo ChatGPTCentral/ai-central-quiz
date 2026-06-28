@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { checkRateLimit } from '@/lib/validation'
 import { subscribeWithStage, updateSubscriberStage } from '@/lib/beehiiv'
-import { determineArchetype } from '@/lib/archetypes'
 import { findSubmissionByEmail, fromRow, type StoredSubmission } from '@/lib/kv'
 import { runEnrichment } from '@/lib/enrichment/waterfall'
 import { answersToDb, calculateScoreV2, QUESTIONS_V2_MERGED } from '@/lib/questions-v2-merged'
@@ -83,21 +82,6 @@ export async function POST(req: NextRequest) {
     breadthScore: v.breadth_score,
   })
 
-  // Archetype — reuse the legacy mapping from v1 answers where possible.
-  // We don't have aiLevel/timeCommitment/mainGoal/learningStyle in v2; pass
-  // empty strings → determineArchetype falls back to a sensible default.
-  const archetype = determineArchetype({
-    name: v.name,
-    email: v.email,
-    aiLevel: '',
-    workArea: v.work_area || '',
-    learningStyle: '',
-    timeCommitment: '',
-    mainGoal: '',
-    aiTools: v.ai_tools || '',
-    jobLevel: v.job_level || '',
-  })
-
   // Enrichment (work emails only, fire-and-forget for personal domains)
   let enrichedRow: Partial<StoredSubmission> = {}
   let enrichmentStatus: StoredSubmission['enrichmentStatus'] = undefined
@@ -144,7 +128,6 @@ export async function POST(req: NextRequest) {
     momentum: v.momentum ?? null,
     friction: v.friction ?? null,
     intent_30d: v.intent_30d ?? null,
-    archetype,
     score,
     utm_source: utmSource,
     utm_ref: utmRef,
@@ -203,9 +186,11 @@ export async function POST(req: NextRequest) {
   // Re-read and classify
   const { data: rowAfter } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
   let computedStage: string | null = null
+  let computedPersona: string | null = null
   if (rowAfter) {
     const seg = assignSegmentationV2(fromRow(rowAfter as Parameters<typeof fromRow>[0]))
     computedStage = seg.stage
+    computedPersona = seg.persona
     await c.from('submissions').update({
       stage: seg.stage,
       stage_score: seg.stageScore,
@@ -239,7 +224,7 @@ export async function POST(req: NextRequest) {
       // row is gone), fall through to a fresh subscribe.
       if (upd.error === 'NOT_SUBSCRIBED') {
         const sub = await subscribeWithStage({
-          email: v.email!, name: v.name!, stage: computedStage, archetype,
+          email: v.email!, name: v.name!, stage: computedStage, persona: computedPersona,
           utm: { source: utmSource ?? undefined },
         })
         if (!sub.success && sub.error !== 'ALREADY_SUBSCRIBED') {
@@ -248,7 +233,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       const sub = await subscribeWithStage({
-        email: v.email!, name: v.name!, stage: computedStage, archetype,
+        email: v.email!, name: v.name!, stage: computedStage, persona: computedPersona,
         utm: { source: utmSource ?? undefined },
       })
       if (sub.error === 'ALREADY_SUBSCRIBED') {
@@ -272,7 +257,7 @@ export async function POST(req: NextRequest) {
   if (!existing) {
     const { data: finalRow } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
     await sendSubmitNotification(
-      (finalRow ?? { id: rowId, name: v.name, email: v.email, score, archetype }) as Parameters<typeof sendSubmitNotification>[0],
+      (finalRow ?? { id: rowId, name: v.name, email: v.email, score }) as Parameters<typeof sendSubmitNotification>[0],
       process.env.NEXT_PUBLIC_SITE_URL,
     ).catch(err => console.error('[email] notification failed:', err))
   }
@@ -280,7 +265,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     id: rowId,
-    archetype,
+    persona: computedPersona,
     name: v.name,
     score,
     alreadySubscribed,

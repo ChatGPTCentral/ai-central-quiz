@@ -4,7 +4,6 @@ import { createClient } from '@supabase/supabase-js'
 import { runV2 } from '@/lib/enrichment/pipeline-v2'
 import { isPlaceholderPhoto } from '@/lib/enrichment/photo-filter'
 import { titleCase, normalizeCountry } from '@/lib/normalize'
-import { assignSegment } from '@/lib/segmentation'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
 import { fromRow, type DbRow } from '@/lib/kv'
 
@@ -220,13 +219,7 @@ export async function POST(req: NextRequest) {
         // accurate classification.
         const merged = { ...(existingRow as unknown as DbRow), ...(update as Partial<DbRow>) }
         const projected = fromRow(merged)
-        // v1 - - kept dual-write so the segment column stays current
-        const seg = assignSegment(projected)
-        update.segment       = seg.segment
-        update.segment_score = seg.score
-        update.segment_reason = seg.reason
-        update.segmented_at  = new Date().toISOString()
-        // v2 - - the canonical classifier now
+        // v2 - - the canonical classifier
         const v2seg = assignSegmentationV2(projected)
         update.stage         = v2seg.stage
         update.stage_score   = v2seg.stageScore

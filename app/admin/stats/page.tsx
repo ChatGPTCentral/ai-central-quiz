@@ -1,5 +1,4 @@
 import { allSubmissionsForExport } from '@/lib/kv'
-import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
 import { STAGES, PERSONAS } from '@/lib/segmentation-v2'
 
 export const dynamic = 'force-dynamic'
@@ -28,12 +27,6 @@ export default async function StatsPage() {
   const today = items.filter(s => now - s.ts < DAY).length
   const week = items.filter(s => now - s.ts < 7 * DAY).length
   const total = items.length
-
-  // Archetype distribution
-  const archCounts: Record<ArchetypeKey, number> = {
-    executive_strategist: 0, growth_operator: 0, technical_pioneer: 0, practical_learner: 0,
-  }
-  items.forEach(s => { if (archCounts[s.archetype] !== undefined) archCounts[s.archetype]++ })
 
   // Score histogram (bins of 10)
   const bins = Array(10).fill(0)
@@ -113,28 +106,6 @@ export default async function StatsPage() {
                 </div>
                 <div className="h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all" style={{ width: `${p}%`, backgroundColor: def.color }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </section>
-
-      {/* Archetype distribution */}
-      <section className="bg-white border border-[#E0E0E0] rounded-xl p-5 mb-6">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">🧬 Archetype distribution</h2>
-        <div className="space-y-3">
-          {(Object.entries(archCounts) as [ArchetypeKey, number][]).map(([key, n]) => {
-            const p = total > 0 ? (n / total) * 100 : 0
-            const arc = ARCHETYPES[key]
-            return (
-              <div key={key}>
-                <div className="flex items-center justify-between mb-1.5 text-sm">
-                  <span className="font-medium text-black">{arc.label}</span>
-                  <span className="tabular-nums text-gray-500">{n} ({p.toFixed(1)}%)</span>
-                </div>
-                <div className="h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${p}%`, backgroundColor: arc.accentColor }} />
                 </div>
               </div>
             )

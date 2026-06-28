@@ -61,7 +61,7 @@ export default function EmbedDocs() {
       <section style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Events (parent page can listen)</h2>
         <pre style={{ background: '#F5F5F5', padding: 12, borderRadius: 8, fontSize: 12, lineHeight: 1.6 }}>{`window.addEventListener('ac-quiz-submitted', (e) => {
-  // e.detail = { archetype, name, score, email }
+  // e.detail = { persona, name, score, email }
   console.log('Quiz submitted:', e.detail)
 })`}</pre>
       </section>

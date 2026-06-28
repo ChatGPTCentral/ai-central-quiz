@@ -21,7 +21,6 @@ export interface SubmissionRow {
   name?: string | null
   email?: string | null
   score?: number | null
-  archetype?: string | null
   persona?: string | null
   stage?: string | null
   intent_30d?: string | null

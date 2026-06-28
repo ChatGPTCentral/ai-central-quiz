@@ -146,8 +146,8 @@ export function resolveNextStep(
 // ── End-screen blocks (result page) ─────────────────────────────────
 // The result page is composed of a hero band (always rendered) plus an
 // ordered list of body blocks. Existing hardcoded sections (gauge,
-// archetype, testimonials, pricing) stay; blocks slot between the hero
-// and the archetype card.
+// stage card, testimonials, pricing) stay; blocks slot between the hero
+// and the stage card.
 
 export type EndScreenBlockType =
   | 'heading'
@@ -209,7 +209,7 @@ export interface EndScreen {
   /** Human label shown in the editor tab strip (not user-visible). */
   name: string
   /** Headline at the top of the result page. Falls back to the
-   *  archetype-driven default when empty. Supports {firstName} token. */
+   *  stage/persona-driven default when empty. Supports {firstName} token. */
   heroHeadline?: string
   /** Sub copy under the headline. */
   heroSubheadline?: string
@@ -217,7 +217,7 @@ export interface EndScreen {
   ctaText?: string
   /** Primary CTA URL. Defaults to PAYMENT_URL. */
   ctaUrl?: string
-  /** Body blocks rendered between the hero and the archetype card. */
+  /** Body blocks rendered between the hero and the stage card. */
   blocks: EndScreenBlock[]
   /** AND-combined predicates. Empty = matches everything (default fallback).
    *  Evaluation is array-order — first match wins; place the default last. */
@@ -225,7 +225,7 @@ export interface EndScreen {
 }
 
 export type EndScreenConditionField =
-  | 'score' | 'persona' | 'stage' | 'archetype' | 'intent' | 'friction'
+  | 'score' | 'persona' | 'stage' | 'intent' | 'friction'
 
 export type EndScreenConditionOp = 'eq' | 'neq' | 'gte' | 'lte' | 'in'
 
@@ -239,7 +239,6 @@ export interface EndScreenEvalContext {
   score?: number | null
   persona?: string | null
   stage?: string | null
-  archetype?: string | null
   intent?: string | null
   friction?: string | null
 }

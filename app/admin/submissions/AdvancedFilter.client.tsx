@@ -6,11 +6,11 @@ import { FILTERABLE_FIELDS, type FilterRule, type FilterGroup, type Op } from '@
 
 // Curated list of fields shown in the dropdown — order matters for UX.
 const FIELD_ORDER: string[] = [
-  'segment',
+  'stage', 'persona',
   'name', 'email', 'jobTitle', 'jobTitleStandardized', 'seniority', 'jobFunction', 'department',
   'companyName', 'companySize', 'companyIndustry', 'companyDomain',
   'country', 'region', 'city',
-  'archetype', 'score', 'ageBracket', 'ageAiEstimate', 'sexAiEstimate',
+  'score', 'ageBracket', 'ageAiEstimate', 'sexAiEstimate',
   'aiLevel', 'workArea', 'mainGoal', 'aiTools', 'jobLevel',
   'source', 'utmSource',
   'subscriptionTier', 'beehiivStatus', 'lifetimeValueUsd', 'stripeCustomerId',
@@ -40,14 +40,14 @@ const FIELD_LABEL: Record<string, string> = Object.fromEntries(
 // Pre-canned filter specs that surface in the "Suggested" tab.
 // Order = priority. Add new ones over time.
 const SUGGESTED: { name: string; emoji: string; description: string; spec: FilterGroup }[] = [
-  { name: 'Senior Decision Makers', emoji: '👑', description: 'Founders / C-Suite / VP / Director persona',
-    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'decision_maker' }] } },
-  { name: 'Growth Operators', emoji: '🚀', description: 'Marketing / sales / growth persona',
-    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'growth_operator' }] } },
-  { name: 'Technical Builders', emoji: '🔬', description: 'Engineers / developers / data persona',
-    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'technical_builder' }] } },
-  { name: 'AI Power Users', emoji: '🧠', description: 'Advanced AI level + 3+ tools',
-    spec: { combinator: 'and', rules: [{ field: 'segment', op: 'eq', value: 'ai_power_user' }] } },
+  { name: 'Decision Makers', emoji: '👑', description: 'Founders / C-Suite / VP / Director persona',
+    spec: { combinator: 'and', rules: [{ field: 'persona', op: 'eq', value: 'decision_maker' }] } },
+  { name: 'Operators', emoji: '🚀', description: 'Marketing / sales / ops / growth persona',
+    spec: { combinator: 'and', rules: [{ field: 'persona', op: 'eq', value: 'operator' }] } },
+  { name: 'Makers', emoji: '🔬', description: 'Engineers / developers / data / product persona',
+    spec: { combinator: 'and', rules: [{ field: 'persona', op: 'eq', value: 'maker' }] } },
+  { name: 'Power Users', emoji: '🧠', description: 'S4 — daily AI across multiple tools',
+    spec: { combinator: 'and', rules: [{ field: 'stage', op: 'eq', value: 'S4_power_user' }] } },
   {
     name: 'High-value customers', emoji: '💎',
     description: 'Lifetime $ paid ≥ $100',

@@ -1,4 +1,4 @@
-import type { ArchetypeKey } from './archetypes'
+import type { PersonaKey } from './segmentation-v2'
 
 export interface AffiliateTool {
   name: string
@@ -57,29 +57,33 @@ export const AFFILIATE_TOOLS: AffiliateTool[] = [
   { name: 'Writecream', tier: 'standard', category: 'Writing & Content Creation', link: 'https://www.writecream.com/?gr_pk=NjYQ', domain: 'writecream.com' },
 ]
 
-// Curated archetype → tools mapping (10 per archetype, hero-prioritized).
+// Curated persona → tools mapping (10 per persona, hero-prioritized).
 // Names must match AFFILIATE_TOOLS entries above.
-const ARCHETYPE_TOOL_NAMES: Record<ArchetypeKey, string[]> = {
-  technical_pioneer: [
+const PERSONA_TOOL_NAMES: Record<PersonaKey, string[]> = {
+  maker: [
     'Anything', 'Notion', 'Gamma', 'ElevenLabs',
     'Replit', 'Chatbase', 'Marblism', 'SitesGPT', 'Galaxy.ai', 'PDF.ai',
   ],
-  executive_strategist: [
+  decision_maker: [
     'Notion', 'Gamma', 'WISE', 'Beehiiv',
     'Granola', 'Reclaim.ai', 'Miro', 'Chronicle', 'Apollo.io', 'Tykr',
   ],
-  growth_operator: [
+  operator: [
     'Beehiiv', 'ElevenLabs', 'Gamma', 'Notion',
     'AdCreative.ai', 'Apollo.io', 'Reply.io', 'Lusha', 'AuthoredUp', 'Mangools',
   ],
-  practical_learner: [
+  learner: [
     'Cozora', 'Notion', 'Gamma', 'ElevenLabs',
     'Todoist', 'Granola', 'Reclaim.ai', 'Galaxy.ai', 'VisualCV', 'WisprFlow',
   ],
+  unknown: [
+    'Notion', 'Gamma', 'ElevenLabs', 'Cozora',
+    'Granola', 'Reclaim.ai', 'Todoist', 'Galaxy.ai', 'WisprFlow', 'PDF.ai',
+  ],
 }
 
-export function toolsForArchetype(key: ArchetypeKey, limit = 6): AffiliateTool[] {
-  const names = ARCHETYPE_TOOL_NAMES[key] || []
+export function toolsForPersona(key: PersonaKey, limit = 6): AffiliateTool[] {
+  const names = PERSONA_TOOL_NAMES[key] || []
   const byName = new Map(AFFILIATE_TOOLS.map(t => [t.name, t]))
   return names
     .map(n => byName.get(n))

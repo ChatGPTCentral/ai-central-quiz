@@ -58,7 +58,6 @@ export const FILTERABLE_FIELDS: Record<string, { col: string; type: 'text' | 'nu
   ageAiEstimate:         { col: 'age_ai_estimate',       type: 'text' },
   sexAiEstimate:         { col: 'sex_ai_estimate',       type: 'enum', enum: ['male', 'female', 'uncertain'] },
   // Quiz / scoring
-  archetype:             { col: 'archetype',             type: 'text' },
   score:                 { col: 'score',                 type: 'number' },
   aiLevel:               { col: 'ai_level',              type: 'text' },
   workArea:              { col: 'work_area',             type: 'text' },
@@ -84,9 +83,6 @@ export const FILTERABLE_FIELDS: Record<string, { col: string; type: 'text' | 'nu
   enrichmentStatus:      { col: 'enrichment_status',     type: 'enum', enum: ['complete', 'partial', 'failed'] },
   enrichedAt:            { col: 'enriched_at',           type: 'timestamp' },
   createdAt:             { col: 'created_at',            type: 'timestamp' },
-  // Persona segmentation (v1 - - kept for backwards compat / debugging)
-  segment:               { col: 'segment',               type: 'enum',
-                           enum: ['decision_maker', 'growth_operator', 'technical_builder', 'ai_power_user', 'mid_career_operator', 'curious_beginner', 'student_early_career', 'unclassified'] },
   // AI adoption ladder (v2)
   stage:                 { col: 'stage',                 type: 'enum',
                            enum: ['S0_unaware', 'S1_curious', 'S2_experimenter', 'S3_practitioner', 'S4_power_user', 'S5_builder', 'unknown'] },

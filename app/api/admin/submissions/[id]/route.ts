@@ -92,8 +92,7 @@ const EDITABLE: Record<string, string> = {
   ageAiEstimate: 'age_ai_estimate',
   sexAiEstimate: 'sex_ai_estimate',
   aiEstimateConfidence: 'ai_estimate_confidence',
-  // Quiz / archetype / score
-  archetype: 'archetype',
+  // Quiz / score
   score: 'score',
   aiLevel: 'ai_level',
   workArea: 'work_area',

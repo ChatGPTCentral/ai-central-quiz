@@ -339,7 +339,7 @@ export function assignStage(r: StoredSubmission): {
     return { stage: 'S1_curious', score: 1, reason: `Enriched profile - - presence signal` }
   }
   // Took the quiz at all (even with empty answers) → S1
-  if (r.source === 'survey' || r.source === 'quiz_v2' || r.archetype) {
+  if (r.source === 'survey' || r.source === 'quiz_v2') {
     return { stage: 'S1_curious', score: 1, reason: `Quiz participant - - signed up` }
   }
   // Any email-based presence in our CRM → S1

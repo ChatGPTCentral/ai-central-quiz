@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { NotionDoc } from '@/lib/notion'
 
 interface Props {
-  /** Server-rendered initial suggestions (archetype/stage matched). */
+  /** Server-rendered initial suggestions (persona/stage matched). */
   initialDocs: NotionDoc[]
   /** Where each doc card links — the Stripe checkout (docs are gated). */
   paymentUrl: string

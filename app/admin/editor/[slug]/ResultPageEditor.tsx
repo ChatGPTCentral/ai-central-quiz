@@ -48,7 +48,6 @@ const FIELD_LABELS: Record<EndScreenConditionField, string> = {
   score: 'Score (0–100)',
   persona: 'Persona',
   stage: 'Stage',
-  archetype: 'Archetype',
   intent: 'Intent (30-day)',
   friction: 'Friction',
 }
@@ -162,7 +161,7 @@ export function ResultPageEditor(props: Props) {
             <section className="bg-white border border-[#E8E4DF] rounded-xl p-5 space-y-4">
               <div className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">Hero band</div>
 
-              <Field label="Headline" hint="Leave empty for the archetype-driven default. Supports {firstName}, {persona}, {stage}, {score}.">
+              <Field label="Headline" hint="Leave empty for the stage/persona-driven default. Supports {firstName}, {persona}, {stage}, {score}.">
                 <input
                   value={endScreen.heroHeadline ?? ''}
                   onChange={e => onPatchEndScreen({ heroHeadline: e.target.value || undefined })}
@@ -247,7 +246,7 @@ export function ResultPageEditor(props: Props) {
               {endScreen.blocks.length === 0 ? (
                 <div className="bg-white border border-dashed border-[#E8E4DF] rounded-xl px-6 py-10 text-center">
                   <p className="text-xs text-[#9C9C9C]">
-                    No body blocks yet. The result page will render with the default archetype-driven layout.
+                    No body blocks yet. The result page will render with the default stage/persona-driven layout.
                     Add a block to start customizing.
                   </p>
                 </div>

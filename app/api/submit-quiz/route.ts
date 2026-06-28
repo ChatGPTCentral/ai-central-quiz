@@ -3,8 +3,8 @@ import { randomUUID } from 'crypto'
 import { validateQuizSubmission, checkRateLimit } from '@/lib/validation'
 import { type ApolloEnrichmentResult } from '@/lib/apollo'
 import { createBeehiivSubscriber } from '@/lib/beehiiv'
-import { determineArchetype } from '@/lib/archetypes'
-import { saveSubmission } from '@/lib/kv'
+import { saveSubmission, type StoredSubmission } from '@/lib/kv'
+import { assignSegmentationV2 } from '@/lib/segmentation-v2'
 import { calculateAIScore } from '@/lib/score'
 import { runEnrichment } from '@/lib/enrichment/waterfall'
 
@@ -54,8 +54,6 @@ export async function POST(req: NextRequest) {
   if (!valid) {
     return NextResponse.json({ success: false, error: 'Validation failed', errors }, { status: 400 })
   }
-
-  const archetype = determineArchetype(formData)
 
   // Multi-provider enrichment waterfall (Apollo → Databar → Wiza, cached)
   let enrichmentSuccess = false
@@ -107,10 +105,9 @@ export async function POST(req: NextRequest) {
   const aiToolsCount = (formData.aiTools || '').split(',').map(s => s.trim()).filter(v => v && v !== 'None').length
   const score = calculateAIScore(formData.aiLevel, formData.timeCommitment, aiToolsCount)
 
-  saveSubmission({
+  const submission: StoredSubmission = {
     id: submissionId,
     ...formData,
-    archetype,
     score,
     apolloData: apolloLegacy,
     ts: Date.now(),
@@ -119,12 +116,23 @@ export async function POST(req: NextRequest) {
     utmSource,
     utmRef,
     ...enrichedRow,
-  }).catch(err => console.error('Supabase save failed:', err))
+  }
+  // Classify role (persona) + ladder stage up front so legacy submissions
+  // stay consistent with the v2 funnel.
+  const seg = assignSegmentationV2(submission)
+  submission.stage = seg.stage
+  submission.stageScore = seg.stageScore
+  submission.stageReason = seg.stageReason
+  submission.persona = seg.persona
+  submission.personaReason = seg.personaReason
+  submission.stagedAt = new Date().toISOString()
+
+  saveSubmission(submission).catch(err => console.error('Supabase save failed:', err))
 
   const hasBeehiivKey = !!process.env.BEEHIIV_API_KEY && process.env.BEEHIIV_API_KEY !== 'your_beehiiv_api_key_here'
   let alreadySubscribed = false
   if (hasBeehiivKey) {
-    const result = await createBeehiivSubscriber({ ...formData, archetype, apolloData: apolloLegacy })
+    const result = await createBeehiivSubscriber({ ...formData, persona: seg.persona, apolloData: apolloLegacy })
     if (result.error === 'ALREADY_SUBSCRIBED') alreadySubscribed = true
     if (!result.success && result.error !== 'ALREADY_SUBSCRIBED') {
       console.error('beehiiv subscription failed:', result.error)
@@ -136,7 +144,7 @@ export async function POST(req: NextRequest) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...formData,
-      archetype,
+      persona: seg.persona,
       apolloEnriched: enrichmentSuccess,
       linkedinUrl: enrichedRow.linkedinUrl,
       companyName: enrichedRow.companyName,
@@ -146,7 +154,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    archetype,
+    persona: seg.persona,
     name: formData.name,
     apolloEnriched: enrichmentSuccess,
     alreadySubscribed,

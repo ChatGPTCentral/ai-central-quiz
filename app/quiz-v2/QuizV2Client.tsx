@@ -234,7 +234,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       if (isEmbed) {
         postToParent({
           type: 'form_submitted',
-          archetype: data.archetype,
+          persona: data.persona,
           name: data.name,
           score: data.score,
           email: String(answers.email || ''),
@@ -243,10 +243,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         return
       }
       const params = new URLSearchParams({
-        archetype: data.archetype,
         name: data.name,
         score: String(data.score),
       })
+      if (data.persona) params.set('persona', data.persona)
       if (data.id) params.set('id', data.id)
       router.push(`/calculating?${params.toString()}`)
     } catch {

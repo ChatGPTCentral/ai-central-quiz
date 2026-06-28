@@ -27,7 +27,6 @@ export interface IdCardPerson {
   seniority?: string
   source?: string
   score?: number
-  archetype?: string | null
   // Revenue / membership
   lifetimeValueUsd?: number
   subscriptionTier?: string

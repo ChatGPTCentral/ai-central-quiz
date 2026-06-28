@@ -10,7 +10,6 @@ type PrefillResult = {
   history: {
     found: boolean
     submissionId?: string
-    archetype?: string
     completedAt?: number
     // v2 segmentation snapshot
     stage?: string
@@ -206,7 +205,6 @@ export default function DebugPage() {
             {result.history.found ? (
               <div className="text-sm text-gray-700 space-y-1">
                 <div><span className="text-gray-400">Submission ID:</span> {result.history.submissionId}</div>
-                <div><span className="text-gray-400">Archetype:</span> {result.history.archetype}</div>
                 <div><span className="text-gray-400">Completed:</span> {result.history.completedAt ? new Date(result.history.completedAt).toLocaleString() : '—'}</div>
               </div>
             ) : (

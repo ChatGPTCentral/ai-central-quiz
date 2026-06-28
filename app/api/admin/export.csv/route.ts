@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     : await allSubmissionsForExport()
 
   const headers = [
-    'id', 'source', 'ts', 'name', 'email', 'archetype', 'score',
+    'id', 'source', 'ts', 'name', 'email', 'persona', 'stage', 'score',
     'aiLevel', 'workArea', 'learningStyle', 'timeCommitment', 'mainGoal', 'aiTools', 'jobLevel',
     'linkedinUrl', 'photoUrl', 'jobTitle', 'seniority', 'jobFunction', 'department',
     'companyName', 'companyDomain', 'companySize', 'companyIndustry', 'companySubIndustry',
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
   const rows = items.map(s => [
     s.id, s.source || '',
     new Date(s.ts).toISOString(),
-    s.name, s.email, s.archetype, s.score ?? '',
+    s.name, s.email, s.persona || '', s.stage || '', s.score ?? '',
     s.aiLevel, s.workArea, s.learningStyle, s.timeCommitment, s.mainGoal, s.aiTools, s.jobLevel,
     s.linkedinUrl || '', s.photoUrl || '', s.jobTitle || '', s.seniority || '',
     s.jobFunction || '', s.department || '',

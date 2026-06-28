@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const sel = [
       'id', 'email', 'name', 'ts', 'created_at', 'ip', 'user_agent', 'archived_at',
       'ai_level', 'work_area', 'learning_style', 'time_commitment', 'main_goal', 'ai_tools', 'job_level',
-      'archetype', 'score',
+      'score',
       'linkedin_url', 'photo_url',
       'job_title', 'job_title_standardized', 'seniority', 'job_function', 'department',
       'company_name', 'company_domain', 'company_linkedin_url', 'company_website',

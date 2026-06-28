@@ -31,7 +31,6 @@ function toIdCard(s: StoredSubmission): IdCardPerson {
     seniority: s.seniority,
     source: s.source,
     score: s.score,
-    archetype: s.archetype,
     // Revenue / membership — surfaces same data the table column shows
     lifetimeValueUsd: s.lifetimeValueUsd,
     subscriptionTier: s.subscriptionTier,

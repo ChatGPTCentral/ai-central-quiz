@@ -4,7 +4,6 @@
 // previous Vercel KV implementation.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { ArchetypeKey } from './archetypes'
 import type { ApolloEnrichmentResult } from './apollo'
 import type { MergedEnrichment, NormalizedPerson } from './enrichment/types'
 
@@ -19,7 +18,6 @@ export interface StoredSubmission {
   mainGoal: string
   aiTools: string
   jobLevel: string
-  archetype: ArchetypeKey
   score?: number
   apolloData?: ApolloEnrichmentResult
   ts: number
@@ -56,11 +54,6 @@ export interface StoredSubmission {
   stripeFirstChargeAt?: string
   stripeLastChargeAt?: string
   stripeImportedAt?: string
-  // Persona segmentation (lib/segmentation.ts)
-  segment?: string
-  segmentScore?: number
-  segmentReason?: string
-  segmentedAt?: string
   // SANDBOX v2 — laddered Stage + Persona (lib/segmentation-v2.ts).
   // Lives alongside `segment` so we can compare and only flip later.
   stage?: string                // S0_unaware..S5_builder | unknown
@@ -132,7 +125,6 @@ export interface DbRow {
   main_goal: string | null
   ai_tools: string | null
   job_level: string | null
-  archetype: ArchetypeKey
   score: number | null
   apollo_data: ApolloEnrichmentResult | null
   ts: number
@@ -166,10 +158,6 @@ export interface DbRow {
   stripe_first_charge_at: string | null
   stripe_last_charge_at: string | null
   stripe_imported_at: string | null
-  segment: string | null
-  segment_score: number | null
-  segment_reason: string | null
-  segmented_at: string | null
   // SANDBOX v2 columns
   stage: string | null
   stage_score: number | null
@@ -216,7 +204,6 @@ function toRow(s: StoredSubmission): DbRow {
     main_goal: s.mainGoal || null,
     ai_tools: s.aiTools || null,
     job_level: s.jobLevel || null,
-    archetype: s.archetype,
     score: s.score ?? null,
     apollo_data: s.apolloData ?? null,
     ts: s.ts,
@@ -249,10 +236,6 @@ function toRow(s: StoredSubmission): DbRow {
     stripe_first_charge_at: s.stripeFirstChargeAt ?? null,
     stripe_last_charge_at: s.stripeLastChargeAt ?? null,
     stripe_imported_at: s.stripeImportedAt ?? null,
-    segment: s.segment ?? null,
-    segment_score: s.segmentScore ?? null,
-    segment_reason: s.segmentReason ?? null,
-    segmented_at: s.segmentedAt ?? null,
     stage: s.stage ?? null,
     stage_score: s.stageScore ?? null,
     stage_reason: s.stageReason ?? null,
@@ -304,7 +287,6 @@ export function fromRow(r: DbRow): StoredSubmission {
     mainGoal: r.main_goal || '',
     aiTools: r.ai_tools || '',
     jobLevel: r.job_level || '',
-    archetype: r.archetype,
     score: r.score ?? undefined,
     apolloData: r.apollo_data ?? undefined,
     ts: r.ts,
@@ -338,10 +320,6 @@ export function fromRow(r: DbRow): StoredSubmission {
     stripeFirstChargeAt: r.stripe_first_charge_at ?? undefined,
     stripeLastChargeAt: r.stripe_last_charge_at ?? undefined,
     stripeImportedAt: r.stripe_imported_at ?? undefined,
-    segment: r.segment ?? undefined,
-    segmentScore: r.segment_score ?? undefined,
-    segmentReason: r.segment_reason ?? undefined,
-    segmentedAt: r.segmented_at ?? undefined,
     stage: r.stage ?? undefined,
     stageScore: r.stage_score ?? undefined,
     stageReason: r.stage_reason ?? undefined,
@@ -400,7 +378,6 @@ export async function saveSubmission(s: StoredSubmission): Promise<void> {
     mainGoal: s.mainGoal || existing.mainGoal,
     aiTools: s.aiTools || existing.aiTools,
     jobLevel: s.jobLevel || existing.jobLevel,
-    archetype: s.archetype,
     score: s.score ?? existing.score,
     ts: s.ts,                       // refresh capture date on re-submit
     ip: s.ip || existing.ip,

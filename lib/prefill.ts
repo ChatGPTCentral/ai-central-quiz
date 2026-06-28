@@ -26,7 +26,6 @@ export interface PrefillResult {
   history: {
     found: boolean
     submissionId?: string
-    archetype?: string
     completedAt?: number
     // v2 segmentation snapshot — included so the admin Debug page and the
     // public quiz can both surface where the row sits today
@@ -118,7 +117,6 @@ export async function getPrefillData(emailRaw: string): Promise<PrefillResult> {
       ? {
           found: true,
           submissionId: history.id,
-          archetype: history.archetype,
           completedAt: history.ts,
           stage: history.stage,
           stageReason: history.stageReason,

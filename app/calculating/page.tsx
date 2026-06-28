@@ -19,7 +19,7 @@ const STEPS = [
 function CalculatingContent() {
  const router = useRouter()
  const searchParams = useSearchParams()
- const archetype = searchParams.get('archetype')
+ const persona = searchParams.get('persona') || ''
  const name = searchParams.get('name')
  const score = searchParams.get('score') || ''
  const id = searchParams.get('id') || ''
@@ -28,7 +28,7 @@ function CalculatingContent() {
  const [completedSteps, setCompletedSteps] = useState<number[]>([])
 
  useEffect(() => {
-  if (!archetype || !name) {
+  if (!name) {
    router.replace('/')
    return
   }
@@ -46,10 +46,10 @@ function CalculatingContent() {
      else {
       setTimeout(() => {
        const params = new URLSearchParams({
-        archetype: archetype!,
         name: name!,
         score,
        })
+       if (persona) params.set('persona', persona)
        if (id) params.set('id', id)
        router.replace(`/result?${params.toString()}`)
       }, 400)

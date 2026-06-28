@@ -1,6 +1,4 @@
 import type { ApolloEnrichmentResult } from './apollo'
-import type { ArchetypeKey } from './archetypes'
-import { ARCHETYPES } from './archetypes'
 import { findBeehiivSubscriberByEmail } from './enrichment/beehiiv-lookup'
 
 const BEEHIIV_API_BASE = 'https://api.beehiiv.com/v2'
@@ -9,6 +7,11 @@ const PUBLICATION_ID = process.env.BEEHIIV_PUBLICATION_ID || 'pub_685dd277-3d37-
 /** Tag prefix for the AI Adoption Ladder rung — `stage_S2_experimenter` etc. */
 export function stageTag(stageKey: string): string {
   return `stage_${stageKey}`
+}
+
+/** Tag prefix for the role persona — `persona_decision_maker` etc. */
+export function personaTag(personaKey: string): string {
+  return `persona_${personaKey}`
 }
 
 interface CustomField {
@@ -26,7 +29,7 @@ export interface CreateSubscriberPayload {
   mainGoal: string
   aiTools: string
   jobLevel: string
-  archetype: ArchetypeKey
+  persona: string
   apolloData: ApolloEnrichmentResult
 }
 
@@ -36,8 +39,6 @@ export async function createBeehiivSubscriber(payload: CreateSubscriberPayload):
     console.error('beehiiv API key not configured')
     return { success: false, error: 'Server configuration error' }
   }
-
-  const archetypeConfig = ARCHETYPES[payload.archetype]
 
   const customFields: CustomField[] = [
     { name: 'quiz_name', value: payload.name },
@@ -66,7 +67,7 @@ export async function createBeehiivSubscriber(payload: CreateSubscriberPayload):
     utm_source: 'quiz',
     utm_medium: 'personalized_signup',
     utm_campaign: 'quiz_v2',
-    tags: archetypeConfig.tags,
+    tags: payload.persona && payload.persona !== 'unknown' ? [personaTag(payload.persona)] : [],
     custom_fields: customFields,
   }
 
@@ -104,7 +105,7 @@ export async function createBeehiivSubscriber(payload: CreateSubscriberPayload):
 // The v1 createBeehiivSubscriber above ships every quiz answer to Beehiiv
 // as a custom field. v2 inverts that: the only signal marketing branches
 // on inside Beehiiv is the AI Adoption Ladder rung (stage), so we sync
-// just that — once at signup, and again on every retake. The archetype
+// just that — once at signup, and again on every retake. The persona
 // tag tags along as a low-cost secondary classifier; everything else
 // stays in our DB.
 // ─────────────────────────────────────────────────────────────────────
@@ -114,8 +115,8 @@ export interface StageSubscribePayload {
   name: string
   /** AI Adoption Ladder rung, e.g. 'S2_experimenter'. Pass null if unknown. */
   stage: string | null
-  /** Archetype key for the archetype_<key> tag + ARCHETYPES.tags. Optional. */
-  archetype?: ArchetypeKey | null
+  /** Persona key for the persona_<key> secondary tag. Optional. */
+  persona?: string | null
   utm?: {
     source?: string | null
     medium?: string | null
@@ -145,17 +146,12 @@ function stageCustomFields(name: string, stage: string | null): CustomField[] {
   return fields
 }
 
-function stageTags(stage: string | null, archetype: ArchetypeKey | null | undefined): string[] {
+function stageTags(stage: string | null, persona: string | null | undefined): string[] {
   const tags: string[] = []
   if (stage) tags.push(stageTag(stage))
-  if (archetype) {
-    tags.push(`archetype_${archetype}`)
-    // ARCHETYPES already maintains a tag list (e.g. seniority_executive) —
-    // keep them flowing through so existing automations don't lose context.
-    for (const t of ARCHETYPES[archetype].tags) {
-      if (!tags.includes(t)) tags.push(t)
-    }
-  }
+  // Persona rides along as a low-cost secondary classifier; stage stays the
+  // primary signal marketing branches on.
+  if (persona && persona !== 'unknown') tags.push(personaTag(persona))
   return tags
 }
 
@@ -179,7 +175,7 @@ export async function subscribeWithStage(payload: StageSubscribePayload): Promis
     utm_source: payload.utm?.source ?? 'quiz',
     utm_medium: payload.utm?.medium ?? 'personalized_signup',
     utm_campaign: payload.utm?.campaign ?? 'quiz_v2',
-    tags: stageTags(payload.stage, payload.archetype),
+    tags: stageTags(payload.stage, payload.persona),
     custom_fields: stageCustomFields(payload.name, payload.stage),
   }
 

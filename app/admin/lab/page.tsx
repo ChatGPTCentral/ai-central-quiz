@@ -78,7 +78,7 @@ export default function LabPage() {
       <p className="text-sm text-[#9C9C9C] mb-6">
         Test the 8-stage v2 pipeline on any submission (or any email) without touching the live data.
         Stages run in order: <strong>name from email → Google → LinkedIn scrape → Apollo → Wiza → AI vision → Beehiiv → Stripe</strong>.
-        Toggle <strong>Save</strong> to write merged results + run the segment classifier on the row.
+        Toggle <strong>Save</strong> to write merged results + run the Stage + Persona classifier on the row.
       </p>
 
       <div className="flex gap-2 items-end mb-6">

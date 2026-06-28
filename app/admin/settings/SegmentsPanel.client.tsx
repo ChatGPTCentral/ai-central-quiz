@@ -2,27 +2,41 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { SEGMENTS } from '@/lib/segmentation'
+import { STAGES, PERSONAS } from '@/lib/segmentation-v2'
 
 interface Props {
-  /** Current distribution { segment_key: count } — server-computed */
-  distribution: Record<string, number>
+  /** key → count for stage column (server-computed across ALL active rows) */
+  stageDist: Record<string, number>
+  /** key → count for persona column */
+  personaDist: Record<string, number>
   total: number
 }
 
-export default function SegmentsPanel({ distribution, total }: Props) {
+function DistRow({ emoji, label, color, count, pct }: { emoji: string; label: string; color: string; count: number; pct: number }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="inline-flex items-center gap-1 text-[12px] font-bold min-w-[150px]" style={{ color }}>{emoji} {label}</span>
+      <div className="flex-1 h-2 bg-[#F0F0F0] rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-[11px] tabular-nums text-[#9C9C9C] w-24 text-right">{count.toLocaleString()} ({pct.toFixed(1)}%)</span>
+    </div>
+  )
+}
+
+export default function SegmentsPanel({ stageDist, personaDist, total }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string>('')
 
   async function reassign(dryRun: boolean) {
-    if (!dryRun && !confirm('Re-run the persona classifier on every CRM row?\n\nDeterministic + idempotent — only rows whose segment changed get written. Takes ~1-2 min for ~2.5k rows.')) return
+    if (!dryRun && !confirm('Re-run the Stage + Persona classifier on every CRM row?\n\nDeterministic + idempotent — only rows whose classification changed get written. Takes ~1-2 min for ~2.8k rows.')) return
     setBusy(true); setMsg('')
     try {
-      // Loop until hasMore=false (the endpoint chunks at 5000 rows)
+      // Loop until hasMore=false (the endpoint chunks at 5000 rows).
       let totalScanned = 0, totalUpdated = 0
       for (let pass = 0; pass < 10; pass++) {
-        const res = await fetch('/api/admin/segments/reassign', {
+        const res = await fetch('/api/admin/stages/reassign', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dryRun, limit: 5000 }),
         })
@@ -30,7 +44,7 @@ export default function SegmentsPanel({ distribution, total }: Props) {
         if (!res.ok) { setMsg(`✕ ${data.error || 'failed'}`); return }
         totalScanned += data.scanned ?? 0
         totalUpdated += data.updated ?? 0
-        setMsg(`${dryRun ? 'Dry-run' : 'Reassigned'} pass ${pass+1}: scanned ${data.scanned}, updated ${data.updated} · cum ${totalScanned}/${totalUpdated}`)
+        setMsg(`${dryRun ? 'Dry-run' : 'Reassigned'} pass ${pass + 1}: scanned ${data.scanned}, updated ${data.updated} · cum ${totalScanned}/${totalUpdated}`)
         if (!data.hasMore) break
       }
       if (!dryRun) router.refresh()
@@ -41,13 +55,17 @@ export default function SegmentsPanel({ distribution, total }: Props) {
     }
   }
 
+  const unStage = stageDist['(unclassified)'] || 0
+  const unPersona = personaDist['(unclassified)'] || 0
+  const pctOf = (n: number) => (total > 0 ? (n / total) * 100 : 0)
+
   return (
     <section className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mt-6">
       <header className="px-5 py-4 border-b border-[#E8E4DF] flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-base font-black text-[#333333]">Persona segments</h2>
+          <h2 className="text-base font-black text-[#333333]">Stage + Persona classification</h2>
           <p className="text-[11px] text-[#9C9C9C] mt-0.5">
-            Money-blind segmentation — each row gets exactly one persona based on socio-demo-psycho-behavioural traits. Edit <code className="bg-[#F5F5F5] px-1 rounded">lib/segmentation.ts</code> to refine, then reassign.
+            The canonical segmentation — every row gets one ladder <strong>stage</strong> + one role <strong>persona</strong>. Edit <code className="bg-[#F5F5F5] px-1 rounded">lib/segmentation-v2.ts</code> to refine, then reassign. Counts span all {total.toLocaleString()} active rows.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -58,31 +76,21 @@ export default function SegmentsPanel({ distribution, total }: Props) {
 
       {msg && <div className="px-5 py-2 text-[11px] text-[#062B0A] bg-[#62A758]/15 border-b border-[#E8E4DF]">{msg}</div>}
 
-      <div className="divide-y divide-[#F5F5F5]">
-        {SEGMENTS.map(def => {
-          const count = distribution[def.key] || 0
-          const pct = total > 0 ? (count / total) * 100 : 0
-          return (
-            <div key={def.key} className="flex items-start gap-4 px-5 py-3 hover:bg-[#FFFDFA]">
-              <div className="shrink-0 mt-0.5">
-                <span
-                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
-                  style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
-                >
-                  {def.emoji} {def.label}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] text-[#333333]"><strong>Sales angle:</strong> {def.salesHypothesis}</p>
-                <p className="text-[10px] text-[#9C9C9C] mt-0.5">Priority {def.priority} · key <code className="bg-[#F5F5F5] px-1 rounded">{def.key}</code></p>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-base font-black tabular-nums" style={{ color: def.color }}>{count.toLocaleString()}</div>
-                <div className="text-[10px] text-[#9C9C9C] tabular-nums">{pct.toFixed(1)}%</div>
-              </div>
-            </div>
-          )
-        })}
+      <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[#F5F5F5]">
+        <div className="p-5 space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#9C9C9C] mb-3">📈 Stage (AI adoption ladder)</p>
+          {STAGES.map(def => (
+            <DistRow key={def.key} emoji={def.emoji} label={def.label} color={def.color} count={stageDist[def.key] || 0} pct={pctOf(stageDist[def.key] || 0)} />
+          ))}
+          {unStage > 0 && <DistRow emoji="·" label="(unclassified)" color="#9C9C9C" count={unStage} pct={pctOf(unStage)} />}
+        </div>
+        <div className="p-5 space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#9C9C9C] mb-3">👤 Persona (role)</p>
+          {PERSONAS.map(def => (
+            <DistRow key={def.key} emoji={def.emoji} label={def.label} color={def.color} count={personaDist[def.key] || 0} pct={pctOf(personaDist[def.key] || 0)} />
+          ))}
+          {unPersona > 0 && <DistRow emoji="·" label="(unclassified)" color="#9C9C9C" count={unPersona} pct={pctOf(unPersona)} />}
+        </div>
       </div>
     </section>
   )

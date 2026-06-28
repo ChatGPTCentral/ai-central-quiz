@@ -14,7 +14,7 @@ const LIST_COLUMNS = [
   'id', 'email', 'name', 'ts', 'created_at', 'ip', 'user_agent', 'archived_at',
   // quiz
   'ai_level', 'work_area', 'learning_style', 'time_commitment', 'main_goal', 'ai_tools', 'job_level',
-  'archetype', 'score',
+  'score',
   // enrichment scalars
   'linkedin_url', 'photo_url',
   'job_title', 'job_title_standardized', 'seniority', 'job_function', 'department',
@@ -32,8 +32,6 @@ const LIST_COLUMNS = [
   'stripe_customer_id', 'stripe_customer_ids', 'stripe_products', 'stripe_subscriptions',
   'stripe_first_charge_at', 'stripe_last_charge_at', 'stripe_imported_at',
   'lifetime_value_usd',
-  // Persona segmentation
-  'segment', 'segment_score', 'segment_reason', 'segmented_at',
   // SANDBOX v2 — Stage + Persona
   'stage', 'stage_score', 'stage_reason', 'persona', 'persona_reason', 'staged_at',
   'frequency_score', 'depth_score', 'breadth_score', 'momentum', 'friction', 'intent_30d',
@@ -53,7 +51,6 @@ function client(): SupabaseClient {
 }
 
 export interface DashboardFilters {
-  archetype?: string[]
   aiLevel?: string[]
   mainGoal?: string[]
   timeCommitment?: string[]
@@ -66,7 +63,7 @@ export interface DashboardFilters {
   buyingIntent?: string[]
   hasLinkedin?: boolean
   hasPhoto?: boolean
-  // Additional facets (multi-select like archetype etc.)
+  // Additional facets (multi-select like stage/persona etc.)
   subscriptionTier?: string[]
   beehiivStatus?: string[]
   sexAiEstimate?: string[]
@@ -92,7 +89,6 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
     return v ? v.split(',').map(s => s.trim()).filter(Boolean) : undefined
   }
   return {
-    archetype: csv('archetype'),
     aiLevel: csv('aiLevel'),
     mainGoal: csv('mainGoal'),
     timeCommitment: csv('timeCommitment'),
@@ -127,7 +123,6 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
 function applyFilters(q: any, f: DashboardFilters): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let r: any = q
-  if (f.archetype?.length)         r = r.in('archetype', f.archetype)
   if (f.aiLevel?.length)           r = r.in('ai_level', f.aiLevel)
   if (f.mainGoal?.length)          r = r.in('main_goal', f.mainGoal)
   if (f.timeCommitment?.length)    r = r.in('time_commitment', f.timeCommitment)
@@ -249,7 +244,7 @@ export async function filteredSubmissionsAll(filters: DashboardFilters): Promise
 /** Top-N facet counts honoring current filters (so the UI shows reachable values only). */
 export async function facetCounts(
   filters: DashboardFilters,
-  column: 'archetype' | 'seniority' | 'company_industry' | 'country' | 'main_goal' | 'source' | 'age_bracket' | 'buying_intent' | 'subscription_tier' | 'beehiiv_status' | 'sex_ai_estimate' | 'enrichment_status' | 'work_area' | 'ai_level' | 'company_size' | 'job_level',
+  column: 'stage' | 'persona' | 'seniority' | 'company_industry' | 'country' | 'main_goal' | 'source' | 'age_bracket' | 'buying_intent' | 'subscription_tier' | 'beehiiv_status' | 'sex_ai_estimate' | 'enrichment_status' | 'work_area' | 'ai_level' | 'company_size' | 'job_level',
   limit = 10,
 ): Promise<{ value: string; count: number }[]> {
   // Paginate to bypass the PostgREST 1000-row default cap (same fix as

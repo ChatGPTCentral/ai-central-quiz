@@ -480,7 +480,6 @@ const COLUMNS: Column[] = [
       { id: 'jobFunction',         label: 'Function',        cell: Editable('jobFunction', 'function') },
       { id: 'department',          label: 'Department',      cell: Editable('department', 'department') },
       { id: 'jobLevel',            label: 'Job level',       cell: Editable('jobLevel', 'job level') },
-      { id: 'archetype',           label: 'Archetype',       cell: Editable('archetype', 'archetype') },
       { id: 'aiLevel',             label: 'AI familiarity',  cell: Editable('aiLevel', 'level') },
       { id: 'workArea',            label: 'Work area',       cell: Editable('workArea', 'work area') },
       { id: 'learningStyle',       label: 'Learning style',  cell: Editable('learningStyle', 'style') },

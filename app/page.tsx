@@ -4,7 +4,7 @@ import { RadarChart } from '@/components/RadarChart'
 import FomoPopup from '@/components/FomoPopup'
 
 export const metadata = {
-  title: 'AI Central — Find your AI archetype',
+  title: 'AI Central — Find your AI stage',
   description: 'A 90-second quiz. We map where you actually sit on the AI adoption ladder, then hand back a 30-day plan tuned to your role and tools.',
 }
 

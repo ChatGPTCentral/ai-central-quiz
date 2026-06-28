@@ -8,7 +8,7 @@
 //   • subscription summary
 //
 // Stripe is the source of truth when conflicts arise — overwrites name,
-// country, and every stripe_* column. Quiz-derived fields (archetype,
+// country, and every stripe_* column. Quiz-derived fields (persona,
 // score, ai_level, etc.) stay untouched.
 //
 // New customers without a quiz row land as `source='stripe'` rows that
@@ -472,7 +472,6 @@ export async function importAggregatedToCRM(
           ts: a.customerCreatedAt ? new Date(a.customerCreatedAt).getTime() : Date.now(),
           ai_level: '', work_area: '', learning_style: '', time_commitment: '',
           main_goal: '', ai_tools: '', job_level: '',
-          archetype: null,
           ...stripeFields,
         }
         const { error } = await c.from('submissions').insert(insertPayload)

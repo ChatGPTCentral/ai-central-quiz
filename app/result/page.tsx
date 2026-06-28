@@ -1,5 +1,4 @@
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import CountdownTimer from '@/components/CountdownTimer'
 import InlineCountdown from '@/components/InlineCountdown'
@@ -8,7 +7,7 @@ import { RadarChart } from '@/components/RadarChart'
 import { DocSearch } from '@/components/result/DocSearch'
 import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
 import { resolveTokens } from '@/lib/piping'
-import { ARCHETYPES, type ArchetypeKey } from '@/lib/archetypes'
+import { personaContent } from '@/lib/persona-content'
 import { TESTIMONIALS } from '@/lib/sales-content'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
@@ -158,27 +157,27 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 }
 
 async function ResultContent({ searchParams }: { searchParams: Record<string, string | undefined> }) {
-  const archetypeKey = searchParams.archetype as ArchetypeKey | undefined
   const name = searchParams.name ? decodeURIComponent(searchParams.name) : ''
   const scoreRaw = parseInt(searchParams.score || '0', 10)
   const score = isNaN(scoreRaw) || scoreRaw <= 0 ? 50 : scoreRaw
   const rowId = searchParams.id
 
-  if (!archetypeKey || !ARCHETYPES[archetypeKey]) notFound()
-
-  const archetype = ARCHETYPES[archetypeKey]
   const firstName = (name || '').trim().split(/\s+/)[0] || ''
 
   // V2 segment fields — server-fetched from the row id, optional
   const segFields = await fetchSegmentFields(rowId)
+  // Persona is the single role taxonomy. Prefer the stored value; fall back
+  // to the URL param the calculating page hands off when there's no row id.
+  const persona = segFields?.persona ?? searchParams.persona ?? null
+  const content = personaContent(persona)
   const seg = getSegmentCopy({
     stage: segFields?.stage,
-    persona: segFields?.persona,
+    persona,
     friction: segFields?.friction,
     intent: segFields?.intent_30d,
   })
   const stageMeta = stageDef(segFields?.stage)
-  const personaMeta = personaDef(segFields?.persona)
+  const personaMeta = personaDef(persona)
   // Static trial CTA (replaces the intent-aware copy); an editor end-screen
   // can still override the primary button via ctaText.
   const primaryCta = 'Start your trial'
@@ -187,21 +186,20 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const axes = radarAxes(segFields, score)
 
   // Suggested docs from the AI Central document database (Notion), biased to
-  // this archetype's topics. Empty list if Notion isn't configured.
-  const suggested = await suggestedDocs(archetype.tutorialKeywords, 4)
+  // this persona's topics. Empty list if Notion isn't configured.
+  const suggested = await suggestedDocs(content.tutorialKeywords, 4)
 
   // Editor-driven overrides: hero copy + body blocks. Picks the first
   // outcome whose `when` conditions match this submission's score/persona/
-  // stage/archetype; falls back to a no-condition default outcome; falls
-  // through to the archetype/segment-driven defaults below when nothing matches.
+  // stage; falls back to a no-condition default outcome; falls through to the
+  // stage/persona-driven defaults below when nothing matches.
   let endScreen: EndScreen | null = null
   try {
     const liveConfig = await getLivePublishedConfig('quiz-v2')
     endScreen = pickEndScreen(liveConfig?.endScreens ?? [], {
       score,
-      persona: segFields?.persona ?? null,
+      persona: persona ?? null,
       stage: segFields?.stage ?? null,
-      archetype: archetypeKey,
       intent: segFields?.intent_30d ?? null,
       friction: segFields?.friction ?? null,
     })
@@ -213,7 +211,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   // like "Nice work, {firstName}!" gracefully degrade.
   const tokens = {
     answers: { name: name || '' },
-    persona: segFields?.persona ?? null,
+    persona: persona ?? null,
     personaLabel: personaMeta?.key !== 'unknown' ? personaMeta?.label ?? null : null,
     stage: segFields?.stage ?? null,
     stageLabel: stageMeta?.key !== 'unknown' ? stageMeta?.label ?? null : null,
@@ -315,11 +313,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </section>
         )}
 
-        {/* ── ARCHETYPE CARD — the archetype IS the ladder rung. ── */}
+        {/* ── STAGE CARD — the ladder rung the reader is on. ── */}
         {stageMeta && stageMeta.key !== 'unknown' && (
           <section className="px-6 pt-10 pb-6 max-w-2xl mx-auto w-full">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: '#9C9C9C' }}>
-              Your AI archetype
+              Your AI profile
             </p>
             <div
               className="rounded-2xl p-7 mb-4 relative overflow-hidden"
@@ -552,7 +550,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           <h2 className="text-xl font-black mb-1 text-center" style={{ color: '#333333' }}>Explore the AI Central library</h2>
           <p className="text-[13px] mb-6 text-center" style={{ color: '#9C9C9C' }}>
             {suggested.length > 0
-              ? `Hand-picked for ${archetype.label}s. Search 1,200+ more`
+              ? `Hand-picked for ${content.label}s. Search 1,200+ more`
               : 'Search 1,200+ tested AI workflows and templates'}
           </p>
           <DocSearch initialDocs={suggested} paymentUrl={libraryUrl} accent="#E48715" />
