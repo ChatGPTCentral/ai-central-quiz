@@ -117,6 +117,8 @@ export interface StageSubscribePayload {
   stage: string | null
   /** Persona key for the persona_<key> secondary tag. Optional. */
   persona?: string | null
+  /** Extra literal tags to attach (e.g. 'free_course' for the downsell). */
+  extraTags?: string[]
   utm?: {
     source?: string | null
     medium?: string | null
@@ -175,7 +177,7 @@ export async function subscribeWithStage(payload: StageSubscribePayload): Promis
     utm_source: payload.utm?.source ?? 'quiz',
     utm_medium: payload.utm?.medium ?? 'personalized_signup',
     utm_campaign: payload.utm?.campaign ?? 'quiz_v2',
-    tags: stageTags(payload.stage, payload.persona),
+    tags: [...stageTags(payload.stage, payload.persona), ...(payload.extraTags ?? [])],
     custom_fields: stageCustomFields(payload.name, payload.stage),
   }
 
@@ -285,5 +287,41 @@ export async function updateSubscriberStage(input: {
     console.error('beehiiv updateSubscriberStage tag add threw:', err)
   }
 
+  return { success: true, subscriptionId: subId }
+}
+
+/**
+ * Attach literal tags to an already-subscribed email (looked up by email).
+ * Used by the free-course downsell to tag existing subscribers whom
+ * subscribeWithStage returned ALREADY_SUBSCRIBED for. Returns NOT_SUBSCRIBED
+ * when the email isn't on the list.
+ */
+export async function addSubscriberTags(input: { email: string; tags: string[] }): Promise<StageResult> {
+  const apiKey = process.env.BEEHIIV_API_KEY
+  if (!apiKey) return { success: false, error: 'Server configuration error' }
+
+  const lookup = await findBeehiivSubscriberByEmail(input.email)
+  const subId = lookup?.subscriptionId
+  if (!subId) return { success: false, error: 'NOT_SUBSCRIBED' }
+
+  try {
+    const res = await fetch(
+      `${BEEHIIV_API_BASE}/publications/${PUBLICATION_ID}/subscriptions/${subId}/tags`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ tags: input.tags }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    )
+    if (!res.ok && res.status !== 409 /* already has tag */) {
+      const text = await res.text().catch(() => '')
+      console.error('beehiiv addSubscriberTags failed:', res.status, text.slice(0, 200))
+      return { success: false, error: 'Tag failed', subscriptionId: subId }
+    }
+  } catch (err) {
+    console.error('beehiiv addSubscriberTags threw:', err)
+    return { success: false, error: 'Network error', subscriptionId: subId }
+  }
   return { success: true, subscriptionId: subId }
 }

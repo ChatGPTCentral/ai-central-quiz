@@ -9,6 +9,8 @@ import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
 import { AdoptionGauge } from '@/components/result/AdoptionGauge'
 import { resolveTokens } from '@/lib/piping'
 import { personaContent } from '@/lib/persona-content'
+import { readinessType, traitTags } from '@/lib/readiness-type'
+import { NotYetDownsell } from '@/components/result/NotYetDownsell'
 import { TESTIMONIALS } from '@/lib/sales-content'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
@@ -175,6 +177,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   // to the URL param the calculating page hands off when there's no row id.
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
+  // Named AI Readiness Type (from stage) + trait tags (from persona/friction/
+  // intent) + the "ahead of ~X%" percentile — the discovery hook.
+  const rt = readinessType(segFields?.stage)
+  const tags = traitTags(persona, segFields?.friction, segFields?.intent_30d)
   const seg = getSegmentCopy({
     stage: segFields?.stage,
     persona,
@@ -237,78 +243,50 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
       <CountdownTimer paymentUrl={libraryUrl} />
 
       <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
-        {/* ── HERO: 2-column — text left, radar right ─────── */}
-        <section
-          className="relative px-6 pt-10 pb-12 sm:pb-16 w-full overflow-hidden border-b"
-          style={{
-            borderColor: '#E8E4DF',
-            background: `
-              radial-gradient(60% 60% at 80% 15%, #62A75822 0%, transparent 60%),
-              radial-gradient(50% 50% at 12% 95%, #E4871522 0%, transparent 60%),
-              linear-gradient(180deg, #F4F1EA 0%, #FBFAF5 60%, #FFFDFA 100%)
-            `,
-          }}
-        >
-          {/* Apple-style perspective grid overlay */}
+        {/* ── HERO: AI Readiness Type (clean, centered) ─────── */}
+        <section className="px-6 pt-8 pb-6 max-w-2xl mx-auto w-full text-center">
+          <p className="text-[11px] font-black uppercase tracking-[0.16em] mb-3" style={{ color: '#9C9C9C' }}>
+            Your AI readiness type
+          </p>
+          <h1 className="text-[40px] sm:text-[54px] font-black leading-[1.0] mb-4" style={{ color: '#333333' }}>
+            {rt.typeName}
+          </h1>
+          {tags.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-2 mb-5">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="text-[12px] font-bold px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: '#FEF7E7', color: '#E48715' }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-[16px] sm:text-[18px] leading-relaxed max-w-lg mx-auto mb-6" style={{ color: '#333333' }}>
+            {heroHeadline ? resolveTokens(heroHeadline, tokens) : rt.tagline}
+          </p>
           <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundImage: `
-                linear-gradient(to right, rgba(51,51,51,0.05) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(51,51,51,0.05) 1px, transparent 1px)
-              `,
-              backgroundSize: '44px 44px',
-              maskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
-              WebkitMaskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
-            }}
-            aria-hidden
-          />
-          <div className="relative grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 items-center max-w-5xl mx-auto">
-            {/* LEFT — copy */}
-            <div className="text-center md:text-left">
-              {heroHeadline ? (
-                <h1 className="text-[30px] sm:text-[36px] md:text-[42px] font-black leading-[1.05] mb-3" style={{ color: '#333333' }}>
-                  {resolveTokens(heroHeadline, tokens)}
-                </h1>
-              ) : (
-                <h1 className="text-[30px] sm:text-[36px] md:text-[42px] font-black leading-[1.05] mb-3" style={{ color: '#333333' }}>
-                  {firstName ? `${firstName}, you're a ` : "You're a "}
-                  <span style={{ color: '#E48715' }}>{stageMeta && stageMeta.key !== 'unknown' ? stageMeta.label : 'rising AI user'}</span>.
-                  {' '}Here&apos;s how far AI Central takes you
-                </h1>
-              )}
-
-              <p className="text-[15px] sm:text-[16px] leading-relaxed max-w-md mx-auto md:mx-0 mb-6 sm:mb-7" style={{ color: '#9C9C9C' }}>
-                {heroSubheadline
-                  ? resolveTokens(heroSubheadline, tokens)
-                  : 'Your skill profile today, and the headroom the library unlocks'}
-              </p>
-
-              <a
-                href={ctaUrl}
-                className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl font-black text-[15px] sm:text-[16px] transition-all active:scale-[0.99] hover:opacity-90 shadow-sm"
-                style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
-              >
-                Unlock 1,200+ AI tutorials
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <polyline points="12 5 19 12 12 19" />
-                </svg>
-              </a>
-            </div>
-
-            {/* RIGHT — radar */}
-            <div className="flex justify-center md:justify-end">
-              <div className="w-full max-w-[460px]">
-                <RadarChart
-                  axes={axes}
-                  mode="result"
-                  accent="#62A758"
-                  size={360}
-                />
-              </div>
-            </div>
+            className="rounded-2xl px-5 py-4 mb-7 mx-auto max-w-md"
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF' }}
+          >
+            <p className="text-[14px] leading-relaxed" style={{ color: '#555' }}>
+              {firstName ? `${firstName}, you're ` : "You're "}
+              <strong style={{ color: '#333333' }}>ahead of ~{rt.aheadPct}%</strong> of people on their AI journey.
+            </p>
           </div>
+          <a
+            href={ctaUrl}
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-[15px] sm:text-[16px] transition-all active:scale-[0.99] hover:opacity-90 shadow-sm"
+            style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
+          >
+            {ctaText}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </a>
         </section>
 
         {/* ── EDITOR-DRIVEN BODY BLOCKS (if any) ─────────── */}
@@ -317,6 +295,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             <EndScreenBlocks blocks={endScreen.blocks} tokens={tokens} accent="#E48715" />
           </section>
         )}
+
+        {/* ── WHERE YOU RANK — personalized adoption dot-matrix ── */}
+        <AdoptionGauge variant="result" percentile={rt.aheadPct} firstName={firstName} />
 
         {/* ── STAGE CARD — the ladder rung the reader is on. ── */}
         {stageMeta && stageMeta.key !== 'unknown' && (
@@ -350,6 +331,18 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             </div>
           </section>
         )}
+
+        {/* ── SKILL RADAR (secondary) ── */}
+        <section className="px-6 pb-8 max-w-2xl mx-auto w-full">
+          <div className="rounded-2xl p-6 flex flex-col items-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF' }}>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-4" style={{ color: '#9C9C9C' }}>
+              Your skill profile
+            </p>
+            <div className="w-full max-w-[420px]">
+              <RadarChart axes={axes} mode="result" accent="#62A758" size={360} />
+            </div>
+          </div>
+        </section>
 
         {/* ── PRIMARY CTA — Fulvous, intent-aware copy ───── */}
         <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
@@ -420,9 +413,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             })}
           </div>
         </section>
-
-        {/* ── GLOBAL ADOPTION — "you're early; it's an opportunity" ── */}
-        <AdoptionGauge firstName={firstName} />
 
         {/* ── FRICTION BLOCKER (only shown when v2 friction known) ── */}
         {seg.friction && (
@@ -677,6 +667,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   Or get lifetime access →
                 </a>
               </div>
+
+              <div className="text-center mt-2">
+                <NotYetDownsell name={firstName} email={segFields?.email} />
+              </div>
             </div>
           </div>
         </section>
@@ -732,6 +726,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               >
                 Or get lifetime access →
               </a>
+            </div>
+            <div className="mt-2">
+              <NotYetDownsell name={firstName} email={segFields?.email} className="text-[11px] underline text-white/60 hover:text-white/90 transition-opacity" />
             </div>
           </div>
         </section>

@@ -2,10 +2,12 @@ import Link from 'next/link'
 import AICentralLogo from '@/components/AICentralLogo'
 import { RadarChart } from '@/components/RadarChart'
 import FomoPopup from '@/components/FomoPopup'
+import { AdoptionGauge } from '@/components/result/AdoptionGauge'
 
 export const metadata = {
-  title: 'AI Central — Find your AI stage',
-  description: 'A 90-second quiz. We map where you actually sit on the AI adoption ladder, then hand back a 30-day plan tuned to your role and tools.',
+  title: 'AI Central — Where do you rank in AI adoption?',
+  description:
+    'A 90-second quiz. Discover your AI Readiness Type and exactly where you land vs. everyone else — then get a plan to climb.',
 }
 
 const FULVOUS = '#E48715'
@@ -36,63 +38,48 @@ export default function HomePage({
 
   return (
     <div
-      className="relative min-h-[100dvh] flex flex-col overflow-hidden"
+      className="relative min-h-[100dvh] flex flex-col"
       style={{
-        // Same gradient stack as the result-page hero — green + Fulvous radial
-        // glows over a cream→latte vertical wash. Keeps the cover and the
-        // result page visually continuous.
+        // Clean cream wash with one restrained fulvous glow — calmer than the
+        // old gradient/grid stack, still unmistakably AI Central.
         background: `
-          radial-gradient(60% 60% at 80% 15%, #62A75822 0%, transparent 60%),
-          radial-gradient(50% 50% at 12% 95%, ${FULVOUS}22 0%, transparent 60%),
-          linear-gradient(180deg, #F4F1EA 0%, #FBFAF5 60%, #FFFDFA 100%)
+          radial-gradient(60% 45% at 50% 0%, ${FULVOUS}12 0%, transparent 60%),
+          linear-gradient(180deg, #FBFAF5 0%, #FFFDFA 55%)
         `,
       }}
     >
-      {/* Apple-style perspective grid overlay, masked so it fades into the body. */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, rgba(51,51,51,0.05) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(51,51,51,0.05) 1px, transparent 1px)
-          `,
-          backgroundSize: '44px 44px',
-          maskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
-          WebkitMaskImage: 'radial-gradient(120% 100% at 50% 0%, black 35%, transparent 80%)',
-        }}
-        aria-hidden
-      />
-
-      {/* Top bar — logo only, no tagline. */}
+      {/* Top bar — logo only. */}
       <nav className="px-5 sm:px-8 py-4 sm:py-5">
         <div className="max-w-6xl mx-auto">
           <AICentralLogo height={22} />
         </div>
       </nav>
 
-      {/* Hero — single vertical stack: text → button → social proof → radar. */}
       <main className="flex-1 flex items-start justify-center px-5 sm:px-8 py-6 sm:py-10">
-        <div className="w-full max-w-3xl text-center">
+        <div className="w-full max-w-2xl text-center">
+          <p className="text-[11px] sm:text-[12px] font-black uppercase tracking-[0.16em] mb-4" style={{ color: FULVOUS }}>
+            The 90-second AI readiness quiz
+          </p>
           <h1
-            className="text-[34px] sm:text-[48px] md:text-[58px] font-black leading-[1.02] tracking-tight mb-4 sm:mb-6"
+            className="text-[32px] sm:text-[46px] md:text-[54px] font-black leading-[1.03] tracking-tight mb-4 sm:mb-5"
             style={{ color: INK }}
           >
-            Where do you sit on the{' '}
-            <span style={{ color: FULVOUS }}>AI adoption ladder?</span>
+            Most people haven&apos;t started with AI.{' '}
+            <span style={{ color: FULVOUS }}>Where do you rank?</span>
           </h1>
           <p
-            className="text-[16px] sm:text-[19px] leading-relaxed mb-7 sm:mb-9 max-w-[560px] mx-auto"
+            className="text-[16px] sm:text-[18px] leading-relaxed mb-7 sm:mb-8 max-w-[540px] mx-auto"
             style={{ color: '#555' }}
           >
-            10 short questions. A senior-coded plan tuned to how you actually
-            work today, not how a generic course assumes you do.
+            Take the quiz to get your <strong style={{ color: INK }}>AI Readiness Type</strong> and see exactly
+            where you land versus everyone else — then a plan to climb.
           </p>
           <Link
             href={quizHref}
             className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 rounded-2xl text-[16px] sm:text-[18px] font-black transition-all active:scale-[0.99] hover:opacity-95 shadow-sm"
             style={{ backgroundColor: INK, color: '#FFFDFA' }}
           >
-            Start the quiz
+            See where I rank
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
@@ -104,7 +91,7 @@ export default function HomePage({
 
           {/* Survey time + completions count — quick social-proof strip. */}
           <div
-            className="mt-7 sm:mt-9 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 rounded-full text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.14em]"
+            className="mt-6 sm:mt-7 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 rounded-full text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.14em]"
             style={{ background: '#FFFFFFCC', border: '1px solid #E8E4DF', color: '#555' }}
           >
             <span className="inline-flex items-center gap-1.5">
@@ -121,15 +108,23 @@ export default function HomePage({
             </span>
           </div>
 
-          {/* Radar — animated demo loop. Sits below the fold-promise so the
-              CTA + social proof carry the conversion above it. */}
-          <div className="mt-8 sm:mt-10 flex justify-center">
-            <div className="w-full max-w-[600px]">
+          {/* The hook: the 100-dot adoption matrix. This is what people take
+              the quiz to discover — their place among everyone else. */}
+          <div className="mt-9 sm:mt-11">
+            <AdoptionGauge variant="cover" />
+          </div>
+
+          {/* Secondary: the skill radar you also get. */}
+          <div className="mt-11 sm:mt-14 flex flex-col items-center">
+            <p className="text-[12px] mb-4" style={{ color: MUTE }}>
+              Plus a skill radar tuned to how you actually work:
+            </p>
+            <div className="w-full max-w-[440px]">
               <RadarChart
                 axes={DEMO_AXES}
                 mode="demo"
                 accent="#62A758"
-                size={470}
+                size={380}
                 todayLabel="Where most start"
                 projectedLabel="With AI Central"
               />
