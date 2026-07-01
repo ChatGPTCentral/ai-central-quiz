@@ -20,39 +20,41 @@ export interface ReadinessType {
   aheadPct: number
 }
 
+// typeName MUST equal the ladder rung label (from stageDef / the result-page
+// ladder) so the h1 matches the highlighted "You are here" rung exactly.
 const TYPES: Record<StageKey, ReadinessType> = {
   S0_unaware: {
-    typeName: 'The Newcomer',
+    typeName: 'Unaware',
     tagline: "You're right at the starting line — and that's a great place to be.",
     aheadPct: 40,
   },
   S1_curious: {
-    typeName: 'The Explorer',
+    typeName: 'Curious',
     tagline: "You've started looking. Most people haven't even done that.",
     aheadPct: 62,
   },
   S2_experimenter: {
-    typeName: 'The Tinkerer',
+    typeName: 'Experimenter',
     tagline: "You're already hands-on. Now we turn dabbling into a habit.",
     aheadPct: 76,
   },
   S3_practitioner: {
-    typeName: 'The Operator',
+    typeName: 'Practitioner',
     tagline: 'You use AI for real work every week. You are in rare company.',
     aheadPct: 86,
   },
   S4_power_user: {
-    typeName: 'The Power User',
+    typeName: 'Power User',
     tagline: "AI is woven into your day. You're operating near the frontier.",
     aheadPct: 93,
   },
   S5_builder: {
-    typeName: 'The Architect',
+    typeName: 'Builder',
     tagline: 'You build with AI. You sit in the top sliver of all professionals.',
     aheadPct: 98,
   },
   unknown: {
-    typeName: 'The Rising Professional',
+    typeName: 'Rising Professional',
     tagline: "You're on your way — and already ahead of most people.",
     aheadPct: 60,
   },

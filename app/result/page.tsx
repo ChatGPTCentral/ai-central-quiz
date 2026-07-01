@@ -6,7 +6,7 @@ import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
 import { DocSearch } from '@/components/result/DocSearch'
 import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
-import { AdoptionGauge } from '@/components/result/AdoptionGauge'
+import { AdoptionChart } from '@/components/result/AdoptionChart'
 import { resolveTokens } from '@/lib/piping'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType, traitTags } from '@/lib/readiness-type'
@@ -296,8 +296,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </section>
         )}
 
-        {/* ── WHERE YOU RANK — personalized adoption dot-matrix ── */}
-        <AdoptionGauge variant="result" percentile={rt.aheadPct} firstName={firstName} />
+        {/* ── WHERE YOU RANK — personalized world adoption chart ── */}
+        <AdoptionChart variant="result" stage={segFields?.stage} aheadPct={rt.aheadPct} firstName={firstName} />
 
         {/* ── STAGE CARD — the ladder rung the reader is on. ── */}
         {stageMeta && stageMeta.key !== 'unknown' && (

@@ -2,7 +2,7 @@ import Link from 'next/link'
 import AICentralLogo from '@/components/AICentralLogo'
 import { RadarChart } from '@/components/RadarChart'
 import FomoPopup from '@/components/FomoPopup'
-import { AdoptionGauge } from '@/components/result/AdoptionGauge'
+import { AdoptionChart } from '@/components/result/AdoptionChart'
 
 export const metadata = {
   title: 'AI Central — Where do you rank in AI adoption?',
@@ -111,7 +111,7 @@ export default function HomePage({
           {/* The hook: the 100-dot adoption matrix. This is what people take
               the quiz to discover — their place among everyone else. */}
           <div className="mt-9 sm:mt-11">
-            <AdoptionGauge variant="cover" />
+            <AdoptionChart variant="cover" />
           </div>
 
           {/* Secondary: the skill radar you also get. */}
