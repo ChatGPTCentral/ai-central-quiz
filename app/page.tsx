@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import AICentralLogo from '@/components/AICentralLogo'
-import { RadarChart } from '@/components/RadarChart'
 import FomoPopup from '@/components/FomoPopup'
 import { AdoptionChart } from '@/components/result/AdoptionChart'
 
@@ -13,17 +12,6 @@ export const metadata = {
 const FULVOUS = '#E48715'
 const INK = '#333333'
 const MUTE = '#9C9C9C'
-
-// Illustrative "where most people start" axes for the cover demo radar
-// (before → after loop). Mirrors the 5 AI-competency axes on /result:
-// Prompting · Tools · Develop · Governance · Agents.
-const DEMO_AXES = [
-  { label: 'Prompting', value: 45 },
-  { label: 'Tools', value: 30 },
-  { label: 'Develop', value: 20 },
-  { label: 'Governance', value: 15 },
-  { label: 'Agents', value: 10 },
-]
 
 export default function HomePage({
   searchParams,
@@ -40,7 +28,7 @@ export default function HomePage({
 
   return (
     <div
-      className="relative min-h-[100dvh] flex flex-col"
+      className="relative min-h-[100dvh] lg:h-[100dvh] lg:overflow-hidden flex flex-col"
       style={{
         // Clean cream wash with one restrained fulvous glow — calmer than the
         // old gradient/grid stack, still unmistakably AI Central.
@@ -57,80 +45,67 @@ export default function HomePage({
         </div>
       </nav>
 
-      <main className="flex-1 flex items-start justify-center px-5 sm:px-8 py-6 sm:py-10">
-        <div className="w-full max-w-2xl text-center">
-          <p className="text-[11px] sm:text-[12px] font-black uppercase tracking-[0.16em] mb-4" style={{ color: FULVOUS }}>
-            The 90-second AI readiness quiz
-          </p>
-          <h1
-            className="text-[32px] sm:text-[46px] md:text-[54px] font-black leading-[1.03] tracking-tight mb-4 sm:mb-5"
-            style={{ color: INK }}
-          >
-            Most people haven&apos;t started with AI.{' '}
-            <span style={{ color: FULVOUS }}>Where do you rank?</span>
-          </h1>
-          <p
-            className="text-[16px] sm:text-[18px] leading-relaxed mb-7 sm:mb-8 max-w-[540px] mx-auto"
-            style={{ color: '#555' }}
-          >
-            Take the quiz to get your <strong style={{ color: INK }}>AI Readiness Type</strong> and see exactly
-            where you land versus everyone else — then a plan to climb.
-          </p>
-          <Link
-            href={quizHref}
-            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 rounded-2xl text-[16px] sm:text-[18px] font-black transition-all active:scale-[0.99] hover:opacity-95 shadow-sm"
-            style={{ backgroundColor: INK, color: '#FFFDFA' }}
-          >
-            See where I rank
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-          </Link>
-          <p className="mt-4 text-[12px] sm:text-[13px]" style={{ color: MUTE }}>
-            Free · No card · 90 seconds
-          </p>
-
-          {/* Survey time + completions count — quick social-proof strip. */}
-          <div
-            className="mt-6 sm:mt-7 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 rounded-full text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.14em]"
-            style={{ background: '#FFFFFFCC', border: '1px solid #E8E4DF', color: '#555' }}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={FULVOUS} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <circle cx="12" cy="12" r="9" />
-                <polyline points="12 7 12 12 15 14" />
-              </svg>
-              ~90 sec to complete
-            </span>
-            <span aria-hidden style={{ color: '#C9C7BF' }}>·</span>
-            <span className="inline-flex items-center gap-1.5">
-              <span style={{ color: '#62A758' }}>●</span>
-              2,768 people completed
-            </span>
-          </div>
-
-          {/* The hook: the 100-dot adoption matrix. This is what people take
-              the quiz to discover — their place among everyone else. */}
-          <div className="mt-9 sm:mt-11">
-            <AdoptionChart variant="cover" />
-          </div>
-
-          {/* Secondary: the skill radar you also get. */}
-          <div className="mt-11 sm:mt-14 flex flex-col items-center">
-            <p className="text-[12px] mb-4" style={{ color: MUTE }}>
-              Plus a skill radar tuned to how you actually work:
+      <main className="flex-1 min-h-0 flex items-start lg:items-center justify-center px-5 sm:px-8 py-6 lg:py-0">
+        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+          {/* Left column — the hero copy + CTA. */}
+          <div className="text-center lg:text-left">
+            <p className="text-[11px] sm:text-[12px] font-black uppercase tracking-[0.16em] mb-4" style={{ color: FULVOUS }}>
+              The 90-second AI readiness quiz
             </p>
-            <div className="w-full max-w-[440px]">
-              <RadarChart
-                axes={DEMO_AXES}
-                mode="demo"
-                accent="#62A758"
-                size={380}
-                todayLabel="Where most start"
-                projectedLabel="With AI Central"
-              />
+            <h1
+              className="text-[32px] sm:text-[46px] md:text-[54px] font-black leading-[1.03] tracking-tight mb-4 sm:mb-5"
+              style={{ color: INK }}
+            >
+              Most people haven&apos;t started with AI.{' '}
+              <span style={{ color: FULVOUS }}>Where do you rank?</span>
+            </h1>
+            <p
+              className="text-[16px] sm:text-[18px] leading-relaxed mb-7 sm:mb-8 max-w-[540px] mx-auto lg:mx-0"
+              style={{ color: '#555' }}
+            >
+              Take the quiz to get your <strong style={{ color: INK }}>AI Readiness Type</strong> and see exactly
+              where you land versus everyone else — then a plan to climb.
+            </p>
+            <Link
+              href={quizHref}
+              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 sm:px-10 py-4 sm:py-5 rounded-2xl text-[16px] sm:text-[18px] font-black transition-all active:scale-[0.99] hover:opacity-95 shadow-sm"
+              style={{ backgroundColor: INK, color: '#FFFDFA' }}
+            >
+              See where I rank
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </Link>
+            <p className="mt-4 text-[12px] sm:text-[13px]" style={{ color: MUTE }}>
+              Free · No card · 90 seconds
+            </p>
+
+            {/* Survey time + completions count — quick social-proof strip. */}
+            <div
+              className="mt-6 sm:mt-7 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 sm:px-5 py-2.5 rounded-full text-[11px] sm:text-[12px] font-bold uppercase tracking-[0.14em]"
+              style={{ background: '#FFFFFFCC', border: '1px solid #E8E4DF', color: '#555' }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={FULVOUS} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="12" cy="12" r="9" />
+                  <polyline points="12 7 12 12 15 14" />
+                </svg>
+                ~90 sec to complete
+              </span>
+              <span aria-hidden style={{ color: '#C9C7BF' }}>·</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span style={{ color: '#62A758' }}>●</span>
+                2,768 people completed
+              </span>
             </div>
+          </div>
+
+          {/* Right column — the hook: the adoption density chart. This is what
+              people take the quiz to discover — their place among everyone
+              else. Chart-only (bare) so the left column carries the headline. */}
+          <div className="w-full max-w-[400px] mx-auto">
+            <AdoptionChart variant="cover" bare />
           </div>
         </div>
       </main>

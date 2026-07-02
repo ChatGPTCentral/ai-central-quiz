@@ -61,9 +61,13 @@ interface Props {
   stage?: string | null
   aheadPct?: number
   firstName?: string
+  /** Cover-only: render just the chart (subtitle + card), dropping the big
+   *  headline + trailing caption. Used in the 2-column desktop hero where the
+   *  page's own h1 + CTA already carry the copy. */
+  bare?: boolean
 }
 
-export function AdoptionChart({ variant = 'result', stage, aheadPct, firstName }: Props) {
+export function AdoptionChart({ variant = 'result', stage, aheadPct, firstName, bare = false }: Props) {
   const isCover = variant === 'cover'
 
   // The static 2,500-dot grid — memoised so the roam animation never re-renders it.
@@ -159,6 +163,16 @@ export function AdoptionChart({ variant = 'result', stage, aheadPct, firstName }
   )
 
   if (isCover) {
+    // Chart-only render for the 2-column desktop hero — the page's h1 + CTA
+    // already carry the headline, so drop the duplicate <h2> + caption.
+    if (bare) {
+      return (
+        <div className="w-full max-w-lg mx-auto">
+          {subtitle}
+          {card}
+        </div>
+      )
+    }
     return (
       <div className="w-full max-w-lg mx-auto">
         <h2 className="text-[24px] sm:text-[28px] font-black text-center mb-1 leading-tight" style={{ color: '#333333', fontFamily: 'Georgia, "Times New Roman", serif' }}>
