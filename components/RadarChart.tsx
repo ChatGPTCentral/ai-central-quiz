@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 export interface RadarAxis {
   label: string
@@ -83,6 +83,9 @@ export function RadarChart({
   const current = axes.map(a => Math.max(0, Math.min(100, a.value)))
   const target = projected ?? defaultProjection(current)
   const n = axes.length
+  // Unique clip id — the grid/fills are clipped to the outer pentagon so no
+  // element (sub-spokes, sector arcs) can poke past the frame at mid-edge angles.
+  const clipId = 'radar-clip-' + useId().replace(/:/g, '')
 
   // Reserve a generous label gutter so the rotated axis labels at the
   // pentagon vertices never get clipped by the viewBox.
@@ -138,6 +141,7 @@ export function RadarChart({
     const a = angleFor(i, n)
     return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a), a }
   })
+  const outerPts = pointsFor(axes.map(() => 100), cx, cy, r)
 
   // Concentric pentagon rings (regular n-gon, scaled).
   const ringPolys = Array.from({ length: RING_COUNT }, (_, ringIdx) => {
@@ -166,6 +170,14 @@ export function RadarChart({
         role="img"
         aria-label="Skill radar"
       >
+        <defs>
+          <clipPath id={clipId}>
+            <polygon points={outerPts} />
+          </clipPath>
+        </defs>
+        {/* Everything inside the frame is clipped to the outer pentagon so no
+            grid line or sector arc escapes past a straight edge. */}
+        <g clipPath={`url(#${clipId})`}>
         {/* Alternating sector backgrounds — gives the "spec sheet" feel. */}
         {axes.map((_, i) => (
           <path
@@ -216,6 +228,7 @@ export function RadarChart({
           strokeWidth={2}
           strokeLinejoin="miter"
         />
+        </g>
         {/* Vertex dots on the projected polygon */}
         {morphed.map((v, i) => {
           const a = angleFor(i, n)
@@ -245,7 +258,7 @@ export function RadarChart({
                 dominantBaseline="middle"
                 style={{ letterSpacing: 0.4, textTransform: 'uppercase' }}
               >
-                {a.label} +
+                {a.label}
               </text>
             </g>
           )
@@ -253,7 +266,7 @@ export function RadarChart({
 
         {/* Outer pentagon stroke — final crisp edge */}
         <polygon
-          points={pointsFor(axes.map(() => 100), cx, cy, r)}
+          points={outerPts}
           fill="none"
           stroke={INK}
           strokeWidth={1.6}
@@ -271,9 +284,6 @@ export function RadarChart({
           {projectedLabel}
         </span>
       </div>
-      <p className="text-[10px] mt-1 italic" style={{ color: '#777' }}>
-        Trait with + means more is better
-      </p>
     </div>
   )
 }

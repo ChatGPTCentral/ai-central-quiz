@@ -10,6 +10,7 @@ import { AdoptionChart } from '@/components/result/AdoptionChart'
 import { resolveTokens } from '@/lib/piping'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType, traitTags } from '@/lib/readiness-type'
+import { computeRadarAxes } from '@/lib/readiness-radar'
 import { NotYetDownsell } from '@/components/result/NotYetDownsell'
 import { TESTIMONIALS } from '@/lib/sales-content'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
@@ -29,6 +30,8 @@ interface SegFields {
   depth_score?: number | null
   breadth_score?: number | null
   momentum?: number | null
+  ai_tools?: string | null
+  job_level?: string | null
   score?: number | null
 }
 
@@ -42,7 +45,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
     const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
     const { data } = await c
       .from('submissions')
-      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, score')
+      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -53,22 +56,6 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
  *  the repo's code-comment ` - -` convention). */
 function noDash(s: string): string {
   return s.replace(/\s*[—–]\s*/g, ', ')
-}
-
-/** Build the radar axes (0–100) from the submission's per-dimension scores.
- *  Used for the result-page "you today vs with AI Central" radar. */
-function radarAxes(f: SegFields | null, overallScore: number): { label: string; value: number }[] {
-  const freq = Math.min(100, ((f?.frequency_score ?? 0) / 3) * 100)
-  const depth = Math.min(100, ((f?.depth_score ?? 0) / 6) * 100)
-  const breadth = Math.min(100, ((f?.breadth_score ?? 0) / 6) * 100)
-  const mom = Math.min(100, (((f?.momentum ?? 0) + 2) / 4) * 100)   // momentum is now -2..2
-  return [
-    { label: 'Frequency', value: Math.max(8, freq) },
-    { label: 'Depth', value: Math.max(8, depth) },
-    { label: 'Breadth', value: Math.max(8, breadth) },
-    { label: 'Momentum', value: Math.max(8, mom) },
-    { label: 'Overall', value: Math.max(8, overallScore) },
-  ]
 }
 
 const UPSELL_URL = process.env.NEXT_PUBLIC_UPSELL_URL || 'https://buy.stripe.com/7sIcQe7NAgLT8s8008'
@@ -193,8 +180,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   // can still override the primary button via ctaText.
   const primaryCta = 'Start your trial'
 
-  // Radar axes from the person's per-dimension scores.
-  const axes = radarAxes(segFields, score)
+  // AI-competency radar axes (Prompting · Tools · Develop · Governance ·
+  // Agents), computed from the person's quiz signals. Governance is proxied
+  // from seniority + intent + depth (the quiz never asks it directly).
+  const axes = computeRadarAxes(segFields ?? {})
 
   // Suggested docs from the AI Central document database (Notion), biased to
   // this persona's topics. Empty list if Notion isn't configured.

@@ -14,13 +14,15 @@ const FULVOUS = '#E48715'
 const INK = '#333333'
 const MUTE = '#9C9C9C'
 
-// Illustrative axes for the cover demo radar (before → after loop).
+// Illustrative "where most people start" axes for the cover demo radar
+// (before → after loop). Mirrors the 5 AI-competency axes on /result:
+// Prompting · Tools · Develop · Governance · Agents.
 const DEMO_AXES = [
-  { label: 'Frequency', value: 38 },
-  { label: 'Depth', value: 30 },
-  { label: 'Breadth', value: 22 },
-  { label: 'Momentum', value: 45 },
-  { label: 'Confidence', value: 28 },
+  { label: 'Prompting', value: 45 },
+  { label: 'Tools', value: 30 },
+  { label: 'Develop', value: 20 },
+  { label: 'Governance', value: 15 },
+  { label: 'Agents', value: 10 },
 ]
 
 export default function HomePage({
