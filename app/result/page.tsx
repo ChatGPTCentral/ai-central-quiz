@@ -11,7 +11,8 @@ import { resolveTokens } from '@/lib/piping'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType, traitTags } from '@/lib/readiness-type'
 import { computeRadarAxes } from '@/lib/readiness-radar'
-import { NotYetDownsell } from '@/components/result/NotYetDownsell'
+// Free option hidden for now (component kept saved):
+// import { NotYetDownsell } from '@/components/result/NotYetDownsell'
 import { TESTIMONIALS } from '@/lib/sales-content'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { getSegmentCopy } from '@/lib/segment-content'
@@ -59,25 +60,10 @@ function noDash(s: string): string {
 }
 
 const UPSELL_URL = process.env.NEXT_PUBLIC_UPSELL_URL || 'https://buy.stripe.com/7sIcQe7NAgLT8s8008'
-const LIBRARY_BASE = process.env.NEXT_PUBLIC_LIBRARY_URL || 'https://app.thecentral.ai'
 // Direct $4.99 trial Stripe link — used by the FOMO badge + the library
 // doc-search result cards (low-friction touchpoints that go straight to
 // checkout rather than through the library signup funnel).
 const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
-
-/**
- * Build the library handoff URL for the trial CTA. Routes through the
- * library's own /login → /pricing → /api/stripe/checkout flow so the buyer
- * ends up in the library's Supabase (the legacy buy.stripe.com link
- * created a charge with no gated access). Pre-fills email when known so
- * the user doesn't retype it.
- */
-function libraryCheckoutUrl(email?: string | null): string {
-  const u = new URL(`${LIBRARY_BASE}/login`)
-  u.searchParams.set('next', '/pricing')
-  if (email) u.searchParams.set('email', email)
-  return u.toString()
-}
 
 // Pricing & benefits — sourced verbatim from upgrade.thecentral.ai
 const PLAN_BENEFITS = [
@@ -222,14 +208,14 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const heroHeadline = endScreen?.heroHeadline
   const heroSubheadline = endScreen?.heroSubheadline
   const ctaText = endScreen?.ctaText ?? primaryCta
-  // Trial CTAs all route into the library funnel by default; an editor
+  // All paid CTAs go straight to the $4.99 trial Stripe checkout; an editor
   // end-screen can still override with its own ctaUrl when needed.
-  const libraryUrl = libraryCheckoutUrl(segFields?.email)
-  const ctaUrl = endScreen?.ctaUrl ?? libraryUrl
+  const checkoutUrl = STRIPE_TRIAL_URL
+  const ctaUrl = endScreen?.ctaUrl ?? checkoutUrl
 
   return (
     <>
-      <CountdownTimer paymentUrl={libraryUrl} />
+      <CountdownTimer paymentUrl={checkoutUrl} />
 
       <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
         {/* ── HERO: AI Readiness Type (clean, centered) ─────── */}
@@ -628,7 +614,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               <p className="text-[11px] text-right mb-5" style={{ color: '#9C9C9C' }}>{RENEWAL_COPY}</p>
 
               <a
-                href={libraryUrl}
+                href={checkoutUrl}
                 className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
                 style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
               >
@@ -657,9 +643,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 </a>
               </div>
 
+              {/* Free option hidden for now (component kept saved):
               <div className="text-center mt-2">
                 <NotYetDownsell name={firstName} email={segFields?.email} />
               </div>
+              */}
             </div>
           </div>
         </section>
@@ -696,7 +684,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               Join 2,000+ professionals already using the AI Central library. 1,200+ curated tutorials. 15 minutes to your first result. No fluff
             </p>
             <a
-              href={libraryUrl}
+              href={checkoutUrl}
               className="inline-block px-8 py-4 font-black text-[14px] rounded-xl transition-opacity hover:opacity-90 active:scale-[0.99]"
               style={{ backgroundColor: '#E48715', color: '#FFFDFA', boxShadow: '0 6px 20px rgba(228, 135, 21, 0.4)' }}
             >
@@ -716,9 +704,11 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 Or get lifetime access →
               </a>
             </div>
+            {/* Free option hidden for now (component kept saved):
             <div className="mt-2">
               <NotYetDownsell name={firstName} email={segFields?.email} className="text-[11px] underline text-white/60 hover:text-white/90 transition-opacity" />
             </div>
+            */}
           </div>
         </section>
 
@@ -734,7 +724,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           <p className="text-[10px]" style={{ color: '#9C9C9C' }}>30-day guarantee</p>
         </div>
         <a
-          href={libraryUrl}
+          href={checkoutUrl}
           className="flex-shrink-0 px-5 py-2.5 rounded-xl font-black text-[13px] transition-all active:scale-[0.99]"
           style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}
         >
