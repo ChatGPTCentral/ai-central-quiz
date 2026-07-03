@@ -42,17 +42,6 @@ const RICH = '#1A1A1A'
 const CREAM = '#FEF7E7'
 const FULVOUS = '#E48715'
 const MUTE = '#666666'
-const LOGGED_COLOR = '#B8610A'
-
-// Friction "logged" feedback strips (design handoff 1g), keyed by option value.
-const LOGGED_STRIPS: Record<string, string> = {
-  no_starting_point: 'LOGGED: YOUR PLAN STARTS AT STEP 1',
-  no_time: 'LOGGED: 15-MINUTE WORKFLOWS ONLY',
-  too_noisy: 'LOGGED: YOUR PLAN CUTS 14,000+ TOOLS TO 12',
-  no_trust: 'LOGGED: EDITOR-TESTED, OUTCOMES ATTACHED',
-  cant_build: 'LOGGED: BUILD TRACK QUEUED FOR MONTH 1',
-  no_friction: "LOGGED: WE'LL AIM HIGHER THEN",
-}
 
 const KEYS = 'ABCDEFGHIJ'
 
@@ -221,46 +210,32 @@ export function QuestionRenderer({
         <div className="flex flex-col" style={{ gap: 'clamp(5px, 1dvh, 8px)' }}>
           {q.options.map((opt, i) => {
             const sel = singleAnswer === opt.value
-            const logged = q.id === 'friction' && sel ? LOGGED_STRIPS[opt.value] : null
             return (
-              <div key={opt.value}>
-                <button
-                  type="button"
-                  onClick={() => onSingleSelect(opt.value)}
-                  className="w-full flex items-center gap-3 text-left transition-all duration-100 active:scale-[0.98]"
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onSingleSelect(opt.value)}
+                className="w-full flex items-center gap-3 text-left transition-all duration-100 active:scale-[0.98]"
+                style={{
+                  border: `2px solid ${sel ? FULVOUS : INK}`,
+                  boxShadow: sel ? `inset 0 0 0 1px ${FULVOUS}` : 'none',
+                  backgroundColor: sel ? CREAM : '#FFFFFF',
+                  padding: 'clamp(7px, 1.3dvh, 11px) 14px',
+                }}
+              >
+                <span
+                  className="flex-shrink-0 flex items-center justify-center font-mono"
                   style={{
-                    border: `2px solid ${sel ? FULVOUS : INK}`,
-                    boxShadow: sel ? `inset 0 0 0 1px ${FULVOUS}` : 'none',
-                    backgroundColor: sel ? CREAM : '#FFFFFF',
-                    padding: 'clamp(7px, 1.3dvh, 11px) 14px',
+                    width: 26, height: 26, fontSize: 12, fontWeight: 600,
+                    backgroundColor: sel ? FULVOUS : INK,
+                    color: sel ? RICH : CREAM,
                   }}
                 >
-                  <span
-                    className="flex-shrink-0 flex items-center justify-center font-mono"
-                    style={{
-                      width: 26, height: 26, fontSize: 12, fontWeight: 600,
-                      backgroundColor: sel ? FULVOUS : INK,
-                      color: sel ? RICH : CREAM,
-                    }}
-                  >
-                    {KEYS[i] ?? '·'}
-                  </span>
-                  <span style={{ fontSize: 15, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>{opt.label}</span>
-                  {sel && <span className="ml-auto flex-shrink-0" style={{ color: FULVOUS, fontWeight: 700, fontSize: 16 }} aria-hidden>✓</span>}
-                </button>
-                {logged && (
-                  <div
-                    className="font-mono qr-logged"
-                    style={{
-                      fontSize: 10.5, letterSpacing: '0.08em', color: LOGGED_COLOR,
-                      backgroundColor: CREAM, border: `2px solid ${INK}`, borderTop: 'none',
-                      padding: '7px 14px',
-                    }}
-                  >
-                    {logged}
-                  </div>
-                )}
-              </div>
+                  {KEYS[i] ?? '·'}
+                </span>
+                <span style={{ fontSize: 15, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>{opt.label}</span>
+                {sel && <span className="ml-auto flex-shrink-0" style={{ color: FULVOUS, fontWeight: 700, fontSize: 16 }} aria-hidden>✓</span>}
+              </button>
             )
           })}
 
@@ -330,9 +305,7 @@ export function QuestionRenderer({
       <style>{`
         @keyframes qr-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
         .qr-blink { animation: qr-blink 1s step-end infinite; }
-        @keyframes qr-logged-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-        .qr-logged { animation: qr-logged-in 150ms cubic-bezier(0.2, 0, 0, 1); }
-        @media (prefers-reduced-motion: reduce) { .qr-blink, .qr-logged { animation: none; } }
+        @media (prefers-reduced-motion: reduce) { .qr-blink { animation: none; } }
       `}</style>
     </>
   )

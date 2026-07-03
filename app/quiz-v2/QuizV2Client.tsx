@@ -353,13 +353,11 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       if (advanceTimeout.current) clearTimeout(advanceTimeout.current)
       const nr = resolveNextStep(step - 1, QUESTIONS, newAnswers)
       if (nr === 'end') return
-      // 250ms select-paint beat; 900ms on the friction question so the
-      // LOGGED strip can land (handoff 1g).
-      const delay = q.id === 'friction' ? 900 : 250
+      // 250ms select-paint beat, then auto-advance.
       advanceTimeout.current = setTimeout(() => {
         trackAnswered()
         goForward(nr + 1)
-      }, delay)
+      }, 250)
     }
   }
   const handleMultiToggle = (value: string) => {
@@ -497,22 +495,27 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
                 />
               </div>
             )}
+
+            {/* Multi-select: next button right below the options, easy to reach. */}
+            {isMulti && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: multiCount > 0 ? INK : '#9C9C9C' }}>
+                    {multiCount} SELECTED
+                  </span>
+                </div>
+                <BlockNext
+                  label={isLastStep ? 'get my result' : 'next'}
+                  onClick={advance}
+                  disabled={!canProceed()}
+                  submitting={submitting}
+                  fullWidth
+                />
+              </div>
+            )}
           </div>
         </div>
       </main>
-
-      {/* Multi-select pinned bottom bar: "N selected" + next */}
-      {isMulti && (
-        <div
-          className="shrink-0 flex items-center justify-between gap-4 px-5 min-[900px]:px-8 py-3"
-          style={{ borderTop: `2px solid ${INK}`, backgroundColor: PAPER, paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
-        >
-          <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: multiCount > 0 ? INK : '#9C9C9C' }}>
-            {multiCount} SELECTED
-          </span>
-          <BlockNext label="next" onClick={advance} disabled={!canProceed()} submitting={submitting} />
-        </div>
-      )}
 
     </div>
   )
