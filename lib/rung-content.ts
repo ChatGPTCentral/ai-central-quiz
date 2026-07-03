@@ -52,7 +52,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     passPct: 'Day 0, rising',
     chartTitle: '8.1 billion people. Most never start. You just did',
     chartLead:
-      'Taking this quiz already separates you from the 84% who never look up. From rung 1, every rep is a rung, and the crowd thins fast in your favor',
+      'Taking this quiz already separates you from the 84% who never look up. From rung 1, every rep is a rung, the crowd thins fast in your favor',
     radarTitle: 'Blank canvas. Highest ceiling on the ladder',
     radarLead:
       'Nothing to unlearn: no half-habits, no graveyard of abandoned tools. Members who start at rung 1 move fastest in month 1, because the sequence becomes their first habit.',
@@ -72,7 +72,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     passPct: '62nd, rising fast',
     chartTitle: "8.1 billion people. You're about to pass 6.8 billion of them",
     chartLead:
-      "You've done the reading. The only thing between you and rung 3 is a first rep, and it's a 15-minute one. From there the crowd thins to millions, not billions",
+      "You've done the reading, the only thing between you and rung 3 is a first rep, and it's a 15-minute one. From there the crowd thins to millions, not billions",
     radarTitle: 'Prepared mind. Untouched keyboard',
     radarLead:
       'You already know the landscape better than most people using AI daily. Converting that context into reps is the fastest climb on the whole ladder.',
@@ -90,9 +90,9 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
       "You're already hands-on, ahead of 76% of everyone on the planet. What's missing isn't effort. It's a sequence, and yours is below",
     passClass: 'CLASS: EXPERIMENTER · RUNG 3 OF 6',
     passPct: '76th of 8.1B',
-    chartTitle: "8.1 billion people. You're ahead of 76% of them",
+    chartTitle: "8.1 billion people. You're ahead of 6.8 billion of them",
     chartLead:
-      "That's the comfortable number. The better one: the rungs above you hold fewer people than a mid-size country, and you're already climbing",
+      "That's the comfortable number, {firstName}. The better one: the rungs above you hold fewer people than a mid-size country, and you're already climbing",
     radarTitle: 'Strong instincts. Thin coverage',
     radarLead:
       'Scored from your answers: solid on prompting and tools, near-zero on agents, development, and governance, the 3 areas where {personaPlural} pull ahead this year.',
@@ -110,9 +110,9 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
       "Weekly AI on real work already puts you ahead of 86% of the planet. The next rung isn't more effort. It's saved prompts, sharper tools, and workflows your team copies",
     passClass: 'CLASS: PRACTITIONER · RUNG 4 OF 6',
     passPct: '86th of 8.1B',
-    chartTitle: "8.1 billion people. You're ahead of 86% of them",
+    chartTitle: "8.1 billion people. You're ahead of 99% of them",
     chartLead:
-      "From rung 4 the game changes: it's no longer about using AI, it's about how much of your week it runs. Rungs 5 and 6 belong to the people compounding daily, and that's one sequence away",
+      "From rung 4 the game changes: it's no longer about using AI, it's about how much of your week it runs. Rungs 5 and 6 belong to the people compounding daily, that's one sequence away",
     radarTitle: 'The habit works. Multiply it',
     radarLead:
       'Your weekly rep covers prompting and tools. The next gains sit in agents and governance, the 2 skills that turn personal speed into systems your whole team runs on.',
@@ -132,7 +132,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     passPct: '93rd of 8.1B',
     chartTitle: '8.1 billion people. 6 million keep your pace',
     chartLead:
-      'At rung 5 the ladder stops being about adoption and starts being about output. The last rung belongs to people who ship AI to others, and it is one sequence away',
+      "At rung 5 the ladder stops being about adoption and starts being about output. The last rung belongs to people who ship AI to others, and it's one sequence away",
     radarTitle: 'Deep almost everywhere. One rung left',
     radarLead:
       'Your profile is what rung-3 members aim for. The remaining gap is builder territory: shipping agents and governed workflows other people rely on.',
@@ -177,4 +177,16 @@ export function withPersona(copy: string, personaLabel: string): string {
   return copy
     .replace(/\{personaPlural\}/g, `${personaLabel}s`)
     .replace(/\{persona\}/g, personaLabel)
+}
+
+/**
+ * Replace {firstName} with the visitor's first name. When the name is
+ * unknown, a leading ", {firstName}" vocative disappears cleanly
+ * ("the comfortable number, {firstName}." → "the comfortable number.").
+ */
+export function withFirstName(copy: string, firstName: string): string {
+  const n = firstName.trim()
+  return n
+    ? copy.replace(/\{firstName\}/g, n)
+    : copy.replace(/,\s*\{firstName\}/g, '').replace(/\{firstName\}/g, 'there')
 }

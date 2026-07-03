@@ -5,12 +5,12 @@ import CountdownTimer from '@/components/CountdownTimer'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
-import { AdoptionChart } from '@/components/result/AdoptionChart'
+import { BandChart } from '@/components/result/BandChart'
 import { PassCard } from '@/components/result/PassCard'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType } from '@/lib/readiness-type'
 import { computeRadarAxes } from '@/lib/readiness-radar'
-import { rungConfig, withPersona } from '@/lib/rung-content'
+import { rungConfig, withPersona, withFirstName } from '@/lib/rung-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
@@ -186,9 +186,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
   const rt = readinessType(segFields?.stage)
-  // Per-rung page copy (design handoff), persona tokens resolved.
+  // Per-rung page copy (design handoff), persona + first-name tokens resolved.
   const rung = rungConfig(segFields?.stage)
-  const p = (s: string) => withPersona(s, content.label)
+  const p = (s: string) => withFirstName(withPersona(s, content.label), firstName)
 
   // AI-competency radar axes (Prompting · Tools · Develop · Governance ·
   // Agents), computed from the person's quiz signals.
@@ -272,8 +272,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               {p(rung.chartLead)}
             </p>
 
-            <div className="mt-9 max-w-[860px]">
-              <AdoptionChart variant="result" bare stage={segFields?.stage} aheadPct={rt.aheadPct} />
+            <div className="mt-9">
+              <BandChart stage={segFields?.stage} />
             </div>
 
             {/* Pitch + primary unlock CTA */}
