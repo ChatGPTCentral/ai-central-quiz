@@ -154,9 +154,28 @@ function StarRow({ size = 14 }: { size?: number }) {
   )
 }
 
-/** Social sharing row under the member pass: LinkedIn, WhatsApp, Email, X. */
-function SharePass({ topPct }: { topPct: number }) {
-  const shareUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
+/** Social sharing row under the member pass: LinkedIn, WhatsApp, Email, X.
+ *  Shares the /pass URL whose Open Graph tags unfurl into the person's
+ *  generated pass image, so the CARD (not just text) shows up in feeds. */
+function SharePass({ topPct, name, stageLabel, profileLabel, issued, refNo }: {
+  topPct: number
+  name: string
+  stageLabel: string
+  profileLabel: string
+  issued: string
+  refNo: string
+}) {
+  const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
+  const passParams = new URLSearchParams({
+    name,
+    stage: stageLabel,
+    profile: profileLabel,
+    pct: String(topPct),
+    issued,
+    ref: refNo,
+  })
+  const shareUrl = `${site}/pass?${passParams.toString()}`
+  const imageUrl = `/api/pass-image?${passParams.toString()}`
   const text = `I'm in the top ${topPct}% of AI users worldwide. Discover your ranking:`
   const enc = encodeURIComponent
   const iconStyle = { display: 'block' as const }
@@ -221,6 +240,14 @@ function SharePass({ topPct }: { topPct: number }) {
           </a>
         ))}
       </div>
+      <a
+        href={imageUrl}
+        download="ai-central-member-pass.png"
+        className="font-mono underline underline-offset-2 hover:text-[#E48715] transition-colors"
+        style={{ fontSize: 10, letterSpacing: '0.08em', color: MUTE }}
+      >
+        DOWNLOAD PASS IMAGE
+      </a>
     </div>
   )
 }
@@ -333,7 +360,14 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 refNo={refNo}
                 description={content.outlook}
               />
-              <SharePass topPct={100 - rt.aheadPct} />
+              <SharePass
+                topPct={100 - rt.aheadPct}
+                name={passName}
+                stageLabel={rung.className}
+                profileLabel={content.label}
+                issued={issued}
+                refNo={refNo}
+              />
             </div>
           </div>
         </section>
