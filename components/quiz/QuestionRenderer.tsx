@@ -25,6 +25,10 @@ interface Props {
   accent?: string
   /** Whether to autofocus the text input on mount/step-change */
   autoFocus?: boolean
+  /** Whether single-selects auto-advance on tap (false on the final step,
+   *  where the shell renders a submit button instead). Gates the
+   *  "tap an answer to continue" / "ADVANCING…" microlabels. */
+  autoAdvances?: boolean
   /** Token context for piping in label/sublabel. */
   tokens?: TokenContext
   onSingleSelect: (value: string) => void
@@ -92,6 +96,7 @@ export function QuestionRenderer({
   inputError,
   accent = FULVOUS,
   autoFocus = false,
+  autoAdvances = true,
   tokens,
   onSingleSelect,
   onMultiToggle,
@@ -259,12 +264,12 @@ export function QuestionRenderer({
             )
           })}
 
-          {!singleAnswer && (
+          {autoAdvances && !singleAnswer && (
             <p className="text-center mt-1.5" style={{ fontSize: 11.5, color: '#9C9C9C' }}>
               tap an answer to continue
             </p>
           )}
-          {singleAnswer && (
+          {autoAdvances && singleAnswer && (
             <p className="text-center mt-1.5 font-mono qr-blink" style={{ fontSize: 10.5, letterSpacing: '0.1em', color: FULVOUS }}>
               ADVANCING…
             </p>
@@ -307,6 +312,12 @@ export function QuestionRenderer({
                     </svg>
                   )}
                 </span>
+                {opt.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={opt.logo} alt="" className="flex-shrink-0 object-contain" style={{ width: 18, height: 18 }} />
+                ) : opt.emoji ? (
+                  <span className="flex-shrink-0" style={{ fontSize: 15, lineHeight: 1 }}>{opt.emoji}</span>
+                ) : null}
                 <span style={{ fontSize: isGrid ? 13 : 14, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>
                   {opt.label}
                 </span>

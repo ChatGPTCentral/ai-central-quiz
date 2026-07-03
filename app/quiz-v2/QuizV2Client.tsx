@@ -11,7 +11,6 @@ import { useState, useCallback, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { resolveNextStep, type V2Question } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
-import { BandStrip } from '@/components/result/BandChart'
 import { track } from '@/lib/track'
 
 type Answers = Record<string, string | string[]>
@@ -37,17 +36,19 @@ const MUTE = '#666666'
 const HAIRLINE = '#D9D9D9'
 
 // Per-question eyebrow metadata: axis label + remaining-time estimate
-// (static labels per the handoff; recompute nothing).
+// (static labels per the handoff; recompute nothing). Keyed by question id
+// so the production order (email second) reads correctly.
 const UI_META: Record<string, { axis?: string; secs?: string }> = {
   name: { secs: '~40 sec' },
-  frequency: { axis: 'your habit', secs: '~36 sec' },
-  aiTools: { axis: 'your toolkit', secs: '~32 sec' },
-  depth: { axis: 'your depth', secs: '~27 sec' },
-  momentum: { axis: 'your momentum', secs: '~23 sec' },
-  friction: { axis: 'your blocker', secs: '~19 sec' },
-  workArea: { axis: 'your focus', secs: '~14 sec' },
-  jobLevel: { axis: 'your seniority', secs: '~10 sec' },
-  intent_30d: { axis: 'your goal', secs: '~6 sec' },
+  email: { axis: 'delivery', secs: '~36 sec' },
+  frequency: { axis: 'your habit', secs: '~32 sec' },
+  aiTools: { axis: 'your toolkit', secs: '~27 sec' },
+  depth: { axis: 'your depth', secs: '~23 sec' },
+  momentum: { axis: 'your momentum', secs: '~19 sec' },
+  friction: { axis: 'your blocker', secs: '~14 sec' },
+  workArea: { axis: 'your focus', secs: '~10 sec' },
+  jobLevel: { axis: 'your seniority', secs: '~6 sec' },
+  intent_30d: { axis: 'your goal', secs: 'last question' },
 }
 
 // Multi-selects where one option clears the others (tools "None yet").
@@ -109,9 +110,6 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [submitError, setSubmitError] = useState('')
   const [direction, setDirection] = useState<'fwd' | 'back'>('fwd')
   const [animKey, setAnimKey] = useState(0)
-  // Checkpoint interstitial (after the friction question): holds the step it
-  // continues to; null = hidden.
-  const [checkpoint, setCheckpoint] = useState<number | null>(null)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const emailPrefilled = useRef(false)
   const partialSent = useRef(false)
@@ -180,11 +178,9 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     } catch { /* storage full / unavailable — non-fatal */ }
   }, [answers, step, history])
 
-  // Server-side in-progress capture: once we have a name + a valid email,
-  // POST a partial (once) so the lead is collected even if they abandon.
-  // With email as the last step this effectively fires right before submit,
-  // acting as a safety net if the final POST fails (accepted trade-off in
-  // the handoff: pre-Q10 abandoners are not captured).
+  // Server-side in-progress capture: once we have a name + a valid email
+  // (email is Q2, so this fires early), POST a partial (once) so the lead
+  // is collected even if they abandon mid-funnel.
   useEffect(() => {
     if (partialSent.current) return
     const name = String(answers.name || '').trim()
@@ -358,18 +354,11 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       const nr = resolveNextStep(step - 1, QUESTIONS, newAnswers)
       if (nr === 'end') return
       // 250ms select-paint beat; 900ms on the friction question so the
-      // LOGGED strip can land (handoff 1g). Friction also opens the
-      // checkpoint interstitial instead of advancing directly.
-      const isFriction = q.id === 'friction'
-      const delay = isFriction ? 900 : 250
+      // LOGGED strip can land (handoff 1g).
+      const delay = q.id === 'friction' ? 900 : 250
       advanceTimeout.current = setTimeout(() => {
         trackAnswered()
-        if (isFriction && !isEmbed) {
-          setCheckpoint(nr + 1)
-          track('checkpoint_view')
-        } else {
-          goForward(nr + 1)
-        }
+        goForward(nr + 1)
       }, delay)
     }
   }
@@ -394,21 +383,6 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     setInputError('')
   }
 
-  // Checkpoint continue (tap or 5s auto).
-  const continueFromCheckpoint = useCallback((skipped: boolean) => {
-    setCheckpoint(prev => {
-      if (prev === null) return null
-      if (skipped) track('checkpoint_skip')
-      goForward(prev)
-      return null
-    })
-  }, [goForward])
-  useEffect(() => {
-    if (checkpoint === null) return
-    const t = setTimeout(() => continueFromCheckpoint(false), 5000)
-    return () => clearTimeout(t)
-  }, [checkpoint, continueFromCheckpoint])
-
   useEffect(() => {
     if (!isSingle || !q.options) return
     const onKey = (e: KeyboardEvent) => {
@@ -427,18 +401,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [step, singleAnswer, isSingle]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Whether the answers so far show any AI usage signal (checkpoint headline).
-  const hasUsageSignal = (() => {
-    const freq = String(answers.frequency ?? '')
-    const tools = (answers.aiTools as string[]) || []
-    const depth = (answers.depth as string[]) || []
-    return (freq !== '' && freq !== '0') || tools.some(t => t !== 'None') || depth.length > 0
-  })()
-
   const meta = UI_META[q.id] || {}
-  const eyebrow = isEmailStep
-    ? 'LAST STEP · PASS NO. AC-0723 DRAFTED'
-    : `QUESTION ${step} OF ${TOTAL_STEPS}${meta.axis ? ` · ${meta.axis.toUpperCase()}` : ''}${meta.secs ? ` · ${meta.secs.toUpperCase()}` : ''}`
+  const eyebrow = `QUESTION ${step} OF ${TOTAL_STEPS}${meta.axis ? ` · ${meta.axis.toUpperCase()}` : ''}${meta.secs ? ` · ${meta.secs.toUpperCase()}` : ''}`
 
   const multiCount = multiAnswer.length
 
@@ -494,6 +458,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
               inputError={inputError}
               accent={ACCENT}
               autoFocus
+              autoAdvances={isAutoAdvance}
               tokens={{ answers }}
               onSingleSelect={handleSingleSelect}
               onMultiToggle={handleMultiToggle}
@@ -508,21 +473,28 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
             )}
 
             {/* Text steps: block button right under the inputs (keyboard-safe) */}
-            {(isText || isSplit || isWelcome) && !isWelcome && (
+            {(isText || isSplit) && (
               <div className="mt-5">
                 <BlockNext
-                  label={isEmailStep ? 'get my result' : 'next'}
+                  label={isLastStep ? 'get my result' : 'next'}
                   onClick={advance}
                   disabled={!canProceed()}
                   submitting={submitting}
                   fullWidth
                 />
-                {isEmailStep && (
-                  <div className="mt-3 text-center">
-                    <p style={{ fontSize: 11.5, color: MUTE }}>no spam, 1 weekly editorial drop, unsubscribe anytime</p>
-                    <p className="mt-1" style={{ fontSize: 11.5, color: '#9C9C9C' }}>2,768 professionals took this quiz this month</p>
-                  </div>
-                )}
+              </div>
+            )}
+
+            {/* Single-select LAST step (intent): tap selects, this submits. */}
+            {isSingle && isLastStep && (
+              <div className="mt-5">
+                <BlockNext
+                  label="get my result"
+                  onClick={advance}
+                  disabled={!canProceed()}
+                  submitting={submitting}
+                  fullWidth
+                />
               </div>
             )}
           </div>
@@ -542,62 +514,6 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         </div>
       )}
 
-      {/* Checkpoint interstitial (after Q6 friction) */}
-      {checkpoint !== null && (
-        <div
-          className="fixed inset-0 z-[60] flex flex-col items-center justify-center px-6 text-center cursor-pointer"
-          style={{ backgroundColor: RICH, color: CREAM }}
-          onClick={() => continueFromCheckpoint(true)}
-        >
-          <p className="font-mono uppercase" style={{ fontSize: 11, letterSpacing: '0.14em', color: XANTHOUS }}>
-            Checkpoint · 6 of {TOTAL_STEPS} answered
-          </p>
-          <h2 className="mt-4 font-bold" style={{ fontSize: 'clamp(26px, 3.2vw, 38px)', lineHeight: 1.05, letterSpacing: '-0.03em' }}>
-            {hasUsageSignal ? "You're already past 84% of the planet" : 'Your starting line is being drawn'}
-          </h2>
-
-          <div className="w-full max-w-[420px] mt-7 text-left">
-            <div className="flex items-baseline justify-between mb-2">
-              <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', color: CREAM, opacity: 0.6 }}>
-                YOUR POSITION SO FAR
-              </span>
-              {hasUsageSignal && (
-                <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', color: XANTHOUS }}>
-                  AHEAD OF ~84%
-                </span>
-              )}
-            </div>
-            <div className="relative">
-              <BandStrip height={56} />
-              <span
-                className="absolute cp-blink"
-                style={{
-                  top: '50%', left: hasUsageSignal ? '61%' : '25%',
-                  transform: 'translate(-50%, -50%)',
-                  width: 11, height: 11, borderRadius: '50%',
-                  backgroundColor: FULVOUS, border: `2px solid ${CREAM}`,
-                  boxShadow: '0 0 0 4px rgba(228,135,21,.3)',
-                }}
-                aria-hidden
-              />
-            </div>
-          </div>
-
-          <p className="mt-6" style={{ fontSize: 14.5, color: CREAM, opacity: 0.75 }}>
-            4 questions left, your pass is half-stamped
-          </p>
-          <div className="mt-6" onClick={e => { e.stopPropagation(); continueFromCheckpoint(true) }}>
-            <BlockNext label="keep going" onClick={() => continueFromCheckpoint(true)} gold />
-          </div>
-          <p className="mt-4" style={{ fontSize: 11, color: CREAM, opacity: 0.5 }}>auto-continues in 5 seconds</p>
-
-          <style>{`
-            @keyframes cp-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
-            .cp-blink { animation: cp-blink 1.2s step-end infinite; }
-            @media (prefers-reduced-motion: reduce) { .cp-blink { animation: none; } }
-          `}</style>
-        </div>
-      )}
     </div>
   )
 }

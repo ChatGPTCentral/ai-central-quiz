@@ -6,16 +6,14 @@
 // (name, email, workArea, aiTools, jobLevel), uses aiTools count as
 // breadth_score, and adds 1 net question.
 //
-// Order per the mobile-first funnel handoff — EMAIL IS LAST (asked at max
-// sunk cost, framed as delivery of the drafted member pass):
-//   name →
-//   signal middle (frequency, aiTools, depth, momentum, friction) →
-//   [checkpoint interstitial rendered by the quiz shell after friction] →
+// Order: the proven production flow (email second — captures the lead
+// early and keeps the funnel smooth), with the handoff's editorial shell
+// on top:
+//   identity (name, email) →
+//   high-engagement middle (frequency, aiTools, depth) →
+//   reflective single-clicks (momentum, friction) →
 //   persona anchors (workArea, jobLevel) →
-//   commitment (intent_30d) →
-//   email (last step, delivery)
-// Only the ORDER changed vs the previous funnel — ids, dbColumns and
-// scoring keys are identical, so the write path is untouched.
+//   commitment close (intent_30d)
 
 import type { V2Question } from './form-schema'
 export type { V2Question, V2QuestionType, V2Option, V2DbColumn, BranchingRule, BranchingCondition, BranchingOp } from './form-schema'
@@ -34,6 +32,16 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     secondFieldLabel: 'Last name',
     secondFieldPlaceholder: 'Doe',
   },
+  {
+    id: 'email',
+    type: 'email',
+    label: "What's your email address?",
+    sublabel: 'We use this to send you your personalized AI plan',
+    required: true,
+    placeholder: 'name@example.com',
+    dbColumn: 'email',
+  },
+
   // ── Stage signal: objective AI usage ───────────────────────────
   {
     id: 'frequency',
@@ -193,16 +201,6 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     ],
   },
 
-  // ── Delivery (LAST step — max sunk cost) ──────────────────────
-  {
-    id: 'email',
-    type: 'email',
-    label: 'Last thing, where do we send your plan?',
-    sublabel: 'Your pass, your month-1 sequence, and your percentile land in this inbox',
-    required: true,
-    placeholder: 'name@example.com',
-    dbColumn: 'email',
-  },
 ]
 
 // ── Score formula (replaces lib/score.ts:calculateAIScore for v2) ─
