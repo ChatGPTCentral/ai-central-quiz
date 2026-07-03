@@ -6,12 +6,16 @@
 // (name, email, workArea, aiTools, jobLevel), uses aiTools count as
 // breadth_score, and adds 1 net question.
 //
-// Order optimized for completion:
-//   identity (name, email) →
-//   high-engagement / dopamine middle (frequency, aiTools, depth) →
-//   reflective single-clicks (momentum, friction) →
+// Order per the mobile-first funnel handoff — EMAIL IS LAST (asked at max
+// sunk cost, framed as delivery of the drafted member pass):
+//   name →
+//   signal middle (frequency, aiTools, depth, momentum, friction) →
+//   [checkpoint interstitial rendered by the quiz shell after friction] →
 //   persona anchors (workArea, jobLevel) →
-//   commitment close (intent_30d)
+//   commitment (intent_30d) →
+//   email (last step, delivery)
+// Only the ORDER changed vs the previous funnel — ids, dbColumns and
+// scoring keys are identical, so the write path is untouched.
 
 import type { V2Question } from './form-schema'
 export type { V2Question, V2QuestionType, V2Option, V2DbColumn, BranchingRule, BranchingCondition, BranchingOp } from './form-schema'
@@ -22,6 +26,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     id: 'name',
     type: 'split-text',
     label: "First, what's your name?",
+    sublabel: 'It goes on your member pass, spelled exactly like this',
     required: true,
     dbColumn: 'name',
     firstFieldLabel: 'First name',
@@ -29,16 +34,6 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     secondFieldLabel: 'Last name',
     secondFieldPlaceholder: 'Doe',
   },
-  {
-    id: 'email',
-    type: 'email',
-    label: "What's your email address?",
-    sublabel: 'We use this to send you your personalized AI plan',
-    required: true,
-    placeholder: 'name@example.com',
-    dbColumn: 'email',
-  },
-
   // ── Stage signal: objective AI usage ───────────────────────────
   {
     id: 'frequency',
@@ -59,6 +54,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     id: 'aiTools',
     type: 'multi-chips',
     label: 'Which AI tools have you used?',
+    sublabel: 'Tap all that apply',
     required: true,
     dbColumn: 'ai_tools',
     scoring: 'csv',  // also writes ai_tools as CSV; breadth_score = length
@@ -86,7 +82,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     id: 'depth',
     type: 'multi-chips',
     label: 'Which of these have you actually done with AI?',
-    sublabel: 'Pick everything you have done at least once',
+    sublabel: "Pick everything you've done at least once",
     required: true,
     dbColumn: 'depth_score',
     scoring: 'count',
@@ -104,7 +100,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'momentum',
     type: 'chips',
-    label: 'Compared to six months ago, your AI usage is…',
+    label: 'Compared to 6 months ago, your AI usage is…',
     required: true,
     dbColumn: 'momentum',
     scoring: 'value',
@@ -122,7 +118,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     id: 'friction',
     type: 'chips',
     label: "What's slowing you down?",
-    sublabel: 'The biggest thing keeping you from going further with AI',
+    sublabel: 'The biggest thing keeping you from going further',
     required: true,
     dbColumn: 'friction',
     scoring: 'enum',
@@ -141,7 +137,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     id: 'workArea',
     type: 'multi-chips',
     label: 'What area of work do you want AI to help with most?',
-    sublabel: 'Select all that apply',
+    sublabel: 'Tap all that apply',
     required: true,
     dbColumn: 'work_area',
     scoring: 'csv',
@@ -195,6 +191,17 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
       { label: 'Ship something AI-powered to customers', value: 'ship_to_customers' },
       { label: 'Teach my team or company',               value: 'teach_team' },
     ],
+  },
+
+  // ── Delivery (LAST step — max sunk cost) ──────────────────────
+  {
+    id: 'email',
+    type: 'email',
+    label: 'Last thing, where do we send your plan?',
+    sublabel: 'Your pass, your month-1 sequence, and your percentile land in this inbox',
+    required: true,
+    placeholder: 'name@example.com',
+    dbColumn: 'email',
   },
 ]
 

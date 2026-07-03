@@ -1,9 +1,18 @@
 'use client'
 
+// Quiz shell — funnel-handoff design (mobile-first, no scroll, email last).
+// The state machine and data pipeline are UNCHANGED from the previous shell:
+// answers are keyed by question id, branching goes through resolveNextStep,
+// the partial-lead POST fires once name + valid email exist, and completion
+// POSTs {answers, utmSource, utmRef} to /api/submit-quiz-v2 before routing
+// to /calculating with name/score/persona/stage/id.
+
 import { useState, useCallback, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { resolveNextStep, type V2Question } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
+import { BandStrip } from '@/components/result/BandChart'
+import { track } from '@/lib/track'
 
 type Answers = Record<string, string | string[]>
 
@@ -12,13 +21,77 @@ interface Props {
   accent?: string
 }
 
-const DEFAULT_ACCENT = '#046BB1'
+const DEFAULT_ACCENT = '#E48715'
 // localStorage key for the in-progress draft (answers + step), so a refresh
 // or accidental navigation never loses what's been entered.
 const DRAFT_KEY = 'ac_quiz_v2_draft'
 
+// Design tokens (funnel handoff)
+const INK = '#333333'
+const RICH = '#1A1A1A'
+const CREAM = '#FEF7E7'
+const PAPER = '#FFFDFA'
+const FULVOUS = '#E48715'
+const XANTHOUS = '#E7B02F'
+const MUTE = '#666666'
+const HAIRLINE = '#D9D9D9'
+
+// Per-question eyebrow metadata: axis label + remaining-time estimate
+// (static labels per the handoff; recompute nothing).
+const UI_META: Record<string, { axis?: string; secs?: string }> = {
+  name: { secs: '~40 sec' },
+  frequency: { axis: 'your habit', secs: '~36 sec' },
+  aiTools: { axis: 'your toolkit', secs: '~32 sec' },
+  depth: { axis: 'your depth', secs: '~27 sec' },
+  momentum: { axis: 'your momentum', secs: '~23 sec' },
+  friction: { axis: 'your blocker', secs: '~19 sec' },
+  workArea: { axis: 'your focus', secs: '~14 sec' },
+  jobLevel: { axis: 'your seniority', secs: '~10 sec' },
+  intent_30d: { axis: 'your goal', secs: '~6 sec' },
+}
+
+// Multi-selects where one option clears the others (tools "None yet").
+const EXCLUSIVE_VALUE: Record<string, string> = { aiTools: 'None' }
+
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+/** Two-piece block button (label cell + arrow cell). */
+function BlockNext({
+  label, onClick, disabled = false, gold = false, fullWidth = false, submitting = false,
+}: { label: string; onClick: () => void; disabled?: boolean; gold?: boolean; fullWidth?: boolean; submitting?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || submitting}
+      className={`${fullWidth ? 'flex w-full' : 'inline-flex'} transition-transform active:scale-[0.98] disabled:active:scale-100`}
+      style={{ opacity: disabled ? 0.35 : 1 }}
+    >
+      <span
+        className="flex-1 inline-flex items-center justify-center"
+        style={{
+          backgroundColor: gold ? XANTHOUS : INK,
+          color: gold ? RICH : CREAM,
+          fontWeight: 600, fontSize: 16, height: 50, padding: '0 22px',
+        }}
+      >
+        {submitting ? 'sending…' : label}
+      </span>
+      <span
+        className="inline-flex items-center justify-center flex-shrink-0"
+        style={{
+          backgroundColor: gold ? CREAM : FULVOUS,
+          color: RICH, width: 50, height: 50,
+          borderLeft: `2px solid ${RICH}`, fontWeight: 600, fontSize: 16,
+        }}
+        aria-hidden
+      >
+        ↗
+      </span>
+    </button>
+  )
 }
 
 function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
@@ -36,9 +109,14 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [submitError, setSubmitError] = useState('')
   const [direction, setDirection] = useState<'fwd' | 'back'>('fwd')
   const [animKey, setAnimKey] = useState(0)
+  // Checkpoint interstitial (after the friction question): holds the step it
+  // continues to; null = hidden.
+  const [checkpoint, setCheckpoint] = useState<number | null>(null)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const emailPrefilled = useRef(false)
   const partialSent = useRef(false)
+  const startTracked = useRef(false)
+  const stepShownAt = useRef(Date.now())
 
   // Embed-mode plumbing (same protocol as /quiz)
   const isEmbed = searchParams.get('embed') === '1' || searchParams.get('ac-embed-id') !== null
@@ -59,8 +137,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   // Mount: (1) restore an in-progress draft so a refresh / accidental nav
   // doesn't lose answers, then (2) pre-fill the email answer from ?email=
   // (the URL param wins over a stale draft email). We do NOT jump the step
-  // for the email param — the user still starts at Q1 (name); the advance
-  // logic below skips the email question when it's reached.
+  // for the email param — the advance logic skips the email question when
+  // it's reached (it now sits at the END of the flow).
   useEffect(() => {
     if (emailPrefilled.current) return
     emailPrefilled.current = true
@@ -87,8 +165,14 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist the in-progress draft on every answer/step change so nothing is
-  // lost if the tab is closed or refreshed. Cleared on successful submit.
+  // quiz_start — Q1 shown (once per mount, after possible draft restore).
+  useEffect(() => {
+    if (startTracked.current) return
+    startTracked.current = true
+    track('quiz_start')
+  }, [])
+
+  // Persist the in-progress draft on every answer/step change.
   useEffect(() => {
     if (Object.keys(answers).length === 0) return
     try {
@@ -98,7 +182,9 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
 
   // Server-side in-progress capture: once we have a name + a valid email,
   // POST a partial (once) so the lead is collected even if they abandon.
-  // No enrichment / Beehiiv / email runs on this — it's deleted on complete.
+  // With email as the last step this effectively fires right before submit,
+  // acting as a safety net if the final POST fails (accepted trade-off in
+  // the handoff: pre-Q10 abandoners are not captured).
   useEffect(() => {
     if (partialSent.current) return
     const name = String(answers.name || '').trim()
@@ -121,27 +207,27 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const singleAnswer = (answers[q.id] as string) || ''
   const multiAnswer = (answers[q.id] as string[]) || []
 
-  // Branching-aware "what's next" for this step + answers snapshot.
   const nextResolved = resolveNextStep(step - 1, QUESTIONS, answers)
   const isLastStep = nextResolved === 'end'
   const isWelcome = q.type === 'welcome'
   const isText = q.type === 'text' || q.type === 'email'
+  const isSplit = q.type === 'split-text'
   const isMulti = q.type === 'multi-chips'
   const isSingle = q.type === 'chips'
+  const isEmailStep = q.type === 'email' || q.id === 'email'
   const isAutoAdvance = isSingle && !isLastStep
-  // Welcome screens supply their own CTA inside the renderer; hide the
-  // standard Continue button.
-  const showContinue = !isAutoAdvance && !isWelcome
 
-  // Visit-count-based progress (fall back to linear) so skipped questions
-  // don't show as 0% complete.
-  const progressPct = Math.round((step / TOTAL_STEPS) * 100)
+  // Reset the on-screen timer whenever the step changes; fire email_view.
+  useEffect(() => {
+    stepShownAt.current = Date.now()
+    if (isEmailStep) track('email_view')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
 
   const canProceed = useCallback((): boolean => {
     if (isWelcome) return true
     if (isMulti) return !q.required || multiAnswer.length > 0
     if (!q.required) return true
-    // split-text requires BOTH halves filled in (non-whitespace on each side).
     if (q.type === 'split-text') {
       const parts = singleAnswer.split(/\s+/).filter(Boolean)
       return parts.length >= 2
@@ -160,7 +246,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return true
   }
 
-  // Push a new step onto the visited history and animate forward.
+  const trackAnswered = useCallback(() => {
+    track('q_answered', { n: step, ms_on_screen: Date.now() - stepShownAt.current })
+  }, [step])
+
   const goForward = useCallback((targetStep: number) => {
     setDirection('fwd')
     setAnimKey(k => k + 1)
@@ -168,7 +257,6 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     setHistory(h => h[h.length - 1] === targetStep ? h : [...h, targetStep])
   }, [])
 
-  // Pop the visited history so branching paths replay correctly.
   const goBack = useCallback(() => {
     if (advanceTimeout.current) clearTimeout(advanceTimeout.current)
     if (history.length <= 1) return
@@ -185,11 +273,14 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     if (!canProceed() || !validateStep()) return
 
     if (!isLastStep) {
-      // nextResolved is narrowed to a number here (1-indexed target = +1).
+      trackAnswered()
       const target = nextResolved + 1
       const targetQ = QUESTIONS[target - 1]
       // If the next question IS the email step and we have a valid pre-filled
-      // email, skip over it (position-independent — works wherever email sits).
+      // email, skip over it (position-independent — with email last, skipping
+      // lands on 'end', which we reach by advancing from the current step
+      // once more via submit on the email step; here we only skip when email
+      // is NOT last, or fall through to it otherwise).
       const urlEmail = searchParams.get('email')?.trim().toLowerCase()
       if (
         targetQ &&
@@ -228,6 +319,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         setSubmitting(false)
         return
       }
+      trackAnswered()
+      track('email_submitted')
       // Submitted successfully — clear the in-progress draft.
       try { localStorage.removeItem(DRAFT_KEY) } catch { /* non-fatal */ }
       sessionStorage.setItem('ac_quiz_offer_start', String(Date.now()))
@@ -247,13 +340,14 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         score: String(data.score),
       })
       if (data.persona) params.set('persona', data.persona)
+      if (data.stage) params.set('stage', data.stage)
       if (data.id) params.set('id', data.id)
       router.push(`/calculating?${params.toString()}`)
     } catch {
       setSubmitError('Network error. Please check your connection and try again.')
       setSubmitting(false)
     }
-  }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent, isLastStep, nextResolved]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent, isLastStep, nextResolved, trackAnswered]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSingleSelect = (value: string) => {
     const newAnswers = { ...answers, [q.id]: value }
@@ -261,16 +355,36 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     setInputError('')
     if (isAutoAdvance) {
       if (advanceTimeout.current) clearTimeout(advanceTimeout.current)
-      // Re-resolve next using the new value (branching may depend on it).
       const nr = resolveNextStep(step - 1, QUESTIONS, newAnswers)
       if (nr === 'end') return
-      advanceTimeout.current = setTimeout(() => goForward(nr + 1), 300)
+      // 250ms select-paint beat; 900ms on the friction question so the
+      // LOGGED strip can land (handoff 1g). Friction also opens the
+      // checkpoint interstitial instead of advancing directly.
+      const isFriction = q.id === 'friction'
+      const delay = isFriction ? 900 : 250
+      advanceTimeout.current = setTimeout(() => {
+        trackAnswered()
+        if (isFriction && !isEmbed) {
+          setCheckpoint(nr + 1)
+          track('checkpoint_view')
+        } else {
+          goForward(nr + 1)
+        }
+      }, delay)
     }
   }
   const handleMultiToggle = (value: string) => {
     setAnswers(prev => {
       const cur = (prev[q.id] as string[]) || []
-      const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value]
+      const exclusive = EXCLUSIVE_VALUE[q.id]
+      let next: string[]
+      if (cur.includes(value)) {
+        next = cur.filter(v => v !== value)
+      } else if (exclusive && value === exclusive) {
+        next = [value] // "None yet" clears everything else
+      } else {
+        next = [...cur.filter(v => v !== exclusive), value] // any pick clears "None yet"
+      }
       return { ...prev, [q.id]: next }
     })
     setInputError('')
@@ -279,10 +393,21 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     setAnswers(prev => ({ ...prev, [q.id]: value }))
     setInputError('')
   }
-  const handleSkip = () => {
-    if (q.required || isLastStep) return
-    goForward(nextResolved + 1)
-  }
+
+  // Checkpoint continue (tap or 5s auto).
+  const continueFromCheckpoint = useCallback((skipped: boolean) => {
+    setCheckpoint(prev => {
+      if (prev === null) return null
+      if (skipped) track('checkpoint_skip')
+      goForward(prev)
+      return null
+    })
+  }, [goForward])
+  useEffect(() => {
+    if (checkpoint === null) return
+    const t = setTimeout(() => continueFromCheckpoint(false), 5000)
+    return () => clearTimeout(t)
+  }, [checkpoint, continueFromCheckpoint])
 
   useEffect(() => {
     if (!isSingle || !q.options) return
@@ -302,22 +427,65 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [step, singleAnswer, isSingle]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Whether the answers so far show any AI usage signal (checkpoint headline).
+  const hasUsageSignal = (() => {
+    const freq = String(answers.frequency ?? '')
+    const tools = (answers.aiTools as string[]) || []
+    const depth = (answers.depth as string[]) || []
+    return (freq !== '' && freq !== '0') || tools.some(t => t !== 'None') || depth.length > 0
+  })()
+
+  const meta = UI_META[q.id] || {}
+  const eyebrow = isEmailStep
+    ? 'LAST STEP · PASS NO. AC-0723 DRAFTED'
+    : `QUESTION ${step} OF ${TOTAL_STEPS}${meta.axis ? ` · ${meta.axis.toUpperCase()}` : ''}${meta.secs ? ` · ${meta.secs.toUpperCase()}` : ''}`
+
+  const multiCount = multiAnswer.length
+
   return (
-    <div className={`${isEmbed ? 'min-h-0' : 'min-h-[100dvh] h-[100dvh]'} bg-white flex flex-col overflow-hidden`}>
-      <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 h-[6px] bg-[#EFEAE2] z-50`}>
-        <div className="h-full transition-all duration-500 ease-out shadow-sm" style={{ width: `${progressPct}%`, backgroundColor: ACCENT }} />
+    <div className={`${isEmbed ? 'min-h-0' : 'min-h-[100dvh] h-[100dvh]'} flex flex-col overflow-hidden`} style={{ backgroundColor: PAPER }}>
+      {/* Progress: 10 segments, full-bleed top */}
+      <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 z-50 flex`} style={{ gap: 2, height: 4 }}>
+        {QUESTIONS.map((_, i) => (
+          <div
+            key={i}
+            className="flex-1 transition-colors duration-300"
+            style={{ backgroundColor: i < step - 1 ? INK : i === step - 1 ? FULVOUS : HAIRLINE }}
+          />
+        ))}
       </div>
 
+      {/* Header: back · wordmark · counter */}
       {!isEmbed && (
-        <header className="flex items-center justify-center px-4 sm:px-6 pt-3 sm:pt-6 pb-1 sm:pb-2 shrink-0">
+        <header
+          className="flex items-center justify-between shrink-0 px-1.5 min-[900px]:px-8"
+          style={{ height: 42, marginTop: 4 }}
+        >
+          <button
+            onClick={goBack}
+            disabled={history.length <= 1}
+            aria-label="Previous question"
+            className="flex items-center justify-center"
+            style={{ width: 44, height: 42, color: history.length <= 1 ? HAIRLINE : INK, fontSize: 18 }}
+          >
+            ←
+          </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-full-light-bg.png" alt="AI Central" className="h-5 sm:h-6 w-auto" />
+          <img src="/logo-full-light-bg.png" alt="AI Central" style={{ height: 13, width: 'auto' }} />
+          <span className="font-mono text-right" style={{ width: 44, fontSize: 11, color: MUTE, paddingRight: 6 }}>
+            Q{step}/{TOTAL_STEPS}
+          </span>
         </header>
       )}
 
-      <main className="flex-1 flex items-start sm:items-center justify-center px-4 sm:px-6 py-3 sm:py-6 overflow-y-auto">
-        <div className="w-full max-w-[560px]">
+      {/* Body */}
+      <main className="flex-1 min-h-0 overflow-y-auto px-5 min-[900px]:px-8 pt-3 min-[900px]:pt-8 pb-4">
+        <div className="w-full max-w-[800px] mx-auto">
           <div key={animKey} className={direction === 'fwd' ? 'tf-enter-fwd' : 'tf-enter-back'}>
+            <p className="uppercase mb-2.5" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: FULVOUS }}>
+              {eyebrow}
+            </p>
+
             <QuestionRenderer
               question={q}
               singleAnswer={singleAnswer}
@@ -333,48 +501,102 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
               onEnterKey={advance}
             />
 
-            {submitError && <div className="mb-5 p-3.5 bg-red-50 rounded-xl border border-red-100"><p className="text-sm text-red-600">{submitError}</p></div>}
-
-            {showContinue && (
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={advance}
-                  disabled={!canProceed() || submitting}
-                  className={`inline-flex items-center gap-2.5 px-6 py-3 rounded-xl font-semibold text-[15px] transition-all duration-150 shadow-sm ${canProceed() && !submitting ? 'text-white hover:opacity-90 active:scale-[0.98]' : 'bg-gray-100 text-gray-300 cursor-not-allowed shadow-none'}`}
-                  style={canProceed() && !submitting ? { backgroundColor: ACCENT } : {}}
-                >
-                  {submitting ? (
-                    <><svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.25" /><path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" /></svg> Building your plan…</>
-                  ) : (
-                    <>{isLastStep ? 'Finish' : 'OK'} <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg></>
-                  )}
-                </button>
-                {!q.required && isMulti && (
-                  <button onClick={handleSkip} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Skip</button>
-                )}
-                {isText && <span className="text-xs text-gray-400 hidden sm:block">or press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] font-mono">Enter ↵</kbd></span>}
+            {submitError && (
+              <div className="mt-4 p-3" style={{ border: '2px solid #BE3B3B', backgroundColor: '#FFF5F5' }}>
+                <p style={{ fontSize: 13, color: '#BE3B3B' }}>{submitError}</p>
               </div>
             )}
 
-            {isAutoAdvance && singleAnswer && (
-              <p className="text-xs text-gray-400 mt-3">Press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] font-mono">Enter ↵</kbd> to continue</p>
+            {/* Text steps: block button right under the inputs (keyboard-safe) */}
+            {(isText || isSplit || isWelcome) && !isWelcome && (
+              <div className="mt-5">
+                <BlockNext
+                  label={isEmailStep ? 'get my result' : 'next'}
+                  onClick={advance}
+                  disabled={!canProceed()}
+                  submitting={submitting}
+                  fullWidth
+                />
+                {isEmailStep && (
+                  <div className="mt-3 text-center">
+                    <p style={{ fontSize: 11.5, color: MUTE }}>no spam, 1 weekly editorial drop, unsubscribe anytime</p>
+                    <p className="mt-1" style={{ fontSize: 11.5, color: '#9C9C9C' }}>2,768 professionals took this quiz this month</p>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
       </main>
 
-      {!isEmbed && (
-        <footer className="shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-100">
-          <span className="text-xs text-gray-400">{progressPct}% complete</span>
-          <div className="flex items-center gap-1">
-            <button onClick={goBack} disabled={history.length <= 1} title="Previous" className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 ${history.length <= 1 ? 'text-gray-200 cursor-not-allowed' : 'text-gray-500 hover:bg-gray-100'}`}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-            </button>
-            <button onClick={advance} disabled={!canProceed()} title="Next" className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 ${canProceed() ? 'text-gray-500 hover:bg-gray-100' : 'text-gray-200 cursor-not-allowed'}`}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-            </button>
+      {/* Multi-select pinned bottom bar: "N selected" + next */}
+      {isMulti && (
+        <div
+          className="shrink-0 flex items-center justify-between gap-4 px-5 min-[900px]:px-8 py-3"
+          style={{ borderTop: `2px solid ${INK}`, backgroundColor: PAPER, paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+        >
+          <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', color: multiCount > 0 ? INK : '#9C9C9C' }}>
+            {multiCount} SELECTED
+          </span>
+          <BlockNext label="next" onClick={advance} disabled={!canProceed()} submitting={submitting} />
+        </div>
+      )}
+
+      {/* Checkpoint interstitial (after Q6 friction) */}
+      {checkpoint !== null && (
+        <div
+          className="fixed inset-0 z-[60] flex flex-col items-center justify-center px-6 text-center cursor-pointer"
+          style={{ backgroundColor: RICH, color: CREAM }}
+          onClick={() => continueFromCheckpoint(true)}
+        >
+          <p className="font-mono uppercase" style={{ fontSize: 11, letterSpacing: '0.14em', color: XANTHOUS }}>
+            Checkpoint · 6 of {TOTAL_STEPS} answered
+          </p>
+          <h2 className="mt-4 font-bold" style={{ fontSize: 'clamp(26px, 3.2vw, 38px)', lineHeight: 1.05, letterSpacing: '-0.03em' }}>
+            {hasUsageSignal ? "You're already past 84% of the planet" : 'Your starting line is being drawn'}
+          </h2>
+
+          <div className="w-full max-w-[420px] mt-7 text-left">
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', color: CREAM, opacity: 0.6 }}>
+                YOUR POSITION SO FAR
+              </span>
+              {hasUsageSignal && (
+                <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.12em', color: XANTHOUS }}>
+                  AHEAD OF ~84%
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <BandStrip height={56} />
+              <span
+                className="absolute cp-blink"
+                style={{
+                  top: '50%', left: hasUsageSignal ? '61%' : '25%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 11, height: 11, borderRadius: '50%',
+                  backgroundColor: FULVOUS, border: `2px solid ${CREAM}`,
+                  boxShadow: '0 0 0 4px rgba(228,135,21,.3)',
+                }}
+                aria-hidden
+              />
+            </div>
           </div>
-        </footer>
+
+          <p className="mt-6" style={{ fontSize: 14.5, color: CREAM, opacity: 0.75 }}>
+            4 questions left, your pass is half-stamped
+          </p>
+          <div className="mt-6" onClick={e => { e.stopPropagation(); continueFromCheckpoint(true) }}>
+            <BlockNext label="keep going" onClick={() => continueFromCheckpoint(true)} gold />
+          </div>
+          <p className="mt-4" style={{ fontSize: 11, color: CREAM, opacity: 0.5 }}>auto-continues in 5 seconds</p>
+
+          <style>{`
+            @keyframes cp-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+            .cp-blink { animation: cp-blink 1.2s step-end infinite; }
+            @media (prefers-reduced-motion: reduce) { .cp-blink { animation: none; } }
+          `}</style>
+        </div>
       )}
     </div>
   )
@@ -383,8 +605,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
 export default function QuizV2Client({ questions, accent }: Props) {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-4 border-gray-100 border-t-[#046BB1] animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFFDFA' }}>
+        <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#E8E4DF', borderTopColor: '#E48715' }} />
       </div>
     }>
       <QuizV2Content questions={questions} accent={accent} />

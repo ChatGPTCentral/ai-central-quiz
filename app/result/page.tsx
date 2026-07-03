@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { Mrs_Saint_Delafield } from 'next/font/google'
 import { createClient } from '@supabase/supabase-js'
 import CountdownTimer from '@/components/CountdownTimer'
+import TrackView from '@/components/TrackView'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
@@ -224,6 +225,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 
   return (
     <>
+      <TrackView event="result_view" props={{ stage: segFields?.stage ?? searchParams.stage ?? null, persona }} />
       <CountdownTimer paymentUrl={checkoutUrl} refNo={refNo} />
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, paddingTop: 56, color: INK }}>

@@ -9,7 +9,7 @@ const INK = '#333333'
 const RICH = '#1A1A1A'
 const FULVOUS = '#E48715'
 
-interface Band {
+export interface Band {
   n: string
   name: string
   usage: string
@@ -19,7 +19,7 @@ interface Band {
   center: string // YOU marker position for this band
 }
 
-const BANDS: Band[] = [
+export const BANDS: Band[] = [
   { n: '01', name: 'Unaware',      usage: 'Never used AI',        count: '~6.8B · 84%',   color: '#C9C4B8', width: '50%',   center: '25%' },
   { n: '02', name: 'Curious',      usage: 'Free chatbot user',    count: '~1.3B · 16%',   color: '#046BB1', width: '22%',   center: '61%' },
   { n: '03', name: 'Experimenter', usage: 'Pays for AI',          count: '~25M · 0.3%',   color: '#E48715', width: '9%',    center: '76.5%' },
@@ -37,6 +37,27 @@ const STAGE_BAND: Record<Exclude<StageKey, 'unknown'>, number> = {
   S5_builder: 5,
 }
 
+/** Just the framed 6-band dot-matrix strip — reused by the result chart,
+ *  the landing teaser, and the quiz checkpoint interstitial. */
+export function BandStrip({ height = 120 }: { height?: number }) {
+  return (
+    <div className="flex" style={{ border: `3px solid ${INK}`, height }}>
+      {BANDS.map((b, i) => (
+        <div
+          key={b.n}
+          style={{
+            width: b.width,
+            borderRight: i < BANDS.length - 1 ? `3px solid ${INK}` : undefined,
+            backgroundImage: `radial-gradient(circle at 4.5px 4.5px, ${b.color} 1.7px, transparent 1.9px)`,
+            backgroundSize: '9px 9px',
+          }}
+          aria-label={`${b.name}: ${b.usage}, ${b.count}`}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function BandChart({ stage }: { stage?: string | null }) {
   const bandIdx = STAGE_BAND[(stage as Exclude<StageKey, 'unknown'>)] ?? 1
   const youLeft = BANDS[bandIdx].center
@@ -45,20 +66,7 @@ export function BandChart({ stage }: { stage?: string | null }) {
     <div className="w-full">
       {/* Chart strip + YOU marker (marker chip needs headroom above the frame) */}
       <div className="relative" style={{ paddingTop: 34 }}>
-        <div className="flex" style={{ border: `3px solid ${INK}`, height: 120 }}>
-          {BANDS.map((b, i) => (
-            <div
-              key={b.n}
-              style={{
-                width: b.width,
-                borderRight: i < BANDS.length - 1 ? `3px solid ${INK}` : undefined,
-                backgroundImage: `radial-gradient(circle at 4.5px 4.5px, ${b.color} 1.7px, transparent 1.9px)`,
-                backgroundSize: '9px 9px',
-              }}
-              aria-label={`${b.name}: ${b.usage}, ${b.count}`}
-            />
-          ))}
-        </div>
+        <BandStrip height={120} />
         {/* YOU marker: chip above the frame + blinking dot centered on the band */}
         <div className="absolute top-0 bottom-0" style={{ left: youLeft, width: 0 }}>
           <span

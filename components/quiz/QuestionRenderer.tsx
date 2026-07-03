@@ -1,6 +1,12 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+// Question renderer — funnel-handoff shell. Same props API as before (the
+// admin editor preview mounts this component too); only the presentation
+// changed: mono key squares, 3px-reading fulvous selected states, 2-col
+// compact grids for long multi-selects, editorial input fields, the friction
+// "LOGGED" strip, and the blinking ADVANCING… microlabel.
+
+import { useRef, useEffect, useState } from 'react'
 import type { V2Question } from '@/lib/form-schema'
 import { resolveTokens, type TokenContext } from '@/lib/piping'
 
@@ -14,30 +20,77 @@ interface Props {
   stepNumber: number
   /** Error to display under the text input */
   inputError?: string
-  /** Accent color (theme override). Default matches the historical brand blue. */
+  /** Accent color (theme override). The funnel design is token-fixed; the
+   *  accent only tints editor-configured welcome CTAs. */
   accent?: string
   /** Whether to autofocus the text input on mount/step-change */
   autoFocus?: boolean
-  /** Token context for piping in label/sublabel. Quiz-time tokens like
-   *  {firstName} resolve from in-progress answers; result-only tokens
-   *  ({persona}, {score}) fall back to empty. */
+  /** Token context for piping in label/sublabel. */
   tokens?: TokenContext
-  /** Single-select / text handlers */
   onSingleSelect: (value: string) => void
   onMultiToggle: (value: string) => void
   onTextChange: (value: string) => void
-  /** Submit via Enter on text input */
   onEnterKey?: () => void
 }
 
-const DEFAULT_ACCENT = '#046BB1'
+const INK = '#333333'
+const RICH = '#1A1A1A'
+const CREAM = '#FEF7E7'
+const FULVOUS = '#E48715'
+const MUTE = '#666666'
+const LOGGED_COLOR = '#B8610A'
+
+// Friction "logged" feedback strips (design handoff 1g), keyed by option value.
+const LOGGED_STRIPS: Record<string, string> = {
+  no_starting_point: 'LOGGED: YOUR PLAN STARTS AT STEP 1',
+  no_time: 'LOGGED: 15-MINUTE WORKFLOWS ONLY',
+  too_noisy: 'LOGGED: YOUR PLAN CUTS 14,000+ TOOLS TO 12',
+  no_trust: 'LOGGED: EDITOR-TESTED, OUTCOMES ATTACHED',
+  cant_build: 'LOGGED: BUILD TRACK QUEUED FOR MONTH 1',
+  no_friction: "LOGGED: WE'LL AIM HIGHER THEN",
+}
+
+const KEYS = 'ABCDEFGHIJ'
+
+function MonoLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="block font-mono mb-1.5" style={{ fontSize: 9.5, letterSpacing: '0.12em', color: MUTE }}>
+      {children}
+    </span>
+  )
+}
+
+/** Editorial text field: 2px ink border, 3px-reading fulvous focus state. */
+function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { inputRef?: React.Ref<HTMLInputElement> }) {
+  const { inputRef, style, onFocus, onBlur, ...rest } = props
+  const [focused, setFocused] = useState(false)
+  return (
+    <input
+      ref={inputRef}
+      {...rest}
+      onFocus={e => { setFocused(true); onFocus?.(e) }}
+      onBlur={e => { setFocused(false); onBlur?.(e) }}
+      className="w-full outline-none"
+      style={{
+        fontSize: 16, // ≥16px prevents iOS zoom
+        padding: '13px 14px',
+        color: RICH,
+        backgroundColor: '#FFFFFF',
+        border: `2px solid ${focused ? FULVOUS : INK}`,
+        boxShadow: focused ? `inset 0 0 0 1px ${FULVOUS}` : 'none',
+        borderRadius: 0,
+        ...style,
+      }}
+    />
+  )
+}
 
 export function QuestionRenderer({
   question: q,
   singleAnswer,
   multiAnswer,
   inputError,
-  accent = DEFAULT_ACCENT,
+  accent = FULVOUS,
   autoFocus = false,
   tokens,
   onSingleSelect,
@@ -45,9 +98,6 @@ export function QuestionRenderer({
   onTextChange,
   onEnterKey,
 }: Props) {
-  // Resolve tokens in label + sublabel. When `tokens` is undefined,
-  // resolveTokens with an empty ctx still strips unknown tokens — which
-  // is the right behavior for the editor preview before any state hookup.
   const label = resolveTokens(q.label, tokens ?? {})
   const sublabel = q.sublabel ? resolveTokens(q.sublabel, tokens ?? {}) : undefined
   const inputRef = useRef<HTMLInputElement>(null)
@@ -56,16 +106,10 @@ export function QuestionRenderer({
   const isSplit = q.type === 'split-text'
   const isSingle = q.type === 'chips'
   const isMulti = q.type === 'multi-chips'
-  // Switch to a 2-col grid only when the option list is long enough that a
-  // single column would dominate the viewport (tools/work-area, 14+ items).
-  // Mid-sized multi-chips with verbose labels (depth, 6 items with long
-  // sentences) stay single-column so each label can breathe on its own row.
-  const isLargeGrid = isMulti && (q.options?.length ?? 0) > 8
+  // 2-col compact grid for long option lists (tools 16, work areas 14) so
+  // everything fits one mobile viewport; short lists stay full-width rows.
+  const isGrid = isMulti && (q.options?.length ?? 0) > 8
 
-  // Split the underlying string answer into two halves for the
-  // split-text renderer. We use the first whitespace run as the boundary
-  // so "Alex Fiore" → first="Alex", second="Fiore". Multi-token last
-  // names work ("Van Der Berg" → first="Van", second="Der Berg").
   const splitParts = (() => {
     if (!isSplit) return { first: '', second: '' }
     const idx = singleAnswer.indexOf(' ')
@@ -77,174 +121,163 @@ export function QuestionRenderer({
 
   useEffect(() => {
     if ((isText || isSplit) && autoFocus && inputRef.current) {
-      const t = setTimeout(() => inputRef.current?.focus(), 380)
+      const t = setTimeout(() => inputRef.current?.focus(), 300)
       return () => clearTimeout(t)
     }
-  }, [isText, isSplit, autoFocus, q.id])
+  }, [q.id, isText, isSplit, autoFocus])
 
   const onInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      onEnterKey?.()
-    }
+    if (e.key === 'Enter') { e.preventDefault(); onEnterKey?.() }
   }
 
-  const letter = (i: number) => String.fromCharCode(65 + i)
-
-  // Welcome screen — full-bleed hero with a single CTA. No step number,
-  // no input. Clicking the CTA advances via the same onEnterKey hook
-  // QuizV2Client uses for text-input Enter.
   if (isWelcome) {
     return (
-      <div className="text-center py-4 sm:py-10">
-        <h1 className="text-[28px] sm:text-[36px] md:text-[40px] font-black text-gray-900 leading-[1.05] mb-3 sm:mb-4">
+      <div className="py-6">
+        <h1 className="font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.05, letterSpacing: '-0.03em', color: RICH }}>
           {label}
         </h1>
-        {sublabel && (
-          <p className="text-[15px] sm:text-[17px] text-gray-500 leading-relaxed mb-6 sm:mb-9 max-w-md mx-auto whitespace-pre-wrap">
-            {sublabel}
-          </p>
-        )}
+        {sublabel && <p className="mt-3 whitespace-pre-wrap" style={{ fontSize: 14.5, color: MUTE, lineHeight: 1.5 }}>{sublabel}</p>}
         <button
           type="button"
           onClick={() => onEnterKey?.()}
-          className="inline-flex items-center justify-center px-7 py-3.5 rounded-xl font-bold text-[15px] text-white transition-all active:scale-[0.99] hover:opacity-90"
-          style={{ backgroundColor: accent }}
+          className="mt-6 inline-flex items-center justify-center transition-transform active:scale-[0.98]"
+          style={{ backgroundColor: accent, color: '#FFFFFF', fontWeight: 600, fontSize: 16, padding: '15px 26px' }}
         >
-          {q.ctaText?.trim() || 'Get started'} →
+          {q.ctaText?.trim() || 'Get started'} ↗
         </button>
-        <p className="mt-5 text-[11px] text-gray-400">
-          Takes about 90 seconds · Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] text-gray-500 font-mono">Enter ↵</kbd> to begin
-        </p>
       </div>
     )
   }
 
   return (
     <>
-      {/* A small accent chevron marks the prompt without exposing a question
-          number — numbering is misleading once steps can be skipped. */}
-      <div className="flex items-center gap-1.5 mb-3 sm:mb-5">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </div>
+      <h2 className="font-bold" style={{ fontSize: 'clamp(24px, 2.8vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.03em', color: RICH }}>
+        {label}
+      </h2>
+      {sublabel ? <p className="mt-1.5" style={{ fontSize: 13, color: MUTE }}>{sublabel}</p> : null}
+      {/* Gap before options — compresses on short viewports (no-scroll budget) */}
+      <div style={{ height: 'clamp(8px, 1.8dvh, 24px)' }} />
 
-      <h1 className="text-[22px] sm:text-[26px] md:text-[30px] font-bold text-gray-900 leading-tight mb-1.5 sm:mb-2">{label}</h1>
-      {sublabel ? <p className="text-[13px] sm:text-[15px] text-gray-500 mb-3 sm:mb-4">{sublabel}</p> : <div className="mb-4 sm:mb-6" />}
-
-      {isText && (
-        <div className="mb-7" onKeyDown={onInputKeyDown}>
-          <input
-            ref={inputRef}
-            type={q.type === 'email' ? 'email' : 'text'}
-            value={singleAnswer}
-            onChange={e => onTextChange(e.target.value)}
-            placeholder={q.placeholder}
-            className={`w-full text-[17px] text-gray-900 placeholder-gray-300 bg-transparent border-b-2 pb-3 outline-none transition-colors duration-200 ${inputError ? 'border-red-400' : 'border-gray-200'}`}
-            style={!inputError ? { borderBottomColor: undefined } : {}}
-            onFocus={e => { if (!inputError) e.currentTarget.style.borderBottomColor = accent }}
-            onBlur={e => { e.currentTarget.style.borderBottomColor = '' }}
-          />
-          {inputError && <p className="mt-2 text-sm text-red-500">{inputError}</p>}
-          <p className="mt-3 text-xs text-gray-400">Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] text-gray-500 font-mono">Enter ↵</kbd> to continue</p>
-        </div>
-      )}
-
+      {/* ── Name (split text): stacked fields, mono microlabels ── */}
       {isSplit && (
-        <div className="mb-7" onKeyDown={onInputKeyDown}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="block">
-              {q.firstFieldLabel && (
-                <span className="block text-[11px] uppercase tracking-widest text-gray-400 mb-1.5">{q.firstFieldLabel}</span>
-              )}
-              <input
-                ref={inputRef}
-                type="text"
-                value={splitParts.first}
-                onChange={e => onFirstChange(e.target.value)}
-                placeholder={q.firstFieldPlaceholder}
-                className="w-full text-[17px] text-gray-900 placeholder-gray-300 bg-transparent border-b-2 pb-3 outline-none transition-colors duration-200 border-gray-200"
-                onFocus={e => { e.currentTarget.style.borderBottomColor = accent }}
-                onBlur={e => { e.currentTarget.style.borderBottomColor = '' }}
-              />
-            </label>
-            <label className="block">
-              {q.secondFieldLabel && (
-                <span className="block text-[11px] uppercase tracking-widest text-gray-400 mb-1.5">{q.secondFieldLabel}</span>
-              )}
-              <input
-                type="text"
-                value={splitParts.second}
-                onChange={e => onSecondChange(e.target.value)}
-                placeholder={q.secondFieldPlaceholder}
-                className="w-full text-[17px] text-gray-900 placeholder-gray-300 bg-transparent border-b-2 pb-3 outline-none transition-colors duration-200 border-gray-200"
-                onFocus={e => { e.currentTarget.style.borderBottomColor = accent }}
-                onBlur={e => { e.currentTarget.style.borderBottomColor = '' }}
-              />
-            </label>
-          </div>
-          {inputError && <p className="mt-2 text-sm text-red-500">{inputError}</p>}
-          <p className="mt-3 text-xs text-gray-400">Press <kbd className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] text-gray-500 font-mono">Enter ↵</kbd> to continue</p>
+        <div onKeyDown={onInputKeyDown} className="flex flex-col gap-3.5">
+          <label className="block">
+            <MonoLabel>{(q.firstFieldLabel || 'First name').toUpperCase()}</MonoLabel>
+            <Field
+              inputRef={inputRef}
+              type="text"
+              value={splitParts.first}
+              onChange={e => onFirstChange(e.target.value)}
+              placeholder={q.firstFieldPlaceholder}
+              autoComplete="given-name"
+              autoCapitalize="words"
+              enterKeyHint="next"
+            />
+          </label>
+          <label className="block">
+            <MonoLabel>{(q.secondFieldLabel || 'Last name').toUpperCase()}</MonoLabel>
+            <Field
+              type="text"
+              value={splitParts.second}
+              onChange={e => onSecondChange(e.target.value)}
+              placeholder={q.secondFieldPlaceholder}
+              autoComplete="family-name"
+              autoCapitalize="words"
+              enterKeyHint="next"
+            />
+          </label>
+          {inputError && <p style={{ fontSize: 12.5, color: '#BE3B3B' }}>{inputError}</p>}
         </div>
       )}
 
-      {isSingle && q.options && q.layout === 'horizontal' && (
-        <div className="mb-5 sm:mb-7">
-          {/* Connector track that runs through all the chip centers. */}
-          <div className="relative">
-            <div className="absolute left-3 right-3 top-1/2 -translate-y-1/2 h-[2px] bg-gray-200" aria-hidden />
-            <div className="relative grid gap-2" style={{ gridTemplateColumns: `repeat(${q.options.length}, minmax(0, 1fr))` }}>
-              {q.options.map((opt, i) => {
-                const sel = singleAnswer === opt.value
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => onSingleSelect(opt.value)}
-                    className={`relative flex flex-col items-center justify-center gap-1.5 py-3 sm:py-4 rounded-xl border-2 transition-all duration-150 active:scale-[0.97] ${sel ? '' : 'border-gray-200 bg-white hover:border-gray-300'}`}
-                    style={sel ? { borderColor: accent, backgroundColor: `${accent}10` } : {}}
-                  >
-                    <span className={`flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-black transition-all duration-150 ${sel ? 'text-white' : 'bg-gray-100 text-gray-500'}`} style={sel ? { backgroundColor: accent } : {}}>
-                      {i + 1}
-                    </span>
-                    {opt.emoji && <span className="text-[16px] leading-none">{opt.emoji}</span>}
-                    <span className={`text-[11px] sm:text-[12px] font-bold text-center leading-tight px-1 ${sel ? '' : 'text-gray-700'}`} style={sel ? { color: accent } : {}}>
-                      {opt.label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+      {/* ── Text / email ─────────────────────────────────────── */}
+      {isText && (
+        <div onKeyDown={onInputKeyDown}>
+          <label className="block">
+            <MonoLabel>{q.type === 'email' ? 'EMAIL' : 'YOUR ANSWER'}</MonoLabel>
+            <Field
+              inputRef={inputRef}
+              type={q.type === 'email' ? 'email' : 'text'}
+              value={singleAnswer}
+              onChange={e => onTextChange(e.target.value)}
+              placeholder={q.placeholder}
+              inputMode={q.type === 'email' ? 'email' : undefined}
+              autoComplete={q.type === 'email' ? 'email' : undefined}
+              enterKeyHint={q.type === 'email' ? 'go' : 'next'}
+              style={inputError ? { borderColor: '#BE3B3B', boxShadow: 'inset 0 0 0 1px #BE3B3B' } : undefined}
+            />
+          </label>
+          {inputError && <p className="mt-2" style={{ fontSize: 12.5, color: '#BE3B3B' }}>{inputError}</p>}
         </div>
       )}
 
-      {isSingle && q.options && q.layout !== 'horizontal' && (
-        <div className="flex flex-col gap-2 sm:gap-2.5 mb-4 sm:mb-7">
+      {/* ── Single select: key-square rows, tap advances ─────── */}
+      {isSingle && q.options && (
+        <div className="flex flex-col" style={{ gap: 'clamp(5px, 1dvh, 8px)' }}>
           {q.options.map((opt, i) => {
             const sel = singleAnswer === opt.value
+            const logged = q.id === 'friction' && sel ? LOGGED_STRIPS[opt.value] : null
             return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onSingleSelect(opt.value)}
-                className={`flex items-center gap-3 w-full px-3.5 sm:px-4 py-2.5 sm:py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
-                style={sel ? { borderColor: accent } : {}}
-              >
-                <span className={`flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[11px] font-bold transition-all duration-150 ${sel ? 'text-white' : 'bg-gray-100 text-gray-500'}`} style={sel ? { backgroundColor: accent } : {}}>
-                  {letter(i)}
-                </span>
-                {opt.emoji && <span className="text-[17px] leading-none">{opt.emoji}</span>}
-                <span className={`font-medium text-[15px] ${sel ? '' : 'text-gray-800'}`} style={sel ? { color: accent } : {}}>{opt.label}</span>
-              </button>
+              <div key={opt.value}>
+                <button
+                  type="button"
+                  onClick={() => onSingleSelect(opt.value)}
+                  className="w-full flex items-center gap-3 text-left transition-all duration-100 active:scale-[0.98]"
+                  style={{
+                    border: `2px solid ${sel ? FULVOUS : INK}`,
+                    boxShadow: sel ? `inset 0 0 0 1px ${FULVOUS}` : 'none',
+                    backgroundColor: sel ? CREAM : '#FFFFFF',
+                    padding: 'clamp(7px, 1.3dvh, 11px) 14px',
+                  }}
+                >
+                  <span
+                    className="flex-shrink-0 flex items-center justify-center font-mono"
+                    style={{
+                      width: 26, height: 26, fontSize: 12, fontWeight: 600,
+                      backgroundColor: sel ? FULVOUS : INK,
+                      color: sel ? RICH : CREAM,
+                    }}
+                  >
+                    {KEYS[i] ?? '·'}
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>{opt.label}</span>
+                  {sel && <span className="ml-auto flex-shrink-0" style={{ color: FULVOUS, fontWeight: 700, fontSize: 16 }} aria-hidden>✓</span>}
+                </button>
+                {logged && (
+                  <div
+                    className="font-mono qr-logged"
+                    style={{
+                      fontSize: 10.5, letterSpacing: '0.08em', color: LOGGED_COLOR,
+                      backgroundColor: CREAM, border: `2px solid ${INK}`, borderTop: 'none',
+                      padding: '7px 14px',
+                    }}
+                  >
+                    {logged}
+                  </div>
+                )}
+              </div>
             )
           })}
+
+          {!singleAnswer && (
+            <p className="text-center mt-1.5" style={{ fontSize: 11.5, color: '#9C9C9C' }}>
+              tap an answer to continue
+            </p>
+          )}
+          {singleAnswer && (
+            <p className="text-center mt-1.5 font-mono qr-blink" style={{ fontSize: 10.5, letterSpacing: '0.1em', color: FULVOUS }}>
+              ADVANCING…
+            </p>
+          )}
         </div>
       )}
 
+      {/* ── Multi select: compact 2-col grid or full-width rows ── */}
       {isMulti && q.options && (
-        <div className={`mb-4 sm:mb-7 ${isLargeGrid ? 'grid grid-cols-2 gap-2 sm:gap-2.5' : 'flex flex-col gap-2 sm:gap-2.5'}`}>
+        <div
+          className={isGrid ? 'grid grid-cols-2' : 'flex flex-col'}
+          style={{ gap: 'clamp(5px, 1dvh, 8px)' }}
+        >
           {q.options.map(opt => {
             const sel = multiAnswer.includes(opt.value)
             return (
@@ -252,24 +285,44 @@ export function QuestionRenderer({
                 key={opt.value}
                 type="button"
                 onClick={() => onMultiToggle(opt.value)}
-                className={`flex items-center gap-3 w-full px-3.5 sm:px-4 py-2.5 sm:py-3.5 rounded-xl border-2 text-left transition-all duration-150 active:scale-[0.99] ${sel ? 'bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
-                style={sel ? { borderColor: accent } : {}}
+                className="flex items-center gap-2.5 text-left transition-all duration-100 active:scale-[0.98]"
+                style={{
+                  border: `2px solid ${sel ? FULVOUS : INK}`,
+                  backgroundColor: sel ? CREAM : '#FFFFFF',
+                  padding: isGrid ? 'clamp(6px, 1.2dvh, 10px) 10px' : 'clamp(7px, 1.3dvh, 11px) 14px',
+                }}
               >
-                <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center border-2 transition-all duration-150 ${sel ? '' : 'border-gray-300 bg-white'}`} style={sel ? { borderColor: accent, backgroundColor: accent } : {}}>
-                  {sel && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5.5L3.8 7.5L8 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                <span
+                  className="flex-shrink-0 flex items-center justify-center"
+                  style={{
+                    width: 15, height: 15,
+                    border: `2px solid ${sel ? FULVOUS : INK}`,
+                    backgroundColor: sel ? FULVOUS : '#FFFFFF',
+                  }}
+                  aria-hidden
+                >
+                  {sel && (
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5.5L4 8L8.5 2.5" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
                 </span>
-                {opt.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={opt.logo} alt="" className="w-5 h-5 object-contain flex-shrink-0" />
-                ) : opt.emoji ? (
-                  <span className="text-[17px] leading-none">{opt.emoji}</span>
-                ) : null}
-                <span className={`font-medium text-[14px] leading-snug ${sel ? '' : 'text-gray-800'}`} style={sel ? { color: accent } : {}}>{opt.label}</span>
+                <span style={{ fontSize: isGrid ? 13 : 14, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>
+                  {opt.label}
+                </span>
               </button>
             )
           })}
         </div>
       )}
+
+      <style>{`
+        @keyframes qr-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+        .qr-blink { animation: qr-blink 1s step-end infinite; }
+        @keyframes qr-logged-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+        .qr-logged { animation: qr-logged-in 150ms cubic-bezier(0.2, 0, 0, 1); }
+        @media (prefers-reduced-motion: reduce) { .qr-blink, .qr-logged { animation: none; } }
+      `}</style>
     </>
   )
 }

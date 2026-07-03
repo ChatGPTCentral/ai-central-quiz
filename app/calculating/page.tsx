@@ -1,176 +1,131 @@
 'use client'
 
+// Assembling beat (funnel handoff 1m): a ~3-second dark scoring screen with
+// a ticking mono checklist and the member pass carrying the user's real
+// name, then redirect to /result with name/score/persona/stage/id intact.
+
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import FomoPopup from '@/components/FomoPopup'
+import { track } from '@/lib/track'
 
-// Viridian for "computation in progress" - - distinct from Azul (form focus)
-// and Fulvous (energy / CTA). Keeps the three surfaces visually
-// recognizable while staying inside the brand palette.
-const ACCENT = '#2D8879'
+const RICH = '#1A1A1A'
+const CREAM = '#FEF7E7'
+const INK = '#333333'
+const FULVOUS = '#E48715'
+const XANTHOUS = '#E7B02F'
 
-const STEPS = [
- { label: 'Analyzing your responses',               duration: 900 },
- { label: 'Placing you on the AI adoption ladder',  duration: 900 },
- { label: 'Matching your persona to our playbooks', duration: 900 },
- { label: 'Building your personalized plan',        duration: 900 },
-]
+const CHECKS = ['10 ANSWERS SCORED', 'PLACED AMONG 8.1B PEOPLE', 'SEQUENCING MONTH 1']
+const TICK_MS = 850          // one checklist line per beat
+const REDIRECT_AT_MS = 3000  // "takes about 3 seconds"
 
 function CalculatingContent() {
- const router = useRouter()
- const searchParams = useSearchParams()
- const persona = searchParams.get('persona') || ''
- const name = searchParams.get('name')
- const score = searchParams.get('score') || ''
- const id = searchParams.get('id') || ''
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const persona = searchParams.get('persona') || ''
+  const stage = searchParams.get('stage') || ''
+  const name = searchParams.get('name')
+  const score = searchParams.get('score') || ''
+  const id = searchParams.get('id') || ''
 
- const [currentStep, setCurrentStep] = useState(0)
- const [completedSteps, setCompletedSteps] = useState<number[]>([])
+  const [done, setDone] = useState(0) // how many checklist lines have ticked
 
- useEffect(() => {
-  if (!name) {
-   router.replace('/')
-   return
-  }
+  useEffect(() => {
+    if (!name) {
+      router.replace('/')
+      return
+    }
+    track('assembling_view')
 
-  let stepIndex = 0
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (let i = 1; i <= CHECKS.length; i++) {
+      timers.push(setTimeout(() => setDone(i), TICK_MS * i))
+    }
+    timers.push(setTimeout(() => {
+      const params = new URLSearchParams({ name: name!, score })
+      if (persona) params.set('persona', persona)
+      if (stage) params.set('stage', stage)
+      if (id) params.set('id', id)
+      router.replace(`/result?${params.toString()}`)
+    }, REDIRECT_AT_MS))
+    return () => timers.forEach(clearTimeout)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const advance = () => {
-   if (stepIndex < STEPS.length) {
-    const delay = STEPS[stepIndex].duration
-    setTimeout(() => {
-     setCompletedSteps(prev => [...prev, stepIndex])
-     stepIndex++
-     setCurrentStep(stepIndex)
-     if (stepIndex < STEPS.length) advance()
-     else {
-      setTimeout(() => {
-       const params = new URLSearchParams({
-        name: name!,
-        score,
-       })
-       if (persona) params.set('persona', persona)
-       if (id) params.set('id', id)
-       router.replace(`/result?${params.toString()}`)
-      }, 400)
-     }
-    }, delay)
-   }
-  }
+  const passName = (name || 'YOUR NAME').trim()
 
-  advance()
- }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center px-6 py-10" style={{ backgroundColor: RICH }}>
+      <p className="font-mono uppercase" style={{ fontSize: 11, letterSpacing: '0.16em', color: XANTHOUS }}>
+        Scoring
+      </p>
+      <h1 className="mt-3 font-bold text-center" style={{ fontSize: 'clamp(28px, 3.4vw, 40px)', letterSpacing: '-0.03em', color: CREAM }}>
+        Assembling your pass
+      </h1>
 
- const totalDuration = STEPS.reduce((a, s) => a + s.duration, 0)
- const elapsed = STEPS.slice(0, currentStep).reduce((a, s) => a + s.duration, 0)
- const progressPct = Math.min(100, Math.round((elapsed / totalDuration) * 100))
-
- return (
-  <div className="min-h-[100dvh] flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
-   {/* Top progress bar */}
-   <div className="fixed top-0 left-0 right-0 h-[6px] z-50" style={{ backgroundColor: '#EFEAE2' }}>
-    <div className="h-full transition-all duration-500 ease-out" style={{ width: `${progressPct}%`, backgroundColor: ACCENT }} />
-   </div>
-
-   {/* Header */}
-   <header className="flex items-center justify-center px-6 pt-8 pb-2 shrink-0">
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src="/logo-full-light-bg.png" alt="AI Central" className="h-6 w-auto" />
-   </header>
-
-   {/* Main — vertically + horizontally centered */}
-   <main className="flex-1 flex items-center justify-center px-6 py-6">
-    <div className="w-full max-w-[520px] text-center">
-     {/* Animated halo / spinner — sleeker than the bullet list */}
-     <div className="relative mx-auto mb-7 sm:mb-9" style={{ width: 84, height: 84 }}>
-      {/* Outer pulsing ring */}
-      <span
-       className="absolute inset-0 rounded-full"
-       style={{ border: `1.5px solid ${ACCENT}55`, animation: 'ac-ping 2s cubic-bezier(0,0,0.2,1) infinite' }}
-      />
-      {/* Rotating arc */}
-      <svg
-       className="absolute inset-0"
-       viewBox="0 0 100 100"
-       style={{ animation: 'ac-spin 1.4s linear infinite', transformOrigin: '50% 50%' }}
-       aria-hidden
-      >
-       <circle cx="50" cy="50" r="42" fill="none" stroke="#EFEAE2" strokeWidth="6" />
-       <circle
-        cx="50" cy="50" r="42"
-        fill="none" stroke={ACCENT} strokeWidth="6" strokeLinecap="round"
-        strokeDasharray={2 * Math.PI * 42}
-        strokeDashoffset={2 * Math.PI * 42 * 0.72}
-       />
-      </svg>
-      {/* Center percentage */}
-      <div className="absolute inset-0 flex items-center justify-center">
-       <span className="text-[16px] font-black tabular-nums" style={{ color: ACCENT }}>{progressPct}%</span>
+      {/* Checklist — lines tick in sequence, the live one blinks */}
+      <div className="mt-7 flex flex-col gap-2.5 font-mono" style={{ fontSize: 12, letterSpacing: '0.1em' }}>
+        {CHECKS.map((c, i) => {
+          const ticked = done > i
+          const active = done === i
+          return (
+            <div
+              key={c}
+              className={`flex items-center gap-2.5 ${active ? 'as-blink' : ''}`}
+              style={{ color: ticked ? CREAM : active ? XANTHOUS : CREAM, opacity: ticked ? 1 : active ? 1 : 0.35 }}
+            >
+              <span style={{ width: 16, color: ticked ? '#62A758' : XANTHOUS }}>{ticked ? '✓' : '→'}</span>
+              {c}
+            </div>
+          )
+        })}
       </div>
-      <style>{`
-       @keyframes ac-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
-       @keyframes ac-ping {
-        0%   { transform: scale(1);    opacity: 0.85; }
-        80%  { transform: scale(1.35); opacity: 0; }
-        100% { transform: scale(1.35); opacity: 0; }
-       }
-      `}</style>
-     </div>
 
-     <p className="text-[11px] font-bold uppercase tracking-[0.18em] mb-3" style={{ color: ACCENT }}>
-      Generating your results
-     </p>
-     <h1 className="text-[28px] sm:text-[34px] font-black leading-[1.1] mb-3" style={{ color: '#333333' }}>
-      Building your personalized plan
-     </h1>
-     <p className="text-[15px] mb-9 mx-auto max-w-[420px]" style={{ color: '#555' }}>
-      Hang tight. We&apos;re tailoring your AI roadmap based on your answers.
-     </p>
-
-     {/* Steps — centered, current one highlighted */}
-     <div className="flex flex-col items-center gap-3">
-      {STEPS.map((step, i) => {
-       const done = completedSteps.includes(i)
-       const active = currentStep === i
-       const stateColor = active ? '#333333' : done ? '#555555' : '#9C9C9C'
-       const stateOpacity = active ? 1 : done ? 0.45 : 0.3
-       return (
-        <div
-         key={step.label}
-         className="flex items-center gap-3 text-[14px] transition-all duration-500"
-         style={{ color: stateColor, opacity: stateOpacity }}
-        >
-         <div
-          className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center transition-all duration-300 ${active ? 'animate-pulse' : ''}`}
-          style={done || active ? { backgroundColor: ACCENT } : { backgroundColor: '#F5F5F5' }}
-         >
-          {done && (
-           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2 5.5L3.8 7.5L8 3" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-           </svg>
-          )}
-         </div>
-         <span className="font-medium">{step.label}</span>
+      {/* Member pass with the real name */}
+      <div className="mt-9 w-full max-w-[360px]" style={{ transform: 'rotate(-2deg)' }}>
+        <div style={{ backgroundColor: INK, border: `3px solid #000000`, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}>
+          <div className="px-5 pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.16em', color: CREAM, opacity: 0.65 }}>
+                AI CENTRAL · MEMBER PASS
+              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-avatar-light.png" alt="" width={18} height={18} style={{ display: 'block' }} />
+            </div>
+            <div className="mt-3 font-black uppercase break-words" style={{ fontSize: 'clamp(24px, 7vw, 34px)', letterSpacing: '-0.02em', lineHeight: 1, color: CREAM }}>
+              {passName}
+            </div>
+            <div className="mt-2.5 font-mono as-blink" style={{ fontSize: 11, letterSpacing: '0.1em', color: XANTHOUS }}>
+              CLASS: SCORING…
+            </div>
+          </div>
+          <div className="flex items-center justify-between px-5 py-2.5" style={{ backgroundColor: CREAM, borderTop: '3px solid #000000' }}>
+            <div
+              aria-hidden
+              style={{ width: 140, height: 18, background: 'repeating-linear-gradient(90deg, #1A1A1A 0 2px, transparent 2px 5px)' }}
+            />
+            <span className="font-mono font-semibold" style={{ fontSize: 10.5, color: RICH }}>NO. AC-0723</span>
+          </div>
         </div>
-       )
-      })}
-     </div>
-    </div>
-   </main>
+      </div>
 
-   <FomoPopup variant="completed" />
-  </div>
- )
+      <p className="mt-7" style={{ fontSize: 11.5, color: CREAM, opacity: 0.5 }}>takes about 3 seconds</p>
+
+      <style>{`
+        @keyframes as-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+        .as-blink { animation: as-blink 1.1s step-end infinite; }
+        @media (prefers-reduced-motion: reduce) { .as-blink { animation: none; } }
+      `}</style>
+    </div>
+  )
 }
 
 export default function CalculatingPage() {
- return (
-  <Suspense fallback={
-   <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFFDFA' }}>
-    <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#E8E4DF', borderTopColor: '#2D8879' }} />
-   </div>
-  }>
-   <CalculatingContent />
-  </Suspense>
- )
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#1A1A1A' }}>
+        <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#333333', borderTopColor: '#E7B02F' }} />
+      </div>
+    }>
+      <CalculatingContent />
+    </Suspense>
+  )
 }

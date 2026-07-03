@@ -266,6 +266,7 @@ export async function POST(req: NextRequest) {
     success: true,
     id: rowId,
     persona: computedPersona,
+    stage: computedStage,
     name: v.name,
     score,
     alreadySubscribed,
