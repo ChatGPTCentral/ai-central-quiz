@@ -36,12 +36,15 @@ function barcodeBars(seed: string, width: number): { x: number; w: number }[] {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
+  const now = new Date()
+  const defaultIssued = `${String(now.getMonth() + 1).padStart(2, '0')} / ${now.getFullYear()}`
   const name = (searchParams.get('name') || 'AI Professional').slice(0, 40).toUpperCase()
   const stage = (searchParams.get('stage') || 'CURIOUS').slice(0, 24).toUpperCase()
   const profile = (searchParams.get('profile') || 'AI Professional').slice(0, 24)
   const pct = (searchParams.get('pct') || '38').replace(/[^0-9.]/g, '') || '38'
-  const issued = (searchParams.get('issued') || '07 / 2026').slice(0, 12)
+  const issued = (searchParams.get('issued') || defaultIssued).slice(0, 12)
   const ref = (searchParams.get('ref') || 'AC-0723').slice(0, 12).toUpperCase()
+  const desc = (searchParams.get('desc') || '').slice(0, 240)
 
   const bars = barcodeBars(ref, 420)
 
@@ -101,7 +104,7 @@ export async function GET(req: Request) {
             <div style={{ marginTop: 30, height: 2, backgroundColor: 'rgba(254,247,231,0.25)', display: 'flex' }} />
 
             {/* Fields */}
-            <div style={{ display: 'flex', marginTop: 26, gap: 80 }}>
+            <div style={{ display: 'flex', marginTop: desc ? 22 : 26, gap: 80 }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <span style={{ fontSize: 18, letterSpacing: 3, color: CREAM, opacity: 0.5 }}>PROFILE</span>
                 <span style={{ marginTop: 8, fontSize: 30, fontWeight: 700, color: CREAM }}>{profile}</span>
@@ -113,6 +116,13 @@ export async function GET(req: Request) {
                 </span>
               </div>
             </div>
+
+            {/* Profile description (download variant) */}
+            {desc ? (
+              <div style={{ display: 'flex', marginTop: 20, fontSize: 19, lineHeight: 1.4, color: CREAM, opacity: 0.75, maxWidth: 820 }}>
+                {desc}
+              </div>
+            ) : null}
           </div>
 
           {/* Barcode strip */}

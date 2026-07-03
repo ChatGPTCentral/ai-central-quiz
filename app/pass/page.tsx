@@ -17,7 +17,7 @@ type Search = Record<string, string | undefined>
 
 function passImageUrl(sp: Search): string {
   const p = new URLSearchParams()
-  for (const k of ['name', 'stage', 'profile', 'pct', 'issued', 'ref']) {
+  for (const k of ['name', 'stage', 'profile', 'pct', 'issued', 'ref', 'desc']) {
     if (sp[k]) p.set(k, sp[k]!)
   }
   return `${SITE}/api/pass-image?${p.toString()}`
