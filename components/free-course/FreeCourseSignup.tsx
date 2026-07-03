@@ -47,7 +47,7 @@ export function FreeCourseSignup({ name, email: initialEmail }: { name?: string;
         </div>
         <p className="text-[17px] font-black mb-1" style={{ color: '#333333' }}>You&apos;re in! Check your inbox.</p>
         <p className="text-[14px] leading-relaxed" style={{ color: '#555' }}>
-          Day 1 is on its way to <strong style={{ color: '#333333' }}>{email}</strong>. One short lesson a day for the next 5 days — no cost, cancel anytime.
+          Day 1 is on its way to <strong style={{ color: '#333333' }}>{email}</strong>. One short lesson a day for the next 5 days, no cost, cancel anytime.
         </p>
       </div>
     )

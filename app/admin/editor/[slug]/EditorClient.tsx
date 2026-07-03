@@ -809,7 +809,7 @@ export default function EditorClient({
                   value={selected.firstFieldPlaceholder ?? ''}
                   onChange={e => patchQuestion(selectedIdx, { firstFieldPlaceholder: e.target.value || undefined })}
                   className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
-                  placeholder="Elon"
+                  placeholder="John"
                 />
               </Field>
               <Field label="Right field — label">
@@ -825,7 +825,7 @@ export default function EditorClient({
                   value={selected.secondFieldPlaceholder ?? ''}
                   onChange={e => patchQuestion(selectedIdx, { secondFieldPlaceholder: e.target.value || undefined })}
                   className="w-full text-xs border border-[#E8E4DF] rounded px-2 py-1.5 focus:outline-none focus:border-[#046BB1]"
-                  placeholder="Musk"
+                  placeholder="Doe"
                 />
               </Field>
             </>

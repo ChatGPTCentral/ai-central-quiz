@@ -8,7 +8,7 @@ const KEY = 'ac_quiz_offer_start'
 /** Compact MM:SS countdown reading the same sessionStorage key as
  *  CountdownTimer, so the sticky bar and any inline placements stay in
  *  lockstep. Renders nothing until mounted (avoids hydration mismatch). */
-export default function InlineCountdown({ className, style }: { className?: string; style?: React.CSSProperties }) {
+export default function InlineCountdown({ className, style, bare = false }: { className?: string; style?: React.CSSProperties; bare?: boolean }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
 
   useEffect(() => {
@@ -30,6 +30,10 @@ export default function InlineCountdown({ className, style }: { className?: stri
 
   const mins = Math.floor(secondsLeft / 60).toString().padStart(2, '0')
   const secs = (secondsLeft % 60).toString().padStart(2, '0')
+
+  // bare → just the ticking MM:SS (callers compose their own label around it)
+  if (bare) return <span className={`tabular-nums ${className ?? ''}`} style={style}>{mins}:{secs}</span>
+
   if (secondsLeft === 0) return <span className={className} style={style}>offer expired</span>
 
   return (

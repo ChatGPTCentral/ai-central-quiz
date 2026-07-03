@@ -4,9 +4,9 @@ import FomoPopup from '@/components/FomoPopup'
 import { AdoptionChart } from '@/components/result/AdoptionChart'
 
 export const metadata = {
-  title: 'AI Central — Where do you rank in AI adoption?',
+  title: 'AI Central, where do you rank in AI adoption?',
   description:
-    'A 90-second quiz. Discover your AI Readiness Type and exactly where you land vs. everyone else — then get a plan to climb.',
+    'A 90-second quiz. Discover your AI Readiness Type and exactly where you land vs. everyone else, then get a plan to climb.',
 }
 
 const FULVOUS = '#E48715'

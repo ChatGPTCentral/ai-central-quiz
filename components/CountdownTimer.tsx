@@ -4,7 +4,13 @@ import { useState, useEffect } from 'react'
 
 const DURATION_SECONDS = 15 * 60 // 15 minutes
 
-export default function CountdownTimer({ paymentUrl }: { paymentUrl: string }) {
+/**
+ * Sticky top offer bar (design-handoff §1): dark strip with the wordmark,
+ * the assessment reference number, the ticking offer countdown (xanthous)
+ * and a CLAIM OFFER button. Reads/writes the same sessionStorage key as
+ * InlineCountdown so every countdown on the page stays in lockstep.
+ */
+export default function CountdownTimer({ paymentUrl, refNo }: { paymentUrl: string; refNo?: string }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
 
   useEffect(() => {
@@ -27,21 +33,40 @@ export default function CountdownTimer({ paymentUrl }: { paymentUrl: string }) {
 
   const mins = Math.floor(secondsLeft / 60).toString().padStart(2, '0')
   const secs = (secondsLeft % 60).toString().padStart(2, '0')
-  const expired = secondsLeft === 0
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-jet-black text-baby-powder flex items-center justify-between px-4 py-2.5 text-sm">
-      <span className="font-medium">
-        {expired ? 'Offer expired' : (
-          <>Special offer expires: <strong className="text-fulvous tabular-nums">{mins}:{secs}</strong></>
-        )}
-      </span>
-      <a
-        href={paymentUrl}
-        className="bg-fulvous hover:bg-[#cc7612] text-white font-bold text-xs px-4 py-1.5 rounded transition-colors"
-      >
-        Claim offer →
-      </a>
+    <div
+      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-3 px-4 sm:px-6"
+      style={{ backgroundColor: '#333333', height: 56 }}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-full-dark-bg.png" alt="AI Central" style={{ height: 20, width: 'auto', display: 'block' }} />
+        <span className="hidden md:inline-block h-4 w-px" style={{ background: '#FEF7E7', opacity: 0.35 }} aria-hidden />
+        <span
+          className="hidden md:inline font-mono"
+          style={{ fontSize: 11, letterSpacing: '0.12em', color: '#FEF7E7', opacity: 0.65 }}
+        >
+          AI READINESS ASSESSMENT{refNo ? ` · NO. ${refNo}` : ''}
+        </span>
+      </div>
+      <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+        <span className="hidden sm:inline uppercase" style={{ fontSize: 11, color: '#FEF7E7', opacity: 0.65, letterSpacing: '0.06em' }}>
+          Special offer expires
+        </span>
+        <span className="font-mono font-bold tabular-nums" style={{ fontSize: 17, color: '#E7B02F' }}>
+          {mins}:{secs}
+        </span>
+        <a
+          href={paymentUrl}
+          className="font-semibold uppercase transition-colors"
+          style={{ backgroundColor: '#E7B02F', color: '#1A1A1A', fontSize: 12, padding: '10px 14px', letterSpacing: '0.04em' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E48715' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E7B02F' }}
+        >
+          Claim offer ↗
+        </a>
+      </div>
     </div>
   )
 }

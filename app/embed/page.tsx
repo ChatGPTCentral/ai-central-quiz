@@ -4,7 +4,7 @@
  */
 export const dynamic = 'force-dynamic'
 export const metadata = {
-  title: 'Embed snippet — AI Central',
+  title: 'Embed snippet · AI Central',
   robots: { index: false, follow: false },
 }
 

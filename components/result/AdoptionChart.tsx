@@ -22,8 +22,8 @@ type TierKey = 'never' | 'chatbot' | 'pays' | 'coding'
 const TIERS: { key: TierKey; label: string; count: string; pct: string; color: string }[] = [
   { key: 'never', label: 'Never used AI', count: '~6.8B', pct: '84%', color: '#D6D1C7' },
   { key: 'chatbot', label: 'Free chatbot user', count: '~1.3B', pct: '16%', color: '#5A9B50' },
-  { key: 'pays', label: 'Pays $20/mo for AI', count: '~15–25M', pct: '0.3%', color: '#C67F12' },
-  { key: 'coding', label: 'Uses coding agents', count: '~2–5M', pct: '0.04%', color: '#BE3B3B' },
+  { key: 'pays', label: 'Pays $20/mo for AI', count: '~15-25M', pct: '0.3%', color: '#C67F12' },
+  { key: 'coding', label: 'Uses coding agents', count: '~2-5M', pct: '0.04%', color: '#BE3B3B' },
 ]
 const TIER = Object.fromEntries(TIERS.map((t) => [t.key, t])) as Record<TierKey, (typeof TIERS)[number]>
 
@@ -162,6 +162,33 @@ export function AdoptionChart({ variant = 'result', stage, aheadPct, firstName, 
     </div>
   )
 
+  // Result-page layout: chart on the left, legend stacked on the RIGHT
+  // (stacks under the chart on mobile).
+  const legendSide = (
+    <div className="flex flex-col gap-2.5 justify-center">
+      {TIERS.map((t) => (
+        <div key={t.key} className="flex items-center gap-2 text-[12px]" style={{ color: '#555' }}>
+          <span className="inline-block h-3 w-3 rounded-[3px] flex-shrink-0" style={{ backgroundColor: t.color }} />
+          <span className="leading-tight">
+            {t.label}
+            <br />
+            <strong style={{ color: '#333' }}>{t.count}</strong> <span style={{ color: '#9C9C9C' }}>({t.pct})</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+
+  const sideCard = (
+    <div
+      className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-6 sm:gap-8 items-center p-6 sm:p-7"
+      style={{ backgroundColor: '#FFFFFF', border: '3px solid #333333' }}
+    >
+      {chart}
+      {legendSide}
+    </div>
+  )
+
   if (isCover) {
     // Chart-only render for the 2-column desktop hero — the page's h1 + CTA
     // already carry the headline, so drop the duplicate <h2> + caption.
@@ -188,6 +215,30 @@ export function AdoptionChart({ variant = 'result', stage, aheadPct, firstName, 
     )
   }
 
+  // Bare result: the page owns the section eyebrow/h2/lead; render only the
+  // framed chart with the legend on the right + the "you" line + footnotes.
+  if (bare) {
+    return (
+      <div className="w-full">
+        {sideCard}
+        <p className="mt-4 text-[15px] leading-relaxed" style={{ color: '#333333' }}>
+          <span
+            className="inline-block h-3 w-3 rounded-full align-middle mr-2"
+            style={{ backgroundColor: youTier.color, boxShadow: '0 0 0 2px #fff, 0 0 0 3px #333' }}
+          />
+          That flashing light is <strong>you</strong>, a <strong>{youTier.label.toLowerCase()}</strong>
+          {typeof aheadPct === 'number' ? (
+            <>, ahead of <strong style={{ color: '#E48715' }}>~{aheadPct}%</strong> of everyone</>
+          ) : null}
+        </p>
+        <div className="flex flex-col sm:flex-row sm:justify-between gap-1 mt-3" style={{ fontSize: 11.5, color: '#9C9C9C' }}>
+          <span>Each dot ≈ 3.2M people · 2,500 dots = 8.1B humans</span>
+          <span>Sources: OpenAI · World Bank &amp; Microsoft AI diffusion · public adoption surveys (2026)</span>
+        </div>
+      </div>
+    )
+  }
+
   const lead = firstName ? `${firstName}, you're` : "You're"
   return (
     <section className="px-6 pb-12 max-w-2xl mx-auto w-full">
@@ -204,7 +255,7 @@ export function AdoptionChart({ variant = 'result', stage, aheadPct, firstName, 
           <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: youTier.color, boxShadow: '0 0 0 2px #fff, 0 0 0 3px #333' }} />
           <strong>That flashing dot is you</strong>
         </span>{' '}
-        — a <strong style={{ color: '#333' }}>{youTier.label.toLowerCase()}</strong>
+        , a <strong style={{ color: '#333' }}>{youTier.label.toLowerCase()}</strong>
         {typeof aheadPct === 'number' ? <>, ahead of <strong style={{ color: '#E48715' }}>~{aheadPct}%</strong> of everyone</> : null}.
       </p>
       <p className="text-[14px] leading-relaxed text-center mt-3 max-w-md mx-auto" style={{ color: '#555' }}>

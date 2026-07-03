@@ -25,7 +25,7 @@ export interface ReadinessType {
 const TYPES: Record<StageKey, ReadinessType> = {
   S0_unaware: {
     typeName: 'Unaware',
-    tagline: "You're right at the starting line — and that's a great place to be.",
+    tagline: "You're right at the starting line, and that's a great place to be.",
     aheadPct: 40,
   },
   S1_curious: {
@@ -55,7 +55,7 @@ const TYPES: Record<StageKey, ReadinessType> = {
   },
   unknown: {
     typeName: 'Rising Professional',
-    tagline: "You're on your way — and already ahead of most people.",
+    tagline: "You're on your way, and already ahead of most people.",
     aheadPct: 60,
   },
 }

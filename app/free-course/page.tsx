@@ -5,7 +5,7 @@ import { FreeCourseSignup } from '@/components/free-course/FreeCourseSignup'
 
 export const metadata = {
   title: 'Free 5-day AI email course · AI Central',
-  description: 'Master practical AI basics in 5 days. One short lesson a day, straight to your inbox — free, no card.',
+  description: 'Master practical AI basics in 5 days. One short lesson a day, straight to your inbox, free, no card.',
 }
 
 const LIBRARY = process.env.NEXT_PUBLIC_LIBRARY_URL || 'https://app.thecentral.ai'
@@ -14,14 +14,14 @@ const DAYS = [
   { day: 'Day 1', title: 'The 6-Step Prompt Formula', sub: 'Stop getting generic AI outputs forever' },
   { day: 'Day 2', title: 'ChatGPT Projects & Workspaces', sub: 'Set up AI workspaces for 10x output' },
   { day: 'Day 3', title: 'AI-Powered Presentations', sub: 'Polished decks in minutes with Gamma' },
-  { day: 'Day 4', title: 'Your First Automation', sub: 'Wire two tools together — no code' },
+  { day: 'Day 4', title: 'Your First Automation', sub: 'Wire two tools together, no code' },
   { day: 'Day 5', title: 'Your AI Action Plan', sub: 'Build your personal implementation roadmap' },
 ]
 
 const FAQ = [
-  { q: 'Is this really free?', a: 'Yes — the 5-day course is completely free. No card, no catch, unsubscribe anytime.' },
-  { q: 'What will I learn?', a: 'The AI fundamentals every professional needs: prompting, workspaces, presentations, a first automation, and a plan to keep going — one short lesson a day.' },
-  { q: 'How is this different from the full library?', a: 'This is a free 5-day primer delivered by email. The AI Central library is 1,200+ tested tutorials, templates, and a community — the full path for when you\'re ready.' },
+  { q: 'Is this really free?', a: 'Yes, the 5-day course is completely free. No card, no catch, unsubscribe anytime.' },
+  { q: 'What will I learn?', a: 'The AI fundamentals every professional needs: prompting, workspaces, presentations, a first automation, and a plan to keep going, one short lesson a day.' },
+  { q: 'How is this different from the full library?', a: 'This is a free 5-day primer delivered by email. The AI Central library is 1,200+ tested tutorials, templates, and a community, the full path for when you\'re ready.' },
   { q: 'Do I need a technical background?', a: 'Not at all. Every lesson is written in plain English for busy professionals. If you can use email, you can use this.' },
 ]
 

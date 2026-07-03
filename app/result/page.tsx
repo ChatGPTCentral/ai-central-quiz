@@ -1,25 +1,22 @@
 import { Suspense } from 'react'
+import { Mrs_Saint_Delafield } from 'next/font/google'
 import { createClient } from '@supabase/supabase-js'
 import CountdownTimer from '@/components/CountdownTimer'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import { RadarChart } from '@/components/RadarChart'
-import { DocSearch } from '@/components/result/DocSearch'
-import { EndScreenBlocks } from '@/components/result/EndScreenBlocks'
 import { AdoptionChart } from '@/components/result/AdoptionChart'
-import { resolveTokens } from '@/lib/piping'
+import { PassCard } from '@/components/result/PassCard'
 import { personaContent } from '@/lib/persona-content'
-import { readinessType, traitTags } from '@/lib/readiness-type'
+import { readinessType } from '@/lib/readiness-type'
 import { computeRadarAxes } from '@/lib/readiness-radar'
-// Free option hidden for now (component kept saved):
-// import { NotYetDownsell } from '@/components/result/NotYetDownsell'
-import { TESTIMONIALS } from '@/lib/sales-content'
-import { stageDef, personaDef } from '@/lib/segmentation-v2'
-import { getSegmentCopy } from '@/lib/segment-content'
+import { rungConfig, withPersona } from '@/lib/rung-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
-import { suggestedDocs } from '@/lib/notion'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
+
+// Script font used ONLY for the founder-letter signature (design handoff).
+const signatureFont = Mrs_Saint_Delafield({ weight: '400', subsets: ['latin'] })
 
 interface SegFields {
   email?: string | null
@@ -53,85 +50,123 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
   } catch { return null }
 }
 
-/** Strip em/en dashes from any user-facing string (clean punctuation, not
- *  the repo's code-comment ` - -` convention). */
-function noDash(s: string): string {
-  return s.replace(/\s*[—–]\s*/g, ', ')
-}
-
 const UPSELL_URL = process.env.NEXT_PUBLIC_UPSELL_URL || 'https://buy.stripe.com/7sIcQe7NAgLT8s8008'
-// Direct $4.99 trial Stripe link — used by the FOMO badge + the library
-// doc-search result cards (low-friction touchpoints that go straight to
-// checkout rather than through the library signup funnel).
+// Direct $4.99 trial Stripe link — every paid CTA on this page goes straight
+// to checkout (decision: no app.thecentral.ai handoff).
 const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 
-// Pricing & benefits — sourced verbatim from upgrade.thecentral.ai
-const PLAN_BENEFITS = [
-  '1,200+ Practical AI Implementations',
-  'Clear, Non-Technical Explanations',
-  'Ready-to-Use Business Templates',
-  'Professional Community Access',
-  'Tested Prompt Libraries',
-  'Tool Reviews & Comparisons',
-  'Step-by-Step Implementation',
-  'Expert-Curated Content',
-  'Weekly Updates & New Content',
-  'All Future Features Included',
+// ── Design tokens (from the design handoff) ─────────────────────────
+const INK = '#333333'
+const RICH = '#1A1A1A'
+const BODY = '#4A4A4A'
+const MUTE = '#9C9C9C'
+const CREAM = '#FEF7E7'
+const PAPER = '#FFFDFA'
+const FULVOUS = '#E48715'
+const XANTHOUS = '#E7B02F'
+
+// Subtle paper grain for the hero — inline SVG turbulence instead of the
+// 3MB texture PNG from the handoff bundle.
+const GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E\")"
+
+// ── Static copy (design handoff, dashes normalized to commas) ───────
+const PILLARS = [
+  { label: 'TUTORIALS', n: '1,200+', body: 'Tested workflows tied to business outcomes. Step by step, no theory chapters' },
+  { label: 'TEMPLATES', n: '50+', body: 'Prompts, decks, briefs, automations. Copy, paste, ship' },
+  { label: 'COMMUNITY', n: '2,000+', body: 'Paying members: operators, founders, decision-makers doing your work' },
+  { label: 'EDITORIAL', n: 'Weekly', body: 'We filter 14,000+ tools and 50+ papers down to what deserves your attention' },
 ]
-const SALE_PRICE = '$4.99'
-const RENEWAL_COPY = 'Then $59.75/year (just $4.98/mo) · Cancel anytime'
 
 const FAQS = [
-  {
-    q: "I'm not technical. Will these tutorials make sense to me?",
-    a: 'Yes — that\'s exactly who we built this for. Every tutorial is written in plain English with step-by-step screenshots. Mike Chen had zero tech background and built his first ChatGPT workflow in 30 minutes. If you can use email, you can use this.',
-  },
-  {
-    q: 'How is this different from free AI content online?',
-    a: 'Free content is endless, unstructured, and outdated by the time you find it. AI Central is 1,200+ tutorials curated by editors so you don\'t sift through noise. Every tutorial is tested, current, and tied to a real business outcome. You get a sequenced path, not a search bar.',
-  },
-  {
-    q: 'Will this work for my specific industry and role?',
-    a: 'Members come from sales, marketing, ops, finance, legal, HR, product, consulting, research, and more. Your personalized plan above already tells you which workflows match your role. Use the search and category filters inside the library to drill into your function.',
-  },
-  {
-    q: 'How quickly will I see practical results?',
-    a: '15 minutes to your first result. Most members implement at least one AI workflow during their very first session. Rachel saved 15 hours in her first week. Alex shipped 3 automations in week one. The platform is built so you start applying — not just consuming.',
-  },
-  {
-    q: "What if I'm not satisfied with the content?",
-    a: '30-day money-back guarantee, no questions asked. Email admin@theaicentral.net within 30 days and we refund you same day. We\'d rather lose the $4.99 than have you stay if it isn\'t the right fit.',
-  },
-  {
-    q: 'What happens after my 1-month trial?',
-    a: 'After your first month at $4.99, your subscription renews at $59.75/year (about $4.98/month) — billed annually so you keep momentum without thinking about it. Cancel anytime from your dashboard in 2 clicks, and you keep access through the end of your billing period.',
-  },
-  {
-    q: 'Can I get lifetime access instead?',
-    a: 'Yes. There\'s a one-time lifetime option below the trial CTA. Pay once, get every current and future tutorial forever — no renewals.',
-  },
+  { q: "I'm not technical. Will these tutorials make sense to me?", a: 'Yes. Every tutorial is written for professionals, not developers: plain language, a screenshot at every step, nothing assumes you can code. If you can follow a recipe, you can ship these workflows' },
+  { q: 'How is this different from free AI content online?', a: 'Free content is written to go viral. Ours is tested by editors and tied to a business outcome. You get a sequenced path for your role, not a search bar and 14,000 open tabs' },
+  { q: 'Will this work for my specific industry and role?', a: 'The library covers operations, sales, marketing, legal, finance, HR and more. Your quiz result maps you to the workflows that fit your role first' },
+  { q: 'How quickly will I see practical results?', a: 'Most members ship their first workflow in 15 minutes. One working automation in week 1 is the standard we design for' },
+  { q: "What if I'm not satisfied with the content?", a: '30-day money-back guarantee. One email, full refund, no questions' },
+  { q: 'What happens after my 1-month trial?', a: 'You move to the annual plan at $59.75/year, about $4.98 a month. Cancel anytime before renewal and pay nothing more' },
+  { q: 'Can I get lifetime access instead?', a: 'Yes. One payment, every tutorial and template, all future drops included' },
 ]
 
-function StarRating({ count }: { count: number }) {
+const REVIEWS = [
+  { name: 'Rachel Thompson', role: 'Operations Director · Portland, OR', text: 'Finally, AI tutorials that actually work. Saved 15 hours this week alone, the step-by-step approach makes everything clear' },
+  { name: 'Alex Martinez', role: 'Product Manager', text: 'Implemented 3 AI automations in my first week. Productivity increased 200%' },
+  { name: 'James Wilson', role: 'Business Consultant · Denver, CO', text: 'Transformed our client reporting process. What took days now takes hours, ROI was immediate' },
+  { name: 'Mike Chen', role: 'Sales Manager', text: 'Zero tech background, built my first ChatGPT workflow in 30 minutes' },
+  { name: 'Emma Rodriguez', role: 'Marketing Lead', text: 'My team thinks I hired an AI consultant. These guides are incredibly practical' },
+  { name: 'Jessica Parker', role: 'Data Analyst · Seattle, WA', text: 'Data analysis that used to take me weeks now takes days. Clear, practical, immediately actionable' },
+  { name: 'Sophie Anderson', role: 'HR Director', text: 'Became the go-to AI person at my company in 2 weeks' },
+  { name: 'Carlos Mendez', role: 'Content Strategist', text: 'Content creation: 8 hours down to 2 hours. Efficiency gains are unbelievable' },
+  { name: 'Marcus Johnson', role: 'VP of Sales · Atlanta, GA', text: "My sales team's productivity increased 180%. Deal closure rate improved dramatically" },
+  { name: 'Amanda Wright', role: 'Legal Counsel', text: 'Contract review automation saved our firm 40 hours per week' },
+  { name: 'David Park', role: 'BI Lead · San Francisco, CA', text: 'Dashboard automation that would have taken 3 months was done in 2 weeks. Executive reporting has never been this compelling' },
+  { name: 'Ryan Foster', role: 'Startup Founder', text: 'Bootstrap startup, limited resources. This library gave me enterprise-level AI capabilities' },
+]
+
+// ── Small building blocks ───────────────────────────────────────────
+
+function Eyebrow({ children, color = FULVOUS }: { children: React.ReactNode; color?: string }) {
   return (
-    <div className="flex gap-0.5">
-      {Array.from({ length: count }).map((_, i) => (
-        <svg key={i} width="14" height="14" viewBox="0 0 14 14" fill="#E7B02F">
-          <path d="M7 1l1.8 3.6L13 5.3l-3 2.9.7 4.1L7 10.4l-3.7 1.9.7-4.1-3-2.9 4.2-.7L7 1z"/>
-        </svg>
-      ))}
-    </div>
+    <p className="uppercase" style={{ fontSize: 13, fontWeight: 500, letterSpacing: '0.05em', color }}>
+      {children}
+    </p>
+  )
+}
+
+/** Two-piece block button from the handoff: label cell + fulvous arrow cell. */
+function BlockButton({ href, label, gold = false, size = 17 }: { href: string; label: string; gold?: boolean; size?: number }) {
+  return (
+    <a href={href} className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]" style={{ textDecoration: 'none' }}>
+      <span
+        className="inline-flex items-center"
+        style={{
+          backgroundColor: gold ? XANTHOUS : INK,
+          color: gold ? RICH : CREAM,
+          fontWeight: 600,
+          fontSize: size,
+          padding: '18px 26px',
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="inline-flex items-center justify-center"
+        style={{
+          backgroundColor: gold ? CREAM : FULVOUS,
+          color: RICH,
+          padding: 18,
+          borderLeft: `2px solid ${RICH}`,
+          fontWeight: 600,
+          fontSize: size,
+        }}
+        aria-hidden
+      >
+        ↗
+      </span>
+    </a>
+  )
+}
+
+function StarRow({ size = 14 }: { size?: number }) {
+  return (
+    <span style={{ color: XANTHOUS, letterSpacing: '0.15em', fontSize: size }} aria-label="5 stars">★★★★★</span>
   )
 }
 
 function FAQItem({ q, a }: { q: string; a: string }) {
   return (
-    <details className="border-b border-[#E8E4DF] group">
-      <summary className="flex items-center justify-between py-4 cursor-pointer list-none font-semibold text-jet-black text-sm">
-        {q}
-        <span className="ml-4 flex-shrink-0 text-battleship-grey group-open:rotate-45 transition-transform duration-200 text-lg leading-none">+</span>
+    <details className="group" style={{ borderBottom: '1px solid #D9D9D9' }}>
+      <summary className="flex items-center justify-between py-4 cursor-pointer list-none" style={{ fontWeight: 600, fontSize: 15.5, color: INK }}>
+        <span className="pr-4 group-open:text-[#E48715]">{q}</span>
+        <span
+          className="ml-4 flex-shrink-0 group-open:rotate-45 transition-transform duration-200 leading-none"
+          style={{ color: FULVOUS, fontWeight: 300, fontSize: 22 }}
+          aria-hidden
+        >
+          +
+        </span>
       </summary>
-      <p className="pb-4 text-sm text-battleship-grey leading-relaxed">{a}</p>
+      <p className="pb-5 max-w-[760px]" style={{ fontWeight: 300, fontSize: 14.5, lineHeight: 1.55, color: BODY }}>{a}</p>
     </details>
   )
 }
@@ -150,35 +185,18 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   // to the URL param the calculating page hands off when there's no row id.
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
-  // Named AI Readiness Type (from stage) + trait tags (from persona/friction/
-  // intent) + the "ahead of ~X%" percentile — the discovery hook.
   const rt = readinessType(segFields?.stage)
-  const tags = traitTags(persona, segFields?.friction, segFields?.intent_30d)
-  const seg = getSegmentCopy({
-    stage: segFields?.stage,
-    persona,
-    friction: segFields?.friction,
-    intent: segFields?.intent_30d,
-  })
-  const stageMeta = stageDef(segFields?.stage)
-  const personaMeta = personaDef(persona)
-  // Static trial CTA (replaces the intent-aware copy); an editor end-screen
-  // can still override the primary button via ctaText.
-  const primaryCta = 'Start your trial'
+  // Per-rung page copy (design handoff), persona tokens resolved.
+  const rung = rungConfig(segFields?.stage)
+  const p = (s: string) => withPersona(s, content.label)
 
   // AI-competency radar axes (Prompting · Tools · Develop · Governance ·
-  // Agents), computed from the person's quiz signals. Governance is proxied
-  // from seniority + intent + depth (the quiz never asks it directly).
+  // Agents), computed from the person's quiz signals.
   const axes = computeRadarAxes(segFields ?? {})
 
-  // Suggested docs from the AI Central document database (Notion), biased to
-  // this persona's topics. Empty list if Notion isn't configured.
-  const suggested = await suggestedDocs(content.tutorialKeywords, 4)
-
-  // Editor-driven overrides: hero copy + body blocks. Picks the first
-  // outcome whose `when` conditions match this submission's score/persona/
-  // stage; falls back to a no-condition default outcome; falls through to the
-  // stage/persona-driven defaults below when nothing matches.
+  // Editor overrides: keep honoring an end-screen's ctaText/ctaUrl on the
+  // primary CTA (safety valve); the heroHeadline/body-block system from the
+  // previous layout is retired with this design.
   let endScreen: EndScreen | null = null
   try {
     const liveConfig = await getLivePublishedConfig('quiz-v2')
@@ -192,544 +210,322 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   } catch (err) {
     console.warn('[result] failed to load editor endScreens, using defaults:', err)
   }
-  // Token context for piping — passed to both the hero text and the
-  // editor-defined body blocks. Empty answers fall back to '' so labels
-  // like "Nice work, {firstName}!" gracefully degrade.
-  const tokens = {
-    answers: { name: name || '' },
-    persona: persona ?? null,
-    personaLabel: personaMeta?.key !== 'unknown' ? personaMeta?.label ?? null : null,
-    stage: segFields?.stage ?? null,
-    stageLabel: stageMeta?.key !== 'unknown' ? stageMeta?.label ?? null : null,
-    score,
-    intentLabel: segFields?.intent_30d ?? null,
-    frictionLabel: segFields?.friction ?? null,
-  }
-  const heroHeadline = endScreen?.heroHeadline
-  const heroSubheadline = endScreen?.heroSubheadline
-  const ctaText = endScreen?.ctaText ?? primaryCta
-  // All paid CTAs go straight to the $4.99 trial Stripe checkout; an editor
-  // end-screen can still override with its own ctaUrl when needed.
-  const checkoutUrl = STRIPE_TRIAL_URL
-  const ctaUrl = endScreen?.ctaUrl ?? checkoutUrl
+  const checkoutUrl = endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
+  const heroCtaLabel = endScreen?.ctaText ?? 'start my trial'
+
+  // Member-pass fields
+  const passName = (name || 'AI Professional').trim()
+  const refNo = 'AC-' + (rowId ? rowId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() : '0723')
+  const now = new Date()
+  const issued = `${String(now.getMonth() + 1).padStart(2, '0')} / ${now.getFullYear()}`
+
+  // "You're a/an {Type}"
+  const typeArticle = /^[aeiou]/i.test(rt.typeName) ? 'an' : 'a'
 
   return (
     <>
-      <CountdownTimer paymentUrl={checkoutUrl} />
+      <CountdownTimer paymentUrl={checkoutUrl} refNo={refNo} />
 
-      <div className="pt-10 min-h-screen flex flex-col" style={{ backgroundColor: '#FFFDFA' }}>
-        {/* ── HERO: AI Readiness Type (clean, centered) ─────── */}
-        <section className="px-6 pt-8 pb-6 max-w-2xl mx-auto w-full text-center">
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] mb-3" style={{ color: '#9C9C9C' }}>
-            Your AI readiness type
-          </p>
-          <h1 className="text-[40px] sm:text-[54px] font-black leading-[1.0] mb-4" style={{ color: '#333333' }}>
-            {rt.typeName}
-          </h1>
-          {tags.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-2 mb-5">
-              {tags.map((t) => (
-                <span
-                  key={t}
-                  className="text-[12px] font-bold px-2.5 py-1 rounded-full"
-                  style={{ backgroundColor: '#FEF7E7', color: '#E48715' }}
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-          <p className="text-[16px] sm:text-[18px] leading-relaxed max-w-lg mx-auto mb-6" style={{ color: '#333333' }}>
-            {heroHeadline ? resolveTokens(heroHeadline, tokens) : rt.tagline}
-          </p>
-          <div
-            className="rounded-2xl px-5 py-4 mb-7 mx-auto max-w-md"
-            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF' }}
-          >
-            <p className="text-[14px] leading-relaxed" style={{ color: '#555' }}>
-              {firstName ? `${firstName}, you're ` : "You're "}
-              <strong style={{ color: '#333333' }}>ahead of ~{rt.aheadPct}%</strong> of people on their AI journey.
-            </p>
-          </div>
-          <a
-            href={ctaUrl}
-            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-black text-[15px] sm:text-[16px] transition-all active:scale-[0.99] hover:opacity-90 shadow-sm"
-            style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
-          >
-            {ctaText}
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-          </a>
-        </section>
+      <div className="flex flex-col" style={{ backgroundColor: PAPER, paddingTop: 56, color: INK }}>
 
-        {/* ── EDITOR-DRIVEN BODY BLOCKS (if any) ─────────── */}
-        {endScreen && endScreen.blocks.length > 0 && (
-          <section className="px-6 pb-6 max-w-2xl mx-auto w-full">
-            <EndScreenBlocks blocks={endScreen.blocks} tokens={tokens} accent="#E48715" />
-          </section>
-        )}
-
-        {/* ── WHERE YOU RANK — personalized world adoption chart ── */}
-        <AdoptionChart variant="result" stage={segFields?.stage} aheadPct={rt.aheadPct} firstName={firstName} />
-
-        {/* ── STAGE CARD — the ladder rung the reader is on. ── */}
-        {stageMeta && stageMeta.key !== 'unknown' && (
-          <section className="px-6 pt-10 pb-6 max-w-2xl mx-auto w-full">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3" style={{ color: '#9C9C9C' }}>
-              Your AI profile
-            </p>
-            <div
-              className="rounded-2xl p-7 mb-4 relative overflow-hidden"
-              style={{ backgroundColor: '#FFFFFF', border: `1px solid #E8E4DF`, boxShadow: `0 4px 30px ${stageMeta.color}1A` }}
-            >
-              <div
-                className="absolute top-0 left-0 right-0 h-1"
-                style={{ background: `linear-gradient(90deg, ${stageMeta.color} 0%, #E48715 100%)` }}
-              />
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="text-[32px] leading-none">{stageMeta.emoji}</span>
-                <h1 className="text-[28px] sm:text-[34px] font-black leading-tight" style={{ color: stageMeta.color }}>
-                  {stageMeta.label}
-                </h1>
-              </div>
-              <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
-                {noDash(stageMeta.description)}
-              </p>
-              {personaMeta && personaMeta.key !== 'unknown' && (
-                <p className="text-[14px] leading-relaxed mt-4 pt-4" style={{ color: '#333333', borderTop: '1px solid #F0EBE2' }}>
-                  <strong style={{ color: content.accentColor }}>You&apos;re {/^[aeiou]/i.test(content.label) ? 'an' : 'a'} {content.label}.</strong>{' '}
-                  {noDash(content.outlook)}
-                </p>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* ── SKILL RADAR (secondary) ── */}
-        <section className="px-6 pb-8 max-w-2xl mx-auto w-full">
-          <div className="rounded-2xl p-6 flex flex-col items-center" style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF' }}>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-4" style={{ color: '#9C9C9C' }}>
-              Your skill profile
-            </p>
-            <div className="w-full max-w-[420px]">
-              <RadarChart axes={axes} mode="result" accent="#62A758" size={360} />
-            </div>
-          </div>
-        </section>
-
-        {/* ── PRIMARY CTA — Fulvous, intent-aware copy ───── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <a
-            href={ctaUrl}
-            className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
-            style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
-          >
-            {ctaText} →
-          </a>
-          <p className="text-center text-[12px] mt-3" style={{ color: '#9C9C9C' }}>
-            $4.99 first month · Then $59.75/year · Cancel anytime
-          </p>
-          <div className="flex items-center justify-center gap-3 mt-2 text-[11px]" style={{ color: '#9C9C9C' }}>
-            <span>⭐ 350+ five-star reviews</span>
-            <span>·</span>
-            <span>30-day guarantee</span>
-            <span>·</span>
-            <span>Instant access</span>
-          </div>
-        </section>
-
-        {/* ── AI ADOPTION LADDER (moved up — visible without deep scroll) ── */}
-        <section className="px-6 pb-12 max-w-2xl mx-auto w-full">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-3 text-center" style={{ color: '#9C9C9C' }}>
-            The AI adoption ladder
-          </p>
-          <h2 className="text-[24px] sm:text-[28px] font-black mb-6 text-center leading-tight" style={{ color: '#333333' }}>
-            {stageMeta && stageMeta.key !== 'unknown'
-              ? <>You&apos;re on rung <span style={{ color: stageMeta.color }}>{stageMeta.score + 1} of 6</span>. Here&apos;s the climb</>
-              : <>The 6 rungs of the AI adoption ladder</>}
-          </h2>
-
-          <div className="flex flex-col gap-2.5">
-            {[
-              { key: 'S0_unaware',      emoji: '🌑', label: 'Unaware',      desc: 'Heard the name, not on the ladder yet' },
-              { key: 'S1_curious',      emoji: '🌱', label: 'Curious',      desc: 'Heard about AI. Hasn\'t used it' },
-              { key: 'S2_experimenter', emoji: '🧪', label: 'Experimenter', desc: 'Plays with ChatGPT occasionally' },
-              { key: 'S3_practitioner', emoji: '⚙️', label: 'Practitioner', desc: 'Uses AI weekly for real work' },
-              { key: 'S4_power_user',   emoji: '🚀', label: 'Power User',   desc: 'Daily. Multiple tools. Saved prompts' },
-              { key: 'S5_builder',      emoji: '🏗️', label: 'Builder',      desc: 'Ships AI workflows to customers and team' },
-            ].map((rung) => {
-              const isCurrent = stageMeta?.key === rung.key
-              return (
-                <div
-                  key={rung.key}
-                  className="flex items-center gap-4 p-3.5 rounded-xl transition-all"
-                  style={{
-                    backgroundColor: isCurrent ? '#FEF7E7' : '#FFFFFF',
-                    border: isCurrent ? '2px solid #E48715' : '1px solid #E8E4DF',
-                    boxShadow: isCurrent ? '0 4px 14px rgba(228, 135, 21, 0.15)' : 'none',
-                  }}
-                >
-                  <span className="text-[24px] flex-shrink-0">{rung.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[14px] font-black" style={{ color: '#333333' }}>{rung.label}</span>
-                      {isCurrent && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider" style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}>
-                          You are here
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[12px]" style={{ color: '#9C9C9C' }}>{rung.desc}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* ── FRICTION BLOCKER (only shown when v2 friction known) ── */}
-        {seg.friction && (
-          <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-            <div
-              className="rounded-2xl p-7"
-              style={{ backgroundColor: '#FEF7E7', border: '1px solid #E7B02F' }}
-            >
-              <p className="text-[10px] font-black uppercase tracking-widest mb-2" style={{ color: '#BE593B' }}>
-                {seg.friction.badge}
-              </p>
-              <h3 className="text-[22px] sm:text-[26px] font-black mb-3 leading-tight" style={{ color: '#333333' }}>
-                {seg.friction.blockerTitle}
-              </h3>
-              <p className="text-[14px] leading-relaxed" style={{ color: '#333333' }}>
-                {seg.friction.blockerBody}
-              </p>
-            </div>
-          </section>
-        )}
-
-        {/* ── BAND: latte tint behind library intro + pillars ── */}
-        <div className="w-full" style={{ background: '#F4F1EA' }}>
-        {/* ── WHAT IS THE AI CENTRAL LIBRARY ── */}
-        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full">
-          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-5" style={{ color: '#333333' }}>
-            What is the <span style={{ color: '#E48715' }}>AI Central library</span>?
-          </h2>
-          <p className="text-[15px] leading-relaxed mb-6" style={{ color: '#333333' }}>
-            The <strong>1,200+ tutorial library</strong> built for senior professionals who want to actually <em>use</em> AI at work, not read about it. Curated by editors, sequenced into a path, tied to real business outcomes
-          </p>
-
-          <ul className="flex flex-col gap-3 mb-6">
-            {[
-              <>Get <strong>1,200+ tested AI workflows</strong> covering ChatGPT, Claude, Gemini, custom GPTs, automations, agents, and the playbooks behind them</>,
-              <>Access <strong>50+ ready-to-deploy templates</strong> for prompts, email sequences, decks, briefs, and standard ops. Copy, paste, ship</>,
-              <>Join a <strong>community of 2,000+ paying members</strong> doing the same work you are. Operators, founders, makers, decision-makers</>,
-              <>Weekly drops from the <strong>AI Central editorial team</strong> on the new tools, models, and patterns worth your attention</>,
-            ].map((item, i) => (
-              <li key={i} className="flex items-start gap-3 text-[14px]" style={{ color: '#333333' }}>
-                <span className="font-black text-[14px] mt-px flex-shrink-0" style={{ color: '#E48715' }}>→</span>
-                <span className="leading-snug">{item}</span>
-              </li>
-            ))}
-          </ul>
-
-          <p className="text-[15px] leading-relaxed" style={{ color: '#333333' }}>
-            Unlike free AI content online, every workflow inside the library is{' '}
-            <mark style={{ background: 'linear-gradient(180deg, transparent 60%, #FAEFC8 60%)', padding: '0 4px', borderRadius: '2px', color: 'inherit' }}>
-              <strong>tested by editors and tied to a real business outcome</strong>
-            </mark>
-            . You get a sequenced path, not a search bar
-          </p>
-        </section>
-
-        {/* ── 4 PILLARS GRID ── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              { eyebrow: 'Tutorials',     title: '1,200+ tested workflows',  body: 'Every tutorial walks you through a real business outcome step by step. No fluff, no theory chapters' },
-              { eyebrow: 'Templates',     title: '50+ ready to deploy',      body: 'Prompts, decks, briefs, automations. Copy, paste, ship. Built by operators who use them in production' },
-              { eyebrow: 'Community',     title: '2,000+ paying members',    body: 'Operators, founders, makers, and decision-makers actually using AI at work. Share what\'s working in your role' },
-              { eyebrow: 'Editorial',     title: 'Weekly drops, no noise',   body: 'The AI Central team filters the 14,000+ tools and 50+ weekly papers down to the handful actually worth your attention' },
-            ].map((p) => (
-              <div
-                key={p.eyebrow}
-                className="p-6 rounded-2xl transition-all"
-                style={{ backgroundColor: '#FFFFFF', border: '1px solid #E8E4DF', boxShadow: '0 4px 30px rgba(228, 135, 21, 0.05)' }}
+        {/* ── 1 · HERO: quiz results + member pass ─────────────────── */}
+        <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-12 sm:pt-16 pb-14 sm:pb-20 grid grid-cols-1 lg:grid-cols-[1fr_480px] gap-10 lg:gap-14 items-center">
+            <div>
+              <Eyebrow>Your quiz results</Eyebrow>
+              <h1
+                className="mt-4 font-bold"
+                style={{ fontSize: 'clamp(36px, 5.2vw, 62px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}
               >
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] mb-2" style={{ color: '#E48715' }}>{p.eyebrow}</p>
-                <h3 className="text-[18px] font-black leading-snug mb-2" style={{ color: '#333333' }}>{p.title}</h3>
-                <p className="text-[13px] leading-relaxed" style={{ color: '#555' }}>{p.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-        </div>{/* end latte band: library intro + pillars */}
-
-        {/* ── FOUNDER LETTER (styled as an actual letter) ── */}
-        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full">
-          <div
-            className="rounded-2xl px-7 py-8 sm:px-10 sm:py-10"
-            style={{ backgroundColor: '#FCFAF4', border: '1px solid #E8E4DF', boxShadow: '0 4px 30px rgba(228,135,21,0.05)' }}
-          >
-            {/* Letterhead */}
-            <div className="mb-6 pb-4" style={{ borderBottom: '1px solid #EDE7DC' }}>
-              <span className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: '#9C9C9C' }}>
-                A note from the founder
-              </span>
-            </div>
-
-            <div style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
-              <p className="text-[16px] leading-relaxed mb-5" style={{ color: '#333333' }}>
-                {firstName ? `Dear ${firstName},` : 'Hi there,'}
+                {firstName ? `${firstName}, you're` : "You're"} ahead of{' '}
+                <span style={{ color: FULVOUS }}>{rt.aheadPct}%</span> of people on their AI journey
+              </h1>
+              <p className="mt-5 max-w-[520px]" style={{ fontWeight: 300, fontSize: 'clamp(17px, 2vw, 21px)', lineHeight: 1.45, color: BODY }}>
+                {p(rung.heroLead)}
               </p>
-
-              <p className="text-[16px] leading-[1.7] mb-4" style={{ color: '#333333' }}>
-                After building AI Central into a <strong style={{ color: '#E48715' }}>300,000+ reader network</strong> and watching <strong style={{ color: '#E48715' }}>2,000+ professionals</strong> upgrade into our paid library, I&apos;ve learned something about who actually wins with AI.
-              </p>
-
-              {[
-                'Most people researching AI today are stuck in the same loop. They read a viral thread, install a new tool, fiddle for an hour, and put it down. Six months later, nothing has shipped.',
-                'The ones who actually win, the ones who quietly become the AI person on their team, do one thing differently. They stop researching and pick one workflow that compounds.',
-              ].map((p, i) => (
-                <p key={i} className="text-[16px] leading-[1.7] mb-4" style={{ color: '#333333' }}>{p}</p>
-              ))}
-
-              <p className="text-[16px] leading-[1.7] mb-4" style={{ color: '#333333' }}>
-                <mark style={{ background: 'linear-gradient(180deg, transparent 60%, #FAEFC8 60%)', padding: '0 4px', borderRadius: '2px', color: 'inherit' }}>
-                  <strong>One workflow shipped beats ten tutorials watched.</strong>
-                </mark>
-              </p>
-
-              {[
-                "That's the entire premise of the AI Central library. Every tutorial is a workflow, not a lecture, sequenced into a path that fits your role and where you sit on the AI ladder.",
-                "You just took the quiz, so we know your stage, your persona, and what's blocking you. Your plan above isn't a generic course recommendation. It's a path mapped to your actual starting line.",
-                "If you join today, you keep that path. If you don't, you go back to research mode, and we both know how that ends.",
-              ].map((p, i) => (
-                <p key={i} className="text-[16px] leading-[1.7] mb-4" style={{ color: '#333333' }}>{p}</p>
-              ))}
-
-              <p className="text-[16px] leading-[1.7] mt-6 mb-1" style={{ color: '#333333', fontStyle: 'italic' }}>See you inside, Alex</p>
-              <p className="text-[12px] mt-1" style={{ color: '#9C9C9C' }}>Founder &amp; Chief Editor, AI Central</p>
-            </div>
-          </div>
-        </section>
-
-
-        {/* ── BAND: latte tint behind Notion search + testimonials ── */}
-        <div className="w-full" style={{ background: '#F4F1EA' }}>
-        {/* ── EXPLORE THE LIBRARY (Notion-backed search) ──────── */}
-        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full">
-          <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-xl font-black mb-1 text-center" style={{ color: '#333333' }}>Explore the AI Central library</h2>
-          <p className="text-[13px] mb-6 text-center" style={{ color: '#9C9C9C' }}>
-            {suggested.length > 0
-              ? `Hand-picked for ${content.label}s. Search 1,200+ more`
-              : 'Search 1,200+ tested AI workflows and templates'}
-          </p>
-          <DocSearch initialDocs={suggested} paymentUrl={STRIPE_TRIAL_URL} accent="#E48715" />
-        </section>
-
-        {/* ── MODULE 7: TRUSTED BY (testimonials) ──────────── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-xl font-black mb-2 text-center" style={{ color: '#333333' }}>Hear from our members</h2>
-          <p className="text-[13px] text-center mb-6" style={{ color: '#9C9C9C' }}>Real professionals. Real results. 350+ five-star reviews</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {TESTIMONIALS.map((t) => (
-              <div key={t.name} className="p-4 bg-white border border-[#E8E4DF] rounded-xl flex flex-col gap-2">
-                <StarRating count={t.stars} />
-                <p className="text-sm text-jet-black leading-relaxed">&ldquo;{t.quote}&rdquo;</p>
-                <div className="mt-auto pt-2">
-                  <p className="text-xs font-bold text-jet-black">{t.name}</p>
-                  <p className="text-xs text-battleship-grey">{t.role}</p>
+              <div className="mt-8 flex flex-wrap items-center gap-5">
+                <BlockButton href={checkoutUrl} label={heroCtaLabel} />
+                <div style={{ fontSize: 13, color: '#666666', lineHeight: 1.5 }}>
+                  $4.99 first month · then $59.75/year<br />cancel anytime · 30-day guarantee
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
-        </div>{/* end latte band: Notion search + testimonials */}
-
-        {/* ── MODULE 8: UNLOCK YOUR PERSONALIZED PLAN ───────── */}
-        <section className="px-6 pt-12 pb-10 max-w-2xl mx-auto w-full" id="pricing">
-          <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-3 text-center" style={{ color: '#333333' }}>
-            Unlock the <span style={{ color: '#E48715' }}>AI Central</span> library
-          </h2>
-          <p className="text-[14px] leading-relaxed text-center mb-2 max-w-md mx-auto" style={{ color: '#9C9C9C' }}>
-            1,200+ curated AI and ChatGPT tutorials. Save months of trial-and-error
-          </p>
-          {/* Stat strip — pulled from upgrade page */}
-          <div className="grid grid-cols-4 gap-2 max-w-md mx-auto mb-6 mt-4 text-center">
-            {[
-              { num: '2,000+', lbl: 'Professionals' },
-              { num: '1,200+', lbl: 'Tutorials' },
-              { num: '15 min', lbl: 'To 1st result' },
-              { num: '89%', lbl: 'Report value' },
-            ].map((s) => (
-              <div key={s.lbl}>
-                <p className="text-base sm:text-lg font-black text-black leading-tight">{s.num}</p>
-                <p className="text-[10px] text-battleship-grey uppercase tracking-wide leading-tight">{s.lbl}</p>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className="rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#FFFFFF', border: '2px solid #333333', boxShadow: '0 12px 40px rgba(228, 135, 21, 0.15)' }}
-          >
-            {/* Most-popular ribbon — Fulvous, with live countdown */}
-            <div
-              className="text-center py-2.5 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 flex-wrap"
-              style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}
-            >
-              <span>Most popular · 30-day guarantee</span>
-              <span aria-hidden style={{ opacity: 0.6 }}>·</span>
-              <InlineCountdown className="normal-case tracking-normal" />
             </div>
-
-            <div className="p-6 border-b" style={{ borderColor: '#E8E4DF' }}>
-              <p className="text-[11px] font-black uppercase tracking-widest mb-4" style={{ color: '#9C9C9C' }}>What&apos;s included</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {PLAN_BENEFITS.map((label) => (
-                  <div key={label} className="flex items-start gap-2 text-[14px]" style={{ color: '#333333' }}>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="flex-shrink-0 mt-0.5">
-                      <circle cx="7" cy="7" r="7" fill="#62A758"/>
-                      <path d="M4.5 7l1.8 1.8L9.5 5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span className="leading-snug">{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="p-6" style={{ backgroundColor: '#FEF7E7' }}>
-              <div className="flex items-end justify-between mb-1">
-                <span className="font-black text-[18px]" style={{ color: '#333333' }}>Your price today</span>
-                <div className="text-right leading-none">
-                  <span className="font-black text-[42px]" style={{ color: '#333333' }}>{SALE_PRICE}</span>
-                  <p className="text-[11px] mt-1" style={{ color: '#9C9C9C' }}>first month</p>
-                </div>
-              </div>
-              <p className="text-[11px] text-right mb-5" style={{ color: '#9C9C9C' }}>{RENEWAL_COPY}</p>
-
-              <a
-                href={checkoutUrl}
-                className="block w-full py-4 font-black text-[15px] rounded-xl text-center transition-all active:scale-[0.99] hover:opacity-90"
-                style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
-              >
-                Start my 1-month trial →
-              </a>
-
-              {/* Trust strip */}
-              <div className="flex items-center justify-center gap-3 mt-3 text-[11px]" style={{ color: '#9C9C9C' }}>
-                <span className="inline-flex items-center gap-1">
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1L7.5 4 11 4.5 8.5 7 9 11 6 9 3 11 3.5 7 1 4.5 4.5 4z" fill="#E7B02F"/></svg>
-                  30-day guarantee
-                </span>
-                <span>·</span>
-                <span>Instant access</span>
-              </div>
-
-              <div className="text-center mt-3">
-                <a
-                  href={UPSELL_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[12px] underline underline-offset-2 transition-opacity hover:opacity-70"
-                  style={{ color: '#9C9C9C' }}
-                >
-                  Or get lifetime access →
-                </a>
-              </div>
-
-              {/* Free option hidden for now (component kept saved):
-              <div className="text-center mt-2">
-                <NotYetDownsell name={firstName} email={segFields?.email} />
-              </div>
-              */}
-            </div>
-          </div>
-        </section>
-
-        {/* ── MODULE 9: FAQs ─────────────────────────────────── */}
-        <section className="px-6 pb-10 max-w-2xl mx-auto w-full">
-          <div className="h-px bg-[#E8E4DF] mb-8" />
-          <h2 className="text-[28px] sm:text-[32px] font-black mb-2 text-center leading-tight" style={{ color: '#333333' }}>
-            Frequently asked <span style={{ color: '#E48715' }}>questions</span>
-          </h2>
-          <p className="text-[14px] text-center mb-8" style={{ color: '#9C9C9C' }}>The stuff people actually ask before they join</p>
-          <div>
-            {FAQS.map((item) => (
-              <FAQItem key={item.q} q={noDash(item.q)} a={noDash(item.a)} />
-            ))}
-          </div>
-        </section>
-
-        {/* ── CLOSING: AI doesn't have to be complicated ──── */}
-        <section className="px-6 pb-16 max-w-2xl mx-auto w-full">
-          <div
-            className="rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden"
-            style={{ backgroundColor: '#333333' }}
-          >
-            {/* Fulvous top accent */}
-            <div
-              className="absolute top-0 left-0 right-0 h-1"
-              style={{ background: 'linear-gradient(90deg, #E48715 0%, #E7B02F 100%)' }}
+            <PassCard
+              name={passName}
+              personaLabel={content.label}
+              passClass={rung.passClass}
+              passPct={rung.passPct}
+              issued={issued}
+              refNo={refNo}
             />
-            <h2 className="text-[26px] sm:text-[32px] font-black leading-[1.1] mb-3" style={{ color: '#FFFDFA' }}>
-              AI doesn&apos;t have to be <span style={{ color: '#E48715' }}>complicated</span>
-            </h2>
-            <p className="text-[15px] leading-relaxed mb-7 max-w-md mx-auto" style={{ color: '#FFFDFA', opacity: 0.85 }}>
-              Join 2,000+ professionals already using the AI Central library. 1,200+ curated tutorials. 15 minutes to your first result. No fluff
-            </p>
-            <a
-              href={checkoutUrl}
-              className="inline-block px-8 py-4 font-black text-[14px] rounded-xl transition-opacity hover:opacity-90 active:scale-[0.99]"
-              style={{ backgroundColor: '#E48715', color: '#FFFDFA', boxShadow: '0 6px 20px rgba(228, 135, 21, 0.4)' }}
-            >
-              {primaryCta} for {SALE_PRICE} →
-            </a>
-            <p className="text-[11px] mt-4" style={{ color: '#FFFDFA', opacity: 0.5 }}>
-              Then $59.75/year · Cancel anytime · 30-day money-back guarantee
-            </p>
-            <div className="mt-3">
-              <a
-                href={UPSELL_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] underline transition-opacity hover:opacity-80"
-                style={{ color: '#FFFDFA', opacity: 0.5 }}
-              >
-                Or get lifetime access →
-              </a>
-            </div>
-            {/* Free option hidden for now (component kept saved):
-            <div className="mt-2">
-              <NotYetDownsell name={firstName} email={segFields?.email} className="text-[11px] underline text-white/60 hover:text-white/90 transition-opacity" />
-            </div>
-            */}
           </div>
         </section>
 
-      </div>
+        {/* ── 2 · THE BIGGER PICTURE: adoption chart ───────────────── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <Eyebrow>The bigger picture</Eyebrow>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
+              {rung.chartTitle}
+            </h2>
+            <p className="mt-4 max-w-[640px]" style={{ fontWeight: 300, fontSize: 19, lineHeight: 1.45, color: BODY }}>
+              {p(rung.chartLead)}
+            </p>
 
-      {/* Sticky bottom bar (mobile) — Fulvous accent */}
-      <div
-        className="fixed bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between gap-3 sm:hidden z-40 border-t"
-        style={{ backgroundColor: '#FFFFFF', borderColor: '#E48715' }}
-      >
-        <div>
-          <p className="text-[12px] font-black" style={{ color: '#333333' }}>{SALE_PRICE}/mo today</p>
-          <p className="text-[10px]" style={{ color: '#9C9C9C' }}>30-day guarantee</p>
-        </div>
-        <a
-          href={checkoutUrl}
-          className="flex-shrink-0 px-5 py-2.5 rounded-xl font-black text-[13px] transition-all active:scale-[0.99]"
-          style={{ backgroundColor: '#E48715', color: '#FFFDFA' }}
-        >
-          {primaryCta.length > 18 ? 'Start trial' : primaryCta} →
-        </a>
+            <div className="mt-9 max-w-[860px]">
+              <AdoptionChart variant="result" bare stage={segFields?.stage} aheadPct={rt.aheadPct} />
+            </div>
+
+            {/* Pitch + primary unlock CTA */}
+            <p className="mt-10 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.55, color: BODY }}>
+              According to OpenAI, World Bank and Microsoft adoption data, 84% of people still haven&apos;t
+              used AI. The people who move now spend the next decade ahead. AI Central gets you there first
+              with a library of curated resources and tutorials that speed up your AI journey
+            </p>
+            <div className="mt-7">
+              <BlockButton href={checkoutUrl} label="Unlock the Ultimate AI Library" size={16} />
+            </div>
+          </div>
+        </section>
+
+        {/* ── 3 · YOUR TYPE: "You're a {Type}" + profile description ── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <h2 className="font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
+              You&apos;re {typeArticle} <span style={{ color: FULVOUS }}>{rt.typeName}</span>
+            </h2>
+            <p className="mt-4 max-w-[680px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.55, color: BODY }}>
+              {rt.tagline}
+            </p>
+            <p className="mt-4 max-w-[680px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
+              {content.outlook}
+            </p>
+          </div>
+        </section>
+
+        {/* ── 4 · YOUR SKILL PROFILE: radar ────────────────────────── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20 grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-10 lg:gap-14 items-center">
+            <div className="w-full max-w-[440px] mx-auto lg:mx-0">
+              <RadarChart axes={axes} mode="result" accent={FULVOUS} size={380} todayLabel="You today" projectedLabel="With AI Central" />
+            </div>
+            <div>
+              <Eyebrow color={MUTE}>Your skill profile</Eyebrow>
+              <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+                {rung.radarTitle}
+              </h2>
+              <p className="mt-4" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
+                {p(rung.radarLead)}
+              </p>
+              <p className="mt-3" style={{ fontWeight: 300, fontSize: 13.5, lineHeight: 1.5, color: MUTE }}>
+                {p(rung.radarNote)}
+              </p>
+              <div className="mt-7">
+                <BlockButton href={checkoutUrl} label="close the gap, $4.99" size={16} />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 5 · THE PRESCRIPTION: pillars + founder note ─────────── */}
+        <section style={{ backgroundColor: CREAM, borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <Eyebrow>The prescription</Eyebrow>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
+              One library. 1,200+ tested workflows. Zero noise
+            </h2>
+            <p className="mt-4 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+              {p(rung.prescLead)}
+            </p>
+
+            {/* Framed 4-pillar grid: 3px black gutters via background + gap */}
+            <div
+              className="mt-9 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+              style={{ border: `3px solid ${INK}`, backgroundColor: INK, gap: 3 }}
+            >
+              {PILLARS.map(pl => (
+                <div key={pl.label} style={{ backgroundColor: PAPER, padding: '24px 20px 26px' }}>
+                  <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.14em', color: MUTE }}>{pl.label}</div>
+                  <div className="mt-2 font-black" style={{ fontSize: 40, letterSpacing: '-0.02em', color: RICH }}>{pl.n}</div>
+                  <p className="mt-2" style={{ fontSize: 13.5, lineHeight: 1.5, color: BODY }}>{pl.body}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Founder note */}
+            <div className="mt-14 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-8 sm:gap-12 items-start">
+              <div className="mx-auto sm:mx-0" style={{ transform: 'rotate(-1.2deg)', width: 180 }}>
+                <div style={{ border: `5px solid ${INK}`, backgroundColor: '#FFFFFF', padding: 4 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/founder-alex.jpg"
+                    alt="Alex, founder and chief editor of AI Central"
+                    style={{ display: 'block', width: '100%', height: 'auto', filter: 'grayscale(1)' }}
+                  />
+                </div>
+                <p className="mt-2 text-center font-mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: MUTE }}>
+                  ALEX · FOUNDER &amp; CHIEF EDITOR
+                </p>
+              </div>
+              <div>
+                <Eyebrow color={MUTE}>A note from the founder</Eyebrow>
+                <p className="mt-3" style={{ fontWeight: 500, fontSize: 26, lineHeight: 1.25, color: RICH }}>
+                  &ldquo;One workflow shipped beats ten tutorials watched&rdquo;
+                </p>
+                <div className="mt-5 max-w-[640px] flex flex-col gap-4" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
+                  <p>
+                    Dear {firstName || 'reader'}, most people researching AI are stuck in a loop. Read a
+                    thread, install a tool, fiddle for an hour, put it down. 6 months later, nothing has shipped.
+                  </p>
+                  <p>
+                    The ones who quietly become the AI person on their team do one thing differently: they stop
+                    researching and pick one workflow that compounds. That&apos;s the entire premise of the
+                    library. And because you took the quiz, your path isn&apos;t generic: {p(rung.founderPath)}.
+                  </p>
+                  <p>
+                    If you join today, you keep that path. If you don&apos;t, you go back to research mode, and
+                    we both know how that ends.
+                  </p>
+                </div>
+                <p className="mt-5" style={{ fontSize: 15.5, color: BODY }}>See you inside,</p>
+                <p
+                  className={signatureFont.className}
+                  style={{ fontSize: 46, color: RICH, transform: 'rotate(-4deg)', transformOrigin: 'left center', marginTop: 4 }}
+                >
+                  Alex
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 6 · QUOTE + PRICING (dark band) ──────────────────────── */}
+        <section style={{ backgroundColor: INK, borderTop: `3px solid ${RICH}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-20 text-center">
+            <StarRow />
+            <p className="mt-4 mx-auto max-w-[720px]" style={{ fontWeight: 500, fontSize: 'clamp(20px, 2.6vw, 28px)', lineHeight: 1.3, color: CREAM }}>
+              &ldquo;Finally, AI tutorials that actually work. Saved 15 hours this week alone&rdquo;
+            </p>
+            <p className="mt-3" style={{ fontSize: 13, color: CREAM, opacity: 0.65 }}>
+              Rachel Thompson · Operations Director · Portland, OR
+            </p>
+
+            <div className="mt-14">
+              <Eyebrow color={XANTHOUS}>The cost of moving</Eyebrow>
+              <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(30px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: CREAM }}>
+                $4.99 against a decade of head start
+              </h2>
+              <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 16, lineHeight: 1.5, color: CREAM, opacity: 0.75 }}>
+                The 0.3% didn&apos;t pay for content. They paid to stop searching. 89% of members report value
+                in week 1, the guarantee covers the rest
+              </p>
+            </div>
+
+            {/* Pricing card */}
+            <div
+              className="mt-10 mx-auto w-full max-w-[480px] text-left overflow-hidden"
+              style={{ backgroundColor: CREAM, border: `3px solid ${RICH}`, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}
+            >
+              <div
+                className="flex items-center justify-between px-5 py-2.5"
+                style={{ backgroundColor: XANTHOUS, borderBottom: `3px solid ${RICH}` }}
+              >
+                <span className="font-mono font-bold" style={{ fontSize: 11, letterSpacing: '0.1em', color: RICH }}>
+                  MOST POPULAR · 30-DAY GUARANTEE
+                </span>
+                <span className="font-mono font-bold" style={{ fontSize: 13, color: RICH }}>
+                  ends <InlineCountdown bare />
+                </span>
+              </div>
+              <div className="px-6 sm:px-7 py-6">
+                <p style={{ fontSize: 13, color: '#666666' }}>Your price today</p>
+                <div className="flex items-end gap-2">
+                  <span className="font-black" style={{ fontSize: 62, letterSpacing: '-0.04em', color: RICH, lineHeight: 1 }}>$4.99</span>
+                  <span className="pb-2" style={{ fontSize: 14, color: '#666666' }}>first month</span>
+                </div>
+                <p className="mt-1" style={{ fontSize: 13, color: '#666666' }}>
+                  then $59.75/year (just $4.98/mo) · cancel anytime
+                </p>
+                <a
+                  href={checkoutUrl}
+                  className="mt-5 flex items-center justify-center gap-2 w-full transition-colors"
+                  style={{ backgroundColor: INK, color: CREAM, fontWeight: 600, fontSize: 16, padding: '16px 20px' }}
+                >
+                  start my 1-month trial <span style={{ color: XANTHOUS }} aria-hidden>↗</span>
+                </a>
+                <p className="mt-3 text-center" style={{ fontSize: 13, color: '#666666' }}>
+                  30-day guarantee · instant access
+                </p>
+                <p className="mt-1.5 text-center">
+                  <a
+                    href={UPSELL_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2 hover:text-[#E48715] transition-colors"
+                    style={{ fontWeight: 500, fontSize: 13.5, color: INK }}
+                  >
+                    or get lifetime access ↗
+                  </a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 7 · FAQ ──────────────────────────────────────────────── */}
+        <section style={{ backgroundColor: PAPER }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <h2 className="font-bold" style={{ fontSize: 30, letterSpacing: '-0.03em', color: RICH }}>
+              Frequently asked questions
+            </h2>
+            <p className="mt-1" style={{ fontWeight: 300, fontSize: 14, color: MUTE }}>
+              The stuff people actually ask before they join
+            </p>
+            <div className="mt-7" style={{ borderTop: `2px solid ${INK}` }}>
+              {FAQS.map(f => (
+                <FAQItem key={f.q} q={f.q} a={f.a} />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── 8 · REVIEWS WALL ─────────────────────────────────────── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <h2 className="font-bold" style={{ fontSize: 'clamp(26px, 3vw, 34px)', letterSpacing: '-0.03em', color: RICH }}>
+                Hear from our 2,000+ members
+              </h2>
+              <span className="font-mono" style={{ fontSize: 12, letterSpacing: '0.08em', color: MUTE }}>350+ FIVE-STAR REVIEWS</span>
+            </div>
+            <div className="mt-8 columns-1 sm:columns-2 lg:columns-4 gap-5 [&>*]:break-inside-avoid">
+              {REVIEWS.map(rv => (
+                <div key={rv.name} className="mb-5 inline-block w-full" style={{ border: `2px solid ${INK}`, padding: 18, backgroundColor: '#FFFFFF' }}>
+                  <StarRow size={12} />
+                  <p className="mt-2.5" style={{ fontSize: 13.5, lineHeight: 1.5, color: INK }}>&ldquo;{rv.text}&rdquo;</p>
+                  <p className="mt-3" style={{ fontWeight: 600, fontSize: 12.5, color: RICH }}>{rv.name}</p>
+                  <p style={{ fontSize: 11.5, color: MUTE }}>{rv.role}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── 9 · CLOSING BAND ─────────────────────────────────────── */}
+        <section style={{ backgroundColor: INK }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-20 text-center">
+            <h2 className="font-bold" style={{ fontSize: 'clamp(28px, 3.4vw, 38px)', lineHeight: 1.05, letterSpacing: '-0.035em', color: CREAM }}>
+              {rung.finalTitle}
+            </h2>
+            <div className="mt-8 flex justify-center">
+              <BlockButton href={checkoutUrl} label="start your trial for $4.99" gold size={16} />
+            </div>
+            <p className="mt-5" style={{ fontSize: 12.5, color: CREAM, opacity: 0.5 }}>
+              then $59.75/year · cancel anytime · 30-day money-back guarantee · offer ends <InlineCountdown bare />
+            </p>
+          </div>
+        </section>
+
       </div>
 
       <FomoPopup />
