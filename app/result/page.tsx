@@ -154,6 +154,77 @@ function StarRow({ size = 14 }: { size?: number }) {
   )
 }
 
+/** Social sharing row under the member pass: LinkedIn, WhatsApp, Email, X. */
+function SharePass({ topPct }: { topPct: number }) {
+  const shareUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
+  const text = `I'm in the top ${topPct}% of AI users worldwide. Discover your ranking:`
+  const enc = encodeURIComponent
+  const iconStyle = { display: 'block' as const }
+  const links = [
+    {
+      label: 'Share on LinkedIn',
+      href: `https://www.linkedin.com/sharing/share-offsite/?url=${enc(shareUrl)}`,
+      external: true,
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={iconStyle} aria-hidden>
+          <path d="M4.98 3.5C4.98 4.88 3.87 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM.2 8h4.6v14.8H.2V8zm7.6 0h4.4v2h.06c.61-1.16 2.1-2.38 4.33-2.38 4.63 0 5.48 3.05 5.48 7.02v8.16h-4.6v-7.23c0-1.73-.03-3.95-2.4-3.95-2.4 0-2.77 1.88-2.77 3.82v7.36H7.8V8z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Share on WhatsApp',
+      href: `https://wa.me/?text=${enc(`${text} ${shareUrl}`)}`,
+      external: true,
+      icon: (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={iconStyle} aria-hidden>
+          <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.7.8-.8 1-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.9.9-1.2 2.2-.3 3.9 1 1.9 2.7 3.8 5.1 4.8 1.7.7 2.4.7 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2-.1-.1-.3-.2-.5-.3z" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Share by email',
+      href: `mailto:?subject=${enc('Where do you rank in AI adoption?')}&body=${enc(`${text} ${shareUrl}`)}`,
+      external: false,
+      icon: (
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={iconStyle} aria-hidden>
+          <rect x="2.5" y="4.5" width="19" height="15" />
+          <path d="m3 6 9 7 9-7" />
+        </svg>
+      ),
+    },
+    {
+      label: 'Share on X',
+      href: `https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(shareUrl)}`,
+      external: true,
+      icon: (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={iconStyle} aria-hidden>
+          <path d="M18.9 1.2h3.7l-8.1 9.3L24 22.8h-7.5l-5.9-7.7-6.7 7.7H.2l8.6-9.9L0 1.2h7.7l5.3 7 6-7zm-1.3 19.4h2L6.6 3.3H4.4l13.2 17.3z" />
+        </svg>
+      ),
+    },
+  ]
+  return (
+    <div className="mt-5 flex flex-col items-center gap-2.5">
+      <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.14em', color: MUTE }}>SHARE YOUR PASS</span>
+      <div className="flex items-center gap-2.5">
+        {links.map(l => (
+          <a
+            key={l.label}
+            href={l.href}
+            aria-label={l.label}
+            title={l.label}
+            {...(l.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+            className="flex items-center justify-center transition-colors hover:border-[#E48715] hover:text-[#E48715]"
+            style={{ width: 40, height: 40, border: `2px solid ${INK}`, color: INK, backgroundColor: '#FFFFFF' }}
+          >
+            {l.icon}
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function FAQItem({ q, a }: { q: string; a: string }) {
   return (
     <details className="group" style={{ borderBottom: '1px solid #D9D9D9' }}>
@@ -252,14 +323,18 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 </div>
               </div>
             </div>
-            <PassCard
-              name={passName}
-              personaLabel={content.label}
-              passClass={rung.passClass}
-              passPct={rung.passPct}
-              issued={issued}
-              refNo={refNo}
-            />
+            <div>
+              <PassCard
+                name={passName}
+                personaLabel={content.label}
+                stageLine={`STAGE: ${rung.className}`}
+                passPct={`Top ${100 - rt.aheadPct}% World`}
+                issued={issued}
+                refNo={refNo}
+                description={content.outlook}
+              />
+              <SharePass topPct={100 - rt.aheadPct} />
+            </div>
           </div>
         </section>
 
@@ -292,7 +367,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 
         {/* ── 3 · YOUR TYPE: "You're a {Type}" + profile description ── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-14 sm:pt-20 pb-6 sm:pb-8">
             <h2 className="font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
               You&apos;re {typeArticle} <span style={{ color: FULVOUS }}>{rt.typeName}</span>
             </h2>
@@ -305,9 +380,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
-        {/* ── 4 · YOUR SKILL PROFILE: radar ────────────────────────── */}
-        <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20 grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-10 lg:gap-14 items-center">
+        {/* ── 4 · YOUR SKILL PROFILE: radar (flows straight from the type,
+               no divider) ─────────────────────────────────────────── */}
+        <section>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-2 pb-14 sm:pb-20 grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-10 lg:gap-14 items-center">
             <div className="w-full max-w-[440px] mx-auto lg:mx-0">
               <RadarChart axes={axes} mode="result" accent={FULVOUS} size={380} todayLabel="You today" projectedLabel="With AI Central" />
             </div>
@@ -323,7 +399,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 {p(rung.radarNote)}
               </p>
               <div className="mt-7">
-                <BlockButton href={checkoutUrl} label="close the gap, $4.99" size={16} />
+                <BlockButton href={checkoutUrl} label="close the gap" size={16} />
               </div>
             </div>
           </div>
@@ -370,7 +446,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 </p>
               </div>
               <div>
-                <Eyebrow color={MUTE}>A note from the founder</Eyebrow>
+                <Eyebrow color={MUTE}>A note from the AI Central founder</Eyebrow>
                 <p className="mt-3" style={{ fontWeight: 500, fontSize: 26, lineHeight: 1.25, color: RICH }}>
                   &ldquo;One workflow shipped beats ten tutorials watched&rdquo;
                 </p>
@@ -415,7 +491,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             <div className="mt-14">
               <Eyebrow color={XANTHOUS}>The cost of moving</Eyebrow>
               <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(30px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: CREAM }}>
-                $4.99 against a decade of head start
+                Less than the coffee you&apos;ll drink reading about AI
               </h2>
               <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 16, lineHeight: 1.5, color: CREAM, opacity: 0.75 }}>
                 The 0.3% didn&apos;t pay for content. They paid to stop searching. 89% of members report value
@@ -457,6 +533,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 </a>
                 <p className="mt-3 text-center" style={{ fontSize: 13, color: '#666666' }}>
                   30-day guarantee · instant access
+                </p>
+                <p className="mt-1 text-center" style={{ fontSize: 13, fontWeight: 600, color: '#333333' }}>
+                  over 2,500 sales in the US 🇺🇸
                 </p>
                 <p className="mt-1.5 text-center">
                   <a

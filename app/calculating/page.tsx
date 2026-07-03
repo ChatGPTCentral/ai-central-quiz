@@ -6,6 +6,7 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Barcode } from '@/components/result/PassCard'
 import { track } from '@/lib/track'
 
 const RICH = '#1A1A1A'
@@ -97,12 +98,9 @@ function CalculatingContent() {
               CLASS: SCORING…
             </div>
           </div>
-          <div className="flex items-center justify-between px-5 py-2.5" style={{ backgroundColor: CREAM, borderTop: '3px solid #000000' }}>
-            <div
-              aria-hidden
-              style={{ width: 140, height: 18, background: 'repeating-linear-gradient(90deg, #1A1A1A 0 2px, transparent 2px 5px)' }}
-            />
-            <span className="font-mono font-semibold" style={{ fontSize: 10.5, color: RICH }}>NO. AC-0723</span>
+          <div className="flex items-center justify-between gap-3 px-5 py-2.5" style={{ backgroundColor: CREAM, borderTop: '3px solid #000000' }}>
+            <Barcode seed="AC-0723" width={140} height={18} />
+            <span className="font-mono font-semibold flex-shrink-0" style={{ fontSize: 10.5, color: RICH }}>NO. AC-0723</span>
           </div>
         </div>
       </div>
