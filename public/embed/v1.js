@@ -323,13 +323,18 @@
       if (!d || typeof d !== 'object' || d.source !== 'ai-central-quiz') return
       if (d.embedId && d.embedId !== embedId) return
       if (d.type === 'form_submitted') {
-        // Brief delay so user sees the success state inside iframe, then close
-        setTimeout(destroy, 1800)
         // Bubble to host page so they can hook analytics
         try {
           const ev = new CustomEvent('ac-quiz-submitted', { detail: d })
           window.dispatchEvent(ev)
         } catch (_) {}
+        // The quiz sends the personalized result-flow URL — take the host
+        // page there so the visitor lands on their full results.
+        if (d.redirectUrl) {
+          try { window.location.assign(d.redirectUrl); return } catch (_) {}
+        }
+        // Fallback (no redirect URL): brief delay, then close the popup
+        setTimeout(destroy, 1800)
       }
     }
     window.addEventListener('message', onMessage, false)
@@ -362,6 +367,10 @@
       }
       if (d.type === 'form_submitted') {
         try { window.dispatchEvent(new CustomEvent('ac-quiz-submitted', { detail: d })) } catch (_) {}
+        // Take the host page to the personalized results.
+        if (d.redirectUrl) {
+          try { window.location.assign(d.redirectUrl) } catch (_) {}
+        }
       }
     }, false)
   }

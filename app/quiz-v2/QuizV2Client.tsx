@@ -108,6 +108,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [inputError, setInputError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  // Embed mode only: set (to the result-flow URL) once the submission
+  // succeeded — renders the "see my results" fallback while the host page
+  // navigates.
+  const [embedDone, setEmbedDone] = useState<string | null>(null)
   const [direction, setDirection] = useState<'fwd' | 'back'>('fwd')
   const [animKey, setAnimKey] = useState(0)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -320,17 +324,6 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       // Submitted successfully — clear the in-progress draft.
       try { localStorage.removeItem(DRAFT_KEY) } catch { /* non-fatal */ }
       sessionStorage.setItem('ac_quiz_offer_start', String(Date.now()))
-      if (isEmbed) {
-        postToParent({
-          type: 'form_submitted',
-          persona: data.persona,
-          name: data.name,
-          score: data.score,
-          email: String(answers.email || ''),
-        })
-        setSubmitting(false)
-        return
-      }
       const params = new URLSearchParams({
         name: data.name,
         score: String(data.score),
@@ -338,6 +331,29 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       if (data.persona) params.set('persona', data.persona)
       if (data.stage) params.set('stage', data.stage)
       if (data.id) params.set('id', data.id)
+      if (isEmbed) {
+        // Embedded (pill widget / popup / inline): the result page must open
+        // TOP-LEVEL, not inside the widget iframe. Primary path: the embed
+        // script receives redirectUrl and navigates the host page. Secondary:
+        // we try to navigate window.top ourselves (allowed while the submit
+        // click's user activation is fresh). Tertiary: a visible
+        // "see my results" button (target=_top) rendered in the iframe.
+        const redirectUrl = `${window.location.origin}/calculating?${params.toString()}`
+        postToParent({
+          type: 'form_submitted',
+          persona: data.persona,
+          name: data.name,
+          score: data.score,
+          email: String(answers.email || ''),
+          redirectUrl,
+        })
+        setEmbedDone(redirectUrl)
+        setSubmitting(false)
+        setTimeout(() => {
+          try { if (window.top && window.top !== window.self) window.top.location.href = redirectUrl } catch { /* cross-origin nav blocked — button fallback remains */ }
+        }, 300)
+        return
+      }
       router.push(`/calculating?${params.toString()}`)
     } catch {
       setSubmitError('Network error. Please check your connection and try again.')
@@ -403,6 +419,35 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const eyebrow = `QUESTION ${step} OF ${TOTAL_STEPS}${meta.axis ? ` · ${meta.axis.toUpperCase()}` : ''}${meta.secs ? ` · ${meta.secs.toUpperCase()}` : ''}`
 
   const multiCount = multiAnswer.length
+
+  // Embed completion panel: shown after a successful widget submission while
+  // the host page redirects (and as the fallback if that navigation is
+  // blocked). target=_top escapes the iframe on click.
+  if (embedDone) {
+    return (
+      <div className="min-h-[320px] flex flex-col items-center justify-center px-6 py-12 text-center" style={{ backgroundColor: PAPER }}>
+        <p className="font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.14em', color: FULVOUS }}>
+          PASS STAMPED · SCORING COMPLETE
+        </p>
+        <h2 className="mt-3 font-bold" style={{ fontSize: 24, letterSpacing: '-0.03em', color: RICH }}>
+          Your results are ready
+        </h2>
+        <a
+          href={embedDone}
+          target="_top"
+          className="mt-6 inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]"
+          style={{ textDecoration: 'none' }}
+        >
+          <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 600, fontSize: 16, height: 50, padding: '0 24px' }}>
+            see my results
+          </span>
+          <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 50, height: 50, borderLeft: `2px solid ${RICH}`, fontWeight: 600 }} aria-hidden>
+            ↗
+          </span>
+        </a>
+      </div>
+    )
+  }
 
   return (
     <div className={`${isEmbed ? 'min-h-0' : 'min-h-[100dvh] h-[100dvh]'} flex flex-col overflow-hidden`} style={{ backgroundColor: PAPER }}>
