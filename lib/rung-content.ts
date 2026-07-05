@@ -70,7 +70,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
       "You've read the threads, now skip them. Hands-on is 15 minutes away, and one workflow a week puts you ahead of 84% of the planet within a month",
     passClass: 'CLASS: CURIOUS · RUNG 2 OF 6',
     passPct: '62nd, rising fast',
-    chartTitle: "8.1 billion people. You're about to pass 6.8 billion of them",
+    chartTitle: "8.1 billion people. You're already ahead of 5 billion of them",
     chartLead:
       "You've done the reading, the only thing between you and rung 3 is a first rep, and it's a 15-minute one. From there the crowd thins to millions, not billions",
     radarTitle: 'Prepared mind. Untouched keyboard',
@@ -90,7 +90,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
       "You're already hands-on, ahead of 76% of everyone on the planet. What's missing isn't effort. It's a sequence, and yours is below",
     passClass: 'CLASS: EXPERIMENTER · RUNG 3 OF 6',
     passPct: '76th of 8.1B',
-    chartTitle: "8.1 billion people. You're ahead of 6.8 billion of them",
+    chartTitle: "8.1 billion people. You're ahead of 6.2 billion of them",
     chartLead:
       "That's the comfortable number, {firstName}. The better one: the rungs above you hold fewer people than a mid-size country, and you're already climbing",
     radarTitle: 'Strong instincts. Thin coverage',
@@ -110,7 +110,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
       "Weekly AI on real work already puts you ahead of 86% of the planet. The next rung isn't more effort. It's saved prompts, sharper tools, and workflows your team copies",
     passClass: 'CLASS: PRACTITIONER · RUNG 4 OF 6',
     passPct: '86th of 8.1B',
-    chartTitle: "8.1 billion people. You're ahead of 99% of them",
+    chartTitle: "8.1 billion people. You're ahead of 7 billion of them",
     chartLead:
       "From rung 4 the game changes: it's no longer about using AI, it's about how much of your week it runs. Rungs 5 and 6 belong to the people compounding daily, that's one sequence away",
     radarTitle: 'The habit works. Multiply it',
