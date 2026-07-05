@@ -77,6 +77,21 @@ export interface SubmissionRow {
   utm_ref?: string | null
 }
 
+/** The public result page URL for this submission, mirroring the redirect
+ *  the quiz itself performs (/result?name&score&persona&stage&id). Returns
+ *  null if we have no site URL to anchor it to. */
+export function buildResultUrl(r: SubmissionRow, siteUrl?: string): string | null {
+  if (!siteUrl) return null
+  const base = siteUrl.replace(/\/$/, '')
+  const params = new URLSearchParams()
+  if (present(r.name)) params.set('name', r.name!.trim())
+  if (present(r.score)) params.set('score', String(r.score))
+  if (present(r.persona)) params.set('persona', r.persona!)
+  if (present(r.stage)) params.set('stage', r.stage!)
+  if (present(r.id)) params.set('id', r.id)
+  return `${base}/result?${params.toString()}`
+}
+
 /** "New Lead from {UTM}: {Name} - {Country} - {Title} at {Company} - {AI Type}",
  *  omitting whatever is missing. */
 export function buildLeadSubject(r: SubmissionRow): string {
@@ -108,9 +123,10 @@ export async function sendSubmitNotification(row: SubmissionRow, siteUrl?: strin
   const adminLink = siteUrl
     ? `${siteUrl.replace(/\/$/, '')}/admin/submissions/${encodeURIComponent(row.id)}`
     : null
+  const resultLink = buildResultUrl(row, siteUrl)
 
-  const html = renderHtml(row, adminLink)
-  const text = renderText(row, adminLink)
+  const html = renderHtml(row, adminLink, resultLink)
+  const text = renderText(row, adminLink, resultLink)
 
   if (!apiKey) {
     console.log(`[email] RESEND_API_KEY not set; would send "${subject}" to ${to}`)
@@ -234,7 +250,7 @@ function sectionHeader(title: string): string {
   return `<tr><td colspan="2" style="padding:18px 0 8px;border-top:1px solid #E8E4DF;color:#9C9C9C;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;">${escape(title)}</td></tr>`
 }
 
-function renderHtml(r: SubmissionRow, adminLink: string | null): string {
+function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: string | null): string {
   const fullName = r.name || '(no name)'
   const sd = r.stage ? stageDef(r.stage) : null
   const overview = buildOverview(r)
@@ -250,8 +266,9 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
     ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${sd.color}22;color:${sd.color};font-size:11px;font-weight:800;">${escape(sd.label)}</span>`
     : ''
 
-  // ── 2. Links: LinkedIn + admin edit + company site ──
+  // ── 2. Links: result page + LinkedIn + admin edit + company site ──
   const ctas: string[] = []
+  if (resultLink) ctas.push(`<a href="${escape(resultLink)}" style="display:inline-block;padding:10px 18px;background:#E48715;color:#FFFFFF;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0;">View result page</a>`)
   if (r.linkedin_url) ctas.push(`<a href="${escape(r.linkedin_url)}" style="display:inline-block;padding:10px 18px;background:#0A66C2;color:#FFFFFF;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0;">View LinkedIn profile</a>`)
   if (adminLink) ctas.push(`<a href="${escape(adminLink)}" style="display:inline-block;padding:10px 18px;background:#333333;color:#FFFDFA;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0;">Edit record in admin</a>`)
   if (r.company_website) ctas.push(`<a href="${escape(r.company_website)}" style="display:inline-block;padding:10px 18px;background:transparent;color:#333333;text-decoration:none;border:1px solid #E8E4DF;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0;">Company site</a>`)
@@ -369,6 +386,7 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
           <tr>
             <td style="padding:14px 24px;background:#FAF7F1;color:#9C9C9C;font-size:11px;border-top:1px solid #E8E4DF;">
               Submission id <code style="font-family:ui-monospace,monospace;color:#9C9C9C;">${escape(r.id)}</code>
+              ${resultLink ? `· <a href="${escape(resultLink)}" style="color:#9C9C9C;text-decoration:underline;">result page</a>` : ''}
               ${adminLink ? `· <a href="${escape(adminLink)}" style="color:#9C9C9C;text-decoration:underline;">edit in admin</a>` : ''}
             </td>
           </tr>
@@ -380,12 +398,13 @@ function renderHtml(r: SubmissionRow, adminLink: string | null): string {
 </html>`
 }
 
-function renderText(r: SubmissionRow, adminLink: string | null): string {
+function renderText(r: SubmissionRow, adminLink: string | null, resultLink: string | null): string {
   const lines: string[] = []
   lines.push(`${r.name || '(no name)'} <${r.email || ''}>`)
   lines.push('')
   lines.push(buildOverview(r))
   lines.push('')
+  if (resultLink) lines.push(`Result page: ${resultLink}`)
   if (r.linkedin_url) lines.push(`LinkedIn:   ${r.linkedin_url}`)
   if (adminLink) lines.push(`Admin edit: ${adminLink}`)
   if (r.company_website) lines.push(`Company:    ${r.company_website}`)
