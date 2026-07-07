@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
     job_level: v.job_level ?? null,
     frequency_score: v.frequency_score ?? null,
     depth_score: v.depth_score ?? null,
+    depth_actions: v.depth_actions ?? null,
     breadth_score: v.breadth_score ?? null,
     momentum: v.momentum ?? null,
     friction: v.friction ?? null,

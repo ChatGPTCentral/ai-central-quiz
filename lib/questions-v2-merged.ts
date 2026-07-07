@@ -232,6 +232,7 @@ export interface V2DbValues {
   job_level?: string
   frequency_score?: number
   depth_score?: number
+  depth_actions?: string    // CSV of the raw depth selections (for display)
   breadth_score?: number
   momentum?: number
   friction?: string
@@ -258,8 +259,10 @@ export function answersToDb(
         out.work_area = joined
       }
     } else if (q.scoring === 'count' && Array.isArray(raw)) {
-      // depth_score = count of selections
+      // depth_score = count of selections; depth_actions keeps the raw
+      // selections so the notification can show what they actually did.
       out.depth_score = raw.length
+      if (q.dbColumn === 'depth_score') out.depth_actions = raw.join(',')
     } else if (q.scoring === 'value' && typeof raw === 'string') {
       const n = Number(raw)
       if (!Number.isNaN(n)) {
