@@ -505,21 +505,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               ))}
             </div>
 
-            {/* Founder note */}
-            <div className="mt-14 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-8 sm:gap-12 items-start">
-              <div className="mx-auto sm:mx-0" style={{ transform: 'rotate(-1.2deg)', width: 180 }}>
-                <div style={{ border: `5px solid ${INK}`, backgroundColor: '#FFFFFF', padding: 4 }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/founder-alex.jpg"
-                    alt="Alex, founder and chief editor of AI Central"
-                    style={{ display: 'block', width: '100%', height: 'auto', filter: 'grayscale(1)' }}
-                  />
-                </div>
-                <p className="mt-2 text-center font-mono" style={{ fontSize: 10, letterSpacing: '0.12em', color: MUTE }}>
-                  ALEX · FOUNDER &amp; CHIEF EDITOR
-                </p>
-              </div>
+            {/* Founder note (no headshot) */}
+            <div className="mt-14 max-w-[720px]">
               <div>
                 <Eyebrow color={MUTE}>A note from the AI Central founder</Eyebrow>
                 <p className="mt-3" style={{ fontWeight: 500, fontSize: 26, lineHeight: 1.25, color: RICH }}>
