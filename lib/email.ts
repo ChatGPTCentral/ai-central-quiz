@@ -22,8 +22,30 @@
 import { stageDef } from './segmentation-v2'
 import { personaDef } from './segmentation-v2'
 import { answerDisplay, answerDisplayList, formatDisplay } from './answer-labels'
+import { QUESTIONS_V2_MERGED } from './questions-v2-merged'
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
+
+// Actual question text keyed by the DB column it writes to, so the email
+// shows the real question ("How often did you use AI tools in the last 7
+// days?") instead of a terse field label ("Frequency").
+const QUESTION_TEXT: Record<string, string> = (() => {
+  const map: Record<string, string> = {}
+  for (const q of QUESTIONS_V2_MERGED) {
+    if (q.dbColumn && q.label) map[q.dbColumn] = q.label
+  }
+  return map
+})()
+function qText(dbColumn: string, fallback: string): string {
+  return QUESTION_TEXT[dbColumn] || fallback
+}
+
+/** True when external enrichment actually returned a person/company. Used
+ *  instead of the raw status string, whose vocab ('complete'|'partial'|
+ *  'failed') never matched the old 'enriched' checks. */
+function hasEnrichmentData(r: SubmissionRow): boolean {
+  return present(r.job_title) || present(r.company_name) || present(r.linkedin_url) || present(r.seniority)
+}
 
 /** Raw row shape from public.submissions (snake_case). Optional everywhere
  *  because new submissions land before enrichment may have populated. */
@@ -193,7 +215,7 @@ export function buildOverview(r: SubmissionRow): string {
   const location = [r.city, r.region, r.country].filter(present).join(', ')
   const sentences: string[] = []
 
-  if (r.enrichment_status === 'enriched') {
+  if (hasEnrichmentData(r)) {
     const roleBits: string[] = []
     if (present(r.job_title)) roleBits.push(`works as ${r.job_title!.trim()}`)
     if (present(r.company_name)) {
@@ -203,7 +225,7 @@ export function buildOverview(r: SubmissionRow): string {
       roleBits.push(`at ${r.company_name!.trim()}${companyDesc.length ? ` (${companyDesc.join(', ')})` : ''}`)
     }
     if (roleBits.length) sentences.push(`${name} ${roleBits.join(' ')}.`)
-    else sentences.push(`${name} came through with a verified work email.`)
+    else if (present(r.linkedin_url)) sentences.push(`${name} was matched to a LinkedIn profile.`)
 
     const extra: string[] = []
     if (present(r.seniority)) extra.push(`${r.seniority!.trim()} seniority`)
@@ -217,10 +239,8 @@ export function buildOverview(r: SubmissionRow): string {
     if (present(r.company_funding)) companyFacts.push(`funding ${r.company_funding!.trim()}`)
     if (present(r.company_founded_year)) companyFacts.push(`founded ${r.company_founded_year}`)
     if (companyFacts.length) sentences.push(`Company signals: ${companyFacts.join(', ')}.`)
-  } else if (r.enrichment_status === 'not_attempted') {
-    sentences.push(`${name} signed up with a personal email, so there is no company enrichment. The quiz answers below are the full picture.`)
   } else {
-    sentences.push(`${name} could not be enriched from external sources. The quiz answers below are the full picture.`)
+    sentences.push(`${name} could not be matched to an external profile, so the quiz answers below are the full picture.`)
   }
 
   // One line tying the enrichment to the quiz result.
@@ -242,6 +262,15 @@ function row(label: string, value: string): string {
   </tr>`
 }
 
+/** A quiz question shown verbatim above its answer (stacked, full width),
+ *  so the notification reads like the questionnaire the person filled in. */
+function qa(question: string, value: string): string {
+  return `<tr><td colspan="2" style="padding:11px 0;border-top:1px solid #F0ECE4;">
+    <div style="color:#9C9C9C;font-size:12px;line-height:1.45;margin-bottom:4px;">${escape(question)}</div>
+    <div style="color:#1A1A1A;font-size:15px;font-weight:600;line-height:1.45;">${value}</div>
+  </td></tr>`
+}
+
 function link(href: string, text: string): string {
   return `<a href="${escape(href)}" style="color:#046BB1;text-decoration:none;border-bottom:1px solid #046BB1;">${escape(text)}</a>`
 }
@@ -255,12 +284,17 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
   const sd = r.stage ? stageDef(r.stage) : null
   const overview = buildOverview(r)
 
-  // Small enrichment chip inside the overview block (replaces the old strip).
-  const enrichChip = r.enrichment_status === 'enriched'
-    ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#E8F5E9;color:#2E7D32;font-size:11px;font-weight:700;">Apollo enriched</span>`
-    : r.enrichment_status === 'not_attempted'
-    ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#FFF3E0;color:#E65100;font-size:11px;font-weight:700;">Personal email, not enriched</span>`
-    : `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#F5F5F5;color:#9C9C9C;font-size:11px;font-weight:700;">Enrichment unavailable</span>`
+  // Enrichment chip — keyed on whether the pipeline actually returned a
+  // person/company, not the raw status string.
+  const enriched = hasEnrichmentData(r)
+  const enrichChip = enriched
+    ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#E8F5E9;color:#2E7D32;font-size:11px;font-weight:700;">Enriched</span>`
+    : r.enrichment_status === 'failed' || r.enrichment_status === 'not_attempted'
+    ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#FFF3E0;color:#E65100;font-size:11px;font-weight:700;">No match found</span>`
+    : `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:#F5F5F5;color:#9C9C9C;font-size:11px;font-weight:700;">Enrichment pending</span>`
+
+  // Enriched role/company subtitle under the name.
+  const roleLine = [r.job_title, r.company_name].filter(present).join(' at ')
 
   const stageChip = sd && sd.key !== 'unknown'
     ? `<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:${sd.color}22;color:${sd.color};font-size:11px;font-weight:800;">${escape(sd.label)}</span>`
@@ -273,24 +307,24 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
   if (adminLink) ctas.push(`<a href="${escape(adminLink)}" style="display:inline-block;padding:10px 18px;background:#333333;color:#FFFDFA;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0;">Edit record in admin</a>`)
   if (r.company_website) ctas.push(`<a href="${escape(r.company_website)}" style="display:inline-block;padding:10px 18px;background:transparent;color:#333333;text-decoration:none;border:1px solid #E8E4DF;border-radius:8px;font-size:13px;font-weight:700;margin:0 8px 8px 0;">Company site</a>`)
 
-  // ── 3. Quiz answers, in the order they were submitted ──
+  // ── 3. Quiz answers — the actual questions, in submission order ──
   const quizRows: string[] = []
-  quizRows.push(row('Name', escape(fullName)))
-  quizRows.push(row('Email', r.email ? link(`mailto:${r.email}`, r.email) : '-'))
-  if (present(r.frequency_score)) quizRows.push(row('Frequency', escape(formatDisplay(answerDisplay('frequency', r.frequency_score!)))))
+  quizRows.push(qa(qText('name', "First, what's your name?"), escape(fullName)))
+  quizRows.push(qa(qText('email', "What's your email address?"), r.email ? link(`mailto:${r.email}`, r.email) : '-'))
+  if (present(r.frequency_score)) quizRows.push(qa(qText('frequency_score', 'How often did you use AI tools in the last 7 days?'), escape(formatDisplay(answerDisplay('frequency', r.frequency_score!)))))
   if (present(r.ai_tools)) {
     const list = answerDisplayList('aiTools', r.ai_tools!).map(formatDisplay)
-    quizRows.push(row('AI tools', escape(list.slice(0, 8).join(', ') + (list.length > 8 ? ` · +${list.length - 8}` : ''))))
+    quizRows.push(qa(qText('ai_tools', 'Which AI tools have you used?'), escape(list.slice(0, 12).join(', ') + (list.length > 12 ? ` · +${list.length - 12}` : ''))))
   }
-  if (present(r.depth_score)) quizRows.push(row('Depth', `${r.depth_score} of 6 actions`))
-  if (present(r.momentum)) quizRows.push(row('Momentum', escape(formatDisplay(answerDisplay('momentum', r.momentum!)))))
-  if (present(r.friction)) quizRows.push(row('Friction', escape(formatDisplay(answerDisplay('friction', r.friction!)))))
+  if (present(r.depth_score)) quizRows.push(qa(qText('depth_score', 'Which of these have you actually done with AI?'), `${r.depth_score} of 6 actions`))
+  if (present(r.momentum)) quizRows.push(qa(qText('momentum', 'Compared to 6 months ago, your AI usage is…'), escape(formatDisplay(answerDisplay('momentum', r.momentum!)))))
+  if (present(r.friction)) quizRows.push(qa(qText('friction', "What's slowing you down?"), escape(formatDisplay(answerDisplay('friction', r.friction!)))))
   if (present(r.work_area)) {
     const list = answerDisplayList('workArea', r.work_area!).map(formatDisplay)
-    quizRows.push(row('Work area', escape(list.slice(0, 6).join(', ') + (list.length > 6 ? ` · +${list.length - 6}` : ''))))
+    quizRows.push(qa(qText('work_area', 'What area of work do you want AI to help with most?'), escape(list.slice(0, 8).join(', ') + (list.length > 8 ? ` · +${list.length - 8}` : ''))))
   }
-  if (present(r.job_level)) quizRows.push(row('Job level', escape(r.job_level!)))
-  if (present(r.intent_30d)) quizRows.push(row('Intent (30d)', escape(formatDisplay(answerDisplay('intent_30d', r.intent_30d!)))))
+  if (present(r.job_level)) quizRows.push(qa(qText('job_level', 'What is your current job level?'), escape(r.job_level!)))
+  if (present(r.intent_30d)) quizRows.push(qa(qText('intent_30d', 'In the next 30 days, what do you actually want to do?'), escape(formatDisplay(answerDisplay('intent_30d', r.intent_30d!)))))
 
   // Derived results
   const resultRows: string[] = []
@@ -361,6 +395,7 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
           <tr>
             <td style="padding:24px 24px 8px;">
               <div style="font-size:22px;font-weight:800;color:#333333;line-height:1.2;">${escape(fullName)}</div>
+              ${roleLine ? `<div style="margin-top:4px;font-size:14px;color:#555555;font-weight:600;">${escape(roleLine)}</div>` : ''}
               <div style="margin-top:10px;">${stageChip} ${enrichChip}</div>
               <p style="margin:14px 0 0;color:#333333;font-size:14px;line-height:1.6;">${escape(overview)}</p>
             </td>
@@ -373,7 +408,7 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
           <tr>
             <td style="padding:8px 24px 24px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                ${sectionHeader('Quiz answers (in order)')}
+                ${sectionHeader('Their answers')}
                 ${quizRows.join('')}
                 ${resultRows.length > 0 ? sectionHeader('Quiz result') + resultRows.join('') : ''}
                 ${enrichRows.length > 0 ? sectionHeader('Enriched details') + enrichRows.join('') : ''}
@@ -409,17 +444,21 @@ function renderText(r: SubmissionRow, adminLink: string | null, resultLink: stri
   if (adminLink) lines.push(`Admin edit: ${adminLink}`)
   if (r.company_website) lines.push(`Company:    ${r.company_website}`)
   lines.push('')
-  lines.push('Quiz answers (in order):')
-  lines.push(`  Name:       ${r.name || '-'}`)
-  lines.push(`  Email:      ${r.email || '-'}`)
-  if (present(r.frequency_score)) lines.push(`  Frequency:  ${formatDisplay(answerDisplay('frequency', r.frequency_score!))}`)
-  if (r.ai_tools) lines.push(`  AI tools:   ${answerDisplayList('aiTools', r.ai_tools).map(formatDisplay).slice(0, 8).join(', ')}`)
-  if (present(r.depth_score)) lines.push(`  Depth:      ${r.depth_score} of 6 actions`)
-  if (present(r.momentum)) lines.push(`  Momentum:   ${formatDisplay(answerDisplay('momentum', r.momentum!))}`)
-  if (r.friction) lines.push(`  Friction:   ${formatDisplay(answerDisplay('friction', r.friction))}`)
-  if (r.work_area) lines.push(`  Work area:  ${answerDisplayList('workArea', r.work_area).map(formatDisplay).slice(0, 6).join(', ')}`)
-  if (r.job_level) lines.push(`  Job level:  ${r.job_level}`)
-  if (r.intent_30d) lines.push(`  Intent:     ${formatDisplay(answerDisplay('intent_30d', r.intent_30d))}`)
+  lines.push('Their answers:')
+  const qaLine = (dbCol: string, fallback: string, answer: string) => {
+    lines.push(`  ${qText(dbCol, fallback)}`)
+    lines.push(`    ${answer}`)
+  }
+  qaLine('name', "First, what's your name?", r.name || '-')
+  qaLine('email', "What's your email address?", r.email || '-')
+  if (present(r.frequency_score)) qaLine('frequency_score', 'How often did you use AI tools in the last 7 days?', formatDisplay(answerDisplay('frequency', r.frequency_score!)))
+  if (r.ai_tools) qaLine('ai_tools', 'Which AI tools have you used?', answerDisplayList('aiTools', r.ai_tools).map(formatDisplay).slice(0, 12).join(', '))
+  if (present(r.depth_score)) qaLine('depth_score', 'Which of these have you actually done with AI?', `${r.depth_score} of 6 actions`)
+  if (present(r.momentum)) qaLine('momentum', 'Compared to 6 months ago, your AI usage is…', formatDisplay(answerDisplay('momentum', r.momentum!)))
+  if (r.friction) qaLine('friction', "What's slowing you down?", formatDisplay(answerDisplay('friction', r.friction)))
+  if (r.work_area) qaLine('work_area', 'What area of work do you want AI to help with most?', answerDisplayList('workArea', r.work_area).map(formatDisplay).slice(0, 8).join(', '))
+  if (r.job_level) qaLine('job_level', 'What is your current job level?', r.job_level)
+  if (r.intent_30d) qaLine('intent_30d', 'In the next 30 days, what do you actually want to do?', formatDisplay(answerDisplay('intent_30d', r.intent_30d)))
   lines.push('')
   if (present(r.score)) lines.push(`Score: ${r.score}/100`)
   if (r.stage) { const sd = stageDef(r.stage); if (sd && sd.key !== 'unknown') lines.push(`AI type: ${sd.label}`) }

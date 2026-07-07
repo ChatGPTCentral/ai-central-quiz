@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import SeniorityClassifier from './SeniorityClassifier.client'
 import StripeSync from './StripeSync.client'
 import SegmentsPanel from './SegmentsPanel.client'
+import ResendNotification from './ResendNotification.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,6 +65,7 @@ export default async function SettingsPage() {
       <SegmentsPanel stageDist={stageDist} personaDist={personaDist} total={total} />
       <SeniorityClassifier />
       <StripeSync />
+      <ResendNotification />
     </div>
   )
 }

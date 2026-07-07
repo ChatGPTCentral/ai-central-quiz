@@ -1,26 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { waitUntil } from '@vercel/functions'
 import { checkRateLimit } from '@/lib/validation'
 import { subscribeWithStage, updateSubscriberStage } from '@/lib/beehiiv'
-import { findSubmissionByEmail, fromRow, type StoredSubmission } from '@/lib/kv'
-import { runEnrichment } from '@/lib/enrichment/waterfall'
+import { findSubmissionByEmail, fromRow } from '@/lib/kv'
 import { answersToDb, calculateScoreV2, QUESTIONS_V2_MERGED } from '@/lib/questions-v2-merged'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
-import { sendSubmitNotification } from '@/lib/email'
+import { enrichLeadAndNotify } from '@/lib/enrichment/enrich-lead'
 import { deletePartial } from '@/lib/partials'
 import { createClient } from '@supabase/supabase-js'
 
-export const maxDuration = 60
-
-const PERSONAL_EMAIL_DOMAINS = new Set([
-  'gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com', 'icloud.com',
-  'aol.com', 'protonmail.com', 'me.com', 'live.com', 'msn.com', 'mail.com', 'ymail.com',
-])
-function shouldEnrich(email: string): boolean {
-  const d = email.split('@')[1]?.toLowerCase()
-  return !!d && !PERSONAL_EMAIL_DOMAINS.has(d)
-}
+// The quiz taker gets a fast response; enrichment + the admin email run in
+// the background via waitUntil (the Apify actor alone can take 30-90s), so
+// the lambda needs headroom well past the user-facing turnaround.
+export const maxDuration = 300
 
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -82,37 +76,9 @@ export async function POST(req: NextRequest) {
     breadthScore: v.breadth_score,
   })
 
-  // Enrichment (work emails only, fire-and-forget for personal domains)
-  let enrichedRow: Partial<StoredSubmission> = {}
-  let enrichmentStatus: StoredSubmission['enrichmentStatus'] = undefined
-  if (shouldEnrich(v.email)) {
-    try {
-      const enriched = await runEnrichment(v.email)
-      enrichmentStatus = enriched.status
-      enrichedRow = {
-        linkedinUrl: enriched.merged.linkedinUrl,
-        photoUrl: enriched.merged.photoUrl,
-        jobTitle: enriched.merged.jobTitle,
-        seniority: enriched.merged.seniority,
-        jobFunction: enriched.merged.function,
-        department: enriched.merged.department,
-        companyName: enriched.merged.companyName,
-        companyDomain: enriched.merged.companyDomain,
-        companySize: enriched.merged.companySize,
-        companyIndustry: enriched.merged.industry,
-        companySubIndustry: enriched.merged.subIndustry,
-        country: enriched.merged.country,
-        region: enriched.merged.region,
-        city: enriched.merged.city,
-        enrichment: enriched.merged,
-        enrichmentRaw: enriched.raw,
-        enrichmentStatus: enriched.status,
-      }
-    } catch (e) {
-      console.error('v2 enrichment failed:', e)
-    }
-  }
-
+  // Enrichment now runs in the BACKGROUND (after the response) for EVERY
+  // lead, personal domains included — see enrichLeadAndNotify below. This
+  // keeps the Apify actor (30-90s) off the quiz taker's critical path.
   const existing = await findSubmissionByEmail(v.email)
   const c = sb()
 
@@ -132,27 +98,6 @@ export async function POST(req: NextRequest) {
     utm_source: utmSource,
     utm_ref: utmRef,
     source: 'quiz_v2' as const,
-    enrichment_status: enrichmentStatus ?? null,
-    enriched_at: enrichmentStatus ? new Date().toISOString() : null,
-    // Enrichment denormalized columns (when available)
-    linkedin_url: enrichedRow.linkedinUrl ?? undefined,
-    photo_url: enrichedRow.photoUrl ?? undefined,
-    job_title: enrichedRow.jobTitle ?? undefined,
-    seniority: enrichedRow.seniority ?? undefined,
-    job_function: enrichedRow.jobFunction ?? undefined,
-    department: enrichedRow.department ?? undefined,
-    company_name: enrichedRow.companyName ?? undefined,
-    company_domain: enrichedRow.companyDomain ?? undefined,
-    company_size: enrichedRow.companySize ?? undefined,
-    company_industry: enrichedRow.companyIndustry ?? undefined,
-    company_sub_industry: enrichedRow.companySubIndustry ?? undefined,
-    country: enrichedRow.country ?? undefined,
-    region: enrichedRow.region ?? undefined,
-    city: enrichedRow.city ?? undefined,
-  }
-  // strip explicitly-undefined keys so we don't overwrite enrichment with nulls
-  for (const k of Object.keys(dbUpdate) as (keyof typeof dbUpdate)[]) {
-    if (dbUpdate[k] === undefined) delete dbUpdate[k]
   }
 
   let rowId: string
@@ -248,18 +193,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Admin notification — awaited (not fire-and-forget) because Vercel's
-  // serverless lifecycle freezes the lambda the moment the response goes
-  // out, killing any in-flight promises. Pull the final row so the email
-  // includes enrichment (Apollo/waterfall), Beehiiv status, Stripe info,
-  // etc. — all populated by the time we get here. .catch() ensures the
-  // response still ships even if Resend errors out.
+  // Enrichment + admin notification, in the BACKGROUND. waitUntil keeps the
+  // lambda alive past the response so the (30-90s) Apify actor and the other
+  // providers can run, then the email is sent from the fully enriched row —
+  // no more "not enriched" notifications. New submissions only (retakes are
+  // already known); resend one manually via /api/admin/notify/resend.
   if (!existing) {
-    const { data: finalRow } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()
-    await sendSubmitNotification(
-      (finalRow ?? { id: rowId, name: v.name, email: v.email, score }) as Parameters<typeof sendSubmitNotification>[0],
-      process.env.NEXT_PUBLIC_SITE_URL,
-    ).catch(err => console.error('[email] notification failed:', err))
+    waitUntil(
+      enrichLeadAndNotify(rowId, { siteUrl: process.env.NEXT_PUBLIC_SITE_URL })
+        .catch(err => console.error('[submit] background enrich/notify failed:', err)),
+    )
   }
 
   return NextResponse.json({
