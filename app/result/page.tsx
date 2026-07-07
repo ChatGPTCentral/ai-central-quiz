@@ -79,6 +79,20 @@ const PILLARS = [
   { label: 'EDITORIAL', n: 'Weekly', body: 'We filter 14,000+ tools and 50+ papers down to what deserves your attention' },
 ]
 
+// "Before vs After the AI Library" comparison (content from upgrade.thecentral.ai)
+const BEFORE_ITEMS = [
+  { title: 'Overwhelmed by AI Noise', description: 'Cut through endless content to find what actually works for your business.' },
+  { title: 'No Time to Experiment', description: 'Get proven solutions instead of wasting hours on trial and error.' },
+  { title: 'Fragmented Information', description: 'Access organized, comprehensive knowledge in one trusted platform.' },
+  { title: 'External Pressure to Perform', description: 'Stay competitive with practical AI skills that deliver real results.' },
+]
+const AFTER_ITEMS = [
+  { title: 'Clear AI Confidence', description: 'Implement proven AI solutions with step-by-step clarity and immediate results.' },
+  { title: 'Instant Implementation', description: 'Save 15+ hours per week with tested automations and productivity frameworks.' },
+  { title: 'Professional Authority', description: 'Become the go-to AI expert in your organization with comprehensive knowledge.' },
+  { title: 'Competitive Edge', description: 'Access organized, comprehensive AI strategies that drive measurable business results.' },
+]
+
 const FAQS = [
   { q: "I'm not technical. Will these tutorials make sense to me?", a: 'Yes. Every tutorial is written for professionals, not developers: plain language, a screenshot at every step, nothing assumes you can code. If you can follow a recipe, you can ship these workflows' },
   { q: 'How is this different from free AI content online?', a: 'Free content is written to go viral. Ours is tested by editors and tied to a business outcome. You get a sequenced path for your role, not a search bar and 14,000 open tabs' },
@@ -464,6 +478,19 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               {p(rung.prescLead)}
             </p>
 
+            {/* A live peek inside the library (scrolling preview) */}
+            <div className="mt-9" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/library-preview.gif"
+                alt="A scrolling preview of the AI Central library of tutorials"
+                style={{ display: 'block', width: '100%', height: 'auto' }}
+              />
+            </div>
+            <p className="mt-2 font-mono" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: MUTE }}>
+              A LIVE PEEK INSIDE THE LIBRARY
+            </p>
+
             {/* Framed 4-pillar grid: 3px black gutters via background + gap */}
             <div
               className="mt-9 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
@@ -525,6 +552,69 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
+        {/* ── 5b · BEFORE vs AFTER THE AI LIBRARY ──────────────────── */}
+        <section style={{ backgroundColor: CREAM, borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <h2 className="font-bold text-center" style={{ fontSize: 'clamp(28px, 3.6vw, 44px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+              Before vs After the AI Library
+            </h2>
+            <p className="mt-4 text-center mx-auto max-w-[720px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+              Transform your professional reality from overwhelming confusion to confident AI mastery.
+            </p>
+            <div className="mt-11 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-[980px] mx-auto">
+              {/* Before */}
+              <div>
+                <span className="inline-block font-mono" style={{ backgroundColor: '#BE3B3B', color: '#FFFDFA', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', padding: '6px 14px' }}>BEFORE</span>
+                <div className="mt-4 flex flex-col gap-3">
+                  {BEFORE_ITEMS.map(it => (
+                    <div key={it.title} style={{ backgroundColor: '#FFFDFA', borderLeft: '4px solid #BE3B3B', padding: '14px 16px' }}>
+                      <h4 className="font-bold" style={{ fontSize: 14.5, color: RICH }}>{it.title}</h4>
+                      <p className="mt-1" style={{ fontSize: 13.5, lineHeight: 1.5, color: BODY }}>{it.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* After */}
+              <div>
+                <span className="inline-block font-mono" style={{ backgroundColor: '#62A758', color: '#FFFDFA', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', padding: '6px 14px' }}>AFTER</span>
+                <div className="mt-4 flex flex-col gap-3">
+                  {AFTER_ITEMS.map(it => (
+                    <div key={it.title} style={{ backgroundColor: '#FFFDFA', borderLeft: '4px solid #62A758', padding: '14px 16px' }}>
+                      <h4 className="font-bold" style={{ fontSize: 14.5, color: RICH }}>{it.title}</h4>
+                      <p className="mt-1" style={{ fontSize: 13.5, lineHeight: 1.5, color: BODY }}>{it.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 5c · BROWSE THE LIBRARY (live Softr embed) ────────────── */}
+        <section style={{ backgroundColor: PAPER, borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
+            <Eyebrow>Browse the shelves</Eyebrow>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.6vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: RICH }}>
+              Every tutorial, searchable, in one place
+            </h2>
+            <p className="mt-4 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+              This is the actual library you unlock, 1,200+ tested tutorials across every AI tool and use case.
+            </p>
+            <div className="mt-9" style={{ border: `3px solid ${INK}` }}>
+              <iframe
+                src="https://forest49020.softr.app/embed/pages/bfc050ff-dd55-4f02-8303-69a46d02b2a7/blocks/grid1"
+                title="Browse the AI Central library"
+                width="100%"
+                height="1000"
+                scrolling="no"
+                frameBorder="0"
+                style={{ border: 'none', display: 'block', width: '100%' }}
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </section>
+
         {/* ── 6 · QUOTE + PRICING (dark band) ──────────────────────── */}
         <section style={{ backgroundColor: INK, borderTop: `3px solid ${RICH}` }}>
           <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-20 text-center">
@@ -547,9 +637,22 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               </p>
             </div>
 
+            {/* What you get — the product mosaic */}
+            <div className="mt-10 mx-auto" style={{ maxWidth: 300 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/library-box.png"
+                alt="Everything you unlock: 1,200+ instant AI tutorials and real insights"
+                style={{ display: 'block', width: '100%', height: 'auto' }}
+              />
+            </div>
+            <p className="mt-3 font-mono" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: CREAM, opacity: 0.6 }}>
+              EVERYTHING YOU UNLOCK TODAY
+            </p>
+
             {/* Pricing card */}
             <div
-              className="mt-10 mx-auto w-full max-w-[480px] text-left overflow-hidden"
+              className="mt-8 mx-auto w-full max-w-[480px] text-left overflow-hidden"
               style={{ backgroundColor: CREAM, border: `3px solid ${RICH}`, boxShadow: '0 8px 24px rgba(0,0,0,.3)' }}
             >
               <div
