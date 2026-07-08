@@ -11,11 +11,10 @@ import StatCard from '@/components/admin/StatCard'
 import HorizontalBarChart from '@/components/admin/HorizontalBarChart'
 import VerticalBarChart from '@/components/admin/VerticalBarChart'
 import CountryChart from '@/components/admin/CountryChart'
-import LifetimeValueChart from '@/components/admin/LifetimeValueChart'
 import RoleChart from '@/components/admin/RoleChart.client'
 import AgeChart from '@/components/admin/AgeChart.client'
 import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
-import { STAGES, PERSONAS, stageDef, personaDef, type StageKey, type PersonaKey } from '@/lib/segmentation-v2'
+import { STAGES } from '@/lib/segmentation-v2'
 
 export const dynamic = 'force-dynamic'
 // Edge-cache for 30s — the dataset doesn't change between rapid navigations
@@ -79,38 +78,6 @@ export default async function DashboardPage({
     return cleanUtm(r.utmSourceBeehiiv) || cleanUtm(r.utmSource) || 'Direct / unknown'
   })
 
-  // Products bought (Stripe) — aggregate by stripe product_id, label with
-  // canonical product name. CRITICAL: must include EVERY paying customer,
-  // even those whose stripeProducts is empty (one-off charges without
-  // invoice line items, or pre-re-import legacy data). Those go into an
-  // "Other / unidentified product" bucket so N matches the LTV chart's N.
-  const productAgg = new Map<string, { name: string; customers: number }>()
-  const OTHER_KEY = '__other__'
-  for (const r of allRows) {
-    if (!r.lifetimeValueUsd || r.lifetimeValueUsd <= 0) continue  // only paying customers
-    let matchedAnyProduct = false
-    const seenInRow = new Set<string>()
-    if (r.stripeProducts?.length) {
-      for (const p of r.stripeProducts) {
-        if (!p.productId) continue
-        if (seenInRow.has(p.productId)) continue
-        seenInRow.add(p.productId)
-        matchedAnyProduct = true
-        const existing = productAgg.get(p.productId) || { name: p.name || p.productId, customers: 0 }
-        existing.customers += 1
-        if (p.name) existing.name = p.name
-        productAgg.set(p.productId, existing)
-      }
-    }
-    if (!matchedAnyProduct) {
-      const existing = productAgg.get(OTHER_KEY) || { name: 'Other / one-off charge', customers: 0 }
-      existing.customers += 1
-      productAgg.set(OTHER_KEY, existing)
-    }
-  }
-  const productData = Array.from(productAgg.values())
-    .map(p => ({ label: p.name, value: p.customers }))
-    .sort((a, b) => b.value - a.value)
   const ageData      = countBy(allRows, r => {
     const v = r.ageBracket || r.ageAiEstimate
     return isUncertain(v) ? undefined : v
@@ -138,7 +105,6 @@ export default async function DashboardPage({
     utmNewsletter: sumOf(utmNewsletterData),
     utmPaid: sumOf(utmPaidData),
     geo:      allRows.filter(r => r.country).length,
-    products: sumOf(productData),
   }
   const n = (k: number) => `N = ${k.toLocaleString()}`
 
@@ -235,25 +201,30 @@ export default async function DashboardPage({
                   <h3 className="text-sm font-black text-[#333333]">Stage distribution</h3>
                   <p className="text-[11px] text-[#9C9C9C] mt-0.5">N = {allRows.length.toLocaleString()}</p>
                 </header>
-                <div className="px-5 pb-5 flex flex-col gap-2">
-                  {STAGES.map(def => {
-                    const count = allRows.filter(r => r.stage === def.key).length
-                    const pct = allRows.length > 0 ? (count / allRows.length) * 100 : 0
-                    const max = Math.max(...STAGES.map(d => allRows.filter(r => r.stage === d.key).length), 1)
-                    const width = (count / max) * 100
-                    return (
-                      <div key={def.key} className="flex items-center gap-3 text-[12px]">
-                        <div className="w-44 shrink-0 truncate font-medium text-[#333333]">
-                          {def.emoji} {def.label}
+                {/* Vertical bars, ordered Unknown → Builder */}
+                <div className="px-5 pb-6 pt-2">
+                  <div className="flex items-end gap-1.5" style={{ height: 200 }}>
+                    {[STAGES.find(s => s.key === 'unknown')!, ...STAGES.filter(s => s.key !== 'unknown')].map(def => {
+                      const count = allRows.filter(r => r.stage === def.key).length
+                      const pct = allRows.length > 0 ? (count / allRows.length) * 100 : 0
+                      const max = Math.max(...STAGES.map(d => allRows.filter(r => r.stage === d.key).length), 1)
+                      const barH = (count / max) * 100
+                      return (
+                        <div key={def.key} className="flex-1 min-w-0 flex flex-col items-center justify-end h-full">
+                          <div className="text-[11px] font-bold tabular-nums text-[#333333]">{count}</div>
+                          <div
+                            className="w-full mt-1 rounded-t transition-all duration-500"
+                            style={{ height: `${count > 0 ? Math.max(barH, 2) : 0}%`, backgroundColor: def.color }}
+                          />
+                          <div className="mt-2 text-center leading-tight">
+                            <div style={{ fontSize: 14 }}>{def.emoji}</div>
+                            <div className="text-[9.5px] text-[#666] truncate">{def.label}</div>
+                            <div className="text-[9.5px] tabular-nums text-[#9C9C9C]">{pct.toFixed(0)}%</div>
+                          </div>
                         </div>
-                        <div className="flex-1 relative h-5 bg-[#F5F5F5] rounded">
-                          <div className="absolute inset-y-0 left-0 rounded transition-all duration-500" style={{ width: `${width}%`, backgroundColor: def.color }} />
-                        </div>
-                        <div className="w-12 shrink-0 text-right tabular-nums font-semibold text-[#333333]">{count}</div>
-                        <div className="w-12 shrink-0 text-right tabular-nums text-[#9C9C9C]">{pct.toFixed(0)}%</div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -300,95 +271,6 @@ export default async function DashboardPage({
               </div>
             </section>
 
-            {/* ── PERSONA FACET ZONE ── */}
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Persona facet</h2>
-            <p className="text-[11px] text-[#9C9C9C] mb-3">Role context (mostly fixed). Cross-tabs with Stage to answer &quot;which kind of person climbs the ladder fastest?&quot;</p>
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-              {/* Persona distribution */}
-              <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
-                <header className="px-5 pt-5 pb-3">
-                  <h3 className="text-sm font-black text-[#333333]">Persona distribution</h3>
-                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">N = {allRows.length.toLocaleString()}</p>
-                </header>
-                <div className="px-5 pb-5 flex flex-col gap-2">
-                  {PERSONAS.map(def => {
-                    const count = allRows.filter(r => r.persona === def.key).length
-                    const pct = allRows.length > 0 ? (count / allRows.length) * 100 : 0
-                    const max = Math.max(...PERSONAS.map(d => allRows.filter(r => r.persona === d.key).length), 1)
-                    const width = (count / max) * 100
-                    return (
-                      <div key={def.key} className="flex items-center gap-3 text-[12px]">
-                        <div className="w-44 shrink-0 truncate font-medium text-[#333333]">
-                          {def.emoji} {def.label}
-                        </div>
-                        <div className="flex-1 relative h-5 bg-[#F5F5F5] rounded">
-                          <div className="absolute inset-y-0 left-0 rounded transition-all duration-500" style={{ width: `${width}%`, backgroundColor: def.color }} />
-                        </div>
-                        <div className="w-12 shrink-0 text-right tabular-nums font-semibold text-[#333333]">{count}</div>
-                        <div className="w-12 shrink-0 text-right tabular-nums text-[#9C9C9C]">{pct.toFixed(0)}%</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Persona × Stage heatmap */}
-              <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
-                <header className="px-5 pt-5 pb-3">
-                  <h3 className="text-sm font-black text-[#333333]">Stage × Persona</h3>
-                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">Darker cells = bigger cohorts. Find the stuck personas</p>
-                </header>
-                <div className="px-1 pb-3 overflow-x-auto">
-                  <table className="w-full text-[10px]">
-                    <thead>
-                      <tr className="border-b border-[#E8E4DF]">
-                        <th className="text-left px-3 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Stage \ Persona</th>
-                        {(PERSONAS as { key: PersonaKey; emoji: string }[]).map(p => (
-                          <th key={p.key} className="text-center px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">{p.emoji}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(STAGES as { key: StageKey; emoji: string; label: string; color: string }[]).map(s => {
-                        const rowRows = allRows.filter(r => r.stage === s.key)
-                        if (rowRows.length === 0) return null
-                        return (
-                          <tr key={s.key} className="border-b border-[#F5F5F5]">
-                            <td className="px-3 py-1.5 truncate font-bold whitespace-nowrap" style={{ color: s.color }}>{s.emoji} {s.label}</td>
-                            {(PERSONAS as { key: PersonaKey; color: string }[]).map(p => {
-                              const n = rowRows.filter(r => r.persona === p.key).length
-                              const intensity = allRows.length > 0 ? Math.min((n / allRows.length) * 6, 1) : 0
-                              return (
-                                <td key={p.key} className="text-center px-2 py-1.5 tabular-nums" style={{ backgroundColor: n > 0 ? `${p.color}${Math.floor(intensity * 80).toString(16).padStart(2, '0')}` : undefined }}>
-                                  {n > 0 ? n : <span className="text-[#E8E4DF]">·</span>}
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </section>
-
-            {/* ── MONEY / REVENUE ZONE (top of dashboard) ── */}
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Revenue</h2>
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-              <LifetimeValueChart values={allRows.map(r => r.lifetimeValueUsd)} />
-              {/* Products chart takes 2/3 of the row so long product names aren't cut */}
-              <div className="lg:col-span-2">
-                <HorizontalBarChart
-                  title="Products bought"
-                  subtitle={n(N.products) + ' paying customers'}
-                  data={productData}
-                  maxRows={10}
-                  uniformColor={PALETTE.viridian}
-                  expandable
-                />
-              </div>
-            </section>
 
             {/* ── DEMOGRAPHICS ZONE ── */}
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">People</h2>
