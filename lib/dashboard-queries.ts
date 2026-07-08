@@ -81,6 +81,13 @@ export interface DashboardFilters {
   scoreMax?: number
   workArea?: string  // substring match on the CSV column
   search?: string    // free-text on name/email/company
+  /** Sample scope: 'launch' = only the post-launch quiz funnel
+   *  (source='quiz_v2'), excluding the legacy Fillout import and the
+   *  Stripe-customer import; 'all' = every record. The dashboard defaults
+   *  to 'launch'. Note we key on source, not a date, because the Stripe
+   *  import overwrites ts/created_at with the customer's original Stripe
+   *  date, so a date cutoff would wrongly drop launch-era converters. */
+  sample?: 'launch' | 'all'
 }
 
 export function parseFilters(sp: URLSearchParams): DashboardFilters {
@@ -116,8 +123,12 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
     spec: decodeSpec(sp.get('spec')),
     includeArchived: sp.get('includeArchived') === '1' ? true : undefined,
     onlyArchived: sp.get('onlyArchived') === '1' ? true : undefined,
+    sample: sp.get('sample') === 'all' ? 'all' : sp.get('sample') === 'launch' ? 'launch' : undefined,
   }
 }
+
+/** Wall-clock launch of the quiz funnel (Jul 5, 2026 UTC), for labels. */
+export const LAUNCH_LABEL = 'Jul 5, 2026'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyFilters(q: any, f: DashboardFilters): any {
@@ -172,6 +183,8 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (typeof f.scoreMin === 'number') r = r.gte('score', f.scoreMin)
   if (typeof f.scoreMax === 'number') r = r.lte('score', f.scoreMax)
   if (f.workArea)                  r = r.ilike('work_area', `%${f.workArea}%`)
+  // Launch scope: only the new quiz funnel (excludes legacy Fillout + Stripe import).
+  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2')
   if (f.search) {
     r = r.or(`name.ilike.%${f.search}%,email.ilike.%${f.search}%,company_name.ilike.%${f.search}%`)
   }

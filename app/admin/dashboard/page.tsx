@@ -1,6 +1,7 @@
 import {
   filteredSubmissionsAll,
   parseFilters,
+  LAUNCH_LABEL,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
 import { continentOf } from '@/lib/geo'
@@ -29,6 +30,10 @@ export default async function DashboardPage({
 }) {
   const sp = new URLSearchParams(searchParams as Record<string, string>)
   const filters: DashboardFilters = parseFilters(sp)
+  // The dashboard defaults to the post-launch quiz sample so the legacy
+  // Fillout + Stripe-import rows don't drown out the real funnel data.
+  if (!filters.sample) filters.sample = 'launch'
+  const sample = filters.sample
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
@@ -144,21 +149,34 @@ export default async function DashboardPage({
     continent: continentOf(r.country),
   }))
 
-  // Preserve filters for CSV export
+  // Quiz → paid conversion (paying = has positive Stripe lifetime value).
+  const payingCount = allRows.filter(r => (r.lifetimeValueUsd ?? 0) > 0).length
+  const conversionPct = allRows.length > 0 ? (payingCount / allRows.length) * 100 : 0
+
+  // Preserve filters for CSV export (carry the active sample scope through).
   const exportParams = new URLSearchParams(searchParams as Record<string, string>)
   exportParams.delete('offset')
+  exportParams.set('sample', sample)
   const exportHref = `/api/admin/export.csv?${exportParams.toString()}`
+
+  // Sample toggle links (preserve other params).
+  const sampleHref = (s: 'launch' | 'all') => {
+    const p = new URLSearchParams(searchParams as Record<string, string>)
+    p.set('sample', s)
+    p.delete('offset')
+    return `/admin/dashboard?${p.toString()}`
+  }
 
   return (
     <div className="flex">
       {/* Main content */}
       <div className="flex-1 p-8 min-w-0">
-        <div className="flex items-end justify-between mb-8 gap-4 flex-wrap">
+        <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-black text-[#333333] mb-1">Dashboard</h1>
             <p className="text-sm text-[#9C9C9C]">
               {error ? <span className="text-[#BE3B3B]">Error: {error}</span> :
-                <>Charting <strong className="text-[#333333]">{allRows.length.toLocaleString()}</strong> records · <a href="/admin/submissions" className="text-[#046BB1] hover:underline">view table →</a></>}
+                <>Charting <strong className="text-[#333333]">{allRows.length.toLocaleString()}</strong> {sample === 'launch' ? 'launch submissions' : 'records'} · <a href="/admin/submissions" className="text-[#046BB1] hover:underline">view table →</a></>}
             </p>
           </div>
           <a
@@ -169,14 +187,37 @@ export default async function DashboardPage({
           </a>
         </div>
 
+        {/* Sample scope toggle — launch quiz funnel vs everything */}
+        <div className="mb-6 flex items-center gap-3 flex-wrap">
+          <div className="inline-flex rounded-lg border border-[#E8E4DF] overflow-hidden text-sm font-bold">
+            <a
+              href={sampleHref('launch')}
+              className={`px-4 py-2 ${sample === 'launch' ? 'bg-[#333333] text-[#FFFDFA]' : 'bg-white text-[#9C9C9C] hover:text-[#333333]'}`}
+            >
+              Launch ({LAUNCH_LABEL}+)
+            </a>
+            <a
+              href={sampleHref('all')}
+              className={`px-4 py-2 border-l border-[#E8E4DF] ${sample === 'all' ? 'bg-[#333333] text-[#FFFDFA]' : 'bg-white text-[#9C9C9C] hover:text-[#333333]'}`}
+            >
+              All data
+            </a>
+          </div>
+          <p className="text-[11px] text-[#9C9C9C] max-w-[420px]">
+            {sample === 'launch'
+              ? 'Only the new quiz funnel. Excludes the legacy Fillout form and the imported Stripe customers.'
+              : 'Everything, including 794 legacy Fillout rows and 1,989 imported Stripe customers.'}
+          </p>
+        </div>
+
         {!error && (
           <>
-            {/* Summary stats */}
+            {/* Summary stats — conversion-focused for the launch view */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <StatCard label="Total records"     value={allRows.length}   accent="jetBlack" />
-              <StatCard label="Unique emails"     value={uniqueEmails}     accent="azul" />
-              <StatCard label="Unique companies"  value={uniqueCompanies}  accent="viridian" />
-              <StatCard label="Unique roles"      value={uniqueRoles}      accent="fulvous" />
+              <StatCard label={sample === 'launch' ? 'Submissions' : 'Total records'} value={allRows.length} accent="jetBlack" hint={`${uniqueEmails.toLocaleString()} unique emails`} />
+              <StatCard label="Paid customers" value={payingCount} accent="viridian" hint="Stripe lifetime value > $0" />
+              <StatCard label="Quiz → paid" value={`${conversionPct.toFixed(1)}%`} accent="fulvous" hint={`${payingCount} of ${allRows.length.toLocaleString()}`} />
+              <StatCard label="Unique companies" value={uniqueCompanies} accent="azul" hint={`${uniqueRoles.toLocaleString()} unique roles`} />
             </section>
 
             {/* Advanced filter — same UX as on /admin/submissions */}
