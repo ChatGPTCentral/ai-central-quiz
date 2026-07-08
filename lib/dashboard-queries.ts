@@ -127,8 +127,14 @@ export function parseFilters(sp: URLSearchParams): DashboardFilters {
   }
 }
 
-/** Wall-clock launch of the quiz funnel (Jul 5, 2026 UTC), for labels. */
+/** Wall-clock launch of the quiz funnel (Jul 5, 2026 UTC). */
 export const LAUNCH_LABEL = 'Jul 5, 2026'
+/** Cutoff for the launch sample. We key on staged_at (set when the quiz
+ *  classifies the submission) because ts/created_at get OVERWRITTEN by the
+ *  Stripe import to the customer's original Stripe date — so ~20 launch
+ *  quiz-takers who are also existing Stripe customers show 2023-2025 dates
+ *  there. staged_at is never overwritten, so it's the true "took the quiz" time. */
+export const LAUNCH_ISO = '2026-07-05'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyFilters(q: any, f: DashboardFilters): any {
@@ -183,8 +189,9 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (typeof f.scoreMin === 'number') r = r.gte('score', f.scoreMin)
   if (typeof f.scoreMax === 'number') r = r.lte('score', f.scoreMax)
   if (f.workArea)                  r = r.ilike('work_area', `%${f.workArea}%`)
-  // Launch scope: only the new quiz funnel (excludes legacy Fillout + Stripe import).
-  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2')
+  // Launch scope: the new quiz funnel, submitted since launch. Keyed on
+  // staged_at (not ts/created_at, which the Stripe import overwrites).
+  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2').gte('staged_at', LAUNCH_ISO)
   if (f.search) {
     r = r.or(`name.ilike.%${f.search}%,email.ilike.%${f.search}%,company_name.ilike.%${f.search}%`)
   }

@@ -115,9 +115,13 @@ export default async function DashboardPage({
     continent: continentOf(r.country),
   }))
 
-  // Quiz → paid conversion (paying = has positive Stripe lifetime value).
-  const payingCount = allRows.filter(r => (r.lifetimeValueUsd ?? 0) > 0).length
-  const conversionPct = allRows.length > 0 ? (payingCount / allRows.length) * 100 : 0
+  // Quiz → paid conversion, on a UNIQUE-PEOPLE basis (matches the agreed
+  // definition): unique quiz-takers with Stripe revenue > 0 ÷ all unique
+  // quiz-takers. Paying = positive Stripe lifetime value.
+  const payingPeople = new Set(
+    allRows.filter(r => (r.lifetimeValueUsd ?? 0) > 0).map(r => r.email.toLowerCase()),
+  ).size
+  const conversionPct = uniqueEmails > 0 ? (payingPeople / uniqueEmails) * 100 : 0
 
   // Preserve filters for CSV export (carry the active sample scope through).
   const exportParams = new URLSearchParams(searchParams as Record<string, string>)
@@ -180,9 +184,9 @@ export default async function DashboardPage({
           <>
             {/* Summary stats — conversion-focused for the launch view */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <StatCard label={sample === 'launch' ? 'Submissions' : 'Total records'} value={allRows.length} accent="jetBlack" hint={`${uniqueEmails.toLocaleString()} unique emails`} />
-              <StatCard label="Paid customers" value={payingCount} accent="viridian" hint="Stripe lifetime value > $0" />
-              <StatCard label="Quiz → paid" value={`${conversionPct.toFixed(1)}%`} accent="fulvous" hint={`${payingCount} of ${allRows.length.toLocaleString()}`} />
+              <StatCard label={sample === 'launch' ? 'Quiz-takers' : 'Total records'} value={uniqueEmails} accent="jetBlack" hint={sample === 'launch' ? `unique people since ${LAUNCH_LABEL}` : `${allRows.length.toLocaleString()} rows`} />
+              <StatCard label="Paid customers" value={payingPeople} accent="viridian" hint="Stripe lifetime value > $0" />
+              <StatCard label="Quiz → paid" value={`${conversionPct.toFixed(1)}%`} accent="fulvous" hint={`${payingPeople} of ${uniqueEmails.toLocaleString()}`} />
               <StatCard label="Unique companies" value={uniqueCompanies} accent="azul" hint={`${uniqueRoles.toLocaleString()} unique roles`} />
             </section>
 
