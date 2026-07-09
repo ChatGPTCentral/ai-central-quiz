@@ -13,6 +13,7 @@ const NAV_SECTIONS: { label: string; items: { href: string; label: string; icon:
     label: 'CRM',
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: '◧' },
+      { href: '/admin/funnel', label: 'Funnel', icon: '▼' },
       { href: '/admin/submissions', label: 'Submissions', icon: '☰' },
       { href: '/admin/in-progress', label: 'In progress', icon: '◴' },
       { href: '/admin/lab', label: 'Enrich', icon: '✨' },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { sendEvent } from '@/lib/events-client'
 
 const US_PEOPLE = [
   { name: 'James R.', flag: '🇺🇸', city: 'New York' },
@@ -123,6 +124,7 @@ export default function FomoPopup({ variant = 'offer' }: FomoProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-black font-semibold underline underline-offset-2"
+                onClick={() => sendEvent('checkout_click', { props: { placement: 'fomo_popup' } })}
               >
                 Limited Time $4.99 Special Offer
               </a>

@@ -5,6 +5,7 @@ import CountdownTimer from '@/components/CountdownTimer'
 import TrackView from '@/components/TrackView'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
+import CheckoutLink from '@/components/CheckoutLink.client'
 import { RadarChart } from '@/components/RadarChart'
 import { BandChart } from '@/components/result/BandChart'
 import { PassCard } from '@/components/result/PassCard'
@@ -129,9 +130,9 @@ function Eyebrow({ children, color = FULVOUS }: { children: React.ReactNode; col
 }
 
 /** Two-piece block button from the handoff: label cell + fulvous arrow cell. */
-function BlockButton({ href, label, gold = false, size = 17 }: { href: string; label: string; gold?: boolean; size?: number }) {
+function BlockButton({ href, label, gold = false, size = 17, placement = 'unknown', submissionId }: { href: string; label: string; gold?: boolean; size?: number; placement?: string; submissionId?: string }) {
   return (
-    <a href={href} className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]" style={{ textDecoration: 'none' }}>
+    <CheckoutLink href={href} placement={placement} submissionId={submissionId} className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]" style={{ textDecoration: 'none' }}>
       <span
         className="inline-flex items-center"
         style={{
@@ -158,7 +159,7 @@ function BlockButton({ href, label, gold = false, size = 17 }: { href: string; l
       >
         ↗
       </span>
-    </a>
+    </CheckoutLink>
   )
 }
 
@@ -227,6 +228,10 @@ function FAQItem({ q, a }: { q: string; a: string }) {
   )
 }
 
+// Personalized, searchParams-keyed checkout page — must never rank, and
+// noindex also removes any experiment-cloaking question.
+export const metadata = { robots: { index: false, follow: false } }
+
 async function ResultContent({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const name = searchParams.name ? decodeURIComponent(searchParams.name) : ''
   const scoreRaw = parseInt(searchParams.score || '0', 10)
@@ -280,8 +285,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
 
   return (
     <>
-      <TrackView event="result_view" props={{ stage: segFields?.stage ?? searchParams.stage ?? null, persona }} />
-      <CountdownTimer paymentUrl={checkoutUrl} refNo={refNo} />
+      <TrackView event="result_view" props={{ stage: segFields?.stage ?? searchParams.stage ?? null, persona, submissionId: rowId }} />
+      <CountdownTimer paymentUrl={checkoutUrl} refNo={refNo} submissionId={rowId} />
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, paddingTop: 56, color: INK }}>
 
@@ -301,7 +306,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 {p(rung.heroLead)}
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-5">
-                <BlockButton href={checkoutUrl} label={heroCtaLabel} />
+                <BlockButton href={checkoutUrl} label={heroCtaLabel} placement="hero" submissionId={rowId} />
                 <div style={{ fontSize: 13, color: '#666666', lineHeight: 1.5 }}>
                   $4.99 first month · then $59.75/year<br />cancel anytime · 30-day guarantee
                 </div>
@@ -349,7 +354,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               with a library of curated resources and tutorials that speed up your AI journey
             </p>
             <div className="mt-7">
-              <BlockButton href={checkoutUrl} label="Unlock the Ultimate AI Library" size={16} />
+              <BlockButton href={checkoutUrl} label="Unlock the Ultimate AI Library" size={16} placement="chart" submissionId={rowId} />
             </div>
           </div>
         </section>
@@ -388,7 +393,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 {p(rung.radarNote)}
               </p>
               <div className="mt-7">
-                <BlockButton href={checkoutUrl} label="close the gap" size={16} />
+                <BlockButton href={checkoutUrl} label="close the gap" size={16} placement="radar" submissionId={rowId} />
               </div>
             </div>
           </div>
@@ -589,13 +594,15 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 <p className="mt-1" style={{ fontSize: 13, color: '#666666' }}>
                   then $59.75/year (just $4.98/mo) · cancel anytime
                 </p>
-                <a
+                <CheckoutLink
                   href={checkoutUrl}
+                  placement="pricing_card"
+                  submissionId={rowId}
                   className="mt-5 flex items-center justify-center gap-2 w-full transition-colors"
                   style={{ backgroundColor: INK, color: CREAM, fontWeight: 600, fontSize: 16, padding: '16px 20px' }}
                 >
                   start my 1-month trial <span style={{ color: XANTHOUS }} aria-hidden>↗</span>
-                </a>
+                </CheckoutLink>
                 <p className="mt-3 text-center" style={{ fontSize: 13, color: '#666666' }}>
                   30-day guarantee · instant access
                 </p>
@@ -603,15 +610,17 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   over 2,500 sales in the US 🇺🇸
                 </p>
                 <p className="mt-1.5 text-center">
-                  <a
+                  <CheckoutLink
                     href={UPSELL_URL}
+                    placement="pricing_lifetime"
+                    submissionId={rowId}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline underline-offset-2 hover:text-[#E48715] transition-colors"
                     style={{ fontWeight: 500, fontSize: 13.5, color: INK }}
                   >
                     or get lifetime access ↗
-                  </a>
+                  </CheckoutLink>
                 </p>
               </div>
             </div>
@@ -664,7 +673,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               {rung.finalTitle}
             </h2>
             <div className="mt-8 flex justify-center">
-              <BlockButton href={checkoutUrl} label="start your trial for $4.99" gold size={16} />
+              <BlockButton href={checkoutUrl} label="start your trial for $4.99" gold size={16} placement="final_band" submissionId={rowId} />
             </div>
             <p className="mt-5" style={{ fontSize: 12.5, color: CREAM, opacity: 0.5 }}>
               then $59.75/year · cancel anytime · 30-day money-back guarantee · offer ends <InlineCountdown bare />

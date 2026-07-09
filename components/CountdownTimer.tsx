@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { sendEvent } from '@/lib/events-client'
 
 const DURATION_SECONDS = 15 * 60 // 15 minutes
 
@@ -10,7 +11,7 @@ const DURATION_SECONDS = 15 * 60 // 15 minutes
  * and a CLAIM OFFER button. Reads/writes the same sessionStorage key as
  * InlineCountdown so every countdown on the page stays in lockstep.
  */
-export default function CountdownTimer({ paymentUrl, refNo }: { paymentUrl: string; refNo?: string }) {
+export default function CountdownTimer({ paymentUrl, refNo, submissionId }: { paymentUrl: string; refNo?: string; submissionId?: string }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
 
   useEffect(() => {
@@ -63,6 +64,7 @@ export default function CountdownTimer({ paymentUrl, refNo }: { paymentUrl: stri
           style={{ backgroundColor: '#E7B02F', color: '#1A1A1A', fontSize: 12, padding: '10px 14px', letterSpacing: '0.04em' }}
           onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E48715' }}
           onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E7B02F' }}
+          onClick={() => sendEvent('checkout_click', { props: { placement: 'offer_bar' }, submissionId })}
         >
           Claim offer ↗
         </a>
