@@ -11,7 +11,7 @@ const DURATION_SECONDS = 15 * 60 // 15 minutes
  * and a CLAIM OFFER button. Reads/writes the same sessionStorage key as
  * InlineCountdown so every countdown on the page stays in lockstep.
  */
-export default function CountdownTimer({ paymentUrl, refNo, submissionId }: { paymentUrl: string; refNo?: string; submissionId?: string }) {
+export default function CountdownTimer({ paymentUrl, refNo, submissionId, ctaLabel = 'Claim offer ↗' }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function CountdownTimer({ paymentUrl, refNo, submissionId }: { pa
           onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E7B02F' }}
           onClick={() => sendEvent('checkout_click', { props: { placement: 'offer_bar' }, submissionId })}
         >
-          Claim offer ↗
+          {ctaLabel}
         </a>
       </div>
     </div>

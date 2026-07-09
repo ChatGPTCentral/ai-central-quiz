@@ -7,6 +7,7 @@ import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import { ExitRescue } from '@/components/result/ExitRescue.client'
+import ExperimentTracker from '@/components/ExperimentTracker.client'
 import { NotYetDownsell } from '@/components/result/NotYetDownsell'
 import { RadarChart } from '@/components/RadarChart'
 import { BandChart } from '@/components/result/BandChart'
@@ -18,12 +19,15 @@ import { rungConfig, withPersona, withFirstName } from '@/lib/rung-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
+import { resolveExperiments } from '@/lib/experiments'
+import { cookies, headers } from 'next/headers'
 
 // Script font used ONLY for the founder-letter signature (design handoff).
 const signatureFont = Mrs_Saint_Delafield({ weight: '400', subsets: ['latin'] })
 
 interface SegFields {
   email?: string | null
+  utm_source?: string | null
   stage?: string | null
   persona?: string | null
   friction?: string | null
@@ -47,7 +51,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
     const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
     const { data } = await c
       .from('submissions')
-      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score')
+      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -276,6 +280,21 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   const checkoutUrl = endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
   const heroCtaLabel = endScreen?.ctaText ?? 'start my trial'
 
+  // ── Experiments: sticky-first deterministic assignment (fails open) ──
+  const cookieStore = cookies()
+  const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
+  const { assignments, overrides } = await resolveExperiments({
+    anonId,
+    cookieVariant: k => cookieStore.get(`ac_exp_${k}`)?.value,
+    stage: segFields?.stage ?? searchParams.stage ?? null,
+    persona,
+    utmSource: segFields?.utm_source ?? null,
+    page: 'result',
+  })
+  // Override wins only for slots the variant sets; values run through the
+  // same token pipeline ({firstName}/{persona}) as the rung content.
+  const ov = (slot: string, current: string) => (overrides[slot] != null ? p(overrides[slot]) : current)
+
   // Member-pass fields
   const passName = (name || 'AI Professional').trim()
   const refNo = 'AC-' + (rowId ? rowId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() : '0723')
@@ -288,7 +307,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
   return (
     <>
       <TrackView event="result_view" props={{ stage: segFields?.stage ?? searchParams.stage ?? null, persona, submissionId: rowId }} />
-      <CountdownTimer paymentUrl={checkoutUrl} refNo={refNo} submissionId={rowId} />
+      <ExperimentTracker assignments={assignments} submissionId={rowId} />
+      <CountdownTimer paymentUrl={checkoutUrl} refNo={refNo} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', 'Claim offer ↗')} />
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, paddingTop: 56, color: INK }}>
 
@@ -301,14 +321,23 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 className="mt-4 font-bold"
                 style={{ fontSize: 'clamp(36px, 5.2vw, 62px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}
               >
-                {firstName ? `${firstName}, you're` : "You're"} ahead of{' '}
-                <span style={{ color: FULVOUS }}>{rt.aheadPct}%</span> of people on their AI journey
+                {overrides['hero.headline']
+                  ? p(overrides['hero.headline']).split('{aheadPct}').map((part, i, arr) => (
+                      <span key={i}>
+                        {part}
+                        {i < arr.length - 1 && <span style={{ color: FULVOUS }}>{rt.aheadPct}%</span>}
+                      </span>
+                    ))
+                  : <>
+                      {firstName ? `${firstName}, you're` : "You're"} ahead of{' '}
+                      <span style={{ color: FULVOUS }}>{rt.aheadPct}%</span> of people on their AI journey
+                    </>}
               </h1>
               <p className="mt-5 max-w-[520px]" style={{ fontWeight: 300, fontSize: 'clamp(17px, 2vw, 21px)', lineHeight: 1.45, color: BODY }}>
-                {p(rung.heroLead)}
+                {ov('hero.lead', p(rung.heroLead))}
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-5">
-                <BlockButton href={checkoutUrl} label={heroCtaLabel} placement="hero" submissionId={rowId} />
+                <BlockButton href={checkoutUrl} label={ov('hero.ctaLabel', heroCtaLabel)} placement="hero" submissionId={rowId} />
                 <div style={{ fontSize: 13, color: '#666666', lineHeight: 1.5 }}>
                   $4.99 first month · then $59.75/year<br />cancel anytime · 30-day guarantee
                 </div>
@@ -356,7 +385,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               with a library of curated resources and tutorials that speed up your AI journey
             </p>
             <div className="mt-7">
-              <BlockButton href={checkoutUrl} label="Unlock the Ultimate AI Library" size={16} placement="chart" submissionId={rowId} />
+              <BlockButton href={checkoutUrl} label={ov('chart.ctaLabel', 'Unlock the Ultimate AI Library')} size={16} placement="chart" submissionId={rowId} />
             </div>
           </div>
         </section>
@@ -395,7 +424,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 {p(rung.radarNote)}
               </p>
               <div className="mt-7">
-                <BlockButton href={checkoutUrl} label="close the gap" size={16} placement="radar" submissionId={rowId} />
+                <BlockButton href={checkoutUrl} label={ov('radar.ctaLabel', 'close the gap')} size={16} placement="radar" submissionId={rowId} />
               </div>
             </div>
           </div>
@@ -550,7 +579,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
             <div className="mt-14">
               <Eyebrow color={XANTHOUS}>The cost of moving</Eyebrow>
               <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(30px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: CREAM }}>
-                Less than the coffee you&apos;ll drink reading about AI
+                {ov('pricing.headline', "Less than the coffee you'll drink reading about AI")}
               </h2>
               <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 16, lineHeight: 1.5, color: CREAM, opacity: 0.75 }}>
                 The 0.3% didn&apos;t pay for content. They paid to stop searching. 89% of members report value
@@ -581,7 +610,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 style={{ backgroundColor: XANTHOUS, borderBottom: `3px solid ${RICH}` }}
               >
                 <span className="font-mono font-bold" style={{ fontSize: 11, letterSpacing: '0.1em', color: RICH }}>
-                  MOST POPULAR · 30-DAY GUARANTEE
+                  {ov('pricing.badge', 'MOST POPULAR · 30-DAY GUARANTEE')}
                 </span>
                 <span className="font-mono font-bold" style={{ fontSize: 13, color: RICH }}>
                   ends <InlineCountdown bare />
@@ -603,7 +632,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   className="mt-5 flex items-center justify-center gap-2 w-full transition-colors"
                   style={{ backgroundColor: INK, color: CREAM, fontWeight: 600, fontSize: 16, padding: '16px 20px' }}
                 >
-                  start my 1-month trial <span style={{ color: XANTHOUS }} aria-hidden>↗</span>
+                  {ov('pricing.ctaLabel', 'start my 1-month trial')} <span style={{ color: XANTHOUS }} aria-hidden>↗</span>
                 </CheckoutLink>
                 <p className="mt-3 text-center" style={{ fontSize: 13, color: '#666666' }}>
                   30-day guarantee · instant access
@@ -675,10 +704,10 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
         <section style={{ backgroundColor: INK }}>
           <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-16 sm:py-20 text-center">
             <h2 className="font-bold" style={{ fontSize: 'clamp(28px, 3.4vw, 38px)', lineHeight: 1.05, letterSpacing: '-0.035em', color: CREAM }}>
-              {rung.finalTitle}
+              {ov('final.title', rung.finalTitle)}
             </h2>
             <div className="mt-8 flex justify-center">
-              <BlockButton href={checkoutUrl} label="start your trial for $4.99" gold size={16} placement="final_band" submissionId={rowId} />
+              <BlockButton href={checkoutUrl} label={ov('final.ctaLabel', 'start your trial for $4.99')} gold size={16} placement="final_band" submissionId={rowId} />
             </div>
             <p className="mt-5" style={{ fontSize: 12.5, color: CREAM, opacity: 0.5 }}>
               then $59.75/year · cancel anytime · 30-day money-back guarantee · offer ends <InlineCountdown bare />

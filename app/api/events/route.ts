@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createHash } from 'crypto'
+import { isValidRunningVariant } from '@/lib/experiments'
 
 export const runtime = 'nodejs'
 
@@ -124,15 +125,28 @@ export async function POST(req: NextRequest) {
 
   try {
     const c = sb()
-    const { error } = await c.from('funnel_events').insert(rows)
+
+    // Exposures must reference a RUNNING experiment + existing variant —
+    // clients cannot invent experiments/variants into the results math.
+    const validated: Record<string, unknown>[] = []
+    for (const r of rows) {
+      if (r.event === 'exposure') {
+        const ok =
+          typeof r.experiment_key === 'string' &&
+          typeof r.variant_key === 'string' &&
+          (await isValidRunningVariant(r.experiment_key, r.variant_key))
+        if (!ok) continue
+      }
+      validated.push(r)
+    }
+    if (validated.length === 0) return new NextResponse(null, { status: 204 })
+
+    const { error } = await c.from('funnel_events').insert(validated)
     if (error) console.error('[events] insert failed:', error.message)
 
     // Exposure bookkeeping: assignments upsert + sticky variant cookie.
-    // Variant validity against the running config is enforced when the
-    // experiment engine lands (lib/experiments.ts); until an experiment is
-    // running, no client can produce a matching running experiment anyway.
     const res = new NextResponse(null, { status: 204 })
-    for (const r of rows) {
+    for (const r of validated) {
       if (r.event !== 'exposure' || !r.experiment_key || !r.variant_key || !anonId) continue
       const { error: aerr } = await c.rpc('upsert_experiment_assignment', {
         p_experiment_key: r.experiment_key,
