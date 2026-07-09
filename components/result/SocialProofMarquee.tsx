@@ -101,7 +101,7 @@ export function SocialProofMarquee({
         {half('b')}
       </div>
       <style>{`
-        .ac-marquee { animation: ac-marquee-scroll 60s linear infinite; will-change: transform }
+        .ac-marquee { animation: ac-marquee-scroll 90s linear infinite; will-change: transform }
         .ac-marquee:hover { animation-play-state: paused }
         @keyframes ac-marquee-scroll { from { transform: translateX(0) } to { transform: translateX(-50%) } }
         @media (prefers-reduced-motion: reduce) { .ac-marquee { animation: none } }
