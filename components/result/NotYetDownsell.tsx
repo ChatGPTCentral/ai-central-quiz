@@ -2,31 +2,20 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { sendEvent } from '@/lib/events-client'
 
 /**
  * "Not yet" downsell — the soft exit from the paid offer. A quiet text link
- * opens a "No worries at all" reassurance modal (modeled on The Rundown's
- * quiz downsell) that routes to the free 5-day email course, carrying the
- * name/email so /free-course can pre-fill.
+ * opens a reassurance modal that routes to the free Starter Kit page (the
+ * 10 most downloaded tutorials of 2026).
  */
-export function NotYetDownsell({
-  name,
-  email,
-  className,
-}: {
-  name?: string | null
-  email?: string | null
-  className?: string
-}) {
+export function NotYetDownsell({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const router = useRouter()
 
-  const goToFreeCourse = () => {
-    const p = new URLSearchParams()
-    if (name) p.set('name', name)
-    if (email) p.set('email', email)
-    const qs = p.toString()
-    router.push(qs ? `/free-course?${qs}` : '/free-course')
+  const goToStarterKit = () => {
+    sendEvent('exit_rescue_accepted', { props: { source: 'not_yet_link' } })
+    router.push('/starter-kit')
   }
 
   return (
@@ -40,7 +29,7 @@ export function NotYetDownsell({
         }
         style={className ? undefined : { color: '#9C9C9C' }}
       >
-        Not yet — show me a free option
+        Not yet - - show me a free option
       </button>
 
       {open && (
@@ -74,8 +63,9 @@ export function NotYetDownsell({
               style={{ backgroundColor: '#FEF7E7' }}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E48715" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7" />
-                <rect x="2" y="4" width="20" height="16" rx="2" />
+                <path d="M21 8v13H3V8" />
+                <path d="M1 3h22v5H1z" />
+                <path d="M10 12h4" />
               </svg>
             </div>
 
@@ -83,18 +73,18 @@ export function NotYetDownsell({
               No worries at all
             </h3>
             <p className="text-[14px] leading-relaxed mb-6" style={{ color: '#555' }}>
-              The full library isn&apos;t the right fit for everyone. Get our free 5-day AI
-              Foundations email course instead — one short lesson a day, no cost and no
-              commitment.
+              The full library isn&apos;t the right fit for everyone. Grab the free
+              Starter Kit instead - - the 10 most downloaded AI Central tutorials
+              of 2026. No cost, no commitment
             </p>
 
             <button
               type="button"
-              onClick={goToFreeCourse}
+              onClick={goToStarterKit}
               className="block w-full py-3.5 font-black text-[15px] rounded-xl transition-all active:scale-[0.99] hover:opacity-90"
               style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
             >
-              Show me the free course →
+              Show me the free Starter Kit →
             </button>
           </div>
         </div>

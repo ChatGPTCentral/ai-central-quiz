@@ -654,7 +654,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   </CheckoutLink>
                 </p>
                 <p className="mt-2 text-center">
-                  <NotYetDownsell name={firstName || undefined} email={segFields?.email ?? undefined} />
+                  <NotYetDownsell />
                 </p>
               </div>
             </div>
@@ -718,7 +718,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
       </div>
 
       <FomoPopup />
-      <ExitRescue name={firstName || undefined} email={segFields?.email ?? undefined} submissionId={rowId} />
+      <ExitRescue submissionId={rowId} />
     </>
   )
 }
