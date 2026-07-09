@@ -168,17 +168,15 @@ function StarRow({ size = 14 }: { size?: number }) {
   )
 }
 
-/** Social sharing row under the member pass: LinkedIn, WhatsApp, Email, X.
- *  Shares the /pass URL whose Open Graph tags unfurl into the person's
- *  generated pass image, so the CARD (not just text) shows up in feeds. */
-function SharePass({ topPct, name, stageLabel, profileLabel, issued, refNo, description }: {
+/** LinkedIn share button under the member pass. Shares the /pass URL whose
+ *  Open Graph tags unfurl into the person's generated pass image, so the
+ *  CARD (not just text) shows up in the feed. Styled to LinkedIn's brand
+ *  (blue pill + logo), intentionally not the page's hard-edge style. */
+function SharePass({ topPct, name, stageLabel, profileLabel }: {
   topPct: number
   name: string
   stageLabel: string
   profileLabel: string
-  issued: string
-  refNo: string
-  description?: string
 }) {
   const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
   // Shared link: minimal params only (first name, stage, profile, pct) —
@@ -192,88 +190,20 @@ function SharePass({ topPct, name, stageLabel, profileLabel, issued, refNo, desc
     pct: String(topPct),
   })
   const shareUrl = `${site}/pass?${shareParams.toString()}`
-  // Download: the full personal card, including the profile description.
-  const downloadParams = new URLSearchParams({
-    name,
-    stage: stageLabel,
-    profile: profileLabel,
-    pct: String(topPct),
-    issued,
-    ref: refNo,
-  })
-  if (description) downloadParams.set('desc', description.slice(0, 240))
-  const imageUrl = `/api/pass-image?${downloadParams.toString()}`
-  const text = `I'm in the top ${topPct}% of AI users worldwide. Discover your ranking:`
-  const enc = encodeURIComponent
-  const iconStyle = { display: 'block' as const }
-  const links = [
-    {
-      label: 'Share on LinkedIn',
-      href: `https://www.linkedin.com/sharing/share-offsite/?url=${enc(shareUrl)}`,
-      external: true,
-      icon: (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={iconStyle} aria-hidden>
-          <path d="M4.98 3.5C4.98 4.88 3.87 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5zM.2 8h4.6v14.8H.2V8zm7.6 0h4.4v2h.06c.61-1.16 2.1-2.38 4.33-2.38 4.63 0 5.48 3.05 5.48 7.02v8.16h-4.6v-7.23c0-1.73-.03-3.95-2.4-3.95-2.4 0-2.77 1.88-2.77 3.82v7.36H7.8V8z" />
-        </svg>
-      ),
-    },
-    {
-      label: 'Share on WhatsApp',
-      href: `https://wa.me/?text=${enc(`${text} ${shareUrl}`)}`,
-      external: true,
-      icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={iconStyle} aria-hidden>
-          <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-3-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.7.8-.8 1-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.4 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.9.9-1.2 2.2-.3 3.9 1 1.9 2.7 3.8 5.1 4.8 1.7.7 2.4.7 3.2.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2-.1-.1-.3-.2-.5-.3z" />
-        </svg>
-      ),
-    },
-    {
-      label: 'Share by email',
-      href: `mailto:?subject=${enc('Where do you rank in AI adoption?')}&body=${enc(`${text} ${shareUrl}`)}`,
-      external: false,
-      icon: (
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={iconStyle} aria-hidden>
-          <rect x="2.5" y="4.5" width="19" height="15" />
-          <path d="m3 6 9 7 9-7" />
-        </svg>
-      ),
-    },
-    {
-      label: 'Share on X',
-      href: `https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(shareUrl)}`,
-      external: true,
-      icon: (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={iconStyle} aria-hidden>
-          <path d="M18.9 1.2h3.7l-8.1 9.3L24 22.8h-7.5l-5.9-7.7-6.7 7.7H.2l8.6-9.9L0 1.2h7.7l5.3 7 6-7zm-1.3 19.4h2L6.6 3.3H4.4l13.2 17.3z" />
-        </svg>
-      ),
-    },
-  ]
   return (
-    <div className="mt-5 flex flex-col items-center gap-2.5">
-      <span className="font-mono" style={{ fontSize: 9.5, letterSpacing: '0.14em', color: MUTE }}>SHARE YOUR PASS</span>
-      <div className="flex items-center gap-2.5">
-        {links.map(l => (
-          <a
-            key={l.label}
-            href={l.href}
-            aria-label={l.label}
-            title={l.label}
-            {...(l.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-            className="flex items-center justify-center transition-colors hover:border-[#E48715] hover:text-[#E48715]"
-            style={{ width: 40, height: 40, border: `2px solid ${INK}`, color: INK, backgroundColor: '#FFFFFF' }}
-          >
-            {l.icon}
-          </a>
-        ))}
-      </div>
+    <div className="mt-5 flex justify-center">
       <a
-        href={imageUrl}
-        download="ai-central-member-pass.png"
-        className="font-mono underline underline-offset-2 hover:text-[#E48715] transition-colors"
-        style={{ fontSize: 10, letterSpacing: '0.08em', color: MUTE }}
+        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Share on LinkedIn"
+        className="inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
+        style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600 }}
       >
-        DOWNLOAD PASS IMAGE
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
+          <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
+        </svg>
+        Share on LinkedIn
       </a>
     </div>
   )
@@ -392,9 +322,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 name={passName}
                 stageLabel={rung.className}
                 profileLabel={content.label}
-                issued={issued}
-                refNo={refNo}
-                description={content.outlook}
               />
             </div>
           </div>
