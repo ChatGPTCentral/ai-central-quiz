@@ -2,6 +2,7 @@ import {
   filteredSubmissionsAll,
   parseFilters,
   LAUNCH_LABEL,
+  LAUNCH_ISO,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
 import { continentOf } from '@/lib/geo'
@@ -115,13 +116,17 @@ export default async function DashboardPage({
     continent: continentOf(r.country),
   }))
 
-  // Quiz → paid conversion, on a UNIQUE-PEOPLE basis (matches the agreed
-  // definition): unique quiz-takers with Stripe revenue > 0 ÷ all unique
-  // quiz-takers. Paying = positive Stripe lifetime value.
-  const payingPeople = new Set(
-    allRows.filter(r => (r.lifetimeValueUsd ?? 0) > 0).map(r => r.email.toLowerCase()),
-  ).size
-  const conversionPct = uniqueEmails > 0 ? (payingPeople / uniqueEmails) * 100 : 0
+  // Two conversion rates, both on a UNIQUE-PEOPLE basis:
+  //   1) CVR Quiz→Paid ("Quiz Effect") = net-new paid ÷ all quiz-takers.
+  //      Net-new = people whose FIRST Stripe charge is on/after launch, i.e.
+  //      they were NOT paying before and paid after taking the quiz.
+  //   2) CVR Revenue-associated = quiz-takers with ANY Stripe revenue > 0 ÷
+  //      all quiz-takers (includes people who were already customers).
+  const uniq = (rows: typeof allRows) => new Set(rows.map(r => r.email.toLowerCase())).size
+  const revenueAssocPeople = uniq(allRows.filter(r => (r.lifetimeValueUsd ?? 0) > 0))
+  const netNewPaidPeople = uniq(allRows.filter(r => r.stripeFirstChargeAt && r.stripeFirstChargeAt >= LAUNCH_ISO))
+  const cvrRevenueAssoc = uniqueEmails > 0 ? (revenueAssocPeople / uniqueEmails) * 100 : 0
+  const cvrQuizToPaid = uniqueEmails > 0 ? (netNewPaidPeople / uniqueEmails) * 100 : 0
 
   // Preserve filters for CSV export (carry the active sample scope through).
   const exportParams = new URLSearchParams(searchParams as Record<string, string>)
@@ -182,13 +187,17 @@ export default async function DashboardPage({
 
         {!error && (
           <>
-            {/* Summary stats — conversion-focused for the launch view */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Summary stats — the two conversion rates lead */}
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
               <StatCard label={sample === 'launch' ? 'Quiz-takers' : 'Total records'} value={uniqueEmails} accent="jetBlack" hint={sample === 'launch' ? `unique people since ${LAUNCH_LABEL}` : `${allRows.length.toLocaleString()} rows`} />
-              <StatCard label="Paid customers" value={payingPeople} accent="viridian" hint="Stripe lifetime value > $0" />
-              <StatCard label="Quiz → paid" value={`${conversionPct.toFixed(1)}%`} accent="fulvous" hint={`${payingPeople} of ${uniqueEmails.toLocaleString()}`} />
+              <StatCard label="CVR · Quiz → Paid" value={`${cvrQuizToPaid.toFixed(1)}%`} accent="persianRed" hint={`${netNewPaidPeople} net-new (1st charge ≥ ${LAUNCH_LABEL})`} />
+              <StatCard label="CVR · Revenue-assoc." value={`${cvrRevenueAssoc.toFixed(1)}%`} accent="fulvous" hint={`${revenueAssocPeople} with any Stripe revenue`} />
               <StatCard label="Unique companies" value={uniqueCompanies} accent="azul" hint={`${uniqueRoles.toLocaleString()} unique roles`} />
             </section>
+            <p className="text-[11px] text-[#9C9C9C] mb-6 max-w-[760px]">
+              <strong className="text-[#333]">Quiz → Paid</strong> (the &quot;quiz effect&quot;) counts only people whose first-ever Stripe charge is on/after launch, so it isolates conversions the quiz actually drove.
+              {' '}<strong className="text-[#333]">Revenue-associated</strong> counts every quiz-taker who has any Stripe revenue, including customers who were already paying before they took the quiz.
+            </p>
 
             {/* Advanced filter — same UX as on /admin/submissions */}
             <AdvancedFilter />
