@@ -125,11 +125,13 @@ export default async function DashboardPage({
   //   2) CVR Revenue-associated = quiz-takers with ANY Stripe revenue > 0 ÷
   //      all quiz-takers (includes people who were already customers).
   const uniq = (rows: typeof allRows) => new Set(rows.map(r => r.email.toLowerCase())).size
+  // Net-new paid = first-ever Stripe charge came AFTER the person's quiz-take
+  // (attributable to the quiz). Shared by the CVR and the Stage table.
+  const isNetNewPaid = (r: typeof allRows[number]) =>
+    !!(r.stripeFirstChargeAt && r.stagedAt &&
+       new Date(r.stripeFirstChargeAt).getTime() > new Date(r.stagedAt).getTime())
   const revenueAssocPeople = uniq(allRows.filter(r => (r.lifetimeValueUsd ?? 0) > 0))
-  const netNewPaidPeople = uniq(allRows.filter(r =>
-    r.stripeFirstChargeAt && r.stagedAt &&
-    new Date(r.stripeFirstChargeAt).getTime() > new Date(r.stagedAt).getTime(),
-  ))
+  const netNewPaidPeople = uniq(allRows.filter(isNetNewPaid))
   const cvrRevenueAssoc = uniqueEmails > 0 ? (revenueAssocPeople / uniqueEmails) * 100 : 0
   const cvrQuizToPaid = uniqueEmails > 0 ? (netNewPaidPeople / uniqueEmails) * 100 : 0
 
@@ -249,8 +251,8 @@ export default async function DashboardPage({
               {/* Cross-tab: stage × revenue */}
               <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
                 <header className="px-5 pt-5 pb-3">
-                  <h3 className="text-sm font-black text-[#333333]">Stage × Revenue</h3>
-                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">Which rung actually converts - - the analytical payoff</p>
+                  <h3 className="text-sm font-black text-[#333333]">Stage × Quiz conversions</h3>
+                  <p className="text-[11px] text-[#9C9C9C] mt-0.5">Net-new paid (charged after their quiz) per rung — which stage the quiz actually converts</p>
                 </header>
                 <div className="px-1 pb-3 overflow-x-auto">
                   <table className="w-full text-[11px]">
@@ -258,8 +260,8 @@ export default async function DashboardPage({
                       <tr className="border-b border-[#E8E4DF]">
                         <th className="text-left px-4 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Stage</th>
                         <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">N</th>
-                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Paying</th>
-                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Conv %</th>
+                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Net-new</th>
+                        <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">CVR %</th>
                         <th className="text-right px-2 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">ARPU</th>
                         <th className="text-right px-4 py-1.5 font-bold uppercase tracking-wider text-[10px] text-[#9C9C9C]">Revenue</th>
                       </tr>
@@ -268,7 +270,7 @@ export default async function DashboardPage({
                       {STAGES.map(def => {
                         const rows = allRows.filter(r => r.stage === def.key)
                         if (rows.length === 0) return null
-                        const paying = rows.filter(r => typeof r.lifetimeValueUsd === 'number' && r.lifetimeValueUsd > 0)
+                        const paying = rows.filter(isNetNewPaid)
                         const revenue = paying.reduce((a, b) => a + (b.lifetimeValueUsd || 0), 0)
                         const arpu = rows.length > 0 ? revenue / rows.length : 0
                         const conv = rows.length > 0 ? (paying.length / rows.length) * 100 : 0
