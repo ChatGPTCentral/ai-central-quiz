@@ -6,6 +6,8 @@ import TrackView from '@/components/TrackView'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import CheckoutLink from '@/components/CheckoutLink.client'
+import { ExitRescue } from '@/components/result/ExitRescue.client'
+import { NotYetDownsell } from '@/components/result/NotYetDownsell'
 import { RadarChart } from '@/components/RadarChart'
 import { BandChart } from '@/components/result/BandChart'
 import { PassCard } from '@/components/result/PassCard'
@@ -622,6 +624,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                     or get lifetime access ↗
                   </CheckoutLink>
                 </p>
+                <p className="mt-2 text-center">
+                  <NotYetDownsell name={firstName || undefined} email={segFields?.email ?? undefined} />
+                </p>
               </div>
             </div>
           </div>
@@ -684,6 +689,7 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
       </div>
 
       <FomoPopup />
+      <ExitRescue name={firstName || undefined} email={segFields?.email ?? undefined} submissionId={rowId} />
     </>
   )
 }

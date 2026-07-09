@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Too many requests. Try again shortly.' }, { status: 429 })
   }
 
-  let body: { email?: string; name?: string }
+  let body: { email?: string; name?: string; source?: string }
   try {
     body = await req.json()
   } catch {
@@ -33,18 +33,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'Please enter a valid email address.' }, { status: 400 })
   }
 
+  // 'exit_rescue' = captured by the exit-intent modal on /result; anything
+  // else is the standard "not yet" downsell. Distinct tag + campaign so the
+  // two capture points can be compared in Beehiiv.
+  const isExitRescue = body.source === 'exit_rescue'
+  const tags = isExitRescue ? ['free_course', 'exit_rescue'] : ['free_course']
+  const campaign = isExitRescue ? 'exit_rescue' : 'free_course_downsell'
+
   const hasBeehiiv = !!process.env.BEEHIIV_API_KEY && process.env.BEEHIIV_API_KEY !== 'your_beehiiv_api_key_here'
   if (hasBeehiiv) {
     const sub = await subscribeWithStage({
       email,
       name,
       stage: null,
-      extraTags: ['free_course'],
-      utm: { source: 'quiz', medium: 'free_course', campaign: 'free_course_downsell' },
+      extraTags: tags,
+      utm: { source: 'quiz', medium: 'free_course', campaign },
     })
     if (sub.error === 'ALREADY_SUBSCRIBED') {
-      // On the list already — just attach the free_course tag.
-      const tagged = await addSubscriberTags({ email, tags: ['free_course'] })
+      // On the list already — just attach the tags.
+      const tagged = await addSubscriberTags({ email, tags })
       if (!tagged.success) console.error('[free-course] tag existing failed:', tagged.error)
     } else if (!sub.success) {
       console.error('[free-course] beehiiv subscribe failed:', sub.error)
