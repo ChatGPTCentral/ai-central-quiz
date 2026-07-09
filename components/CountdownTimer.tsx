@@ -35,10 +35,18 @@ export default function CountdownTimer({ paymentUrl, refNo, submissionId, ctaLab
   const mins = Math.floor(secondsLeft / 60).toString().padStart(2, '0')
   const secs = (secondsLeft % 60).toString().padStart(2, '0')
 
+  const goCheckout = () => {
+    sendEvent('checkout_click', { props: { placement: 'offer_bar_banner' }, submissionId })
+    window.location.href = paymentUrl
+  }
+
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-3 px-4 sm:px-6"
+      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between gap-3 px-4 sm:px-6 cursor-pointer"
       style={{ backgroundColor: '#333333', height: 56 }}
+      onClick={goCheckout}
+      role="link"
+      aria-label="Claim the special offer"
     >
       <div className="flex items-center gap-3 min-w-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -64,7 +72,7 @@ export default function CountdownTimer({ paymentUrl, refNo, submissionId, ctaLab
           style={{ backgroundColor: '#E7B02F', color: '#1A1A1A', fontSize: 12, padding: '10px 14px', letterSpacing: '0.04em' }}
           onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E48715' }}
           onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.backgroundColor = '#E7B02F' }}
-          onClick={() => sendEvent('checkout_click', { props: { placement: 'offer_bar' }, submissionId })}
+          onClick={e => { e.stopPropagation(); sendEvent('checkout_click', { props: { placement: 'offer_bar' }, submissionId }) }}
         >
           {ctaLabel}
         </a>

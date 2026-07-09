@@ -8,7 +8,7 @@ import FomoPopup from '@/components/FomoPopup'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import { ExitRescue } from '@/components/result/ExitRescue.client'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
-import { NotYetDownsell } from '@/components/result/NotYetDownsell'
+import { SocialProofMarquee } from '@/components/result/SocialProofMarquee'
 import { RadarChart } from '@/components/RadarChart'
 import { BandChart } from '@/components/result/BandChart'
 import { PassCard } from '@/components/result/PassCard'
@@ -363,6 +363,9 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
+        {/* ── 1b · SOCIAL PROOF MARQUEE: reviews + recent purchases ── */}
+        <SocialProofMarquee reviews={REVIEWS} checkoutUrl={checkoutUrl} submissionId={rowId} />
+
         {/* ── 2 · THE BIGGER PICTURE: adoption chart ───────────────── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
           <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
@@ -406,15 +409,15 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               {p(rung.prescLead)}
             </p>
 
-            {/* A live peek inside the library (scrolling preview) */}
-            <div className="mt-9" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF' }}>
+            {/* A live peek inside the library (scrolling preview) — clickable */}
+            <CheckoutLink href={checkoutUrl} placement="library_gif" submissionId={rowId} className="block mt-9 transition-transform hover:-translate-y-px" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', cursor: 'pointer' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/library-preview.gif"
-                alt="A scrolling preview of the AI Central library of tutorials"
+                alt="A scrolling preview of the AI Central library of tutorials - - click to unlock"
                 style={{ display: 'block', width: '100%', height: 'auto' }}
               />
-            </div>
+            </CheckoutLink>
             <p className="mt-2 font-mono" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: MUTE }}>
               A LIVE PEEK INSIDE THE LIBRARY
             </p>
@@ -592,15 +595,15 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
               </p>
             </div>
 
-            {/* What you get — the product mosaic */}
-            <div className="mt-10 mx-auto" style={{ maxWidth: 300 }}>
+            {/* What you get — the product mosaic (clickable) */}
+            <CheckoutLink href={checkoutUrl} placement="box_image" submissionId={rowId} className="block mt-10 mx-auto transition-transform hover:-translate-y-px" style={{ maxWidth: 300, cursor: 'pointer' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/library-box.png"
-                alt="Everything you unlock: 1,200+ instant AI tutorials and real insights"
+                alt="Everything you unlock: 1,200+ instant AI tutorials and real insights - - click to unlock"
                 style={{ display: 'block', width: '100%', height: 'auto' }}
               />
-            </div>
+            </CheckoutLink>
             <p className="mt-3 font-mono" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: CREAM, opacity: 0.6 }}>
               EVERYTHING YOU UNLOCK TODAY
             </p>
@@ -657,9 +660,6 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                   >
                     or get lifetime access ↗
                   </CheckoutLink>
-                </p>
-                <p className="mt-2 text-center">
-                  <NotYetDownsell />
                 </p>
               </div>
             </div>

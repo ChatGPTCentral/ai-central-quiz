@@ -5,7 +5,7 @@ import TrackedLink from '@/components/TrackedLink.client'
 // Secondary offer for result-page visitors who do NOT convert on the
 // Ultimate AI Library: a free taste of the library (the 10 most downloaded
 // tutorials of 2026, by real NetLine download data), delivered as direct
-// TradePub downloads + the Google Drive folder. Soft-sells the full
+// TradePub downloads + the kit Google Doc. Soft-sells the full
 // library as the upgrade path.
 //
 // Copy rules honored throughout: "- -" instead of em dashes, no terminal
@@ -17,7 +17,8 @@ export const metadata = {
     'The 10 most downloaded AI tutorials of 2026, free. A taste of the Ultimate AI Library trusted by 300,000+ senior professionals',
 }
 
-const DRIVE_URL = 'https://drive.google.com/drive/folders/1DXN9faBYd_j_975fchaX4DjicgM90jDX'
+// The kit doc — every tutorial linked in one Google Doc
+const DOC_URL = 'https://docs.google.com/document/d/1Yh3xo0acAs2HhlTeTPVdzrlyJr9ukb74TYLnTLCPqWA/edit?usp=drivesdk'
 const UPGRADE_URL = 'https://thecentral.ai/upgrade'
 
 // Ordering = download count, highest first. Cover pattern:
@@ -182,10 +183,10 @@ export default function StarterKitPage() {
           can put to work today
         </p>
         <div className="mt-8 flex justify-center">
-          <KitButton href={DRIVE_URL} label="Get the free kit" event="starter_kit_click" props={{ item: 'drive_folder', placement: 'hero' }} />
+          <KitButton href={DOC_URL} label="Get the free kit" event="starter_kit_click" props={{ item: 'kit_doc', placement: 'hero' }} />
         </div>
         <p className="mt-3" style={{ fontSize: 13, color: MUTE }}>
-          One folder, all 10 guides - - or pick them one by one below
+          One doc, all 10 guides - - or pick them one by one below
         </p>
       </section>
 
@@ -225,7 +226,7 @@ export default function StarterKitPage() {
             ))}
           </div>
           <div className="mt-10 flex justify-center">
-            <KitButton href={DRIVE_URL} label="Get all 10 in one folder" event="starter_kit_click" props={{ item: 'drive_folder', placement: 'grid_footer' }} />
+            <KitButton href={DOC_URL} label="Get all 10 in one doc" event="starter_kit_click" props={{ item: 'kit_doc', placement: 'grid_footer' }} />
           </div>
         </div>
       </section>
