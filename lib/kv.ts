@@ -65,6 +65,7 @@ export interface StoredSubmission {
   // Future survey-v2 fields (NULL until quiz v2 ships)
   frequencyScore?: number       // 0..3 (last-7-days usage)
   depthScore?: number           // 0..5 (count of depth ticks)
+  depthActions?: string         // CSV of the raw depth selections (asked, shipped, ...)
   breadthScore?: number         // 0..N (active tool count)
   momentum?: number             // -1..+2 (vs 6 months ago)
   friction?: string             // enum: where they're stuck
@@ -167,6 +168,7 @@ export interface DbRow {
   staged_at: string | null
   frequency_score: number | null
   depth_score: number | null
+  depth_actions: string | null
   breadth_score: number | null
   momentum: number | null
   friction: string | null
@@ -244,6 +246,7 @@ function toRow(s: StoredSubmission): DbRow {
     staged_at: s.stagedAt ?? null,
     frequency_score: s.frequencyScore ?? null,
     depth_score: s.depthScore ?? null,
+    depth_actions: s.depthActions ?? null,
     breadth_score: s.breadthScore ?? null,
     momentum: s.momentum ?? null,
     friction: s.friction ?? null,
@@ -328,6 +331,7 @@ export function fromRow(r: DbRow): StoredSubmission {
     stagedAt: r.staged_at ?? undefined,
     frequencyScore: r.frequency_score ?? undefined,
     depthScore: r.depth_score ?? undefined,
+    depthActions: r.depth_actions ?? undefined,
     breadthScore: r.breadth_score ?? undefined,
     momentum: r.momentum ?? undefined,
     friction: r.friction ?? undefined,

@@ -227,38 +227,54 @@ export function assignStage(r: StoredSubmission): {
     const depth     = dp ?? 0
     const breadth   = br ?? 0
 
-    // S5 Builder — has shipped or built deep things
-    if (depth >= 4) {
-      return { stage: 'S5_builder', score: 5, reason: `Survey v2: depth ${depth}/5 - - builder confirmed` }
-    }
-    if (depth >= 3 && breadth >= 3) {
-      return { stage: 'S5_builder', score: 5, reason: `Survey v2: depth ${depth} + breadth ${breadth}` }
+    // The three TRUE builder actions from the depth question's raw picks
+    // (asked/saved_prompt/decided are practitioner behavior, not building).
+    const actions = (r.depthActions || '').split(',').map(a => a.trim()).filter(Boolean)
+    const builderActs = ['custom_gpt', 'connected', 'shipped'].filter(a => actions.includes(a))
+    const shipped = actions.includes('shipped')
+
+    // S5 Builder — deliberately hard to reach (v2.1 thresholds). The old
+    // depth>=4 rule put 65% of the launch cohort on the top rung, which
+    // kills the "climb higher" motivation the offer depends on. A Builder
+    // has SHIPPED something AI-powered, plus at least one more builder
+    // action (custom GPT/Project or a tool integration), plus regular use.
+    // ~20% of the launch cohort qualifies under this rule.
+    if (r.depthActions != null) {
+      if (shipped && builderActs.length >= 2 && frequency >= 2) {
+        return { stage: 'S5_builder', score: 5, reason: `Survey v2.1: shipped + ${builderActs.join('/')} · freq ${frequency}` }
+      }
+    } else if (depth >= 5 && breadth >= 5) {
+      // Legacy v2 rows without raw selections: only near-max signals qualify
+      return { stage: 'S5_builder', score: 5, reason: `Survey v2.1 (no actions data): depth ${depth} + breadth ${breadth}` }
     }
 
-    // S4 Power User — daily + multiple tools
-    if (frequency >= 3 && breadth >= 3) {
-      return { stage: 'S4_power_user', score: 4, reason: `Survey v2: daily AI · ${breadth} tools` }
+    // S4 Power User — one builder action, very deep usage, or daily + wide
+    if (builderActs.length >= 1) {
+      return { stage: 'S4_power_user', score: 4, reason: `Survey v2.1: builder action (${builderActs.join('/')})` }
     }
-    if (depth >= 2 && breadth >= 4) {
-      return { stage: 'S4_power_user', score: 4, reason: `Survey v2: depth ${depth} · breadth ${breadth}` }
+    if (depth >= 4) {
+      return { stage: 'S4_power_user', score: 4, reason: `Survey v2.1: depth ${depth}/6` }
+    }
+    if (frequency >= 3 && breadth >= 4) {
+      return { stage: 'S4_power_user', score: 4, reason: `Survey v2.1: daily AI · ${breadth} tools` }
     }
 
     // S3 Practitioner — regular use OR meaningful depth
     if (frequency >= 2) {
-      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2: most days (freq ${frequency})` }
+      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2.1: most days (freq ${frequency})` }
     }
     if (depth >= 2 || (frequency >= 1 && breadth >= 2)) {
-      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2: depth ${depth} · breadth ${breadth}` }
+      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2.1: depth ${depth} · breadth ${breadth}` }
     }
 
     // S2 Experimenter — occasional use
     if (frequency >= 1 || depth >= 1 || breadth >= 1) {
-      return { stage: 'S2_experimenter', score: 2, reason: `Survey v2: light usage (freq ${frequency}, depth ${depth})` }
+      return { stage: 'S2_experimenter', score: 2, reason: `Survey v2.1: light usage (freq ${frequency}, depth ${depth})` }
     }
 
     // S1 Curious — answered the survey but reports zero usage
     if (frequency === 0 && depth === 0 && breadth === 0) {
-      return { stage: 'S1_curious', score: 1, reason: `Survey v2: aware but not using yet` }
+      return { stage: 'S1_curious', score: 1, reason: `Survey v2.1: aware but not using yet` }
     }
   }
 

@@ -390,54 +390,19 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
           </div>
         </section>
 
-        {/* ── 3 · YOUR TYPE: "You're a {Type}" + profile description ── */}
-        <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-14 sm:pt-20 pb-6 sm:pb-8">
-            <h2 className="font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
-              You&apos;re {typeArticle} <span style={{ color: FULVOUS }}>{rt.typeName}</span>
-            </h2>
-            <p className="mt-4 max-w-[680px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.55, color: BODY }}>
-              {rt.tagline}
-            </p>
-            <p className="mt-4 max-w-[680px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
-              {content.outlook}
-            </p>
-          </div>
-        </section>
-
-        {/* ── 4 · YOUR SKILL PROFILE: radar (flows straight from the type,
-               no divider) ─────────────────────────────────────────── */}
-        <section>
-          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-2 pb-14 sm:pb-20 grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-10 lg:gap-14 items-center">
-            <div className="w-full max-w-[440px] mx-auto lg:mx-0">
-              <RadarChart axes={axes} mode="result" accent={FULVOUS} size={380} todayLabel="You today" projectedLabel="With AI Central" />
-            </div>
-            <div>
-              <Eyebrow color={MUTE}>Your skill profile</Eyebrow>
-              <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-                {rung.radarTitle}
-              </h2>
-              <p className="mt-4" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
-                {p(rung.radarLead)}
-              </p>
-              <p className="mt-3" style={{ fontWeight: 300, fontSize: 13.5, lineHeight: 1.5, color: MUTE }}>
-                {p(rung.radarNote)}
-              </p>
-              <div className="mt-7">
-                <BlockButton href={checkoutUrl} label={ov('radar.ctaLabel', 'close the gap')} size={16} placement="radar" submissionId={rowId} />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── 5 · THE PRESCRIPTION: pillars + founder note ─────────── */}
+        {/* ── 3 · THE PRESCRIPTION (moved up): the path to the top 2% ─ */}
         <section style={{ backgroundColor: CREAM, borderTop: `3px solid ${INK}` }}>
           <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 py-14 sm:py-20">
             <Eyebrow>The prescription</Eyebrow>
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
               One library. 1,200+ tested workflows. Zero noise
             </h2>
-            <p className="mt-4 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+            <p className="mt-4 max-w-[640px]" style={{ fontWeight: 600, fontSize: 18, lineHeight: 1.45, color: FULVOUS }}>
+              {rt.aheadPct >= 98
+                ? "You're already in the top 2% - - these tutorials keep you there"
+                : `These tutorials take you from ahead of ${rt.aheadPct}% to the top 2% worldwide`}
+            </p>
+            <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
               {p(rung.prescLead)}
             </p>
 
@@ -497,6 +462,46 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 >
                   Alex
                 </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 4 · YOUR TYPE: "You're a {Type}" + profile description ── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-14 sm:pt-20 pb-6 sm:pb-8">
+            <h2 className="font-bold" style={{ fontSize: 'clamp(30px, 4vw, 48px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
+              You&apos;re {typeArticle} <span style={{ color: FULVOUS }}>{rt.typeName}</span>
+            </h2>
+            <p className="mt-4 max-w-[680px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.55, color: BODY }}>
+              {rt.tagline}
+            </p>
+            <p className="mt-4 max-w-[680px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
+              {content.outlook}
+            </p>
+          </div>
+        </section>
+
+        {/* ── 4 · YOUR SKILL PROFILE: radar (flows straight from the type,
+               no divider) ─────────────────────────────────────────── */}
+        <section>
+          <div className="max-w-[1240px] mx-auto px-6 sm:px-10 lg:px-16 pt-2 pb-14 sm:pb-20 grid grid-cols-1 lg:grid-cols-[440px_1fr] gap-10 lg:gap-14 items-center">
+            <div className="w-full max-w-[440px] mx-auto lg:mx-0">
+              <RadarChart axes={axes} mode="result" accent={FULVOUS} size={380} todayLabel="You today" projectedLabel="With AI Central" />
+            </div>
+            <div>
+              <Eyebrow color={MUTE}>Your skill profile</Eyebrow>
+              <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.2vw, 38px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+                {rung.radarTitle}
+              </h2>
+              <p className="mt-4" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.55, color: BODY }}>
+                {p(rung.radarLead)}
+              </p>
+              <p className="mt-3" style={{ fontWeight: 300, fontSize: 13.5, lineHeight: 1.5, color: MUTE }}>
+                {p(rung.radarNote)}
+              </p>
+              <div className="mt-7">
+                <BlockButton href={checkoutUrl} label={ov('radar.ctaLabel', 'close the gap')} size={16} placement="radar" submissionId={rowId} />
               </div>
             </div>
           </div>

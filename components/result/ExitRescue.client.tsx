@@ -103,10 +103,10 @@ export function ExitRescue({ submissionId }: { submissionId?: string }) {
         </div>
 
         <h3 id="exit-rescue-title" className="text-[20px] font-black mb-2" style={{ color: '#333333' }}>
-          Before you go - - grab the free Starter Kit
+          Before you go - - take 10 tutorials, free
         </h3>
         <p className="text-[14px] leading-relaxed mb-6" style={{ color: '#555' }}>
-          The 10 most downloaded AI Central tutorials of 2026, free. No email, no
+          The 10 most downloaded AI Central tutorials of 2026. No email, no
           card - - yours to keep
         </p>
         <button
@@ -115,7 +115,7 @@ export function ExitRescue({ submissionId }: { submissionId?: string }) {
           className="block w-full py-3.5 font-black text-[15px] rounded-xl transition-all active:scale-[0.99] hover:opacity-90"
           style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
         >
-          Show me the Starter Kit →
+          Take the 10 free tutorials →
         </button>
         <button
           type="button"

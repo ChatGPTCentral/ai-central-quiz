@@ -12,7 +12,7 @@ import TrackedLink from '@/components/TrackedLink.client'
 // periods on headings/display copy, short "you"-directed sentences.
 
 export const metadata = {
-  title: 'The AI Central Starter Kit - - Free',
+  title: 'Take 10 Tutorials, Free - - AI Central',
   description:
     'The 10 most downloaded AI tutorials of 2026, free. A taste of the Ultimate AI Library trusted by 300,000+ senior professionals',
 }
@@ -171,10 +171,10 @@ export default function StarterKitPage() {
       {/* ── 1 · Hero ── */}
       <section className="max-w-[1100px] mx-auto px-6 sm:px-10 pt-14 sm:pt-20 pb-12 text-center">
         <p className="font-mono" style={{ fontSize: 11, letterSpacing: '0.18em', color: FULVOUS, fontWeight: 700 }}>
-          FREE - - NO EMAIL, NO CARD
+          THE AI CENTRAL STARTER KIT - - NO EMAIL, NO CARD
         </p>
         <h1 className="mt-4 font-bold" style={{ fontSize: 'clamp(36px, 5.4vw, 62px)', lineHeight: 0.98, letterSpacing: '-0.045em', color: RICH }}>
-          The AI Central Starter Kit
+          Take 10 tutorials, free
         </h1>
         <p className="mt-5 mx-auto max-w-[640px]" style={{ fontWeight: 300, fontSize: 'clamp(17px, 2vw, 21px)', lineHeight: 1.45, color: BODY }}>
           The 10 most downloaded AI tutorials of 2026 - - selected by real download

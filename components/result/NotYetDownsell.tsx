@@ -73,9 +73,9 @@ export function NotYetDownsell({ className }: { className?: string }) {
               No worries at all
             </h3>
             <p className="text-[14px] leading-relaxed mb-6" style={{ color: '#555' }}>
-              The full library isn&apos;t the right fit for everyone. Grab the free
-              Starter Kit instead - - the 10 most downloaded AI Central tutorials
-              of 2026. No cost, no commitment
+              The full library isn&apos;t the right fit for everyone. Take the 10
+              most downloaded AI Central tutorials of 2026 instead - - free. No
+              cost, no commitment
             </p>
 
             <button
@@ -84,7 +84,7 @@ export function NotYetDownsell({ className }: { className?: string }) {
               className="block w-full py-3.5 font-black text-[15px] rounded-xl transition-all active:scale-[0.99] hover:opacity-90"
               style={{ backgroundColor: '#333333', color: '#FFFDFA' }}
             >
-              Show me the free Starter Kit →
+              Take the 10 free tutorials →
             </button>
           </div>
         </div>
