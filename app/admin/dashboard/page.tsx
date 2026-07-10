@@ -7,7 +7,7 @@ import {
 import { continentOf } from '@/lib/geo'
 import { PALETTE } from '@/lib/palette'
 import { COMPANY_SIZE_ORDER } from '@/lib/enrichment/standardize'
-import StatCard from '@/components/admin/StatCard'
+import { KpiPlate, SectionRule } from '@/components/admin/DashPrimitives'
 import HorizontalBarChart from '@/components/admin/HorizontalBarChart'
 import VerticalBarChart from '@/components/admin/VerticalBarChart'
 import CountryChart from '@/components/admin/CountryChart'
@@ -194,14 +194,14 @@ export default async function DashboardPage({
 
         {!error && (
           <>
-            {/* Summary stats — the two conversion rates lead */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
-              <StatCard label={sample === 'launch' ? 'Quiz-takers' : 'Total records'} value={uniqueEmails} accent="jetBlack" hint={sample === 'launch' ? `unique people since ${LAUNCH_LABEL}` : `${allRows.length.toLocaleString()} rows`} />
-              <StatCard label="CVR · Quiz → Paid" value={`${cvrQuizToPaid.toFixed(1)}%`} accent="persianRed" hint={`${netNewPaidPeople} paid first time AFTER their quiz`} />
-              <StatCard label="CVR · Revenue-assoc." value={`${cvrRevenueAssoc.toFixed(1)}%`} accent="fulvous" hint={`${revenueAssocPeople} with any Stripe revenue`} />
-              <StatCard label="Unique companies" value={uniqueCompanies} accent="azul" hint={`${uniqueRoles.toLocaleString()} unique roles`} />
-            </section>
-            <p className="text-[11px] text-[#9C9C9C] mb-6 max-w-[760px]">
+            {/* Summary KPI plate — the two conversion rates lead */}
+            <KpiPlate kpis={[
+              { label: sample === 'launch' ? 'Quiz-takers' : 'Total records', value: uniqueEmails, color: '#1A1A1A', hint: sample === 'launch' ? `unique people since ${LAUNCH_LABEL}` : `${allRows.length.toLocaleString()} rows` },
+              { label: 'CVR · Quiz → Paid', value: `${cvrQuizToPaid.toFixed(1)}%`, color: '#BE3B3B', hint: `${netNewPaidPeople} paid first time after their quiz` },
+              { label: 'CVR · Revenue-assoc.', value: `${cvrRevenueAssoc.toFixed(1)}%`, color: '#E48715', hint: `${revenueAssocPeople} with any Stripe revenue` },
+              { label: 'Unique companies', value: uniqueCompanies, color: '#046BB1', hint: `${uniqueRoles.toLocaleString()} unique roles` },
+            ]} />
+            <p className="text-[11px] text-[#9C9C9C] mt-3 mb-4 max-w-[760px]">
               <strong className="text-[#333]">Quiz → Paid</strong> (the &quot;quiz effect&quot;) counts only people whose first-ever Stripe charge came AFTER they took the quiz, so it isolates conversions the quiz actually drove (existing customers and pre-quiz purchases are excluded).
               {' '}<strong className="text-[#333]">Revenue-associated</strong> counts every quiz-taker who has any Stripe revenue, including customers who were already paying before they took the quiz.
             </p>
@@ -210,10 +210,7 @@ export default async function DashboardPage({
             <AdvancedFilter />
 
             {/* ── STAGE LADDER ZONE (top of dashboard — the analytical lens) ── */}
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">AI adoption ladder</h2>
-            <p className="text-[11px] text-[#9C9C9C] mb-3">
-              Where each person sits on the 6-rung ladder. Stage moves over time. Money is NOT an input - - it&apos;s what we measure per stage to find which rungs convert
-            </p>
+            <SectionRule label="AI adoption ladder" subtitle="Stage moves over time · money is measured per rung, never an input" />
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
               {/* Bar chart of stage counts */}
               <div className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden">
@@ -293,7 +290,7 @@ export default async function DashboardPage({
 
 
             {/* ── DEMOGRAPHICS ZONE ── */}
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">People</h2>
+            <SectionRule label="People" subtitle="Who the quiz-takers are" />
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <AgeChart rows={allRows.map(r => ({
                 ageBracket: r.ageBracket,
@@ -333,10 +330,7 @@ export default async function DashboardPage({
             </section>
 
             {/* ── ACQUISITION ZONE ── */}
-            <h2 className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] mt-6 mb-2">Acquisition</h2>
-            <p className="text-[11px] text-[#9C9C9C] mb-3">
-              Three lenses on where the audience comes from. <strong>Paid conversions</strong> is the most actionable — coalesces Beehiiv source with quiz UTM, filtered to customers who actually paid.
-            </p>
+            <SectionRule label="Acquisition" subtitle="Paid conversions is the lens that matters — Beehiiv source coalesced with quiz UTM, paying only" />
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
               <HorizontalBarChart
                 title="Paid conversions — channel"
