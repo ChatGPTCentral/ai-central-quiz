@@ -4,7 +4,7 @@ import {
   parseFilters,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
-import ViewToggle from './ViewToggle.client'
+import PeopleTableAttio from './PeopleTableAttio.client'
 import SavedSearches from './SavedSearches'
 import AdvancedFilter from './AdvancedFilter.client'
 
@@ -55,27 +55,30 @@ export default async function SubmissionsListPage({
   return (
     <div className="flex">
       <div className="flex-1 p-8 min-w-0">
-        <div className="flex items-end justify-between mb-6 gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-black text-[#333333] mb-1">Submissions</h1>
-            <p className="text-sm text-[#9C9C9C]">
-              {error ? <span className="text-[#BE3B3B]">Error: {error}</span> :
-                <>Showing <strong className="text-[#333333]">{total.toLocaleString()}</strong> submissions</>}
-            </p>
+        <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-black text-[#333333] flex items-center gap-2.5">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333333" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+              People
+            </h1>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#9C9C9C', border: '1px solid #E8E4DF', borderRadius: 4, padding: '2px 8px', background: '#FAF7F1' }}>
+              {error ? 'error' : `${total.toLocaleString()} records`}
+            </span>
           </div>
           <a
             href={exportHref}
-            className="px-4 py-2 rounded-lg bg-[#333333] text-[#FFFDFA] text-sm font-bold hover:opacity-90"
+            className="px-4 py-2 rounded-md bg-[#333333] text-[#FFFDFA] text-[13px] font-bold hover:opacity-90 inline-flex items-center gap-2"
           >
-            Export filtered CSV
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+            Export CSV
           </a>
         </div>
 
-        {error ? null : (
+        {error ? <p className="text-sm text-[#BE3B3B]">Error: {error}</p> : (
           <>
             <SavedSearches searchParams={searchParams} />
             <AdvancedFilter />
-            <ViewToggle items={items} />
+            <PeopleTableAttio items={items} total={total} />
             <div className="flex items-center justify-between px-1 py-3 mt-2">
               <p className="text-xs text-[#9C9C9C]">
                 Showing {offset + 1}–{Math.min(offset + items.length, total)} of {total.toLocaleString()}
