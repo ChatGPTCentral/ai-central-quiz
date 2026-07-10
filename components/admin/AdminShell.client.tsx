@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import CommandPalette from './CommandPalette.client'
 
 interface Props {
   children: React.ReactNode
@@ -14,7 +15,7 @@ interface Props {
 // admin pages; nothing here is a dead control.
 
 type IconName =
-  | 'dashboard' | 'funnel' | 'experiments' | 'people' | 'inprogress'
+  | 'dashboard' | 'funnel' | 'experiments' | 'people' | 'board' | 'inprogress'
   | 'enrich' | 'debug' | 'stats' | 'flow' | 'editor' | 'settings'
 
 function Icon({ name, active }: { name: IconName; active?: boolean }) {
@@ -25,6 +26,7 @@ function Icon({ name, active }: { name: IconName; active?: boolean }) {
     case 'funnel': return <svg {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
     case 'experiments': return <svg {...p}><path d="M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.6a1 1 0 0 0 .9 1.4h12.8a1 1 0 0 0 .9-1.4l-5.1-10.2a2 2 0 0 1-.2-.9V2" /><path d="M8.5 2h7" /><path d="M7 16h10" /></svg>
     case 'people': return <svg {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+    case 'board': return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18M15 3v18" /></svg>
     case 'inprogress': return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
     case 'enrich': return <svg {...p}><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /></svg>
     case 'debug': return <svg {...p}><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -47,6 +49,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     label: 'Records',
     items: [
       { href: '/admin/submissions', label: 'People', icon: 'people' },
+      { href: '/admin/board', label: 'Board', icon: 'board' },
       { href: '/admin/in-progress', label: 'In progress', icon: 'inprogress' },
     ],
   },
@@ -64,7 +67,6 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
 
 export default function AdminShell({ children }: Props) {
   const pathname = usePathname()
-  const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
@@ -72,18 +74,7 @@ export default function AdminShell({ children }: Props) {
   }, [])
   useEffect(() => { localStorage.setItem('admin_left_collapsed', collapsed ? '1' : '0') }, [collapsed])
 
-  // ⌘K / Ctrl-K jumps to the people table search (the closest existing
-  // affordance until the command palette ships).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        router.push('/admin/submissions')
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [router])
+  const openPalette = () => window.dispatchEvent(new Event('ac:cmdk'))
 
   const W = collapsed ? 62 : 232
 
@@ -143,7 +134,7 @@ export default function AdminShell({ children }: Props) {
 
         {/* Search / ⌘K affordance */}
         <button
-          onClick={() => router.push('/admin/submissions')}
+          onClick={openPalette}
           title="Search people (⌘K)"
           className="flex items-center gap-2"
           style={{ margin: '4px 12px 12px', height: 30, background: '#FFFFFF', border: '1px solid #E8E4DF', borderRadius: 5, padding: collapsed ? 0 : '0 9px', justifyContent: collapsed ? 'center' : 'flex-start' }}
@@ -189,6 +180,7 @@ export default function AdminShell({ children }: Props) {
       </aside>
 
       <main className="flex-1 min-w-0" style={{ background: '#FFFDFA' }}>{children}</main>
+      <CommandPalette />
     </div>
   )
 }
