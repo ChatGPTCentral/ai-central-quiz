@@ -34,6 +34,12 @@ export default function ExperimentTracker({
         submissionId,
         viaFetch: true,
       })
+      // Tag the Clarity session with the variant so recordings/heatmaps can
+      // be filtered per variant (Filters → Custom tags → experiment).
+      try {
+        const w = window as unknown as { clarity?: (cmd: string, k: string, v: string) => void }
+        w.clarity?.('set', 'experiment', `${a.experimentKey}:${a.variantKey}`)
+      } catch { /* non-fatal */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
