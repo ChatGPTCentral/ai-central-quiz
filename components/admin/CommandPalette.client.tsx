@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { stageDef } from '@/lib/segmentation-v2'
+import Avatar from '@/components/admin/Avatar.client'
 
 // ── ⌘K command palette (design "Admin section redesign" 1f) ──
 // Search people, run actions on the top match, jump anywhere. Opened by
 // ⌘K / Ctrl-K (listener lives here). Keyboard-driven: ↑↓ move, ↵ run, esc close.
 
-interface Person { id: string; name?: string | null; email: string; jobTitle?: string | null; company?: string | null; stage?: string | null }
+interface Person { id: string; name?: string | null; email: string; jobTitle?: string | null; company?: string | null; stage?: string | null; photoUrl?: string | null }
 
 const NAV = [
   { label: 'Go to Dashboard', href: '/admin/dashboard', keys: 'G D' },
@@ -133,9 +134,7 @@ export default function CommandPalette() {
             const isActive = i === active
             const label = it.kind === 'person'
               ? <span className="flex items-center gap-2.5 min-w-0">
-                  <span className="flex items-center justify-center shrink-0" style={{ width: 22, height: 22, borderRadius: '50%', background: '#EDE8DF', color: '#6B6B6B', fontSize: 9, fontWeight: 700 }}>
-                    {(it.person.name || it.person.email)[0]!.toUpperCase()}
-                  </span>
+                  <Avatar name={it.person.name} email={it.person.email} photoUrl={it.person.photoUrl} size={22} />
                   <span className="min-w-0">
                     <span style={{ fontSize: 13.5, fontWeight: 600, color: '#1A1A1A' }}>{it.person.name || it.person.email}</span>
                     <span className="truncate" style={{ fontSize: 12, color: '#9C9C9C', marginLeft: 8 }}>{[it.person.jobTitle, it.person.company].filter(Boolean).join(' · ')}</span>

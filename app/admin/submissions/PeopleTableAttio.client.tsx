@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { StoredSubmission } from '@/lib/kv'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
+import Avatar from '@/components/admin/Avatar.client'
 
 // ── Attio-grade dense people table (design "Admin section redesign" 1a) ──
 // Renders the real submissions rows: saved-view tab, active-filter chips,
@@ -14,12 +15,6 @@ const BORDER = '#E8E4DF'
 const MUTE = '#9C9C9C'
 
 const GRID = '34px minmax(220px,1.6fr) 128px 120px minmax(150px,1fr) minmax(130px,1fr) 92px 104px 96px'
-
-function initials(name?: string | null, email?: string | null): string {
-  const n = (name || '').trim()
-  if (n) return n.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  return (email || '?')[0]!.toUpperCase()
-}
 
 function Chip({ label, color }: { label: string; color: string }) {
   return (
@@ -130,9 +125,7 @@ export default function PeopleTableAttio({ items, total }: { items: StoredSubmis
               </span>
               {/* Person */}
               <span style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                <span className="flex items-center justify-center shrink-0" style={{ width: 26, height: 26, borderRadius: '50%', background: '#EDE8DF', color: '#6B6B6B', fontSize: 10, fontWeight: 700 }}>
-                  {initials(r.name, r.email)}
-                </span>
+                <Avatar name={r.name} email={r.email} photoUrl={r.photoUrl} size={26} />
                 <span className="min-w-0">
                   <span className="block truncate" style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A' }}>{r.name || '(no name)'}</span>
                   <span className="block truncate" style={{ fontSize: 11, color: MUTE }}>{r.email}</span>

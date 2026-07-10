@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { filteredSubmissionsAll, parseFilters, type DashboardFilters } from '@/lib/dashboard-queries'
 import { STAGES, stageDef, personaDef } from '@/lib/segmentation-v2'
 import type { StoredSubmission } from '@/lib/kv'
+import Avatar from '@/components/admin/Avatar.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,12 +17,6 @@ const COLUMN_ORDER = [
   ...STAGES.filter(s => s.key !== 'unknown'),
 ]
 
-function initials(name?: string | null, email?: string | null): string {
-  const n = (name || '').trim()
-  if (n) return n.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  return (email || '?')[0]!.toUpperCase()
-}
-
 function Card({ r }: { r: StoredSubmission }) {
   const pd = r.persona ? personaDef(r.persona) : null
   const paid = (r.lifetimeValueUsd ?? 0) > 0
@@ -32,9 +27,7 @@ function Card({ r }: { r: StoredSubmission }) {
       style={{ background: '#FFFFFF', border: '1px solid #E8E4DF', borderRadius: 7, padding: '10px 11px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}
     >
       <div className="flex items-center gap-2.5 min-w-0">
-        <span className="flex items-center justify-center shrink-0" style={{ width: 24, height: 24, borderRadius: '50%', background: '#EDE8DF', color: '#6B6B6B', fontSize: 9.5, fontWeight: 700 }}>
-          {initials(r.name, r.email)}
-        </span>
+        <Avatar name={r.name} email={r.email} photoUrl={r.photoUrl} size={24} />
         <span className="min-w-0 flex-1">
           <span className="block truncate" style={{ fontSize: 12.5, fontWeight: 600, color: '#1A1A1A' }}>{r.name || r.email}</span>
           {r.companyName && <span className="block truncate" style={{ fontSize: 11, color: '#9C9C9C' }}>{r.companyName}</span>}

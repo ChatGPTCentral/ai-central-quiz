@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await sb()
       .from('submissions')
-      .select('id, name, email, job_title, company_name, stage')
+      .select('id, name, email, job_title, company_name, stage, photo_url')
       .is('archived_at', null)
       .or(`name.ilike.${like},email.ilike.${like},company_name.ilike.${like}`)
       .order('staged_at', { ascending: false, nullsFirst: false })
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       people: (data || []).map(r => ({
         id: r.id, name: r.name, email: r.email, jobTitle: r.job_title, company: r.company_name, stage: r.stage,
+        photoUrl: r.photo_url,
       })),
     })
   } catch (e) {
