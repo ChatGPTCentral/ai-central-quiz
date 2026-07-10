@@ -99,13 +99,33 @@ export default async function FunnelPage() {
   ]
   const maxN = Math.max(...steps.map(s => s.n), 1)
 
-  // Checkout clicks by placement
-  const placementCounts = new Map<string, number>()
-  for (const r of by('checkout_click')) {
+  // Per-placement CTA performance: unique viewers (placement_view, accrues
+  // from when impression tracking shipped) vs unique clickers. Distinguishes
+  // "bad copy" from "never seen".
+  const placementStats = new Map<string, { views: Set<string>; clicks: Set<string> }>()
+  const personKey = (r: EvRow) => r.anon_id || r.session_id || `row-${r.ts}-${Math.random()}`
+  for (const r of events) {
+    if (r.event !== 'placement_view' && r.event !== 'checkout_click') continue
     const pl = typeof r.props?.placement === 'string' ? (r.props.placement as string) : '(unknown)'
-    placementCounts.set(pl, (placementCounts.get(pl) || 0) + 1)
+    const e = placementStats.get(pl) || { views: new Set<string>(), clicks: new Set<string>() }
+    ;(r.event === 'placement_view' ? e.views : e.clicks).add(personKey(r))
+    placementStats.set(pl, e)
   }
-  const placements = Array.from(placementCounts.entries()).sort((a, b) => b[1] - a[1])
+  const placements = Array.from(placementStats.entries())
+    .map(([pl, s]) => ({ pl, views: s.views.size, clicks: s.clicks.size }))
+    .sort((a, b) => b.views - a.views || b.clicks - a.clicks)
+
+  // Viral loop: share → pass view → new takers via pass_share
+  const passShareSubs = subs.filter(s => (s.utm_source || '').trim() === 'pass_share')
+  const viral = {
+    shares: uniquePeople(by('share_click')),
+    passViews: uniquePeople(by('pass_view')),
+    takers: passShareSubs.length,
+    paid: passShareSubs.filter(s =>
+      s.stripe_first_charge_at && s.staged_at &&
+      new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime(),
+    ).length,
+  }
 
   // Completions + conversions by utm_source (submissions = reliable attribution)
   const utm = new Map<string, { subs: number; paid: number }>()
@@ -160,24 +180,58 @@ export default async function FunnelPage() {
         </p>
       </section>
 
+      {/* Viral loop */}
+      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
+        <h2 className="text-sm font-black text-[#333333] mb-1">Viral loop</h2>
+        <p className="text-[11px] text-[#9C9C9C] mb-4">share_click → /pass views → quiz-takers arriving with utm pass_share → net-new paid</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: 'Shares clicked', n: viral.shares },
+            { label: 'Pass views', n: viral.passViews },
+            { label: 'Takers via share', n: viral.takers },
+            { label: 'Net-new paid', n: viral.paid },
+          ].map(s => (
+            <div key={s.label} className="border border-[#F0EDE8] rounded-lg p-3">
+              <div className="text-2xl font-black tabular-nums text-[#333333]">{s.n.toLocaleString()}</div>
+              <div className="text-[11px] text-[#9C9C9C] mt-0.5">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Checkout clicks by placement */}
+        {/* CTA performance by placement */}
         <section className="bg-white border border-[#E8E4DF] rounded-xl p-6">
-          <h2 className="text-sm font-black text-[#333333] mb-4">Checkout clicks by placement</h2>
+          <h2 className="text-sm font-black text-[#333333] mb-4">CTA view → click by placement</h2>
           {placements.length === 0 ? (
-            <p className="text-sm text-[#9C9C9C]">No clicks recorded yet.</p>
+            <p className="text-sm text-[#9C9C9C]">No placement data yet.</p>
           ) : (
             <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-[#E8E4DF] text-[10px] uppercase tracking-wider text-[#9C9C9C]">
+                  <th className="text-left py-1.5">Placement</th>
+                  <th className="text-right py-1.5">Viewers</th>
+                  <th className="text-right py-1.5">Clickers</th>
+                  <th className="text-right py-1.5">CTR</th>
+                </tr>
+              </thead>
               <tbody>
-                {placements.map(([pl, n]) => (
-                  <tr key={pl} className="border-b border-[#F5F5F5]">
-                    <td className="py-1.5 font-mono text-[12px] text-[#333333]">{pl}</td>
-                    <td className="py-1.5 text-right tabular-nums font-semibold">{n}</td>
+                {placements.map(p => (
+                  <tr key={p.pl} className="border-b border-[#F5F5F5]">
+                    <td className="py-1.5 font-mono text-[12px] text-[#333333]">{p.pl}</td>
+                    <td className="py-1.5 text-right tabular-nums">{p.views > 0 ? p.views : '–'}</td>
+                    <td className="py-1.5 text-right tabular-nums font-semibold">{p.clicks}</td>
+                    <td className="py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">
+                      {p.views > 0 ? `${((p.clicks / p.views) * 100).toFixed(1)}%` : '–'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          <p className="text-[11px] text-[#9C9C9C] mt-3">
+            Viewers accrue from when impression tracking shipped; “–” means the placement predates it.
+          </p>
         </section>
 
         {/* By UTM source */}

@@ -291,6 +291,18 @@ export async function updateSubscriberStage(input: {
 }
 
 /**
+ * Suppression tags for lifecycle automations. `customer_active` marks any
+ * email with Stripe LTV > 0 (entry filters exclude it so paying customers
+ * are never pitched the $4.99 trial); `purchased` is the mid-journey exit
+ * trigger. Applied by the Stripe webhook on every synced charge, so the
+ * tags land within seconds of a payment. NOT_SUBSCRIBED is a fine outcome —
+ * someone not on the list has nothing to suppress.
+ */
+export async function applyCustomerTags(email: string): Promise<StageResult> {
+  return addSubscriberTags({ email, tags: ['customer_active', 'purchased'] })
+}
+
+/**
  * Attach literal tags to an already-subscribed email (looked up by email).
  * Used by the free-course downsell to tag existing subscribers whom
  * subscribeWithStage returned ALREADY_SUBSCRIBED for. Returns NOT_SUBSCRIBED

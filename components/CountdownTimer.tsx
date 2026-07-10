@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { sendEvent } from '@/lib/events-client'
+import { firePlacementView } from '@/components/CheckoutLink.client'
 
 const DURATION_SECONDS = 15 * 60 // 15 minutes
 
@@ -27,7 +28,11 @@ export default function CountdownTimer({ paymentUrl, refNo, submissionId, ctaLab
 
     setSecondsLeft(calc())
     const interval = setInterval(() => setSecondsLeft(calc()), 1000)
+    // The bar is sticky/always on screen — count its impression on mount so
+    // the per-placement view→click table has a denominator for offer_bar.
+    firePlacementView('offer_bar', submissionId)
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (secondsLeft === null) return null

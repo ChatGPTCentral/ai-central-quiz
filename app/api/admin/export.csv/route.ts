@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     'companyRevenue', 'companyFunding', 'companyFoundedYear',
     'country', 'region', 'city', 'ageBracket', 'buyingIntent',
     'utmSource', 'utmRef', 'enrichmentStatus',
+    'jobTitleStandardized', 'lifetimeValueUsd', 'stripeFirstChargeAt', 'stagedAt', 'subscriptionTier',
   ]
   const rows = items.map(s => [
     s.id, s.source || '',
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
     s.country || '', s.region || '', s.city || '',
     s.ageBracket || '', s.buyingIntent || '',
     s.utmSource || '', s.utmRef || '', s.enrichmentStatus || '',
+    s.jobTitleStandardized || '', s.lifetimeValueUsd ?? '',
+    s.stripeFirstChargeAt || '', s.stagedAt || '', s.subscriptionTier || '',
   ])
   const csv = [headers, ...rows].map(r => r.map(csvEscape).join(',')).join('\n')
 

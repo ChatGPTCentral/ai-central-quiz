@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import Stripe from 'stripe'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
+import { applyCustomerTags } from '@/lib/beehiiv'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -66,6 +67,16 @@ async function syncEmail(email: string): Promise<void> {
     }
     const counts = await importAggregatedToCRM(aggregated)
     console.log(`[stripe-webhook] synced ${email}:`, counts)
+
+    // Lifecycle suppression: mark payers in Beehiiv so email automations
+    // never pitch the trial to someone already paying. Non-fatal.
+    const agg = aggregated.get(email)
+    if (agg && agg.lifetimeValueUsd > 0) {
+      const tagRes = await applyCustomerTags(email)
+      if (!tagRes.success && tagRes.error !== 'NOT_SUBSCRIBED') {
+        console.warn(`[stripe-webhook] customer tags failed for ${email}: ${tagRes.error}`)
+      }
+    }
   } catch (err) {
     console.error(`[stripe-webhook] sync failed for ${email}:`, err)
   }

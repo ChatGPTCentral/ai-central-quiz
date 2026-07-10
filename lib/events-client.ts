@@ -36,6 +36,18 @@ export interface EventOpts {
 export function sendEvent(event: string, opts: EventOpts = {}): void {
   if (typeof window === 'undefined') return
   try {
+    // On the entry event, record where the visitor came from — external
+    // referrers decompose coarse/missing UTMs (e.g. which thecentral.ai
+    // page an untagged embed lives on).
+    let props = opts.props
+    if (event === 'quiz_view') {
+      try {
+        const ref = document.referrer
+        if (ref && !ref.startsWith(location.origin)) {
+          props = { ...props, referrer: ref.slice(0, 200) }
+        }
+      } catch { /* non-fatal */ }
+    }
     const payload = JSON.stringify({
       event,
       sessionId: getSessionId(),
@@ -44,7 +56,7 @@ export function sendEvent(event: string, opts: EventOpts = {}): void {
       submissionId: opts.submissionId,
       experimentKey: opts.experimentKey,
       variantKey: opts.variantKey,
-      props: opts.props,
+      props,
     })
     if (!opts.viaFetch && typeof navigator.sendBeacon === 'function') {
       const ok = navigator.sendBeacon('/api/events', new Blob([payload], { type: 'text/plain' }))

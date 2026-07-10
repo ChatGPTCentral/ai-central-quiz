@@ -4,6 +4,7 @@
 // who click through see the pass + a CTA into the quiz.
 
 import type { Metadata } from 'next'
+import TrackView from '@/components/TrackView'
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
 
@@ -52,9 +53,15 @@ export async function generateMetadata({ searchParams }: { searchParams: Search 
 export default function PassSharePage({ searchParams }: { searchParams: Search }) {
   const img = passImageUrl(searchParams)
   const pct = (searchParams.pct || '').replace(/[^0-9.]/g, '')
+  // Viral-loop attribution: takers arriving from a shared card carry
+  // utm_source=pass_share (+ the sharer's ref) into the quiz, so they stop
+  // landing in "Direct / unknown" and K-factor becomes measurable.
+  const sharerRef = (searchParams.ref || '').slice(0, 40)
+  const quizHref = `/quiz-v2?utm_source=pass_share${sharerRef ? `&utm_ref=${encodeURIComponent(sharerRef)}` : ''}`
 
   return (
     <div className="min-h-[100dvh] flex flex-col" style={{ backgroundColor: PAPER }}>
+      <TrackView event="pass_view" props={{ ref: sharerRef || null, pct: pct || null }} />
       {/* Dark top bar */}
       <div className="flex items-center justify-between px-4 sm:px-6" style={{ backgroundColor: INK, height: 46 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -86,7 +93,7 @@ export default function PassSharePage({ searchParams }: { searchParams: Search }
             10 questions, 40 seconds. Get your AI Readiness Type, your member pass, and your place
             among 8.1 billion people
           </p>
-          <a href="/quiz-v2" className="mt-7 inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]" style={{ textDecoration: 'none' }}>
+          <a href={quizHref} className="mt-7 inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]" style={{ textDecoration: 'none' }}>
             <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 600, fontSize: 17, height: 54, padding: '0 26px' }}>
               discover your ranking
             </span>

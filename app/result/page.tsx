@@ -6,6 +6,7 @@ import TrackView from '@/components/TrackView'
 import InlineCountdown from '@/components/InlineCountdown'
 import FomoPopup from '@/components/FomoPopup'
 import CheckoutLink from '@/components/CheckoutLink.client'
+import TrackedLink from '@/components/TrackedLink.client'
 import { ExitRescue } from '@/components/result/ExitRescue.client'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
 import { SocialProofMarquee } from '@/components/result/SocialProofMarquee'
@@ -179,31 +180,37 @@ function StarRow({ size = 14 }: { size?: number }) {
  *  Open Graph tags unfurl into the person's generated pass image, so the
  *  CARD (not just text) shows up in the feed. Styled to LinkedIn's brand
  *  (blue pill + logo), intentionally not the page's hard-edge style. */
-function SharePass({ topPct, name, stageLabel, profileLabel }: {
+function SharePass({ topPct, name, stageLabel, profileLabel, refNo, submissionId }: {
   topPct: number
   name: string
   stageLabel: string
   profileLabel: string
+  refNo: string
+  submissionId?: string
 }) {
   const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
-  // Shared link: minimal params only (first name, stage, profile, pct) —
-  // keeps the URL short and out of the unfurl; issued/ref fall back to
-  // sensible defaults in the image route.
+  // Shared link: minimal params only (first name, stage, profile, pct, ref) —
+  // keeps the URL short and out of the unfurl; issued falls back to a
+  // sensible default in the image route. `ref` identifies the sharer, so
+  // takers arriving from this card attribute back to them (utm_ref).
   const firstName = name.trim().split(/\s+/)[0] || 'AI Professional'
   const shareParams = new URLSearchParams({
     name: firstName,
     stage: stageLabel,
     profile: profileLabel,
     pct: String(topPct),
+    ref: refNo,
   })
   const shareUrl = `${site}/pass?${shareParams.toString()}`
   return (
     <div className="mt-5 flex justify-center">
-      <a
+      <TrackedLink
         href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`}
+        event="share_click"
+        props={{ placement: 'result_pass', ref: refNo, submissionId }}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label="Share on LinkedIn"
+        ariaLabel="Share on LinkedIn"
         className="inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
         style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600 }}
       >
@@ -211,7 +218,7 @@ function SharePass({ topPct, name, stageLabel, profileLabel }: {
           <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
         </svg>
         Share on LinkedIn
-      </a>
+      </TrackedLink>
     </div>
   )
 }
@@ -358,6 +365,8 @@ async function ResultContent({ searchParams }: { searchParams: Record<string, st
                 name={passName}
                 stageLabel={rung.className}
                 profileLabel={content.label}
+                refNo={refNo}
+                submissionId={rowId}
               />
             </div>
           </div>

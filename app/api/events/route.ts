@@ -30,6 +30,10 @@ const ALLOWED_EVENTS = new Set([
   'exit_rescue_shown', 'exit_rescue_accepted', 'exit_rescue_dismissed',
   // starter kit
   'starter_kit_view', 'starter_kit_click',
+  // viral loop (share → pass → new taker)
+  'share_click', 'pass_view',
+  // CTA impressions (view side of the per-placement CTR)
+  'placement_view',
 ])
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
