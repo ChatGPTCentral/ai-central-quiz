@@ -17,6 +17,7 @@
 import Stripe from 'stripe'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
+import { applyCustomerTags } from './beehiiv'
 import { normalizeCountry } from './normalize'
 
 let _stripe: Stripe | null = null
@@ -409,6 +410,8 @@ function isoCodeToName(code: string): string {
 export interface UpsertCount {
   inserted: number
   updated: number
+  /** Payer rows whose Beehiiv subscriber got customer_active/purchased. */
+  tagged?: number
   errors: { email: string; error: string }[]
 }
 
@@ -418,6 +421,7 @@ export async function importAggregatedToCRM(
   const c = supabase()
   let inserted = 0
   let updated = 0
+  let tagged = 0
   const errors: { email: string; error: string }[] = []
   const importedAt = new Date().toISOString()
 
@@ -461,6 +465,18 @@ export async function importAggregatedToCRM(
         const { error } = await c.from('submissions').update(stripeFields).eq('id', existing.id)
         if (error) throw new Error(error.message)
         updated++
+        // Lifecycle suppression: payers get customer_active/purchased in
+        // Beehiiv so email automations never pitch the trial to them.
+        // Scoped to rows that matched a CRM record (quiz-takers), not the
+        // whole Stripe base — keeps full syncs inside their time budget.
+        // NOT_SUBSCRIBED (not on the newsletter) is a fine outcome.
+        if (a.lifetimeValueUsd > 0) {
+          const tagRes = await applyCustomerTags(email)
+          if (tagRes.success) tagged++
+          else if (tagRes.error !== 'NOT_SUBSCRIBED') {
+            console.warn(`[stripe-import] customer tags failed for ${email}: ${tagRes.error}`)
+          }
+        }
       } else {
         // Stripe-only insert — minimal row, source='stripe', no quiz fields
         const id = randomUUID()
@@ -483,5 +499,5 @@ export async function importAggregatedToCRM(
     }
   }
 
-  return { inserted, updated, errors }
+  return { inserted, updated, tagged, errors }
 }

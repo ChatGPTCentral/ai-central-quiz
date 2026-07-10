@@ -6,6 +6,7 @@ import {
   aggregateStripeIncrementalSince,
   importAggregatedToCRM,
 } from '@/lib/stripe-import'
+import { applyCustomerTags } from '@/lib/beehiiv'
 
 export const maxDuration = 300
 
@@ -35,7 +36,7 @@ async function getLastSyncMs(): Promise<number | null> {
  * POST /api/admin/stripe/import
  *
  * Body: {
- *   mode?: 'incremental' | 'full',  // default: 'incremental'
+ *   mode?: 'incremental' | 'full' | 'tag_backfill',  // default: 'incremental'
  *   dryRun?: boolean,
  *   resume?: boolean,               // only used in 'full' mode
  *   sinceMs?: number,               // override cutoff (rare; usually computed)
@@ -49,16 +50,43 @@ async function getLastSyncMs(): Promise<number | null> {
  * Full mode:
  *   Walks every Stripe customer. Resumable via `resume=true` (default) which
  *   skips already-imported emails. Use this for nuclear re-sync.
+ *
+ * Tag-backfill mode:
+ *   No Stripe calls. Re-applies the Beehiiv customer_active/purchased
+ *   suppression tags to every CRM row with lifetime_value_usd > 0 — the
+ *   one-off catch-up for payers who were synced before tagging existed
+ *   (ongoing syncs tag automatically).
  */
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { mode?: 'incremental' | 'full'; dryRun?: boolean; resume?: boolean; sinceMs?: number } = {}
+  let body: { mode?: 'incremental' | 'full' | 'tag_backfill'; dryRun?: boolean; resume?: boolean; sinceMs?: number } = {}
   try { body = await req.json() } catch { /* empty body ok */ }
   const mode = body.mode ?? 'incremental'
   const dryRun = body.dryRun === true
 
   try {
+    if (mode === 'tag_backfill') {
+      const c = sb()
+      const { data, error } = await c
+        .from('submissions')
+        .select('email, lifetime_value_usd')
+        .gt('lifetime_value_usd', 0)
+        .is('archived_at', null)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      const emails = Array.from(new Set((data || []).map(r => String(r.email).trim().toLowerCase()).filter(Boolean)))
+      let taggedCount = 0, notSubscribed = 0
+      const failed: { email: string; error: string }[] = []
+      for (const email of emails) {
+        const res = await applyCustomerTags(email)
+        if (res.success) taggedCount++
+        else if (res.error === 'NOT_SUBSCRIBED') notSubscribed++
+        else failed.push({ email, error: res.error || 'unknown' })
+      }
+      return NextResponse.json({ mode: 'tag_backfill', payers: emails.length, tagged: taggedCount, notSubscribed, failed })
+    }
+
     if (mode === 'incremental') {
       const sinceMs = body.sinceMs ?? await getLastSyncMs()
       if (sinceMs == null) {
@@ -110,6 +138,7 @@ export async function POST(req: NextRequest) {
         processed: aggregated.size,
         inserted: upsert.inserted,
         updated: upsert.updated,
+        tagged: upsert.tagged ?? 0,
         errors: upsert.errors,
         hasMore,
         aggregateMs,
@@ -163,6 +192,7 @@ export async function POST(req: NextRequest) {
       skipped: skipEmails?.size ?? 0,
       inserted: upsert.inserted,
       updated: upsert.updated,
+      tagged: upsert.tagged ?? 0,
       errors: upsert.errors,
       hasMore,
       aggregateMs,

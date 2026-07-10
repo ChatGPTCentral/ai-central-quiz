@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface ImportResult {
-  mode?: 'incremental' | 'full'
+  mode?: 'incremental' | 'full' | 'tag_backfill'
   sinceMs?: number
   sinceIso?: string
   affectedEmails?: number
@@ -19,6 +19,11 @@ interface ImportResult {
   hasMore?: boolean
   aggregateMs?: number
   upsertMs?: number
+  // tag_backfill fields
+  payers?: number
+  tagged?: number
+  notSubscribed?: number
+  failed?: { email: string; error: string }[]
   errors?: { email: string; error: string }[]
   error?: string
 }
@@ -85,6 +90,22 @@ export default function StripeSync() {
     }
   }
 
+  async function runTagBackfill() {
+    setBusy(true); setLast(null)
+    try {
+      const res = await fetch('/api/admin/stripe/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'tag_backfill' }),
+      })
+      setLast(await res.json())
+    } catch (e) {
+      setLast({ error: String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mt-6">
       <header className="px-5 py-4 border-b border-[#E8E4DF] flex items-center justify-between gap-3 flex-wrap">
@@ -135,6 +156,14 @@ export default function StripeSync() {
           >
             ⟳ Full re-import
           </button>
+          <button
+            onClick={runTagBackfill}
+            disabled={busy}
+            className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider rounded bg-white border border-[#E8E4DF] text-[#9C9C9C] hover:bg-[#FEF7E7] hover:text-[#333333] disabled:opacity-40"
+            title="Re-apply the Beehiiv customer_active/purchased tags to every CRM payer (LTV > 0). One-off catch-up - - ongoing syncs tag automatically"
+          >
+            🏷 Tag payers in Beehiiv
+          </button>
         </div>
       </header>
 
@@ -144,6 +173,28 @@ export default function StripeSync() {
             <p className="text-[12px] text-[#BE3B3B] bg-[#FEE3E3] border border-[#BE3B3B]/30 rounded p-2">
               ✕ {last.error}
             </p>
+          ) : last.mode === 'tag_backfill' ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
+                <Stat label="CRM payers (LTV > 0)" value={(last.payers ?? 0).toLocaleString()} />
+                <Stat label="Tagged in Beehiiv" value={(last.tagged ?? 0).toLocaleString()} accent="#62A758" />
+                <Stat label="Not on the newsletter" value={(last.notSubscribed ?? 0).toLocaleString()} />
+                {(last.failed?.length ?? 0) > 0 && <Stat label="Failed" value={String(last.failed!.length)} accent="#BE3B3B" />}
+              </div>
+              {(last.failed?.length ?? 0) > 0 && (
+                <details className="mt-3">
+                  <summary className="text-[11px] text-[#BE3B3B] cursor-pointer">{last.failed!.length} failure{last.failed!.length === 1 ? '' : 's'}</summary>
+                  <ul className="text-[11px] mt-1 text-[#9C9C9C] max-h-40 overflow-auto">
+                    {last.failed!.slice(0, 50).map((e, i) => (
+                      <li key={i} className="font-mono">{e.email} - - {e.error}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              <p className="text-[11px] text-[#9C9C9C] mt-3 italic">
+                customer_active + purchased applied. Email automations that exclude these tags will never pitch paying customers.
+              </p>
+            </>
           ) : (
             <>
               {/* Mode badge + cutoff hint */}
