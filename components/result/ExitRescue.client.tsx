@@ -27,6 +27,12 @@ export function ExitRescue({ submissionId }: { submissionId?: string }) {
   const armed = useRef(true)
 
   useEffect(() => {
+    // Lifecycle-email returns are warm visitors on a paid-intent journey —
+    // never siphon them into the free path (also keeps the popup's accept
+    // rate clean of return-visit noise).
+    try {
+      if (new URLSearchParams(location.search).get('utm_source') === 'lifecycle') return
+    } catch { /* non-fatal */ }
     try {
       if (sessionStorage.getItem(SHOWN_KEY)) return
     } catch { /* storage blocked → still arm, just without the once-guard */ }
