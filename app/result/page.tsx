@@ -111,19 +111,24 @@ const FAQS = [
   { q: 'Can I get lifetime access instead?', a: 'Yes. One payment, every tutorial and template, all future drops included' },
 ]
 
+// REAL reader testimonials from Senja (project "thecentral", pulled Jul 11
+// 2026). `text` values are verbatim excerpts of the originals (trim-only,
+// no rewording); `rated: true` marks a genuine 5-star rating on Senja —
+// cards only show stars when that's true. Refresh by asking Claude to
+// re-pull from Senja as new testimonials come in.
 const REVIEWS = [
-  { name: 'Rachel Thompson', role: 'Operations Director · Portland, OR', text: 'Finally, AI tutorials that actually work. Saved 15 hours this week alone, the step-by-step approach makes everything clear' },
-  { name: 'Alex Martinez', role: 'Product Manager', text: 'Implemented 3 AI automations in my first week. Productivity increased 200%' },
-  { name: 'James Wilson', role: 'Business Consultant · Denver, CO', text: 'Transformed our client reporting process. What took days now takes hours, ROI was immediate' },
-  { name: 'Mike Chen', role: 'Sales Manager', text: 'Zero tech background, built my first ChatGPT workflow in 30 minutes' },
-  { name: 'Emma Rodriguez', role: 'Marketing Lead', text: 'My team thinks I hired an AI consultant. These guides are incredibly practical' },
-  { name: 'Jessica Parker', role: 'Data Analyst · Seattle, WA', text: 'Data analysis that used to take me weeks now takes days. Clear, practical, immediately actionable' },
-  { name: 'Sophie Anderson', role: 'HR Director', text: 'Became the go-to AI person at my company in 2 weeks' },
-  { name: 'Carlos Mendez', role: 'Content Strategist', text: 'Content creation: 8 hours down to 2 hours. Efficiency gains are unbelievable' },
-  { name: 'Marcus Johnson', role: 'VP of Sales · Atlanta, GA', text: "My sales team's productivity increased 180%. Deal closure rate improved dramatically" },
-  { name: 'Amanda Wright', role: 'Legal Counsel', text: 'Contract review automation saved our firm 40 hours per week' },
-  { name: 'David Park', role: 'BI Lead · San Francisco, CA', text: 'Dashboard automation that would have taken 3 months was done in 2 weeks. Executive reporting has never been this compelling' },
-  { name: 'Ryan Foster', role: 'Startup Founder', text: 'Bootstrap startup, limited resources. This library gave me enterprise-level AI capabilities' },
+  { name: 'Teri Thomas', role: 'CEO · Mach7 Technologies', text: 'head and shoulders above many other newsletters with practical tips to leverage AI for real benefit', rated: true },
+  { name: 'Shrikant Govil', role: 'SVP, Global Head · Citi', text: 'I have learnt a ton on how to use AI, Agents and Agentic' },
+  { name: 'John Richard', role: 'Business Owner · PSQ Diverse Services', text: 'Thanks to their AI recommendations and their fantastic tutorials I know which AI tools to use and when', rated: true },
+  { name: 'Bruce Glase', role: 'Creative Director', text: 'implemented multiple projects in Claude and ChatGPT using the guides', rated: true },
+  { name: 'Mohan Naarayan', role: 'Head of Operations · SNS Institutions', text: 'been inspired to reinvent myself for a second career', rated: true },
+  { name: 'Kavya Deepthi Guduru', role: 'Founder · The Smart Shopper', text: 'AI Central has completely cut through the noise for me' },
+  { name: 'Desi-Ann Gordon', role: 'Founder & CEO · Caribbean Virtual Assistants', text: 'the quality of the emails was fantastic because the prompt was on point', rated: true },
+  { name: 'Ashley Cruz-Singh', role: 'Business Analyst', text: "current on what's actually happening, without the hype", rated: true },
+  { name: 'Larry Traxler', role: 'Founder · TraxWorks Hospitality', text: 'I find something useful that saves me time and elevates my AI game almost weekly' },
+  { name: 'Ghufran Maniar', role: 'Digital Marketing Consultant · WEBOCOM', text: 'AI Central is the gate to AI knowledge city', rated: true },
+  { name: 'Reinhild Niebuhr', role: 'Founder & Managing Director · EcoLine Enterprises', text: 'helped me accelerate my understanding of how AI tools can boost my business', rated: true },
+  { name: 'Augustine Rono', role: 'Writer & Academic Mentorship Specialist', text: 'actionable guides that make complex tools like Claude accessible', rated: true },
 ]
 
 // ── Small building blocks ───────────────────────────────────────────

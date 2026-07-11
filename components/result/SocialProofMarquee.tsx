@@ -10,24 +10,29 @@ const RICH = '#1A1A1A'
 const MUTE = '#9C9C9C'
 const XANTHOUS = '#E7B02F'
 
-// Same fictional-buyer pool style as FomoPopup, with staggered timestamps.
+// Fictional-buyer pool (same style as FomoPopup), staggered timestamps.
+// Titles mirror the real converter profile (US-heavy, senior, hands-on
+// practitioner roles); US cities carry their state code.
 const PURCHASES = [
-  { name: 'James R.', flag: '🇺🇸', city: 'New York', ago: '2m' },
-  { name: 'Sarah M.', flag: '🇺🇸', city: 'San Francisco', ago: '11m' },
-  { name: 'Laurent D.', flag: '🇫🇷', city: 'Paris', ago: '24m' },
-  { name: 'Emily K.', flag: '🇺🇸', city: 'Austin', ago: '38m' },
-  { name: 'Tom W.', flag: '🇬🇧', city: 'London', ago: '52m' },
-  { name: 'Priya S.', flag: '🇮🇳', city: 'Bengaluru', ago: '1h' },
-  { name: 'Daniel P.', flag: '🇺🇸', city: 'Los Angeles', ago: '1h' },
-  { name: 'Anna B.', flag: '🇩🇪', city: 'Berlin', ago: '2h' },
-  { name: 'Kevin O.', flag: '🇺🇸', city: 'Nashville', ago: '2h' },
-  { name: 'Sofia R.', flag: '🇪🇸', city: 'Madrid', ago: '3h' },
+  { name: 'James R.', title: 'VP of Operations', flag: '🇺🇸', city: 'New York, NY', ago: '2m' },
+  { name: 'Sarah M.', title: 'Marketing Director', flag: '🇺🇸', city: 'San Francisco, CA', ago: '11m' },
+  { name: 'Laurent D.', title: 'Product Manager', flag: '🇫🇷', city: 'Paris', ago: '24m' },
+  { name: 'Emily K.', title: 'HR Manager', flag: '🇺🇸', city: 'Austin, TX', ago: '38m' },
+  { name: 'Tom W.', title: 'Head of Customer Success', flag: '🇬🇧', city: 'London', ago: '52m' },
+  { name: 'Priya S.', title: 'Senior Business Analyst', flag: '🇮🇳', city: 'Bengaluru', ago: '1h' },
+  { name: 'Daniel P.', title: 'Founder', flag: '🇺🇸', city: 'Los Angeles, CA', ago: '1h' },
+  { name: 'Anna B.', title: 'Operations Lead', flag: '🇩🇪', city: 'Berlin', ago: '2h' },
+  { name: 'Kevin O.', title: 'IT Systems Analyst', flag: '🇺🇸', city: 'Nashville, TN', ago: '2h' },
+  { name: 'Sofia R.', title: 'Managing Director', flag: '🇪🇸', city: 'Madrid', ago: '3h' },
 ]
 
 export interface MarqueeReview {
   name: string
   role: string
   text: string
+  /** True only when the testimonial carries a genuine 5-star rating in
+   *  Senja — cards without it show the quote and attribution, no stars. */
+  rated?: boolean
 }
 
 function PurchaseCard({ p }: { p: (typeof PURCHASES)[number] }) {
@@ -38,7 +43,7 @@ function PurchaseCard({ p }: { p: (typeof PURCHASES)[number] }) {
         <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: '#2E7D32' }} />
       </span>
       <span style={{ color: RICH }}>
-        <strong>{p.name}</strong> {p.flag} {p.city} claimed the $4.99 offer
+        <strong>{p.name}</strong> ({p.title}) from {p.flag} {p.city} started a trial of the AI Library
       </span>
       <span style={{ color: MUTE, fontSize: 11.5 }}>{p.ago} ago</span>
     </span>
@@ -49,7 +54,9 @@ function ReviewCard({ r }: { r: MarqueeReview }) {
   const text = r.text.length > 92 ? `${r.text.slice(0, 92).trimEnd()}…` : r.text
   return (
     <span className="inline-flex flex-col justify-center" style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '8px 14px', maxWidth: 420 }}>
-      <span className="whitespace-nowrap" style={{ color: XANTHOUS, fontSize: 10, letterSpacing: '0.12em' }} aria-label="5 stars">★★★★★</span>
+      {r.rated && (
+        <span className="whitespace-nowrap" style={{ color: XANTHOUS, fontSize: 10, letterSpacing: '0.12em' }} aria-label="5 stars">★★★★★</span>
+      )}
       <span className="whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: RICH, fontSize: 12.5, maxWidth: 390 }}>
         &ldquo;{text}&rdquo;
       </span>

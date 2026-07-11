@@ -118,7 +118,7 @@ export default function FomoPopup({ variant = 'offer' }: FomoProps) {
         <div className="flex-1 min-w-0">
           {variant === 'offer' ? (
             <p className="text-[13px] text-gray-800 leading-snug">
-              🎉 <span className="font-semibold">{person.name}</span> from {person.flag} {person.city} claimed the{' '}
+              🎉 <span className="font-semibold">{person.name}</span> from {person.flag} {person.city} started a{' '}
               <a
                 href={PAYMENT_URL}
                 target="_blank"
@@ -126,7 +126,7 @@ export default function FomoPopup({ variant = 'offer' }: FomoProps) {
                 className="text-black font-semibold underline underline-offset-2"
                 onClick={() => sendEvent('checkout_click', { props: { placement: 'fomo_popup' } })}
               >
-                Limited Time $4.99 Special Offer
+                trial of the AI Library
               </a>
             </p>
           ) : (
