@@ -4,6 +4,7 @@ import TrackedLink from '@/components/TrackedLink.client'
 import { ExitRescue } from '@/components/result/ExitRescue.client'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
+import { FomoNotifications } from '@/components/result2/FomoNotifications.client'
 import { StageStepper } from '@/components/result2/StageStepper'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
@@ -250,8 +251,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* ── 2 · FOMO: live trial notifications ────────────────────── */}
-        <Marquee2 mode="purchases" reviews={[]} checkoutUrl={checkoutUrl} submissionId={rowId} />
+        {/* ── 2 · FOMO: iPhone-style trial notifications (fixed slot) ── */}
+        <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} />
 
         {/* ── 3 · THE JOURNEY: horizontal stage stepper ─────────────── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
@@ -325,6 +326,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </section>
 
         {/* ── 6 · REAL REVIEWS ──────────────────────────────────────── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-14 pb-8 text-center">
+            <Eyebrow>Loved by 2,500+ members</Eyebrow>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+              What people say about AI Central
+            </h2>
+          </div>
+        </section>
         <Marquee2 mode="reviews" reviews={REVIEWS} checkoutUrl={checkoutUrl} submissionId={rowId} />
 
         {/* ── 7 · SCROLL REWARD: pass + confetti + personalization ──── */}
