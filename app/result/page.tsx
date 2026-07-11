@@ -117,18 +117,18 @@ const FAQS = [
 // cards only show stars when that's true. Refresh by asking Claude to
 // re-pull from Senja as new testimonials come in.
 const REVIEWS = [
-  { name: 'Teri Thomas', role: 'CEO · Mach7 Technologies', text: 'head and shoulders above many other newsletters with practical tips to leverage AI for real benefit', rated: true },
-  { name: 'Shrikant Govil', role: 'SVP, Global Head · Citi', text: 'I have learnt a ton on how to use AI, Agents and Agentic' },
-  { name: 'John Richard', role: 'Business Owner · PSQ Diverse Services', text: 'Thanks to their AI recommendations and their fantastic tutorials I know which AI tools to use and when', rated: true },
-  { name: 'Bruce Glase', role: 'Creative Director', text: 'implemented multiple projects in Claude and ChatGPT using the guides', rated: true },
-  { name: 'Mohan Naarayan', role: 'Head of Operations · SNS Institutions', text: 'been inspired to reinvent myself for a second career', rated: true },
-  { name: 'Kavya Deepthi Guduru', role: 'Founder · The Smart Shopper', text: 'AI Central has completely cut through the noise for me' },
-  { name: 'Desi-Ann Gordon', role: 'Founder & CEO · Caribbean Virtual Assistants', text: 'the quality of the emails was fantastic because the prompt was on point', rated: true },
-  { name: 'Ashley Cruz-Singh', role: 'Business Analyst', text: "current on what's actually happening, without the hype", rated: true },
-  { name: 'Larry Traxler', role: 'Founder · TraxWorks Hospitality', text: 'I find something useful that saves me time and elevates my AI game almost weekly' },
-  { name: 'Ghufran Maniar', role: 'Digital Marketing Consultant · WEBOCOM', text: 'AI Central is the gate to AI knowledge city', rated: true },
-  { name: 'Reinhild Niebuhr', role: 'Founder & Managing Director · EcoLine Enterprises', text: 'helped me accelerate my understanding of how AI tools can boost my business', rated: true },
-  { name: 'Augustine Rono', role: 'Writer & Academic Mentorship Specialist', text: 'actionable guides that make complex tools like Claude accessible', rated: true },
+  { name: 'Teri Thomas', role: 'CEO · Mach7 Technologies', text: 'head and shoulders above many other newsletters with practical tips to leverage AI for real benefit', rated: true, avatarUrl: 'https://cdn.senja.io/public/avatar/d45947d6-d90d-41c9-8542-9ba6cbe4209f_IMG_4683.jpeg' },
+  { name: 'Shrikant Govil', role: 'SVP, Global Head · Citi', text: 'I have learnt a ton on how to use AI, Agents and Agentic', avatarUrl: 'https://cdn.senja.io/public/media/d9791259-6ffc-4631-9b1d-050ecde4af27_44b27e61-0f69-4581-b6f9-c22b4caaab19_9905dbb7-a0a2-42c1-80b5-03f047894243.png' },
+  { name: 'John Richard', role: 'Business Owner · PSQ Diverse Services', text: 'Thanks to their AI recommendations and their fantastic tutorials I know which AI tools to use and when', rated: true, avatarUrl: 'https://cdn.senja.io/public/media/246dce26-f5c4-4f56-8f9c-1fcd5207edba_4d1397be-a04e-4079-a7a6-b54ecfcd78b6_50a5acf6-3598-4085-8ed6-71eb56a0a21f.png' },
+  { name: 'Bruce Glase', role: 'Creative Director', text: 'implemented multiple projects in Claude and ChatGPT using the guides', rated: true, avatarUrl: 'https://cdn.senja.io/public/media/a776b9b5-f782-4b78-b801-2f4594ee5023_b75a5517-109e-4248-96c5-32c0f677b226_1740697307586.jpeg' },
+  { name: 'Mohan Naarayan', role: 'Head of Operations · SNS Institutions', text: 'been inspired to reinvent myself for a second career', rated: true, avatarUrl: 'https://cdn.senja.io/public/media/2c58082b-6143-416b-bad6-60f4404cc82a_490c190c-3a59-4c84-a4a8-4d3a52207693_1727364438254.jpeg' },
+  { name: 'Kavya Deepthi Guduru', role: 'Founder · The Smart Shopper', text: 'AI Central has completely cut through the noise for me', avatarUrl: 'https://cdn.senja.io/public/avatar/4da58659-7e6b-40d9-9cae-ae7b3d3970e5_kavya.png' },
+  { name: 'Desi-Ann Gordon', role: 'Founder & CEO · Caribbean Virtual Assistants', text: 'the quality of the emails was fantastic because the prompt was on point', rated: true, avatarUrl: 'https://cdn.senja.io/public/media/dbd6fd37-d5a2-4258-8252-004418270505_a5314f8c-2bd3-4b4e-aab7-d7da05ca22e9_6f535057-8dc7-452a-ac48-317f174a6e29.png' },
+  { name: 'Ashley Cruz-Singh', role: 'Business Analyst', text: "current on what's actually happening, without the hype", rated: true, avatarUrl: 'https://cdn.senja.io/public/avatar/3102ad26-def5-4086-ad70-8179a9ceba52_1000103958.jpg' },
+  { name: 'Larry Traxler', role: 'Founder · TraxWorks Hospitality', text: 'I find something useful that saves me time and elevates my AI game almost weekly', avatarUrl: 'https://cdn.senja.io/public/avatar/a9ff64ff-7b60-478a-8814-2bb432f5e030_LT%20Black%20Shirt%2003.jpeg' },
+  { name: 'Ghufran Maniar', role: 'Digital Marketing Consultant · WEBOCOM', text: 'AI Central is the gate to AI knowledge city', rated: true, avatarUrl: 'https://cdn.senja.io/public/media/107e502e-c255-4a9c-8423-8d31aed85ff5_ffe43117-69e8-4ff3-b3da-2270bfedd2e4_1656185594530.jpeg' },
+  { name: 'Reinhild Niebuhr', role: 'Founder & Managing Director · EcoLine Enterprises', text: 'helped me accelerate my understanding of how AI tools can boost my business', rated: true, avatarUrl: 'https://cdn.senja.io/public/avatar/88a1026d-6f2e-4530-a8ae-a0cc103eba5e_Refine.png' },
+  { name: 'Augustine Rono', role: 'Writer & Academic Mentorship Specialist', text: 'actionable guides that make complex tools like Claude accessible', rated: true, avatarUrl: 'https://cdn.senja.io/public/media/fc2f4636-1dcf-4e71-9751-27ddcdf2d41e_e7b29628-8938-4040-abc6-bc9f01019211_1774374834938.jpeg' },
 ]
 
 // ── Small building blocks ───────────────────────────────────────────

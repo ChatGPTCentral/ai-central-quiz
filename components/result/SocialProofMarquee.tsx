@@ -33,6 +33,8 @@ export interface MarqueeReview {
   /** True only when the testimonial carries a genuine 5-star rating in
    *  Senja — cards without it show the quote and attribution, no stars. */
   rated?: boolean
+  /** Reviewer photo (Senja CDN). Falls back to an initial block. */
+  avatarUrl?: string
 }
 
 function PurchaseCard({ p }: { p: (typeof PURCHASES)[number] }) {
@@ -50,18 +52,41 @@ function PurchaseCard({ p }: { p: (typeof PURCHASES)[number] }) {
   )
 }
 
+// Portrait testimonial card (taller than wide, carousel style): reviewer
+// photo on top, quote, name/role pinned to the bottom edge.
 function ReviewCard({ r }: { r: MarqueeReview }) {
-  const text = r.text.length > 92 ? `${r.text.slice(0, 92).trimEnd()}…` : r.text
+  const text = r.text.length > 150 ? `${r.text.slice(0, 150).trimEnd()}…` : r.text
   return (
-    <span className="inline-flex flex-col justify-center" style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '8px 14px', maxWidth: 420 }}>
-      {r.rated && (
-        <span className="whitespace-nowrap" style={{ color: XANTHOUS, fontSize: 10, letterSpacing: '0.12em' }} aria-label="5 stars">★★★★★</span>
+    <span className="inline-flex flex-col" style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', width: 216, height: 316, overflow: 'hidden' }}>
+      {r.avatarUrl ? (
+        // Decorative (alt="") — the name sits right below, and a failed
+        // load degrades to a plain cream panel instead of a broken icon.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={r.avatarUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          style={{ width: '100%', height: 136, objectFit: 'cover', objectPosition: 'center 25%', borderBottom: `2px solid ${INK}`, display: 'block', backgroundColor: '#FEF7E7' }}
+        />
+      ) : (
+        <span className="flex items-center justify-center" style={{ width: '100%', height: 136, backgroundColor: '#FEF7E7', borderBottom: `2px solid ${INK}`, fontSize: 44, fontWeight: 900, color: INK }} aria-hidden>
+          {r.name[0]}
+        </span>
       )}
-      <span className="whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: RICH, fontSize: 12.5, maxWidth: 390 }}>
-        &ldquo;{text}&rdquo;
-      </span>
-      <span className="whitespace-nowrap" style={{ color: MUTE, fontSize: 11 }}>
-        {r.name} · {r.role}
+      <span className="flex flex-col flex-1 min-h-0" style={{ padding: '10px 12px 11px' }}>
+        {r.rated && (
+          <span style={{ color: XANTHOUS, fontSize: 11, letterSpacing: '0.14em' }} aria-label="5 stars">★★★★★</span>
+        )}
+        <span
+          className="whitespace-normal"
+          style={{ color: RICH, fontSize: 12.5, lineHeight: 1.42, marginTop: 4, display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+        >
+          &ldquo;{text}&rdquo;
+        </span>
+        <span className="mt-auto block" style={{ paddingTop: 8 }}>
+          <span className="block whitespace-normal" style={{ color: RICH, fontSize: 12, fontWeight: 700, lineHeight: 1.25 }}>{r.name}</span>
+          <span className="block whitespace-normal" style={{ color: MUTE, fontSize: 10.5, lineHeight: 1.3 }}>{r.role}</span>
+        </span>
       </span>
     </span>
   )
@@ -85,7 +110,7 @@ export function SocialProofMarquee({
   }
 
   const half = (dup: string) => (
-    <div className="flex items-stretch" aria-hidden={dup === 'b'}>
+    <div className="flex items-center" aria-hidden={dup === 'b'}>
       {cards.map((c, i) => (
         <CheckoutLink
           key={`${dup}${i}`}
