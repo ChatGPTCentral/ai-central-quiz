@@ -6,11 +6,17 @@ the funnel + experiment results and drafts NEW challenger variants for you
 to approve. Nothing it drafts can reach visitors until you click Approve /
 Start in `/admin/experiments`.
 
-## How to schedule it (one-time, ~1 minute)
+## Scheduling status (Jul 11, 2026)
 
-In the Claude apps, create a **scheduled task / routine** (weekly, e.g.
-Monday 9:00) pointing at this repository, with the prompt below. Any session
-it creates has the same Supabase + GitHub access as a normal session.
+- **Daily health digest: LIVE** — Routine `trig_01L4NpzYDKZo4Ho5hGVsPZfy`
+  runs every day at 07:00 UTC in a fresh session (smoke checks, funnel flow,
+  CRM health, webhook errors, A/A split; push notification with the digest).
+- **Weekly optimization: NOT YET SCHEDULED** — the routines connector was
+  disconnected at creation time. Create it as a weekly Routine (Monday
+  ~09:30) pointing at this repository with the prompt below, or ask Claude
+  to create it (`create a weekly routine from
+  docs/weekly-optimization-routine.md`). Any session it creates has the same
+  Supabase + GitHub access as a normal session.
 
 ## The prompt to schedule
 
