@@ -37,17 +37,27 @@ export interface MarqueeReview {
   avatarUrl?: string
 }
 
+// Same portrait box as ReviewCard so the strip reads as one uniform
+// carousel: the country flag stands in for the photo panel.
 function PurchaseCard({ p }: { p: (typeof PURCHASES)[number] }) {
   return (
-    <span className="inline-flex items-center gap-2 whitespace-nowrap" style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '10px 14px', fontSize: 13 }}>
-      <span className="relative flex h-2 w-2" aria-hidden>
-        <span className="absolute inline-flex h-full w-full rounded-full opacity-60" style={{ backgroundColor: '#62A758' }} />
-        <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: '#2E7D32' }} />
+    <span className="inline-flex flex-col" style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', width: 216, height: 316, overflow: 'hidden' }}>
+      <span className="flex items-center justify-center" style={{ width: '100%', height: 136, backgroundColor: '#FEF7E7', borderBottom: `2px solid ${INK}`, fontSize: 56, lineHeight: 1 }} aria-hidden>
+        {p.flag}
       </span>
-      <span style={{ color: RICH }}>
-        <strong>{p.name}</strong> ({p.title}) from {p.flag} {p.city} started a trial of the AI Library
+      <span className="flex flex-col flex-1 min-h-0" style={{ padding: '10px 12px 11px' }}>
+        <span className="inline-flex items-center gap-1.5" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', color: '#2E7D32' }}>
+          <span className="relative flex h-2 w-2" aria-hidden>
+            <span className="absolute inline-flex h-full w-full rounded-full opacity-60" style={{ backgroundColor: '#62A758' }} />
+            <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: '#2E7D32' }} />
+          </span>
+          NEW TRIAL
+        </span>
+        <span className="whitespace-normal" style={{ color: RICH, fontSize: 12.5, lineHeight: 1.42, marginTop: 4 }}>
+          <strong>{p.name}</strong> ({p.title}) from {p.flag} {p.city} started a trial of the AI Library
+        </span>
+        <span className="mt-auto block" style={{ color: MUTE, fontSize: 10.5 }}>{p.ago} ago</span>
       </span>
-      <span style={{ color: MUTE, fontSize: 11.5 }}>{p.ago} ago</span>
     </span>
   )
 }
