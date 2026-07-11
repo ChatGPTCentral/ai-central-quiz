@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import TrackView from '@/components/TrackView'
-import FomoPopup from '@/components/FomoPopup'
-import CheckoutLink from '@/components/CheckoutLink.client'
 import TrackedLink from '@/components/TrackedLink.client'
 import { ExitRescue } from '@/components/result/ExitRescue.client'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
+import { StageStepper } from '@/components/result2/StageStepper'
+import { StudyPlan } from '@/components/result2/StudyPlan'
+import Confetti from '@/components/result2/Confetti.client'
+import { PersonalizePass, SharePostBox } from '@/components/result2/PersonalizePass.client'
 import { PassCard } from '@/components/result/PassCard'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType } from '@/lib/readiness-type'
@@ -13,15 +15,18 @@ import { rungConfig, withPersona, withFirstName } from '@/lib/rung-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
+import CheckoutLink from '@/components/CheckoutLink.client'
 
-// ── Result page v2 (video-first experiment) ─────────────────────────
-// Self-contained sibling of /result: the product video carries the pitch
-// up top, and the member pass + LinkedIn share is the reward people
-// scroll down to. Deliberately duplicates v1's data assembly instead of
-// refactoring it — the live /result must stay untouched. All placements
-// are v2_-prefixed so /admin/funnel compares the two pages, and
-// result_view events carry pageVariant:'v2'. Unlinked + noindexed while
-// under evaluation; traffic routing is a separate, later decision.
+// ── Result page v2 (video-first experiment, iteration 2) ─────────────
+// Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
+// horizontal journey stepper (green/grey + weeks-to-reach) → video with
+// "unfair advantage" framing + get-everything offer card → recommended
+// study plan (real library tutorials, vertical stepper) → Senja reviews →
+// "you made it" pass with confetti, personalization widget and a
+// suggested LinkedIn post (@AICentral #AICentral) → FAQ → final band.
+// Neon offer bar is fixed to the BOTTOM. Self-contained sibling of
+// /result: all placements v2_-prefixed, result_view carries
+// pageVariant:'v2', page stays noindexed and unlinked.
 
 const VIDEO_ID = 'WO6TM6UVfYM' // "Introducing the Ultimate AI Library from AI Central"
 
@@ -143,7 +148,7 @@ function SharePass2({ topPct, name, stageLabel, profileLabel, refNo, submissionI
   })
   const shareUrl = `${site}/pass?${shareParams.toString()}`
   return (
-    <div className="mt-6 flex justify-center">
+    <div className="mt-5 flex justify-center">
       <TrackedLink
         href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`}
         event="share_click"
@@ -194,8 +199,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const segFields = await fetchSegmentFields(rowId)
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
-  const rt = readinessType(segFields?.stage)
-  const rung = rungConfig(segFields?.stage)
+  const stageKey = segFields?.stage ?? searchParams.stage ?? null
+  const rt = readinessType(stageKey)
+  const rung = rungConfig(stageKey)
   const p = (s: string) => withFirstName(withPersona(s, content.label), firstName)
 
   // Editor safety valve: honor a published end-screen's ctaUrl override.
@@ -220,36 +226,56 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const issued = `${String(now.getMonth() + 1).padStart(2, '0')} / ${now.getFullYear()}`
 
   const topPct = 100 - rt.aheadPct
+  const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
+  const sharePost = `I just measured my AI readiness with @AICentral - - I'm in the top ${topPct}% of people on their AI journey.\n\nSee where you rank: ${site}/pass?ref=${refNo}\n\n#AICentral`
 
   return (
     <>
-      <TrackView event="result_view" props={{ pageVariant: 'v2', stage: segFields?.stage ?? searchParams.stage ?? null, persona, submissionId: rowId }} />
-      <OfferBar paymentUrl={checkoutUrl} refNo={refNo} submissionId={rowId} />
+      <TrackView event="result_view" props={{ pageVariant: 'v2', stage: stageKey, persona, submissionId: rowId }} />
 
-      <div className="flex flex-col" style={{ backgroundColor: PAPER, paddingTop: 56, color: INK }}>
+      <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
 
-        {/* ── 1 · COMPACT HERO: the verdict + watch cue ─────────────── */}
+        {/* ── 1 · HERO: top-X% verdict + scroll promise ─────────────── */}
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-8 text-center">
+          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-9 text-center">
             <Eyebrow>Your quiz results</Eyebrow>
             <h1 className="mt-4 font-bold" style={{ fontSize: 'clamp(34px, 5vw, 58px)', lineHeight: 1.0, letterSpacing: '-0.045em', color: RICH }}>
-              {firstName ? `${firstName}, you` : 'You'}&rsquo;re ahead of{' '}
-              <span style={{ color: FULVOUS }}>{rt.aheadPct}%</span> of 8.1 billion people
+              {firstName ? `${firstName}, you` : 'You'}&rsquo;re in the top{' '}
+              <span style={{ color: FULVOUS }}>{topPct}%</span> of people on their AI journey!
             </h1>
             <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
-              Stage: <strong style={{ fontWeight: 600 }}>{rung.className}</strong> · Readiness score {score}/100.
-              Your member pass is ready below - - but first, watch what your result unlocks.
+              Scroll below to get your recommended plan, grab your member pass and share it with your network.
             </p>
             <p className="mt-5" style={{ fontSize: 13, color: MUTE }} aria-hidden>▼</p>
           </div>
         </section>
 
-        {/* ── 2 · THE VIDEO + instant offer ─────────────────────────── */}
+        {/* ── 2 · FOMO: live trial notifications ────────────────────── */}
+        <Marquee2 mode="purchases" reviews={[]} checkoutUrl={checkoutUrl} submissionId={rowId} />
+
+        {/* ── 3 · THE JOURNEY: horizontal stage stepper ─────────────── */}
+        <section style={{ borderTop: `3px solid ${INK}` }}>
+          <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-14">
+            <Eyebrow>Your AI journey</Eyebrow>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(24px, 3.2vw, 36px)', lineHeight: 1.05, letterSpacing: '-0.04em', color: RICH }}>
+              {rung.className.charAt(0) + rung.className.slice(1).toLowerCase()} today - - here&rsquo;s the road ahead
+            </h2>
+            <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
+              Green is what you&rsquo;ve already earned. The estimates under the grey stages are how long each climb
+              typically takes members studying a few hours a week with the library.
+            </p>
+            <div className="mt-8">
+              <StageStepper stageKey={stageKey} />
+            </div>
+          </div>
+        </section>
+
+        {/* ── 4 · THE VIDEO + instant offer ─────────────────────────── */}
         <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
-            <Eyebrow>The library, in 90 seconds</Eyebrow>
+            <Eyebrow>The unfair advantage</Eyebrow>
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              The exact system that takes you to the top 2%
+              Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable
             </h2>
 
             <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#000', position: 'relative', paddingBottom: '56.25%', height: 0 }}>
@@ -267,7 +293,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-6 items-center" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '22px 26px' }}>
               <div>
                 <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>
-                  Everything in the video, unlocked today - - <span style={{ color: FULVOUS }}>$4.99 first month</span>
+                  Get everything in the video - - <span style={{ color: FULVOUS }}>$4.99 first month</span>
                 </p>
                 <p className="mt-1.5" style={{ fontSize: 13, lineHeight: 1.5, color: BODY, fontWeight: 300 }}>
                   1,200+ tutorials and 50+ templates, with a track matched to your {rung.className} result.
@@ -281,33 +307,29 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* ── 3 · PERSONALIZED PRESCRIPTION ─────────────────────────── */}
+        {/* ── 5 · YOUR RECOMMENDED STUDY PLAN ───────────────────────── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
-            <Eyebrow>Your prescription</Eyebrow>
+          <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
+            <Eyebrow>Your recommended study plan</Eyebrow>
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              Tutorials mapped to your {rung.className} level
+              The first month, mapped for a {rung.className.toLowerCase()}
             </h2>
-            <p className="mt-4 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
-              {p(`These tutorials take you from ahead of {aheadPct}% to the top 2% worldwide`).replace('{aheadPct}', String(rt.aheadPct))}. Start with the first one tonight - - it takes 15 minutes.
+            <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
+              {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
             </p>
-
-            <CheckoutLink href={checkoutUrl} placement="v2_library_gif" submissionId={rowId} className="block mt-8 transition-transform hover:-translate-y-px" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', cursor: 'pointer' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/library-preview.gif"
-                alt="A scrolling preview of the AI Central library of tutorials - - click to unlock"
-                style={{ display: 'block', width: '100%', height: 'auto' }}
-              />
-            </CheckoutLink>
+            <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
+            <div className="mt-9 flex justify-center">
+              <BlockButton2 href={checkoutUrl} label="unlock my study plan" placement="v2_study_plan" submissionId={rowId} />
+            </div>
           </div>
         </section>
 
-        {/* ── 4 · REAL REVIEWS + LIVE TRIALS ────────────────────────── */}
-        <Marquee2 reviews={REVIEWS} checkoutUrl={checkoutUrl} submissionId={rowId} />
+        {/* ── 6 · REAL REVIEWS ──────────────────────────────────────── */}
+        <Marquee2 mode="reviews" reviews={REVIEWS} checkoutUrl={checkoutUrl} submissionId={rowId} />
 
-        {/* ── 5 · SCROLL REWARD: the member pass ────────────────────── */}
-        <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER, backgroundImage: GRAIN }}>
+        {/* ── 7 · SCROLL REWARD: pass + confetti + personalization ──── */}
+        <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER, backgroundImage: GRAIN, position: 'relative' }}>
+          <Confetti />
           <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-14 sm:py-20 text-center">
             <Eyebrow>You made it</Eyebrow>
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: RICH }}>
@@ -315,19 +337,22 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             </h2>
             <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
               Top {topPct}% of AI users worldwide, verified by the assessment.
-              Post it on LinkedIn - - your card unfurls automatically.
+              Add your face, then post it - - your card unfurls automatically on LinkedIn.
             </p>
             <div className="mt-9 mx-auto" style={{ maxWidth: 480 }}>
-              <PassCard
-                name={passName}
-                personaLabel={content.label}
-                stageLine={`STAGE: ${rung.className}`}
-                passPct={`Top ${topPct}% World`}
-                issued={issued}
-                refNo={refNo}
-                description={content.outlook}
-              />
+              <PersonalizePass submissionId={rowId}>
+                <PassCard
+                  name={passName}
+                  personaLabel={content.label}
+                  stageLine={`STAGE: ${rung.className}`}
+                  passPct={`Top ${topPct}% World`}
+                  issued={issued}
+                  refNo={refNo}
+                  description={content.outlook}
+                />
+              </PersonalizePass>
             </div>
+            <SharePostBox shareText={sharePost} />
             <SharePass2
               topPct={topPct}
               name={passName}
@@ -339,7 +364,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* ── 6 · SHORT FAQ ─────────────────────────────────────────── */}
+        {/* ── 8 · SHORT FAQ ─────────────────────────────────────────── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
             <Eyebrow>Questions</Eyebrow>
@@ -349,11 +374,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* ── 7 · FINAL BAND ────────────────────────────────────────── */}
+        {/* ── 9 · FINAL BAND ────────────────────────────────────────── */}
         <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: INK }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-14 sm:py-18 text-center">
             <h2 className="font-bold" style={{ fontSize: 'clamp(26px, 3.6vw, 42px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: PAPER }}>
-              Go from ahead of {rt.aheadPct}% <span style={{ color: XANTHOUS }}>to the top 2%</span>
+              Go from the top {topPct}% <span style={{ color: XANTHOUS }}>to the top 2%</span>
             </h2>
             <p className="mt-3 mx-auto max-w-[480px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: '#D8D2C6' }}>
               $4.99 first month · cancel anytime · 30-day guarantee
@@ -365,7 +390,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </section>
       </div>
 
-      <FomoPopup />
+      <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} />
       <ExitRescue submissionId={rowId} />
     </>
   )

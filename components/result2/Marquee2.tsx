@@ -11,13 +11,15 @@ const RICH = '#1A1A1A'
 const MUTE = '#9C9C9C'
 const XANTHOUS = '#E7B02F'
 
+// Buyer pool mirrors the real converter profile (US-heavy, senior,
+// practitioner roles). Owner decision: no India entries.
 const PURCHASES = [
   { name: 'James R.', title: 'VP of Operations', flag: '🇺🇸', city: 'New York, NY', ago: '2m' },
   { name: 'Sarah M.', title: 'Marketing Director', flag: '🇺🇸', city: 'San Francisco, CA', ago: '11m' },
   { name: 'Laurent D.', title: 'Product Manager', flag: '🇫🇷', city: 'Paris', ago: '24m' },
   { name: 'Emily K.', title: 'HR Manager', flag: '🇺🇸', city: 'Austin, TX', ago: '38m' },
   { name: 'Tom W.', title: 'Head of Customer Success', flag: '🇬🇧', city: 'London', ago: '52m' },
-  { name: 'Priya S.', title: 'Senior Business Analyst', flag: '🇮🇳', city: 'Bengaluru', ago: '1h' },
+  { name: 'Rachel T.', title: 'Senior Business Analyst', flag: '🇺🇸', city: 'Chicago, IL', ago: '1h' },
   { name: 'Daniel P.', title: 'Founder', flag: '🇺🇸', city: 'Los Angeles, CA', ago: '1h' },
   { name: 'Anna B.', title: 'Operations Lead', flag: '🇩🇪', city: 'Berlin', ago: '2h' },
   { name: 'Kevin O.', title: 'IT Systems Analyst', flag: '🇺🇸', city: 'Nashville, TN', ago: '2h' },
@@ -95,16 +97,19 @@ export function Marquee2({
   reviews,
   checkoutUrl,
   submissionId,
+  mode = 'mixed',
 }: {
   reviews: MarqueeReview[]
   checkoutUrl: string
   submissionId?: string
+  /** 'purchases' = FOMO trial cards only · 'reviews' = testimonials only. */
+  mode?: 'mixed' | 'purchases' | 'reviews'
 }) {
   const cards: React.ReactNode[] = []
-  const n = Math.max(PURCHASES.length, reviews.length)
+  const n = Math.max(mode === 'reviews' ? 0 : PURCHASES.length, mode === 'purchases' ? 0 : reviews.length)
   for (let i = 0; i < n; i++) {
-    if (PURCHASES[i]) cards.push(<PurchaseCard key={`p${i}`} p={PURCHASES[i]} />)
-    if (reviews[i]) cards.push(<ReviewCard key={`r${i}`} r={reviews[i]} />)
+    if (mode !== 'reviews' && PURCHASES[i]) cards.push(<PurchaseCard key={`p${i}`} p={PURCHASES[i]} />)
+    if (mode !== 'purchases' && reviews[i]) cards.push(<ReviewCard key={`r${i}`} r={reviews[i]} />)
   }
 
   const half = (dup: string) => (
