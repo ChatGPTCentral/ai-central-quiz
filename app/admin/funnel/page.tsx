@@ -106,7 +106,13 @@ export default async function FunnelPage() {
       source: 'submissions',
       note: eventsStartMs && subs.length !== subsEventsEra.length ? `${subs.length} in the full ${WINDOW_DAYS}d (CRM, incl. pre-tracking launch)` : undefined,
     },
-    { key: 'result_view', label: 'Result viewed', n: uniquePeople(by('result_view')), source: 'events' },
+    {
+      key: 'result_view',
+      label: 'Result viewed',
+      n: uniquePeople(by('result_view')),
+      source: 'events',
+      note: 'every open of a result link counts: revisits, admin 🎯 views, shared links',
+    },
     { key: 'checkout_click', label: 'Checkout clicked', n: uniquePeople(by('checkout_click')), source: 'events' },
     {
       key: 'net_new_paid',
