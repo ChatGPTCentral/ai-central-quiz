@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/bandit", "schedule": "0 9 * * *" }
+    { "path": "/api/cron/bandit", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/clarity-snapshot", "schedule": "30 6 * * *" }
   ]
 }

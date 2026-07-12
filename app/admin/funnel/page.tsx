@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { clarityUxByPage, type UxPageRow } from '@/lib/clarity'
+import ClarityPullNow from '@/components/admin/ClarityPullNow.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -138,6 +140,12 @@ export default async function FunnelPage() {
   }
   const utmRows = Array.from(utm.entries()).sort((a, b) => b[1].subs - a[1].subs).slice(0, 12)
 
+  // Clarity UX snapshots (best-effort; empty until the first pull lands)
+  let ux: Awaited<ReturnType<typeof clarityUxByPage>> = { rows: [], snapshotDays: 0, lastFetched: null }
+  try { ux = await clarityUxByPage(7) } catch { /* strip shows its empty state */ }
+  const uxPath = (u: string) => { try { return new URL(u).pathname || '/' } catch { return u } }
+  const uxRows: UxPageRow[] = ux.rows.slice(0, 8)
+
   return (
     <div className="p-8 max-w-5xl">
       <div className="mb-6">
@@ -265,6 +273,51 @@ export default async function FunnelPage() {
           )}
         </section>
       </div>
+
+      {/* UX health from Clarity snapshots */}
+      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mt-6">
+        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h2 className="text-sm font-black text-[#333333]">UX health (Clarity)</h2>
+          <ClarityPullNow />
+        </div>
+        {uxRows.length === 0 ? (
+          <p className="text-sm text-[#9C9C9C]">
+            No snapshots yet. The cron pulls daily at 06:30 UTC once CLARITY_API_TOKEN is set on Vercel, or hit Pull now for the trailing day.
+          </p>
+        ) : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-[#E8E4DF] text-[10px] uppercase tracking-wider text-[#9C9C9C]">
+                <th className="text-left py-1.5">Page</th>
+                <th className="text-right py-1.5">Sessions</th>
+                <th className="text-right py-1.5">Scroll depth</th>
+                <th className="text-right py-1.5">Rage</th>
+                <th className="text-right py-1.5">Dead</th>
+                <th className="text-right py-1.5">Quick-backs</th>
+                <th className="text-right py-1.5">JS errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {uxRows.map(r => (
+                <tr key={r.url} className="border-b border-[#F5F5F5]">
+                  <td className="py-1.5 font-mono text-[12px] text-[#333333]" title={r.url}>{uxPath(r.url)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{r.sessions.toLocaleString()}</td>
+                  <td className="py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">{r.scrollDepth === null ? '–' : `${r.scrollDepth}%`}</td>
+                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.rage > 0 ? '#BE3B3B' : undefined, fontWeight: r.rage > 0 ? 700 : 400 }}>{r.rage}</td>
+                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.dead > 0 ? '#BE593B' : undefined, fontWeight: r.dead > 0 ? 700 : 400 }}>{r.dead}</td>
+                  <td className="py-1.5 text-right tabular-nums">{r.quickback}</td>
+                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.scriptErrors > 0 ? '#BE3B3B' : undefined, fontWeight: r.scriptErrors > 0 ? 700 : 400 }}>{r.scriptErrors}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="text-[11px] text-[#9C9C9C] mt-3">
+          Summed over the last {ux.snapshotDays || 0} daily snapshot{ux.snapshotDays === 1 ? '' : 's'} (Clarity’s API only serves the trailing day, so history accrues here).
+          {ux.lastFetched && <> Last pull {new Date(ux.lastFetched).toLocaleString()}.</>}
+          {' '}Recordings and heatmaps stay in the Clarity dashboard.
+        </p>
+      </section>
     </div>
   )
 }

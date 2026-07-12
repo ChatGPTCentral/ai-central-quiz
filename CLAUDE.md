@@ -35,3 +35,10 @@ Treat it the way a programmer treats the team board:
   (helper: `personResultPath` in `lib/result-url.ts`); it re-fetches by `id`,
   so the link works anytime, from the notification email, the person record,
   or the People table 🎯.
+- Clarity UX aggregates snapshot daily (Vercel cron 06:30 UTC →
+  `/api/cron/clarity-snapshot`) into `clarity_daily` (raw jsonb per
+  metric × dims × day: rage/dead clicks, quick-backs, scroll depth, script
+  errors, by URL/Device/Source/Country). Read UX health from that table
+  (`lib/clarity.ts` has parsers); the export API itself only serves the
+  trailing 1-3 days at 10 calls/day, and each snapshot spends 4. Recordings
+  and heatmaps have no API, they stay in the Clarity dashboard.
