@@ -365,7 +365,7 @@ export default function ExperimentsPanel({
                   <th className="text-right py-1.5">Click rate</th>
                   <th className="text-right py-1.5">Net-new paid</th>
                   <th className="text-right py-1.5">P(best)</th>
-                  <th className="text-left py-1.5 pl-4">Overrides</th>
+                  <th className="text-left py-1.5 pl-4">What&rsquo;s different</th>
                 </tr>
               </thead>
               <tbody>
@@ -373,7 +373,11 @@ export default function ExperimentsPanel({
                   const r = res?.find(x => x.key === v.key)
                   return (
                     <tr key={v.key} className="border-b border-[#F5F5F5]">
-                      <td className="py-1.5 font-mono">{v.key}{v.approved === false && <span className="ml-2 text-[10px] font-bold text-[#E65100]">UNAPPROVED <button onClick={() => act(row.key, 'approve_variant', v.key)} className="underline">approve</button></span>}</td>
+                      <td className="py-1.5">
+                        <span className="font-semibold text-[#333333]">{v.name || v.key}</span>
+                        <span className="ml-2 font-mono text-[10.5px] text-[#9C9C9C]">{v.key}</span>
+                        {v.approved === false && <span className="ml-2 text-[10px] font-bold text-[#E65100]">UNAPPROVED <button onClick={() => act(row.key, 'approve_variant', v.key)} className="underline">approve</button></span>}
+                      </td>
                       <td className="py-1.5 text-right tabular-nums">{Math.round(v.weight * 100)}%</td>
                       <td className="py-1.5 text-right tabular-nums">{r?.exposures ?? '—'}</td>
                       <td className="py-1.5 text-right tabular-nums">{r ? `${(r.clickRate * 100).toFixed(1)}%` : '—'}</td>
@@ -382,7 +386,11 @@ export default function ExperimentsPanel({
                         {r ? `${(r.probBest * 100).toFixed(0)}%` : '—'}
                       </td>
                       <td className="py-1.5 pl-4 text-[11px] text-[#9C9C9C]">
-                        {Object.keys(v.overrides || {}).length === 0 ? '(control copy)' : Object.keys(v.overrides).join(', ')}
+                        {v.key === 'control'
+                          ? 'the page as-is'
+                          : Object.keys(v.overrides || {}).length > 0
+                            ? Object.keys(v.overrides).join(', ')
+                            : (v.name || 'structural variant') + ' (in code)'}
                       </td>
                     </tr>
                   )

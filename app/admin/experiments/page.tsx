@@ -14,6 +14,10 @@ export default async function ExperimentsPage() {
   let error: string | null = null
   try {
     experiments = await listExperiments()
+    // Active tests first (running, then paused/draft), finished ones last, so
+    // the live experiment is always the headline card.
+    const rank = (s: string) => (s === 'running' ? 0 : s === 'paused' || s === 'draft' ? 1 : 2)
+    experiments.sort((a, b) => rank(a.status) - rank(b.status))
     for (const row of experiments) {
       if (row.status === 'draft') continue
       try {
@@ -31,7 +35,7 @@ export default async function ExperimentsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-black text-[#333333] mb-1">Experiments</h1>
         <p className="text-sm text-[#9C9C9C]">
-          A/B/n copy tests on the result page. Changes and kills propagate in ≤30 seconds, no deploy.
+          A/B/n tests on the result page, copy or structural. Split, exposures and conversion update live; changes and kills propagate in ≤30 seconds, no deploy.
         </p>
         {!flagOn && (
           <p className="mt-2 inline-block rounded-lg bg-[#FFF3E0] px-3 py-1.5 text-[12px] font-bold text-[#E65100]">

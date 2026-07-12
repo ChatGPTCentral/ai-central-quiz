@@ -111,31 +111,20 @@ export default async function FunnelPage() {
   const launchPretracking = eventsStartMs ? launchSubs.filter(s => new Date(s.staged_at!).getTime() < eventsStartMs).length : 0
   const launchCvr = launchCompleted > 0 ? (launchPaid / launchCompleted) * 100 : 0
 
-  const steps: { key: string; label: string; n: number; source: 'events' | 'submissions'; note?: string }[] = [
-    { key: 'quiz_view', label: 'Landing view', n: uniquePeople(by('quiz_view')), source: 'events' },
-    { key: 'quiz_start', label: 'Quiz started', n: uniquePeople(by('quiz_start')), source: 'events' },
-    {
-      key: 'email_submitted',
-      label: 'Quiz completed',
-      n: subsEventsEra.length,
-      source: 'submissions',
-    },
-    {
-      key: 'result_view',
-      label: 'Result viewed',
-      n: uniquePeople(by('result_view')),
-      source: 'events',
-      note: 'every open of a result link counts: revisits, admin 🎯 views, shared links',
-    },
-    { key: 'checkout_click', label: 'Checkout clicked', n: uniquePeople(by('checkout_click')), source: 'events' },
-    {
-      key: 'net_new_paid',
-      label: 'Net-new paid',
-      n: paidOf(subsEventsEra),
-      source: 'submissions',
-    },
+  // On-page funnel: the monotonic path through the pages, one person per
+  // step, all in the events window. Result-page opens and paid are shown as
+  // context below (result opens counts revisits/shares so it isn't a clean
+  // step; paid is a CRM outcome owned by the launch panel), which keeps
+  // every bar a true subset of the one above it.
+  const steps: { key: string; label: string; n: number }[] = [
+    { key: 'quiz_view', label: 'Landing view', n: uniquePeople(by('quiz_view')) },
+    { key: 'quiz_start', label: 'Quiz started', n: uniquePeople(by('quiz_start')) },
+    { key: 'email_submitted', label: 'Quiz completed', n: subsEventsEra.length },
+    { key: 'checkout_click', label: 'Checkout clicked', n: uniquePeople(by('checkout_click')) },
   ]
   const maxN = Math.max(...steps.map(s => s.n), 1)
+  const resultOpens = uniquePeople(by('result_view'))
+  const trackedPaid = paidOf(subsEventsEra)
 
   // Per-placement CTA performance: unique viewers (placement_view, accrues
   // from when impression tracking shipped) vs unique clickers. Distinguishes
@@ -229,14 +218,11 @@ export default async function FunnelPage() {
             const rate = prev && prev > 0 ? (s.n / prev) * 100 : null
             return (
               <div key={s.key} className="flex items-center gap-3 text-[13px]">
-                <div className="w-40 shrink-0 font-medium text-[#333333]">
-                  {s.label}
-                  {s.note && <span className="block text-[10px] font-normal text-[#9C9C9C] leading-tight">{s.note}</span>}
-                </div>
+                <div className="w-40 shrink-0 font-medium text-[#333333]">{s.label}</div>
                 <div className="flex-1 relative h-6 bg-[#F5F5F5] rounded">
                   <div
                     className="absolute inset-y-0 left-0 rounded transition-all"
-                    style={{ width: `${(s.n / maxN) * 100}%`, backgroundColor: s.key === 'net_new_paid' ? '#62A758' : '#046BB1' }}
+                    style={{ width: `${(s.n / maxN) * 100}%`, backgroundColor: '#046BB1' }}
                   />
                 </div>
                 <div className="w-14 shrink-0 text-right tabular-nums font-bold text-[#333333]">{s.n.toLocaleString()}</div>
@@ -247,8 +233,13 @@ export default async function FunnelPage() {
             )
           })}
         </div>
+        {/* Context stats kept OUT of the monotonic bars on purpose */}
+        <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t border-[#F0EDE8] pt-3 text-[12px]">
+          <span className="text-[#9C9C9C]">Result page opens: <strong className="text-[#333333] tabular-nums">{resultOpens.toLocaleString()}</strong> <span className="text-[10.5px]">(counts revisits, shared links and admin 🎯, so not a funnel step)</span></span>
+          <span className="text-[#9C9C9C]">Net-new paid, this slice: <strong className="text-[#333333] tabular-nums">{trackedPaid}</strong> <span className="text-[10.5px]">(launch-cohort total is {launchPaid}, above)</span></span>
+        </div>
         <p className="text-[11px] text-[#9C9C9C] mt-3">
-          &ldquo;Quiz completed&rdquo; here is the {steps[2].n} tracked since Jul 9, not the {launchCompleted} launch total above. &ldquo;Result viewed&rdquo; can exceed completions because reopened and shared result links each count.
+          &ldquo;Quiz completed&rdquo; here is the {steps[2].n} tracked since Jul 9, a subset of the {launchCompleted} launch total above. Every bar is a true subset of the one above it.
         </p>
       </section>
 
