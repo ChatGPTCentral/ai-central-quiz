@@ -31,7 +31,7 @@ const ALLOWED_EVENTS = new Set([
   // starter kit
   'starter_kit_view', 'starter_kit_click',
   // viral loop (share → pass → new taker)
-  'share_click', 'pass_view',
+  'share_click', 'pass_view', 'card_download',
   // CTA impressions (view side of the per-placement CTR)
   'placement_view',
 ])

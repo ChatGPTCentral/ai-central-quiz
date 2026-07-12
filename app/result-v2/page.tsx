@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
+import { headers } from 'next/headers'
 import TrackView from '@/components/TrackView'
-import { ExitRescue } from '@/components/result/ExitRescue.client'
+import { ExitRescue2 } from '@/components/result2/ExitRescue2.client'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
 import { FomoNotifications } from '@/components/result2/FomoNotifications.client'
@@ -187,7 +188,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   const topPct = 100 - rt.aheadPct
   const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
-  const sharePost = `I just measured my AI readiness with @AICentral, I'm in the top ${topPct}% of people on their AI journey.\n\nSee where you rank: ${site}/pass?ref=${refNo}\n\n#AICentral`
+  // Visitor country from Vercel's IP geo header (absent locally) — used to
+  // surface trial notifications from the visitor's own region first.
+  const visitorCountry = headers().get('x-vercel-ip-country') ?? undefined
 
   // Next rung up the ladder (for the gauge caption). Weeks rule: the next
   // step is always ~1 week away.
@@ -262,8 +265,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               </div>
             </div>
 
-            {/* Live trials, Dynamic-Island style — seamless, right under the CTA */}
-            <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} />
+            {/* Live trials — seamless, right under the CTA, visitor's region first */}
+            <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
           </div>
         </section>
 
@@ -316,7 +319,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 refNo={refNo}
                 issued={issued}
                 submissionId={rowId}
-                shareText={sharePost}
                 site={site}
               />
             </div>
@@ -350,7 +352,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       </div>
 
       <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} />
-      <ExitRescue submissionId={rowId} />
+      <ExitRescue2 submissionId={rowId} />
     </>
   )
 }

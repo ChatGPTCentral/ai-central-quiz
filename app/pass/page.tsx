@@ -28,10 +28,12 @@ function passImageUrl(sp: Search): string {
 
 export async function generateMetadata({ searchParams }: { searchParams: Search }): Promise<Metadata> {
   const pct = (searchParams.pct || '').replace(/[^0-9.]/g, '')
-  const name = searchParams.name?.trim().split(/\s+/)[0]
-  const title = pct
-    ? `${name ? `${name} is` : "I'm"} in the top ${pct}% of AI users worldwide`
-    : 'Where do you rank in AI adoption?'
+  const name = searchParams.name?.trim()
+  const title = pct && name
+    ? `${name} is in the Top ${pct}% of AI Adoption - Discover Yours`
+    : pct
+      ? `I'm in the Top ${pct}% of AI Adoption - Discover Yours`
+      : 'Where do you rank in AI adoption?'
   const description = 'Take the 40-second quiz to get your AI Readiness Type, your member pass, and your place among 8.1 billion people.'
   const img = passImageUrl(searchParams)
   return {

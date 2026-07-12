@@ -32,13 +32,13 @@ async function toSquareDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', 0.86)
 }
 
-/** Post text with @AICentral / #AICentral rendered LinkedIn-blue. */
+/** Post text with @AI Central / #AICentral rendered LinkedIn-blue. */
 function HighlightedPost({ text }: { text: string }) {
-  const parts = text.split(/(@AICentral|#AICentral)/g)
+  const parts = text.split(/(@AI Central|#AICentral)/g)
   return (
     <>
       {parts.map((p, i) =>
-        p === '@AICentral' || p === '#AICentral'
+        p === '@AI Central' || p === '#AICentral'
           ? <span key={i} style={{ color: LI_BLUE, fontWeight: 600 }}>{p}</span>
           : <span key={i}>{p}</span>,
       )}
@@ -54,7 +54,6 @@ export function PassStudio({
   refNo,
   issued,
   submissionId,
-  shareText,
   site,
 }: {
   name: string
@@ -64,7 +63,6 @@ export function PassStudio({
   refNo: string
   issued: string
   submissionId?: string
-  shareText: string
   site: string
 }) {
   const [faceLocal, setFaceLocal] = useState<string | null>(null)
@@ -78,8 +76,10 @@ export function PassStudio({
   const firstName = name.trim().split(/\s+/)[0] || 'AI Professional'
   const face = faceLocal
 
+  // FULL name in the share params: the /pass title and the og card must
+  // show the person, never the "AI Professional" fallback.
   const baseParams = new URLSearchParams({
-    name: firstName,
+    name: name.trim() || 'AI Professional',
     stage: stageLabel,
     profile: profileLabel,
     pct: String(topPct),
@@ -90,6 +90,9 @@ export function PassStudio({
   const ogImageUrl = `/api/pass-image?${baseParams.toString()}`
   const sharePassUrl = `${site}/pass?${baseParams.toString()}`
   const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(sharePassUrl)}`
+  // The URL inside the post text is IDENTICAL to the share button's URL,
+  // so a pasted link unfurls the same personalized card.
+  const shareText = `I just measured my AI readiness with @AI Central, I'm in the top ${topPct}% of people on their AI journey.\n\nSee where you rank: ${sharePassUrl}\n\n#AICentral`
 
   const pick = async (f: File | undefined) => {
     if (!f || !f.type.startsWith('image/')) return
@@ -116,6 +119,22 @@ export function PassStudio({
   const onShare = () => {
     try { navigator.clipboard?.writeText(shareText).then(() => setCopied(true)).catch(() => {}) } catch { /* noop */ }
     sendEvent('share_click', { props: { placement: 'v2_result_pass', ref: refNo, submissionId } })
+  }
+
+  const downloadCard = async () => {
+    sendEvent('card_download', { props: { placement: 'v2_result_pass', withPhoto: !!facePublic }, submissionId })
+    try {
+      const res = await fetch(ogImageUrl)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'ai-central-member-card.png'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 4000)
+    } catch { /* non-fatal */ }
   }
 
   return (
@@ -197,7 +216,7 @@ export function PassStudio({
           onClick={() => setOpen(true)}
           style={{ fontSize: 12.5, fontWeight: 700, color: INK, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
         >
-          🪪 {face ? 'Change photo or LinkedIn' : 'Add your face + LinkedIn'}
+          🪪 Add your photo and LinkedIn profile
         </button>
         {saved === 'done' && <span style={{ fontSize: 12, color: '#2E7D32', fontWeight: 700 }}>✓ saved</span>}
         {saved === 'local' && <span style={{ fontSize: 12, color: MUTE }}>previewing locally</span>}
@@ -256,22 +275,33 @@ export function PassStudio({
         </div>
       </div>
 
-      {/* ── SHARE ─────────────────────────────────────────────────── */}
+      {/* ── SHARE + DOWNLOAD ──────────────────────────────────────── */}
       <div className="mt-6 flex flex-col items-center">
-        <a
-          href={linkedinUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={onShare}
-          className="inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
-          style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600, textDecoration: 'none' }}
-          aria-label="Share on LinkedIn"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
-            <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
-          </svg>
-          Share on LinkedIn
-        </a>
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          <a
+            href={linkedinUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onShare}
+            className="inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
+            style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600, textDecoration: 'none' }}
+            aria-label="Share on LinkedIn"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
+              <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
+            </svg>
+            Share on LinkedIn
+          </a>
+          <button
+            type="button"
+            onClick={downloadCard}
+            className="inline-flex items-center justify-center gap-2 rounded-full transition-colors hover:bg-[#FEF7E7]"
+            style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+            aria-label="Download your member card as an image"
+          >
+            ⬇ Download card
+          </button>
+        </div>
         <p className="mt-2" style={{ fontSize: 11.5, color: copied ? '#2E7D32' : MUTE, fontWeight: copied ? 700 : 400 }}>
           {copied ? '✓ Post text copied, just paste it into LinkedIn' : 'Clicking share copies the post text for you'}
         </p>
