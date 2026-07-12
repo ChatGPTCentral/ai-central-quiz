@@ -1,36 +1,19 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { sendEvent } from '@/lib/events-client'
-import { Barcode } from '@/components/result/PassCard'
+import { PassCard } from '@/components/result/PassCard'
 
-// The pass studio (result v2): a US-ID-style member card with a photo box
-// (click to add your face + LinkedIn), a hi-fi LinkedIn post preview that
-// embeds the REAL og image the unfurl will use, and a share button that
-// copies the post text to the clipboard before opening LinkedIn — so the
-// sample text travels and the rendered image matches the on-page card.
+// The pass studio: the member pass (same card as always), a hi-fi LinkedIn
+// post preview embedding the REAL og image the unfurl will use, a share
+// button that copies the post text to the clipboard before opening
+// LinkedIn (the sample text travels; LinkedIn can't prefill it via URL),
+// and a Download button for the card image.
 
 const INK = '#333333'
-const RICH = '#1A1A1A'
 const MUTE = '#9C9C9C'
 const CREAM = '#FEF7E7'
-const FULVOUS = '#E48715'
 const LI_BLUE = '#0A66C2'
-
-/** Square-crop + downscale a picked file to a 512px JPEG data URL. */
-async function toSquareDataUrl(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file)
-  const side = Math.min(bitmap.width, bitmap.height)
-  const sx = (bitmap.width - side) / 2
-  const sy = (bitmap.height - side) / 2
-  const out = 512
-  const canvas = document.createElement('canvas')
-  canvas.width = out
-  canvas.height = out
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, out, out)
-  return canvas.toDataURL('image/jpeg', 0.86)
-}
 
 /** Post text with @AI Central / #AICentral rendered LinkedIn-blue. */
 function HighlightedPost({ text }: { text: string }) {
@@ -53,6 +36,7 @@ export function PassStudio({
   topPct,
   refNo,
   issued,
+  description,
   submissionId,
   site,
 }: {
@@ -62,59 +46,29 @@ export function PassStudio({
   topPct: number
   refNo: string
   issued: string
+  description?: string
   submissionId?: string
   site: string
 }) {
-  const [faceLocal, setFaceLocal] = useState<string | null>(null)
-  const [facePublic, setFacePublic] = useState<string | null>(null)
-  const [open, setOpen] = useState(false)
-  const [linkedin, setLinkedin] = useState('')
-  const [saved, setSaved] = useState<'idle' | 'saving' | 'done' | 'local'>('idle')
   const [copied, setCopied] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const firstName = name.trim().split(/\s+/)[0] || 'AI Professional'
-  const face = faceLocal
 
   // FULL name in the share params: the /pass title and the og card must
-  // show the person, never the "AI Professional" fallback.
+  // show the person, never the "AI Professional" fallback. The URL inside
+  // the post text is IDENTICAL to the share button's URL, so a pasted
+  // link unfurls the same card.
   const baseParams = new URLSearchParams({
     name: name.trim() || 'AI Professional',
     stage: stageLabel,
     profile: profileLabel,
     pct: String(topPct),
     ref: refNo,
-    style: 'id',
   })
-  if (facePublic) baseParams.set('photo', facePublic)
   const ogImageUrl = `/api/pass-image?${baseParams.toString()}`
   const sharePassUrl = `${site}/pass?${baseParams.toString()}`
   const linkedinUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(sharePassUrl)}`
-  // The URL inside the post text is IDENTICAL to the share button's URL,
-  // so a pasted link unfurls the same personalized card.
   const shareText = `I just measured my AI readiness with @AI Central, I'm in the top ${topPct}% of people on their AI journey.\n\nSee where you rank: ${sharePassUrl}\n\n#AICentral`
-
-  const pick = async (f: File | undefined) => {
-    if (!f || !f.type.startsWith('image/')) return
-    try { setFaceLocal(await toSquareDataUrl(f)) } catch { /* unsupported file */ }
-  }
-
-  const save = async () => {
-    if (!faceLocal && !linkedin.trim()) { setOpen(false); return }
-    if (!submissionId) { setSaved('local'); setOpen(false); return }
-    setSaved('saving')
-    try {
-      const res = await fetch('/api/pass-photo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submissionId, imageBase64: faceLocal || undefined, linkedinUrl: linkedin.trim() || undefined }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (data?.photoUrl) setFacePublic(data.photoUrl as string)
-      setSaved('done')
-    } catch { setSaved('local') }
-    setOpen(false)
-  }
 
   const onShare = () => {
     try { navigator.clipboard?.writeText(shareText).then(() => setCopied(true)).catch(() => {}) } catch { /* noop */ }
@@ -122,14 +76,14 @@ export function PassStudio({
   }
 
   const downloadCard = async () => {
-    sendEvent('card_download', { props: { placement: 'v2_result_pass', withPhoto: !!facePublic }, submissionId })
+    sendEvent('card_download', { props: { placement: 'v2_result_pass' }, submissionId })
     try {
       const res = await fetch(ogImageUrl)
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'ai-central-member-card.png'
+      a.download = 'ai-central-member-pass.png'
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -139,87 +93,17 @@ export function PassStudio({
 
   return (
     <div>
-      {/* ── THE ID CARD (US-ID style) ─────────────────────────────── */}
-      <div className="mx-auto text-left" style={{ maxWidth: 520, border: `3px solid ${RICH}`, backgroundColor: '#FDFBF3', boxShadow: '0 18px 44px rgba(0,0,0,0.18)' }}>
-        {/* header band */}
-        <div className="flex items-center justify-between" style={{ backgroundColor: INK, padding: '10px 16px' }}>
-          <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.18em', color: CREAM }}>
-            AI CENTRAL · MEMBER IDENTIFICATION
-          </span>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-avatar-light.png" alt="" style={{ width: 20, height: 20, display: 'block' }} />
-        </div>
-        <div style={{ height: 4, background: `linear-gradient(90deg, ${FULVOUS}, #E7B02F)` }} aria-hidden />
-
-        {/* body: photo box + fields */}
-        <div className="flex gap-4" style={{ padding: '16px 16px 14px' }}>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="shrink-0 flex flex-col items-center justify-center"
-            style={{
-              width: 118, height: 148,
-              border: face ? `2px solid ${RICH}` : `2px dashed ${MUTE}`,
-              backgroundColor: face ? '#000' : '#F1ECE1',
-              cursor: 'pointer', padding: 0, overflow: 'hidden',
-            }}
-            aria-label="Add your photo to the card"
-          >
-            {face ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={face} alt="Your ID photo" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-            ) : (
-              <>
-                <span style={{ fontSize: 26, color: MUTE }} aria-hidden>+</span>
-                <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em', color: MUTE, marginTop: 4 }}>ADD PHOTO</span>
-              </>
-            )}
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.14em', color: MUTE }}>NAME</p>
-            <p className="uppercase" style={{ fontSize: 'clamp(19px, 3vw, 24px)', fontWeight: 900, letterSpacing: '-0.02em', color: RICH, lineHeight: 1.05 }}>{name}</p>
-            <p className="mt-1.5 font-mono" style={{ fontSize: 12, letterSpacing: '0.12em', color: FULVOUS, fontWeight: 700 }}>
-              STAGE: {stageLabel}
-            </p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3" style={{ borderTop: `1px solid #DDD5C4`, paddingTop: 10 }}>
-              <div>
-                <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em', color: MUTE }}>PROFILE</p>
-                <p style={{ fontSize: 12.5, fontWeight: 700, color: RICH }}>{profileLabel}</p>
-              </div>
-              <div>
-                <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em', color: MUTE }}>AI LEADERSHIP</p>
-                <p style={{ fontSize: 12.5, fontWeight: 700, color: FULVOUS }}>Top {topPct}% World</p>
-              </div>
-              <div>
-                <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em', color: MUTE }}>ISSUED</p>
-                <p style={{ fontSize: 12.5, fontWeight: 700, color: RICH }}>{issued}</p>
-              </div>
-              <div>
-                <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.14em', color: MUTE }}>ID NO.</p>
-                <p style={{ fontSize: 12.5, fontWeight: 700, color: RICH }}>{refNo}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* barcode strip */}
-        <div className="flex items-center justify-between" style={{ backgroundColor: CREAM, borderTop: `2px solid ${RICH}`, padding: '9px 16px' }}>
-          <Barcode seed={refNo} width={190} height={24} />
-          <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: RICH }}>VERIFIED MEMBER</span>
-        </div>
-      </div>
-
-      <div className="mt-3 flex items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          style={{ fontSize: 12.5, fontWeight: 700, color: INK, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
-        >
-          🪪 Add your photo and LinkedIn profile
-        </button>
-        {saved === 'done' && <span style={{ fontSize: 12, color: '#2E7D32', fontWeight: 700 }}>✓ saved</span>}
-        {saved === 'local' && <span style={{ fontSize: 12, color: MUTE }}>previewing locally</span>}
+      {/* ── THE MEMBER PASS (same card as prod) ───────────────────── */}
+      <div className="mx-auto" style={{ maxWidth: 480 }}>
+        <PassCard
+          name={name}
+          personaLabel={profileLabel}
+          stageLine={`STAGE: ${stageLabel}`}
+          passPct={`Top ${topPct}% World`}
+          issued={issued}
+          refNo={refNo}
+          description={description}
+        />
       </div>
 
       {/* ── HI-FI LINKEDIN POST PREVIEW ───────────────────────────── */}
@@ -237,11 +121,8 @@ export function PassStudio({
 
         {/* post header */}
         <div className="flex items-center gap-3" style={{ padding: '12px 14px 0' }}>
-          <span className="flex items-center justify-center shrink-0" style={{ width: 46, height: 46, borderRadius: '50%', overflow: 'hidden', backgroundColor: '#DCE6F1', color: LI_BLUE, fontSize: 19, fontWeight: 800 }}>
-            {face
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={face} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              : firstName[0]?.toUpperCase()}
+          <span className="flex items-center justify-center shrink-0" style={{ width: 46, height: 46, borderRadius: '50%', backgroundColor: '#DCE6F1', color: LI_BLUE, fontSize: 19, fontWeight: 800 }}>
+            {firstName[0]?.toUpperCase()}
           </span>
           <span className="min-w-0">
             <span className="block" style={{ fontSize: 14, fontWeight: 700, color: '#191919', lineHeight: 1.2 }}>{name}</span>
@@ -260,11 +141,11 @@ export function PassStudio({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={ogImageUrl}
-            alt="Your member card as it will appear on LinkedIn"
+            alt="Your member pass as it will appear on LinkedIn"
             style={{ width: '100%', aspectRatio: '1200 / 630', objectFit: 'cover', display: 'block', backgroundColor: CREAM }}
           />
           <div style={{ backgroundColor: '#F3F2EF', padding: '8px 14px' }}>
-            <p style={{ fontSize: 12.5, fontWeight: 700, color: '#191919' }}>Where do you rank in AI adoption?</p>
+            <p style={{ fontSize: 12.5, fontWeight: 700, color: '#191919' }}>{name} is in the Top {topPct}% of AI Adoption - Discover Yours</p>
             <p style={{ fontSize: 11, color: '#666' }}>quiz.thecentral.ai</p>
           </div>
         </div>
@@ -297,7 +178,7 @@ export function PassStudio({
             onClick={downloadCard}
             className="inline-flex items-center justify-center gap-2 rounded-full transition-colors hover:bg-[#FEF7E7]"
             style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
-            aria-label="Download your member card as an image"
+            aria-label="Download your member pass as an image"
           >
             ⬇ Download card
           </button>
@@ -306,69 +187,6 @@ export function PassStudio({
           {copied ? '✓ Post text copied, just paste it into LinkedIn' : 'Clicking share copies the post text for you'}
         </p>
       </div>
-
-      {/* ── PERSONALIZE POPUP ─────────────────────────────────────── */}
-      {open && (
-        <div
-          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
-          style={{ backgroundColor: 'rgba(26,26,26,0.5)' }}
-          onClick={() => setOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Personalize your card"
-        >
-          <div
-            className="w-full max-w-[380px] bg-white p-6 text-left"
-            style={{ border: `3px solid ${INK}`, boxShadow: '0 24px 60px rgba(0,0,0,0.3)' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <p style={{ fontSize: 17, fontWeight: 800, color: RICH }}>Personalize your card</p>
-            <p className="mt-1" style={{ fontSize: 12.5, color: '#4A4A4A', fontWeight: 300, lineHeight: 1.45 }}>
-              Add your face and your LinkedIn, it shows on the card before you share it.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="mt-4 w-full flex items-center justify-center gap-3"
-              style={{ border: `2px dashed ${face ? '#2E7D32' : INK}`, backgroundColor: '#FFFDFA', padding: '14px 12px', cursor: 'pointer' }}
-            >
-              {face ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={face} alt="" style={{ width: 44, height: 44, borderRadius: 6, objectFit: 'cover', border: `2px solid ${INK}` }} />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#2E7D32' }}>Photo added, tap to change</span>
-                </>
-              ) : (
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>📷 Upload your photo</span>
-              )}
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => pick(e.target.files?.[0])} />
-
-            <label className="block mt-4">
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: MUTE }}>LINKEDIN PROFILE</span>
-              <input
-                type="url"
-                value={linkedin}
-                onChange={e => setLinkedin(e.target.value)}
-                placeholder="https://linkedin.com/in/you"
-                className="mt-1 w-full"
-                style={{ border: `2px solid ${INK}`, padding: '10px 12px', fontSize: 13.5, outline: 'none' }}
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={save}
-              disabled={saved === 'saving'}
-              className="mt-5 w-full transition-opacity hover:opacity-90"
-              style={{ backgroundColor: FULVOUS, color: RICH, border: `2px solid ${RICH}`, padding: '12px 0', fontSize: 14.5, fontWeight: 800, cursor: 'pointer', opacity: saved === 'saving' ? 0.6 : 1 }}
-            >
-              {saved === 'saving' ? 'Saving…' : 'Put it on my card'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

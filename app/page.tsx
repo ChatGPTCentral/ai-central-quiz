@@ -2,7 +2,8 @@ import Link from 'next/link'
 import AICentralLogo from '@/components/AICentralLogo'
 import FomoPopup from '@/components/FomoPopup'
 import TrackView from '@/components/TrackView'
-import { AdoptionChart } from '@/components/result/AdoptionChart'
+import FomoDiscovered from '@/components/FomoDiscovered.client'
+import { PassCard } from '@/components/result/PassCard'
 
 export const metadata = {
   title: 'AI Central, where do you rank in AI adoption?',
@@ -95,9 +96,14 @@ export default function HomePage({
               free, no card, 40 seconds
             </p>
 
+            {/* Live "discovered their AI Score" notifications */}
+            <div className="mt-6 sm:mt-7">
+              <FomoDiscovered quizHref={quizHref} />
+            </div>
+
             {/* Survey time + completions count — social-proof strip, hard-edge restyle. */}
             <div
-              className="mt-6 sm:mt-7 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 py-2.5 font-mono"
+              className="mt-5 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 py-2.5 font-mono"
               style={{ backgroundColor: '#FFFFFF', border: `2px solid ${INK}`, fontSize: 10.5, letterSpacing: '0.08em', color: INK }}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -115,11 +121,18 @@ export default function HomePage({
             </div>
           </div>
 
-          {/* Right column — the hook: the adoption density chart. This is what
-              people take the quiz to discover — their place among everyone
-              else. Chart-only (bare) so the left column carries the headline. */}
-          <div className="w-full max-w-[400px] mx-auto">
-            <AdoptionChart variant="cover" bare />
+          {/* Right column — the hook: the member pass the quiz mints for you.
+              "YOUR NAME" placeholder makes the reward tangible at a glance. */}
+          <div className="w-full max-w-[440px] mx-auto">
+            <PassCard
+              name="YOUR NAME"
+              personaLabel="AI Professional"
+              stageLine="STAGE: ?????"
+              passPct="Top ??% World"
+              issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
+              refNo="AC-????"
+              description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
+            />
           </div>
         </div>
       </main>

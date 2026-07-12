@@ -4,21 +4,17 @@ import { useEffect, useRef, useState } from 'react'
 import { sendEvent } from '@/lib/events-client'
 import { firePlacementView } from '@/components/CheckoutLink.client'
 
-// FOMO trial notifications, v3: light translucent cards (soft radius, no
-// pill), opening with a 24h ROUNDUP ("36 Marketing Directors started a
-// trial…"), then individual buyers at RANDOMIZED intervals for an organic
-// rhythm. Buyers from the visitor's country (Vercel geo header) surface
-// first, and every event carries a map thumb: a self-contained pixel-world
-// SVG with a pulsing pin at the buyer's location (no external tile
-// services). Whole card checks out (placement v2_fomo_notification).
+// FOMO trial notifications: light translucent text cards (soft radius),
+// opening with a 24h ROUNDUP ("36 Marketing Directors started a trial…"),
+// then individual buyers at RANDOMIZED intervals for an organic rhythm.
+// Buyers from the visitor's country (Vercel geo header) surface first.
+// Whole card checks out (placement v2_fomo_notification).
 
 const RICH = '#1A1A1A'
 const MUTE = '#9C9C9C'
-const CREAM = '#FEF7E7'
-const FULVOUS = '#E48715'
 
 // Buyer pool mirrors the real converter profile (US-heavy, senior,
-// practitioner roles; no India per owner decision). lat/lon feed the map.
+// practitioner roles; no India per owner decision).
 const BUYERS = [
   { name: 'James R.', title: 'VP of Operations', flag: '🇺🇸', city: 'New York, NY', country: 'US', lat: 40.7, lon: -74.0, ago: '2m' },
   { name: 'Sarah M.', title: 'Marketing Director', flag: '🇺🇸', city: 'San Francisco, CA', country: 'US', lat: 37.8, lon: -122.4, ago: '11m' },
@@ -43,57 +39,6 @@ const ROUNDUPS = [
 type Item =
   | { kind: 'roundup'; count: number; title: string }
   | { kind: 'buyer'; buyer: (typeof BUYERS)[number] }
-
-/** Blocky "pixel world" landmasses on a 360x180 equirectangular grid
- *  (x = lon + 180, y = 90 - lat). Deliberately low-fi, brand-styled. */
-const LAND: [number, number, number, number][] = [
-  // North America
-  [25, 25, 50, 18], [35, 43, 35, 14], [55, 57, 18, 10], [78, 62, 10, 8],
-  // South America
-  [95, 82, 18, 12], [98, 94, 14, 20], [102, 114, 8, 14],
-  // Greenland
-  [125, 12, 16, 12],
-  // Europe
-  [170, 28, 22, 16], [178, 44, 16, 8],
-  // Africa
-  [172, 55, 26, 16], [176, 71, 22, 22], [186, 93, 12, 12],
-  // Asia
-  [192, 20, 60, 22], [200, 42, 44, 14], [232, 56, 22, 12], [248, 40, 18, 14],
-  // SE Asia / Indonesia
-  [270, 78, 16, 6], [282, 84, 12, 5],
-  // Australia
-  [288, 100, 22, 14],
-  // Japan-ish
-  [278, 44, 6, 10],
-]
-
-function MapThumb({ pins, size = 78 }: { pins: { lat: number; lon: number }[]; size?: number }) {
-  return (
-    <span className="shrink-0 flex items-center justify-center" style={{ width: size, height: size, borderRadius: 10, overflow: 'hidden', border: `1.5px solid ${RICH}`, backgroundColor: CREAM }} aria-hidden>
-      <svg viewBox="0 0 360 180" style={{ width: '100%', height: '100%', display: 'block' }} preserveAspectRatio="xMidYMid slice">
-        <rect x="0" y="0" width="360" height="180" fill={CREAM} />
-        {/* graticule */}
-        {[30, 60, 90, 120, 150].map(y => <line key={`h${y}`} x1="0" y1={y} x2="360" y2={y} stroke="#E7DFCB" strokeWidth="1" />)}
-        {[60, 120, 180, 240, 300].map(x => <line key={`v${x}`} x1={x} y1="0" x2={x} y2="180" stroke="#E7DFCB" strokeWidth="1" />)}
-        {/* landmasses */}
-        {LAND.map((r, i) => <rect key={i} x={r[0]} y={r[1]} width={r[2]} height={r[3]} rx="3" fill="#D9D0BC" />)}
-        {/* pins */}
-        {pins.map((p, i) => {
-          const x = p.lon + 180
-          const y = 90 - p.lat
-          return (
-            <g key={i}>
-              <circle cx={x} cy={y} r="11" fill={FULVOUS} opacity="0.28">
-                <animate attributeName="r" values="7;15;7" dur="2.2s" repeatCount="indefinite" />
-              </circle>
-              <circle cx={x} cy={y} r="5.5" fill={FULVOUS} stroke={RICH} strokeWidth="1.6" />
-            </g>
-          )
-        })}
-      </svg>
-    </span>
-  )
-}
 
 const EXIT_MS = 280
 
@@ -164,7 +109,7 @@ export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry }:
   return (
     <div
       className="mx-auto"
-      style={{ maxWidth: 480, height: 104, position: 'relative', marginTop: 26 }}
+      style={{ maxWidth: 480, height: 88, position: 'relative', marginTop: 26 }}
       aria-label="Recent trial notifications"
       onMouseEnter={() => { paused.current = true }}
       onMouseLeave={() => { paused.current = false }}
@@ -190,31 +135,25 @@ export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry }:
         aria-live="polite"
       >
         {item.kind === 'roundup' ? (
-          <>
-            <MapThumb pins={BUYERS.slice(0, 6).map(b => ({ lat: b.lat, lon: b.lon }))} />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline justify-between gap-2">
-                <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: MUTE }}>AI CENTRAL · LAST 24 HOURS</span>
-                <span style={{ fontSize: 11, color: MUTE }}>now</span>
-              </span>
-              <span className="block" style={{ fontSize: 13.5, color: RICH, lineHeight: 1.35, marginTop: 3 }}>
-                <strong>{item.count} {item.title}</strong> started a trial of the AI Library in the last 24 hours
-              </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: MUTE }}>LAST 24 HOURS</span>
+              <span style={{ fontSize: 11, color: MUTE }}>now</span>
             </span>
-          </>
+            <span className="block" style={{ fontSize: 13.5, color: RICH, lineHeight: 1.35, marginTop: 3 }}>
+              <strong>{item.count} {item.title}</strong> started a trial of the AI Library in the last 24 hours
+            </span>
+          </span>
         ) : (
-          <>
-            <MapThumb pins={[{ lat: item.buyer.lat, lon: item.buyer.lon }]} />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline justify-between gap-2">
-                <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: MUTE }}>AI CENTRAL · NEW TRIAL 🎉</span>
-                <span style={{ fontSize: 11, color: MUTE }}>{item.buyer.ago} ago</span>
-              </span>
-              <span className="block" style={{ fontSize: 12.5, color: '#3C3C43', lineHeight: 1.4, marginTop: 3 }}>
-                <strong style={{ color: RICH }}>{item.buyer.name}</strong> ({item.buyer.title}) from {item.buyer.flag} {item.buyer.city} started a trial of the AI Library
-              </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: MUTE }}>NEW TRIAL 🎉</span>
+              <span style={{ fontSize: 11, color: MUTE }}>{item.buyer.ago} ago</span>
             </span>
-          </>
+            <span className="block" style={{ fontSize: 12.5, color: '#3C3C43', lineHeight: 1.4, marginTop: 3 }}>
+              <strong style={{ color: RICH }}>{item.buyer.name}</strong> ({item.buyer.title}) from {item.buyer.flag} {item.buyer.city} started a trial of the AI Library
+            </span>
+          </span>
         )}
       </a>
 
