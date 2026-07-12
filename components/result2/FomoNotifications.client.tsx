@@ -4,17 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { sendEvent } from '@/lib/events-client'
 import { firePlacementView } from '@/components/CheckoutLink.client'
 
-// FOMO trial notifications styled as iPhone push notifications: ONE fixed
-// slot under the hero where notifications pop in, hold, slide away, and
-// the next buyer pops into the exact same spot. Whole card checks out
-// (placement v2_fomo_notification). Pauses on hover; reduced-motion gets
-// a gentle crossfade instead of the pop.
+// FOMO trial notifications as an Apple Dynamic-Island capsule: a black
+// rounded pill with the iconic ambient glow, popping/expanding in ONE
+// fixed slot, cycling through buyers. Seamless — no band, no borders;
+// it floats on whatever section hosts it (below the trial CTA). Whole
+// capsule checks out (placement v2_fomo_notification).
 
-const RICH = '#1A1A1A'
-const MUTE = '#9C9C9C'
-
-// Buyer pool mirrors the real converter profile (US-heavy, senior,
-// practitioner roles). Owner decision: no India entries.
+// Buyer pool mirrors the real converter profile. Owner decision: no India.
 const BUYERS = [
   { name: 'James R.', title: 'VP of Operations', flag: '🇺🇸', city: 'New York, NY', ago: '2m' },
   { name: 'Sarah M.', title: 'Marketing Director', flag: '🇺🇸', city: 'San Francisco, CA', ago: '11m' },
@@ -28,8 +24,8 @@ const BUYERS = [
   { name: 'Sofia R.', title: 'Managing Director', flag: '🇪🇸', city: 'Madrid', ago: '3h' },
 ]
 
-const HOLD_MS = 3800
-const EXIT_MS = 320
+const HOLD_MS = 4200
+const EXIT_MS = 300
 
 export function FomoNotifications({ checkoutUrl, submissionId }: { checkoutUrl: string; submissionId?: string }) {
   const [idx, setIdx] = useState(0)
@@ -62,77 +58,74 @@ export function FomoNotifications({ checkoutUrl, submissionId }: { checkoutUrl: 
   const b = BUYERS[idx]
 
   return (
-    <section
-      style={{ borderTop: '3px solid #333333', backgroundColor: '#FEF7E7', padding: '22px 16px' }}
+    <div
+      className="mx-auto"
+      style={{ maxWidth: 460, height: 84, position: 'relative', marginTop: 26 }}
       aria-label="Recent trial notifications"
       onMouseEnter={() => { paused.current = true }}
       onMouseLeave={() => { paused.current = false }}
     >
-      {/* Fixed-height slot: notifications swap in place, layout never shifts */}
-      <div className="mx-auto" style={{ maxWidth: 430, height: 96, position: 'relative' }}>
-        <a
-          key={idx}
-          href={checkoutUrl}
-          onClick={() => sendEvent('checkout_click', { props: { placement: 'v2_fomo_notification' }, submissionId })}
-          className={`ac-ios-notif ${reduced.current ? 'ac-ios-fade' : phase === 'in' ? 'ac-ios-in' : 'ac-ios-out'}`}
-          style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'flex-start', gap: 12,
-            padding: '12px 14px',
-            borderRadius: 18,
-            backgroundColor: 'rgba(255,255,255,0.92)',
-            backdropFilter: 'blur(14px)',
-            WebkitBackdropFilter: 'blur(14px)',
-            boxShadow: '0 10px 34px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08)',
-            border: '1px solid rgba(0,0,0,0.06)',
-            textDecoration: 'none',
-            cursor: 'pointer',
-          }}
-          aria-live="polite"
-        >
-          {/* app icon */}
+      <a
+        key={idx}
+        href={checkoutUrl}
+        onClick={() => sendEvent('checkout_click', { props: { placement: 'v2_fomo_notification' }, submissionId })}
+        className={`ac-island ${reduced.current ? 'ac-island-fade' : phase === 'in' ? 'ac-island-in' : 'ac-island-out'}`}
+        style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', gap: 13,
+          padding: '0 22px 0 12px',
+          borderRadius: 999,
+          backgroundColor: '#0A0A0A',
+          textDecoration: 'none',
+          cursor: 'pointer',
+          overflow: 'hidden',
+        }}
+        aria-live="polite"
+      >
+        {/* app icon in a circle, like the island's leading element */}
+        <span className="flex items-center justify-center shrink-0" style={{ width: 52, height: 52, borderRadius: '50%', backgroundColor: '#1C1C1E', overflow: 'hidden' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo-square.svg"
-            alt=""
-            style={{ width: 38, height: 38, borderRadius: 9, flexShrink: 0, display: 'block', marginTop: 2 }}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="flex items-baseline justify-between gap-2">
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: 'rgba(60,60,67,0.72)' }}>AI CENTRAL</span>
-              <span style={{ fontSize: 11.5, color: 'rgba(60,60,67,0.55)' }}>{b.ago} ago</span>
+          <img src="/logo-square.svg" alt="" style={{ width: 34, height: 34, display: 'block' }} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-2">
+            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.55)' }}>
+              AI CENTRAL · NEW TRIAL 🎉
             </span>
-            <span className="block" style={{ fontSize: 13.5, fontWeight: 700, color: RICH, marginTop: 2, lineHeight: 1.3 }}>
-              New trial started 🎉
-            </span>
-            <span className="block" style={{ fontSize: 12.5, color: 'rgba(60,60,67,0.85)', lineHeight: 1.35, marginTop: 1 }}>
-              <strong>{b.name}</strong> ({b.title}) from {b.flag} {b.city} started a trial of the AI Library
-            </span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{b.ago} ago</span>
           </span>
-        </a>
-      </div>
-      <p className="text-center" style={{ fontSize: 10.5, color: MUTE, marginTop: 10, letterSpacing: '0.04em' }}>
-        LIVE · people joining the library right now
-      </p>
+          <span className="block" style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.92)', lineHeight: 1.35, marginTop: 3 }}>
+            <strong style={{ color: '#FFFFFF' }}>{b.name}</strong> ({b.title}) from {b.flag} {b.city} started a trial of the AI Library
+          </span>
+        </span>
+      </a>
 
       <style>{`
-        .ac-ios-in { animation: ac-ios-pop 0.42s cubic-bezier(0.2, 1.1, 0.35, 1.05) both }
-        .ac-ios-out { animation: ac-ios-away 0.32s ease-in both }
-        .ac-ios-fade { animation: ac-ios-soft 0.6s ease both }
-        @keyframes ac-ios-pop {
-          0% { opacity: 0; transform: translateY(-16px) scale(0.96) }
-          60% { opacity: 1; transform: translateY(2px) scale(1.005) }
-          100% { opacity: 1; transform: translateY(0) scale(1) }
+        .ac-island {
+          box-shadow:
+            0 0 0 1px rgba(255,255,255,0.07),
+            0 14px 38px rgba(0,0,0,0.35),
+            0 0 44px rgba(231,176,47,0.30),
+            0 0 90px rgba(4,107,177,0.18);
+          animation-fill-mode: both;
         }
-        @keyframes ac-ios-away {
-          0% { opacity: 1; transform: translateY(0) scale(1) }
-          100% { opacity: 0; transform: translateY(-14px) scale(0.97) }
+        .ac-island-in { animation: ac-island-pop 0.5s cubic-bezier(0.34, 1.42, 0.44, 1) both }
+        .ac-island-out { animation: ac-island-away 0.3s ease-in both }
+        .ac-island-fade { animation: ac-island-soft 0.6s ease both }
+        @keyframes ac-island-pop {
+          0% { opacity: 0; transform: scale(0.62, 0.82) }
+          62% { opacity: 1; transform: scale(1.025, 1.01) }
+          100% { opacity: 1; transform: scale(1, 1) }
         }
-        @keyframes ac-ios-soft { 0% { opacity: 0.35 } 100% { opacity: 1 } }
+        @keyframes ac-island-away {
+          0% { opacity: 1; transform: scale(1) }
+          100% { opacity: 0; transform: scale(0.8, 0.9) }
+        }
+        @keyframes ac-island-soft { 0% { opacity: 0.35 } 100% { opacity: 1 } }
         @media (prefers-reduced-motion: reduce) {
-          .ac-ios-in, .ac-ios-out { animation: none }
+          .ac-island-in, .ac-island-out { animation: none }
         }
       `}</style>
-    </section>
+    </div>
   )
 }

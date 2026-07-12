@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from 'react'
 
-// Confetti burst when the "You made it" pass section scrolls into view.
-// Hand-rolled canvas (zero deps): two side cannons + a top-center burst,
-// ~2.4s, fired once per mount. Skipped for prefers-reduced-motion.
+// Confetti bursts on result v2: one on page load, one when the "You made
+// it" pass section scrolls into view. Hand-rolled canvas (zero deps),
+// fired once per instance. Skipped for prefers-reduced-motion.
 
 const COLORS = ['#E7B02F', '#E48715', '#62A758', '#046BB1', '#3B4C99', '#FEF7E7']
 
@@ -66,25 +66,37 @@ function burst(canvas: HTMLCanvasElement) {
   requestAnimationFrame(tick)
 }
 
-export default function Confetti() {
+function fireOnce() {
+  const canvas = document.createElement('canvas')
+  canvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:80'
+  canvas.setAttribute('aria-hidden', 'true')
+  document.body.appendChild(canvas)
+  burst(canvas)
+}
+
+export default function Confetti({ onLoad = false }: { onLoad?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const fired = useRef(false)
 
   useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+
+    if (onLoad) {
+      if (fired.current) return
+      fired.current = true
+      const t = setTimeout(fireOnce, 350)
+      return () => clearTimeout(t)
+    }
+
     const el = ref.current
     if (!el || typeof IntersectionObserver === 'undefined') return
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     const obs = new IntersectionObserver(
       entries => {
         for (const e of entries) {
           if (!e.isIntersecting || fired.current) continue
           fired.current = true
           obs.disconnect()
-          const canvas = document.createElement('canvas')
-          canvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:80'
-          canvas.setAttribute('aria-hidden', 'true')
-          document.body.appendChild(canvas)
-          burst(canvas)
+          fireOnce()
           return
         }
       },
@@ -92,8 +104,9 @@ export default function Confetti() {
     )
     obs.observe(el)
     return () => obs.disconnect()
-  }, [])
+  }, [onLoad])
 
+  if (onLoad) return null
   // Invisible sentinel — parent places it inside the celebrated section.
   return <div ref={ref} aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
 }

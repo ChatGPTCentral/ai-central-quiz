@@ -18,7 +18,9 @@ type Search = Record<string, string | undefined>
 
 function passImageUrl(sp: Search): string {
   const p = new URLSearchParams()
-  for (const k of ['name', 'stage', 'profile', 'pct', 'issued', 'ref', 'desc']) {
+  // 'style' + 'photo' are the v2 ID-card variant params — absent on v1
+  // share links, so their unfurls are unchanged.
+  for (const k of ['name', 'stage', 'profile', 'pct', 'issued', 'ref', 'desc', 'style', 'photo']) {
     if (sp[k]) p.set(k, sp[k]!)
   }
   return `${SITE}/api/pass-image?${p.toString()}`

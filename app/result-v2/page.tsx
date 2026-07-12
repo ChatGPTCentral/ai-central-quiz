@@ -1,15 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 import TrackView from '@/components/TrackView'
-import TrackedLink from '@/components/TrackedLink.client'
 import { ExitRescue } from '@/components/result/ExitRescue.client'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
 import { FomoNotifications } from '@/components/result2/FomoNotifications.client'
-import { StageStepper } from '@/components/result2/StageStepper'
+import { StageGauge } from '@/components/result2/StageGauge'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
-import { PersonalizePass, SharePostBox } from '@/components/result2/PersonalizePass.client'
-import { PassCard } from '@/components/result/PassCard'
+import { PassStudio } from '@/components/result2/PassStudio.client'
+import { STAGES } from '@/lib/segmentation-v2'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType } from '@/lib/readiness-type'
 import { rungConfig, withPersona, withFirstName } from '@/lib/rung-content'
@@ -129,46 +128,6 @@ function BlockButton2({ href, label, placement, submissionId, size = 17 }: { hre
   )
 }
 
-/** LinkedIn share button — same viral plumbing as v1 (share → /pass?ref=). */
-function SharePass2({ topPct, name, stageLabel, profileLabel, refNo, submissionId }: {
-  topPct: number
-  name: string
-  stageLabel: string
-  profileLabel: string
-  refNo: string
-  submissionId?: string
-}) {
-  const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
-  const firstName = name.trim().split(/\s+/)[0] || 'AI Professional'
-  const shareParams = new URLSearchParams({
-    name: firstName,
-    stage: stageLabel,
-    profile: profileLabel,
-    pct: String(topPct),
-    ref: refNo,
-  })
-  const shareUrl = `${site}/pass?${shareParams.toString()}`
-  return (
-    <div className="mt-5 flex justify-center">
-      <TrackedLink
-        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`}
-        event="share_click"
-        props={{ placement: 'v2_result_pass', ref: refNo, submissionId }}
-        target="_blank"
-        rel="noopener noreferrer"
-        ariaLabel="Share on LinkedIn"
-        className="inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
-        style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600 }}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
-          <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
-        </svg>
-        Share on LinkedIn
-      </TrackedLink>
-    </div>
-  )
-}
-
 function FAQItem({ q, a }: { q: string; a: string }) {
   return (
     <details className="group" style={{ borderBottom: '1px solid #D9D9D9' }}>
@@ -228,17 +187,24 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   const topPct = 100 - rt.aheadPct
   const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
-  const sharePost = `I just measured my AI readiness with @AICentral - - I'm in the top ${topPct}% of people on their AI journey.\n\nSee where you rank: ${site}/pass?ref=${refNo}\n\n#AICentral`
+  const sharePost = `I just measured my AI readiness with @AICentral, I'm in the top ${topPct}% of people on their AI journey.\n\nSee where you rank: ${site}/pass?ref=${refNo}\n\n#AICentral`
+
+  // Next rung up the ladder (for the gauge caption). Weeks rule: the next
+  // step is always ~1 week away.
+  const ladder = STAGES.filter(s => s.key !== 'unknown')
+  const currentLadderIdx = Math.max(0, ladder.findIndex(s => s.key === stageKey))
+  const nextStage = ladder[currentLadderIdx + 1] ?? null
 
   return (
     <>
       <TrackView event="result_view" props={{ pageVariant: 'v2', stage: stageKey, persona, submissionId: rowId }} />
+      <Confetti onLoad />
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
 
-        {/* ── 1 · HERO: top-X% verdict + scroll promise ─────────────── */}
+        {/* ── 1 · HERO: top-X% verdict + tachometer ─────────────────── */}
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-9 text-center">
+          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-10 text-center">
             <Eyebrow>Your quiz results</Eyebrow>
             <h1 className="mt-4 font-bold" style={{ fontSize: 'clamp(34px, 5vw, 58px)', lineHeight: 1.0, letterSpacing: '-0.045em', color: RICH }}>
               {firstName ? `${firstName}, you` : 'You'}&rsquo;re in the top{' '}
@@ -247,37 +213,27 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
               Scroll below to get your recommended plan, grab your member pass and share it with your network.
             </p>
-            <p className="mt-5" style={{ fontSize: 13, color: MUTE }} aria-hidden>▼</p>
-          </div>
-        </section>
-
-        {/* ── 2 · FOMO: iPhone-style trial notifications (fixed slot) ── */}
-        <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} />
-
-        {/* ── 3 · THE JOURNEY: horizontal stage stepper ─────────────── */}
-        <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-14">
-            <Eyebrow>Your AI journey</Eyebrow>
-            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(24px, 3.2vw, 36px)', lineHeight: 1.05, letterSpacing: '-0.04em', color: RICH }}>
-              {rung.className.charAt(0) + rung.className.slice(1).toLowerCase()} today - - here&rsquo;s the road ahead
-            </h2>
-            <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
-              Green is what you&rsquo;ve already earned. The estimates under the grey stages are how long each climb
-              typically takes members studying a few hours a week with the library.
-            </p>
-            <div className="mt-8">
-              <StageStepper stageKey={stageKey} />
+            <div className="mt-9">
+              <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
             </div>
+            {nextStage && (
+              <p className="mt-2" style={{ fontSize: 14.5, color: BODY, fontWeight: 300 }}>
+                Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, ≈1 wk away with the library.
+              </p>
+            )}
           </div>
         </section>
 
-        {/* ── 4 · THE VIDEO + instant offer ─────────────────────────── */}
+        {/* ── 2 · THE VIDEO + instant offer + live trials ───────────── */}
         <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
             <Eyebrow>The unfair advantage</Eyebrow>
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable
+              Wanna climb to the top 1%? Here&rsquo;s how
             </h2>
+            <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+              Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
+            </p>
 
             <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#000', position: 'relative', paddingBottom: '56.25%', height: 0 }}>
               <iframe
@@ -294,17 +250,20 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-6 items-center" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '22px 26px' }}>
               <div>
                 <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>
-                  Get everything in the video - - <span style={{ color: FULVOUS }}>$4.99 first month</span>
+                  Get everything in the video, <span style={{ color: FULVOUS }}>$4.99 first month</span>
                 </p>
                 <p className="mt-1.5" style={{ fontSize: 13, lineHeight: 1.5, color: BODY, fontWeight: 300 }}>
                   1,200+ tutorials and 50+ templates, with a track matched to your {rung.className} result.
-                  Then $4.98/mo billed yearly ($59.75) - - cancel in your trial month and pay nothing more. 30-day guarantee.
+                  Then $4.98/mo billed yearly ($59.75), cancel in your trial month and pay nothing more. 30-day guarantee.
                 </p>
               </div>
               <div className="justify-self-start sm:justify-self-end">
                 <BlockButton2 href={checkoutUrl} label="start my trial" placement="v2_video_cta" submissionId={rowId} />
               </div>
             </div>
+
+            {/* Live trials, Dynamic-Island style — seamless, right under the CTA */}
+            <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} />
           </div>
         </section>
 
@@ -346,30 +305,21 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             </h2>
             <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
               Top {topPct}% of AI users worldwide, verified by the assessment.
-              Add your face, then post it - - your card unfurls automatically on LinkedIn.
+              Add your face, then post it, your card unfurls automatically on LinkedIn.
             </p>
-            <div className="mt-9 mx-auto" style={{ maxWidth: 480 }}>
-              <PersonalizePass submissionId={rowId}>
-                <PassCard
-                  name={passName}
-                  personaLabel={content.label}
-                  stageLine={`STAGE: ${rung.className}`}
-                  passPct={`Top ${topPct}% World`}
-                  issued={issued}
-                  refNo={refNo}
-                  description={content.outlook}
-                />
-              </PersonalizePass>
+            <div className="mt-9">
+              <PassStudio
+                name={passName}
+                profileLabel={content.label}
+                stageLabel={rung.className}
+                topPct={topPct}
+                refNo={refNo}
+                issued={issued}
+                submissionId={rowId}
+                shareText={sharePost}
+                site={site}
+              />
             </div>
-            <SharePostBox shareText={sharePost} />
-            <SharePass2
-              topPct={topPct}
-              name={passName}
-              stageLabel={rung.className}
-              profileLabel={content.label}
-              refNo={refNo}
-              submissionId={rowId}
-            />
           </div>
         </section>
 
