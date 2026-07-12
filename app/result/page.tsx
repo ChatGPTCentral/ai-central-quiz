@@ -301,13 +301,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             </p>
             {v3 && (
               <div className="mt-5">
-                <a
-                  href="#pass"
-                  className="inline-flex items-center gap-2 transition-transform hover:-translate-y-px"
-                  style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}
+                <span
+                  className="inline-flex items-center gap-2"
+                  style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700 }}
                 >
-                  🎟 Get my pass ↓
-                </a>
+                  🎟 Scroll down and get your pass ↓
+                </span>
               </div>
             )}
             <div className="mt-9">
