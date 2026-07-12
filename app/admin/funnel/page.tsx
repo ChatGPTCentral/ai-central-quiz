@@ -11,6 +11,10 @@ export const dynamic = 'force-dynamic'
 // Uniqueness = anon_id when present, else session_id, else row id.
 
 const WINDOW_DAYS = 30
+// Public launch of the quiz (newsletter blast). First-party events only
+// began Jul 9, so the launch cohort's top-of-funnel is measured only from
+// then; the CRM (completions + payments) covers the whole launch.
+const LAUNCH_ISO = '2026-07-05T00:00:00Z'
 
 interface EvRow {
   event: string
@@ -96,6 +100,17 @@ export default async function FunnelPage() {
     new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime(),
   ).length
 
+  // ── Launch cohort (since Jul 5): the CRM truth over the whole launch,
+  // including the pre-tracking wave. This is the real business funnel; the
+  // event-based steps below only exist from Jul 9 so they live in their own
+  // panel rather than lying about a %-chain across two windows.
+  const launchMs = new Date(LAUNCH_ISO).getTime()
+  const launchSubs = subs.filter(s => s.staged_at && new Date(s.staged_at).getTime() >= launchMs)
+  const launchCompleted = launchSubs.length
+  const launchPaid = paidOf(launchSubs)
+  const launchPretracking = eventsStartMs ? launchSubs.filter(s => new Date(s.staged_at!).getTime() < eventsStartMs).length : 0
+  const launchCvr = launchCompleted > 0 ? (launchPaid / launchCompleted) * 100 : 0
+
   const steps: { key: string; label: string; n: number; source: 'events' | 'submissions'; note?: string }[] = [
     { key: 'quiz_view', label: 'Landing view', n: uniquePeople(by('quiz_view')), source: 'events' },
     { key: 'quiz_start', label: 'Quiz started', n: uniquePeople(by('quiz_start')), source: 'events' },
@@ -104,7 +119,6 @@ export default async function FunnelPage() {
       label: 'Quiz completed',
       n: subsEventsEra.length,
       source: 'submissions',
-      note: eventsStartMs && subs.length !== subsEventsEra.length ? `${subs.length} in the full ${WINDOW_DAYS}d (CRM, incl. pre-tracking launch)` : undefined,
     },
     {
       key: 'result_view',
@@ -119,7 +133,6 @@ export default async function FunnelPage() {
       label: 'Net-new paid',
       n: paidOf(subsEventsEra),
       source: 'submissions',
-      note: eventsStartMs && paidOf(subs) !== paidOf(subsEventsEra) ? `${paidOf(subs)} in the full ${WINDOW_DAYS}d (CRM)` : undefined,
     },
   ]
   const maxN = Math.max(...steps.map(s => s.n), 1)
@@ -174,17 +187,42 @@ export default async function FunnelPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-black text-[#333333] mb-1">Funnel</h1>
         <p className="text-sm text-[#9C9C9C]">
-          Last {WINDOW_DAYS} days.{' '}
-          {firstEventTs
-            ? <>First-party events since <strong className="text-[#333333]">{new Date(firstEventTs).toLocaleDateString()}</strong>; completions and payments come from the CRM.</>
-            : <>No first-party events yet — they start accruing from the moment this feature deployed. Completions and payments come from the CRM.</>}
+          Two windows, kept separate on purpose: the launch cohort is the CRM truth since Jul 5; the on-page funnel is what the first-party events can see, which is only from{' '}
+          {firstEventTs ? <strong className="text-[#333333]">{new Date(firstEventTs).toLocaleDateString()}</strong> : 'when tracking deployed'}.
         </p>
         {error && <p className="text-sm text-[#BE3B3B] mt-2">Error: {error}</p>}
       </div>
 
-      {/* Funnel bars */}
+      {/* Launch cohort — CRM truth since Jul 5 (the real business funnel) */}
       <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
-        <h2 className="text-sm font-black text-[#333333] mb-4">Steps (unique people)</h2>
+        <h2 className="text-sm font-black text-[#333333] mb-1">Launch cohort · since Jul 5</h2>
+        <p className="text-[11px] text-[#9C9C9C] mb-4">
+          Everyone who completed the quiz since launch, straight from the CRM, so the whole launch wave is counted, tracking or not.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          {[
+            { label: 'Quiz completed', n: launchCompleted, sub: `${launchPretracking} before tracking` },
+            { label: 'Net-new paid', n: launchPaid, sub: 'charged after the quiz' },
+            { label: 'Completed → paid', n: `${launchCvr.toFixed(1)}%`, sub: 'launch conversion' },
+          ].map(c => (
+            <div key={c.label} style={{ background: '#FAF7F1', border: '1px solid #EFEAE1', borderRadius: 8, padding: '12px 14px' }}>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#9C9C9C]">{c.label}</div>
+              <div className="text-2xl font-black text-[#333333] tabular-nums mt-0.5">{typeof c.n === 'number' ? c.n.toLocaleString() : c.n}</div>
+              <div className="text-[10.5px] text-[#9C9C9C] mt-0.5">{c.sub}</div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-[#9C9C9C] mt-3">
+          Landing, quiz-start, result and checkout can&rsquo;t be shown for the launch wave, those beacons didn&rsquo;t exist until Jul 9. The on-page funnel below is that measured slice.
+        </p>
+      </section>
+
+      {/* Funnel bars — events era only, one coherent window */}
+      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
+        <h2 className="text-sm font-black text-[#333333] mb-1">On-page funnel · since tracking (Jul 9)</h2>
+        <p className="text-[11px] text-[#9C9C9C] mb-4">
+          Unique people per step, all from first-party events so the drop-off %s are apples-to-apples. This is the window the A/B test reads from.
+        </p>
         <div className="flex flex-col gap-2">
           {steps.map((s, i) => {
             const prev = i > 0 ? steps[i - 1].n : null
@@ -210,7 +248,7 @@ export default async function FunnelPage() {
           })}
         </div>
         <p className="text-[11px] text-[#9C9C9C] mt-3">
-          All six steps share one window: since first-party events began{firstEventTs ? ` (${new Date(firstEventTs).toLocaleDateString()})` : ''}. The CRM knows completions and payments from before tracking existed; those full-{WINDOW_DAYS}d totals show under the step labels and in the by-source table below.
+          &ldquo;Quiz completed&rdquo; here is the {steps[2].n} tracked since Jul 9, not the {launchCompleted} launch total above. &ldquo;Result viewed&rdquo; can exceed completions because reopened and shared result links each count.
         </p>
       </section>
 
