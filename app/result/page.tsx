@@ -3,7 +3,6 @@ import { cookies, headers } from 'next/headers'
 import TrackView from '@/components/TrackView'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
 import { resolveExperiments } from '@/lib/experiments'
-import { ExitRescue2 } from '@/components/result2/ExitRescue2.client'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
 import { FomoNotifications } from '@/components/result2/FomoNotifications.client'
@@ -405,7 +404,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       </div>
 
       <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} />
-      <ExitRescue2 submissionId={rowId} dwellMs={v3 ? 240_000 : 60_000} />
     </>
   )
 }
