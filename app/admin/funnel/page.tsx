@@ -82,21 +82,38 @@ export default async function FunnelPage() {
   const by = (ev: string) => events.filter(r => r.event === ev)
   const firstEventTs = events[0]?.ts
 
-  // Funnel steps (unique people per step)
-  const steps: { key: string; label: string; n: number; source: 'events' | 'submissions' }[] = [
+  // Funnel steps (unique people per step). The steps must share ONE time
+  // window or the %-of-prev chain lies: events only exist from the day the
+  // measurement layer shipped, while the CRM covers the whole window
+  // (launch included). So the two CRM rows are clipped to the events era
+  // for the chain, and their full-window totals ride along as notes.
+  const eventsStartMs = firstEventTs ? new Date(firstEventTs).getTime() : null
+  const subsEventsEra = eventsStartMs
+    ? subs.filter(s => s.staged_at && new Date(s.staged_at).getTime() >= eventsStartMs)
+    : subs
+  const paidOf = (rows: typeof subs) => rows.filter(s =>
+    s.stripe_first_charge_at && s.staged_at &&
+    new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime(),
+  ).length
+
+  const steps: { key: string; label: string; n: number; source: 'events' | 'submissions'; note?: string }[] = [
     { key: 'quiz_view', label: 'Landing view', n: uniquePeople(by('quiz_view')), source: 'events' },
     { key: 'quiz_start', label: 'Quiz started', n: uniquePeople(by('quiz_start')), source: 'events' },
-    { key: 'email_submitted', label: 'Quiz completed', n: subs.length, source: 'submissions' },
+    {
+      key: 'email_submitted',
+      label: 'Quiz completed',
+      n: subsEventsEra.length,
+      source: 'submissions',
+      note: eventsStartMs && subs.length !== subsEventsEra.length ? `${subs.length} in the full ${WINDOW_DAYS}d (CRM, incl. pre-tracking launch)` : undefined,
+    },
     { key: 'result_view', label: 'Result viewed', n: uniquePeople(by('result_view')), source: 'events' },
     { key: 'checkout_click', label: 'Checkout clicked', n: uniquePeople(by('checkout_click')), source: 'events' },
     {
       key: 'net_new_paid',
       label: 'Net-new paid',
-      n: subs.filter(s =>
-        s.stripe_first_charge_at && s.staged_at &&
-        new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime(),
-      ).length,
+      n: paidOf(subsEventsEra),
       source: 'submissions',
+      note: eventsStartMs && paidOf(subs) !== paidOf(subsEventsEra) ? `${paidOf(subs)} in the full ${WINDOW_DAYS}d (CRM)` : undefined,
     },
   ]
   const maxN = Math.max(...steps.map(s => s.n), 1)
@@ -168,7 +185,10 @@ export default async function FunnelPage() {
             const rate = prev && prev > 0 ? (s.n / prev) * 100 : null
             return (
               <div key={s.key} className="flex items-center gap-3 text-[13px]">
-                <div className="w-40 shrink-0 font-medium text-[#333333]">{s.label}</div>
+                <div className="w-40 shrink-0 font-medium text-[#333333]">
+                  {s.label}
+                  {s.note && <span className="block text-[10px] font-normal text-[#9C9C9C] leading-tight">{s.note}</span>}
+                </div>
                 <div className="flex-1 relative h-6 bg-[#F5F5F5] rounded">
                   <div
                     className="absolute inset-y-0 left-0 rounded transition-all"
@@ -184,7 +204,7 @@ export default async function FunnelPage() {
           })}
         </div>
         <p className="text-[11px] text-[#9C9C9C] mt-3">
-          Landing/start/result/checkout come from first-party events; completed + paid come from the CRM (so they are complete even before events accrued).
+          All six steps share one window: since first-party events began{firstEventTs ? ` (${new Date(firstEventTs).toLocaleDateString()})` : ''}. The CRM knows completions and payments from before tracking existed; those full-{WINDOW_DAYS}d totals show under the step labels and in the by-source table below.
         </p>
       </section>
 
