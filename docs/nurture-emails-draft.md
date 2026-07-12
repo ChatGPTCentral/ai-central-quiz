@@ -1,5 +1,10 @@
 # Post-quiz nurture sequence — copy drafts for approval
 
+> **Jul 12 update:** the live drafts in Beehiiv were copy-polished (the
+> " - - " dash style replaced with commas/colons per the project convention,
+> signature now "- Alex") and the full graph re-verified. Beehiiv is the
+> canonical copy now; the bodies below are the original reference.
+
 **Status: BUILT AS A DRAFT AUTOMATION IN BEEHIIV - - nothing sends until you
 publish it.** Automation: "Quiz nurture (post-result) - - DRAFT for approval"
 (https://app.beehiiv.com/automations/52a2a777-ce63-4bf0-9c34-2fdcc04c3fd0/workflow).
