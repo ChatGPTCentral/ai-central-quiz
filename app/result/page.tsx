@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import TrackView from '@/components/TrackView'
+import ExperimentTracker from '@/components/ExperimentTracker.client'
+import { resolveExperiments } from '@/lib/experiments'
 import { ExitRescue2 } from '@/components/result2/ExitRescue2.client'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
@@ -198,9 +200,90 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const currentLadderIdx = Math.max(0, ladder.findIndex(s => s.key === stageKey))
   const nextStage = ladder[currentLadderIdx + 1] ?? null
 
+  // ── Experiments: sticky-first deterministic assignment (fails open) ──
+  // v3_structure tests the day-1 insights: pass section pulled above the
+  // study plan and reviews, hero anchor to it, exit-rescue dwell 60s→240s.
+  const cookieStore = cookies()
+  const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
+  const { assignments } = await resolveExperiments({
+    anonId,
+    cookieVariant: k => cookieStore.get(`ac_exp_${k}`)?.value,
+    stage: stageKey,
+    persona,
+    utmSource: segFields?.utm_source ?? null,
+    page: 'result',
+  })
+  const v3 = assignments.some(a => a.experimentKey === 'v3_structure' && a.variantKey === 'v3')
+
+  // Sections 5-7 as blocks so v3 can reorder them: the pass (the reward the
+  // hero promises) moves up right after the video; control keeps
+  // plan → reviews → pass. Only ~1/3 of viewers reached the pass in the
+  // day-1 scroll data, yet reachers shared at a very high rate.
+  const studyPlanSection = (
+    <section style={{ borderTop: `3px solid ${INK}` }}>
+      <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
+        <Eyebrow>Your recommended study plan</Eyebrow>
+        <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+          The first month, mapped for a {rung.className.toLowerCase()}
+        </h2>
+        <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
+          {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
+        </p>
+        <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
+        <div className="mt-9 flex justify-center">
+          <BlockButton2 href={checkoutUrl} label="unlock my study plan" placement="v2_study_plan" submissionId={rowId} />
+        </div>
+      </div>
+    </section>
+  )
+
+  const reviewsSection = (
+    <>
+      <section style={{ borderTop: `3px solid ${INK}` }}>
+        <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-14 pb-8 text-center">
+          <Eyebrow>Loved by 2,500+ members</Eyebrow>
+          <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+            What people say about AI Central
+          </h2>
+        </div>
+      </section>
+      <Marquee2 mode="reviews" reviews={REVIEWS} checkoutUrl={checkoutUrl} submissionId={rowId} />
+    </>
+  )
+
+  const passSection = (
+    <section id="pass" style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER, backgroundImage: GRAIN, position: 'relative', scrollMarginTop: 12 }}>
+      <Confetti />
+      <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-14 sm:py-20 text-center">
+        <Eyebrow>You made it</Eyebrow>
+        <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: RICH }}>
+          Here&rsquo;s your member pass
+        </h2>
+        <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
+          Top {topPct}% of AI users worldwide, verified by the assessment.
+          Post it on LinkedIn, your card unfurls automatically.
+        </p>
+        <div className="mt-9">
+          <PassStudio
+            name={passName}
+            profileLabel={content.label}
+            stageLabel={rung.className}
+            topPct={topPct}
+            refNo={refNo}
+            issued={issued}
+            description={content.outlook}
+            submissionId={rowId}
+            site={site}
+          />
+        </div>
+      </div>
+    </section>
+  )
+
   return (
     <>
-      <TrackView event="result_view" props={{ pageVariant: 'v2', stage: stageKey, persona, submissionId: rowId }} />
+      <TrackView event="result_view" props={{ pageVariant: v3 ? 'v3' : 'v2', stage: stageKey, persona, submissionId: rowId }} />
+      <ExperimentTracker assignments={assignments} submissionId={rowId} />
       <Confetti onLoad />
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
@@ -216,6 +299,17 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
               Scroll below to get your recommended plan, grab your member pass and share it with your network.
             </p>
+            {v3 && (
+              <div className="mt-5">
+                <a
+                  href="#pass"
+                  className="inline-flex items-center gap-2 transition-transform hover:-translate-y-px"
+                  style={{ border: `2px solid ${INK}`, backgroundColor: '#FFFFFF', color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}
+                >
+                  🎟 Get my pass ↓
+                </a>
+              </div>
+            )}
             <div className="mt-9">
               <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
             </div>
@@ -270,61 +364,20 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* ── 5 · YOUR RECOMMENDED STUDY PLAN ───────────────────────── */}
-        <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
-            <Eyebrow>Your recommended study plan</Eyebrow>
-            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              The first month, mapped for a {rung.className.toLowerCase()}
-            </h2>
-            <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
-              {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
-            </p>
-            <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
-            <div className="mt-9 flex justify-center">
-              <BlockButton2 href={checkoutUrl} label="unlock my study plan" placement="v2_study_plan" submissionId={rowId} />
-            </div>
-          </div>
-        </section>
-
-        {/* ── 6 · REAL REVIEWS ──────────────────────────────────────── */}
-        <section style={{ borderTop: `3px solid ${INK}` }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-14 pb-8 text-center">
-            <Eyebrow>Loved by 2,500+ members</Eyebrow>
-            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              What people say about AI Central
-            </h2>
-          </div>
-        </section>
-        <Marquee2 mode="reviews" reviews={REVIEWS} checkoutUrl={checkoutUrl} submissionId={rowId} />
-
-        {/* ── 7 · SCROLL REWARD: pass + confetti + personalization ──── */}
-        <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER, backgroundImage: GRAIN, position: 'relative' }}>
-          <Confetti />
-          <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-14 sm:py-20 text-center">
-            <Eyebrow>You made it</Eyebrow>
-            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: RICH }}>
-              Here&rsquo;s your member pass
-            </h2>
-            <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
-              Top {topPct}% of AI users worldwide, verified by the assessment.
-              Post it on LinkedIn, your card unfurls automatically.
-            </p>
-            <div className="mt-9">
-              <PassStudio
-                name={passName}
-                profileLabel={content.label}
-                stageLabel={rung.className}
-                topPct={topPct}
-                refNo={refNo}
-                issued={issued}
-                description={content.outlook}
-                submissionId={rowId}
-                site={site}
-              />
-            </div>
-          </div>
-        </section>
+        {/* ── 5-7 · plan / reviews / pass, order decided by v3_structure ── */}
+        {v3 ? (
+          <>
+            {passSection}
+            {studyPlanSection}
+            {reviewsSection}
+          </>
+        ) : (
+          <>
+            {studyPlanSection}
+            {reviewsSection}
+            {passSection}
+          </>
+        )}
 
         {/* ── 8 · SHORT FAQ ─────────────────────────────────────────── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
@@ -353,7 +406,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       </div>
 
       <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} />
-      <ExitRescue2 submissionId={rowId} />
+      <ExitRescue2 submissionId={rowId} dwellMs={v3 ? 240_000 : 60_000} />
     </>
   )
 }

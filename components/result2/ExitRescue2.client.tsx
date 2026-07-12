@@ -5,16 +5,17 @@ import { useRouter } from 'next/navigation'
 import { sendEvent } from '@/lib/events-client'
 
 const SHOWN_KEY = 'ac_exit_rescue_shown'
-const DWELL_MS = 60_000
 
 /**
  * Result v2 rescue popup: fires on genuine exit intent (cursor leaving
- * through the viewport top) OR after 60 seconds on the page, whichever
+ * through the viewport top) OR after `dwellMs` on the page, whichever
  * comes first, once per session. v2-owned copy of the shared ExitRescue
  * (which stays exit-intent-only for v1). Lifecycle-email returns are
- * never shown the popup.
+ * never shown the popup. The dwell default is the original 60s; the
+ * v3_structure variant passes 240s so engaged video-watchers are not
+ * interrupted mid-pitch.
  */
-export function ExitRescue2({ submissionId }: { submissionId?: string }) {
+export function ExitRescue2({ submissionId, dwellMs = 60_000 }: { submissionId?: string; dwellMs?: number }) {
   const [open, setOpen] = useState(false)
   const router = useRouter()
   const armed = useRef(true)
@@ -43,9 +44,9 @@ export function ExitRescue2({ submissionId }: { submissionId?: string }) {
       if (!pointerInPage || Date.now() < armedAt) return
       if (!e.relatedTarget && e.clientY <= 0) fire()
     }
-    // Dwell trigger: engaged readers get the free option after a minute
-    // even without an exit signal (covers touch devices too).
-    const dwellTimer = setTimeout(fire, DWELL_MS)
+    // Dwell trigger: the free option after `dwellMs` even without an exit
+    // signal (covers touch devices too).
+    const dwellTimer = setTimeout(fire, dwellMs)
 
     document.addEventListener('mousemove', onMove, { passive: true })
     document.addEventListener('mouseout', onMouseOut)
@@ -54,7 +55,7 @@ export function ExitRescue2({ submissionId }: { submissionId?: string }) {
       document.removeEventListener('mouseout', onMouseOut)
       clearTimeout(dwellTimer)
     }
-  }, [submissionId])
+  }, [submissionId, dwellMs])
 
   const dismiss = () => {
     setOpen(false)
