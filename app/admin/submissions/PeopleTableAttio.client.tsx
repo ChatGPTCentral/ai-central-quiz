@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { StoredSubmission } from '@/lib/kv'
+import { personResultPath } from '@/lib/result-url'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import Avatar from '@/components/admin/Avatar.client'
 
@@ -118,7 +119,7 @@ export default function PeopleTableAttio({ items, total }: { items: StoredSubmis
               key={r.id}
               onClick={() => router.push(`/admin/submissions/${r.id}`)}
               style={{ display: 'grid', gridTemplateColumns: GRID, minHeight: 44, borderBottom: `1px solid #F4F0E9`, alignItems: 'center', cursor: 'pointer', background: isSel ? '#FBF8F2' : '#FFFFFF' }}
-              className="hover:bg-[#FBF9F4]"
+              className="group hover:bg-[#FBF9F4]"
             >
               <span className="flex justify-center" onClick={e => e.stopPropagation()}>
                 <input type="checkbox" checked={isSel} onChange={() => toggle(r.id)} style={{ width: 13, height: 13, accentColor: '#1A1A1A' }} />
@@ -126,10 +127,18 @@ export default function PeopleTableAttio({ items, total }: { items: StoredSubmis
               {/* Person */}
               <span style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 <Avatar name={r.name} email={r.email} photoUrl={r.photoUrl} size={26} />
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate" style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A' }}>{r.name || '(no name)'}</span>
                   <span className="block truncate" style={{ fontSize: 11, color: MUTE }}>{r.email}</span>
                 </span>
+                <a
+                  href={personResultPath({ id: r.id, name: r.name, score: r.score, persona: r.persona, stage: r.stage })}
+                  target="_blank" rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  title="Open their result page"
+                  className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
+                  style={{ fontSize: 13, textDecoration: 'none', lineHeight: 1 }}
+                >🎯</a>
               </span>
               {/* Stage */}
               <span style={{ padding: '0 12px' }}>{sd && sd.key !== 'unknown' ? <Chip label={sd.label} color={sd.color} /> : <span style={{ color: '#C4BDB2', fontSize: 12 }}>—</span>}</span>

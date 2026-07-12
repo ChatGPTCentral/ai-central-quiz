@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSubmission } from '@/lib/kv'
+import { personResultPath } from '@/lib/result-url'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag } from '@/lib/country-flags'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
@@ -76,6 +77,12 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               ↗ {item.utmSource || 'direct'}{item.utmRef ? ` / ${item.utmRef}` : ''}
             </span>
           )}
+          <a
+            href={personResultPath({ id: item.id, name: item.name, score: item.score, persona: item.persona, stage: item.stage })}
+            target="_blank" rel="noopener noreferrer"
+            title="Open the result page this person received"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-[#E8E4DF] text-[12px] font-bold text-[#E48715] hover:bg-[#FAF7F1]"
+          >🎯 Result page ↗</a>
           {item.linkedinUrl && (
             <a href={item.linkedinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-[#E8E4DF] text-[12px] font-bold text-[#0A66C2] hover:bg-[#FAF7F1]">in ↗</a>
           )}
