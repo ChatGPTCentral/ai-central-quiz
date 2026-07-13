@@ -67,19 +67,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { count } = await c.from('enrich_game').select('*', { count: 'exact', head: true })
-    const have = count || 0
-    if (have >= target) return NextResponse.json({ prepared: have, target, finished: true })
-
+    // Add the NEXT batch of unplayed records (from most recent, going back),
+    // so the game replays in rounds. No total cap: the client loops until it
+    // has added a round's worth or the pool is dry.
     const { data: existing } = await c.from('enrich_game').select('submission_id')
     const doneIds = new Set((existing || []).map(r => r.submission_id))
+    const have = doneIds.size
 
     const { data: pool } = await c.from('submissions')
       .select('id, name, email, country, linkedin_url, company_name, job_title, photo_url, job_level, work_area, seniority')
       .eq('source', 'quiz_v2').is('archived_at', null).not('email', 'is', null)
-      .order('staged_at', { ascending: false }).limit(target)
-    const candidates = ((pool || []) as Row[]).filter(r => !doneIds.has(r.id)).slice(0, limit)
-    if (candidates.length === 0) return NextResponse.json({ prepared: have, target, finished: true, note: 'no more candidates' })
+      .order('staged_at', { ascending: false }).limit(400)
+    const fresh = ((pool || []) as Row[]).filter(r => !doneIds.has(r.id))
+    const candidates = fresh.slice(0, limit)
+    if (candidates.length === 0) return NextResponse.json({ added: 0, total: have, finished: true, hasMore: false, note: 'no more unplayed records' })
 
     const rounds = await Promise.all(candidates.map(async (r) => {
       const known = { name: r.name, email: r.email, country: r.country, jobLevel: r.job_level, workArea: r.work_area }
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     const { error } = await c.from('enrich_game').upsert(rounds, { onConflict: 'submission_id' })
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ prepared: have + rounds.length, target, finished: have + rounds.length >= target })
+    return NextResponse.json({ added: rounds.length, total: have + rounds.length, hasMore: fresh.length > candidates.length, finished: false })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }

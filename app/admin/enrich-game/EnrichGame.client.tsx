@@ -87,20 +87,25 @@ export default function EnrichGame() {
 
   useEffect(() => { loadNext() }, [loadNext])
 
+  // Add a fresh round of TARGET new (unplayed) records; start playing as soon
+  // as the first few land. Loops until a round's worth is added or pool dry.
   const prepare = async () => {
     if (preparingRef.current) return
     preparingRef.current = true; setPreparing(true); setError(null)
+    let loaded = !!round
     try {
-      for (let i = 0; i < 12; i++) {
+      const g0 = await (await fetch('/api/admin/enrich/game')).json()
+      const startTotal = g0.stats?.total || 0
+      for (let i = 0; i < 20; i++) {
         const res = await fetch('/api/admin/enrich/game/prepare', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ limit: 5, target: TARGET }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 5 }),
         })
         const body = await res.json()
         if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
-        if (!round) await loadNext()   // start playing as soon as rounds exist
-        else { const r = await fetch('/api/admin/enrich/game'); const b = await r.json(); setStats(b.stats) }
-        if (body.finished) break
+        const b = await (await fetch('/api/admin/enrich/game')).json(); setStats(b.stats)
+        if (!loaded) { await loadNext(); loaded = true }
+        const added = (b.stats?.total || 0) - startTotal
+        if (body.hasMore === false || added >= TARGET) break
       }
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { preparingRef.current = false; setPreparing(false) }
@@ -179,10 +184,16 @@ export default function EnrichGame() {
               ) : (
                 <p style={{ fontSize: 13, color: '#6B6B6B', marginTop: 6 }}>Re-run the tuned resolver on the same 40 to see the lift on the exact cases you labeled (a few API credits, no re-labeling).</p>
               )}
-              <button onClick={rerun} disabled={preparing}
-                style={{ marginTop: 12, background: GREEN, color: '#FFFDFA', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
-                {preparing ? `Re-running… ${stats.reranDone || 0}/${stats.labeled}` : '↻ Re-run tuned resolver on your labels'}
-              </button>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+                <button onClick={rerun} disabled={preparing}
+                  style={{ background: GREEN, color: '#FFFDFA', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
+                  {preparing ? `Working… ${stats.reranDone || 0}/${stats.labeled}` : '↻ Re-run tuned resolver on your labels'}
+                </button>
+                <button onClick={prepare} disabled={preparing}
+                  style={{ background: INK, color: CREAM, border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
+                  ▶ Prepare {TARGET} more records
+                </button>
+              </div>
             </>
           ) : (
             <>
