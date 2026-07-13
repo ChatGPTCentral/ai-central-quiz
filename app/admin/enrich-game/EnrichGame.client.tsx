@@ -13,7 +13,7 @@ interface Cand {
   confidence?: number | null; reasoning?: string | null; outcome?: string | null
 }
 interface Round { id: string; submission_id: string; known: Record<string, string | null>; current: Cand; proposed: Cand }
-interface Stats { total: number; labeled: number; scored: number; newRight: number; currentRight: number; neither: number; reranDone?: number; reranScored?: number; reranRight?: number }
+interface Stats { total: number; labeled: number; scored: number; newRight: number; currentRight: number; neither: number; reranDone?: number; reranScored?: number; reranRight?: number; uncommitted?: number }
 
 const INK = '#333', CREAM = '#FEF7E7', GREEN = '#0F8A6D', AMBER = '#9C6B2F'
 const TARGET = 40
@@ -128,6 +128,25 @@ export default function EnrichGame() {
     finally { preparingRef.current = false; setPreparing(false) }
   }
 
+  const [committing, setCommitting] = useState(false)
+  const commit = async () => {
+    if (committing) return
+    setCommitting(true); setError(null)
+    try {
+      for (let i = 0; i < 20; i++) {
+        const res = await fetch('/api/admin/enrich/game/commit', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 5 }),
+        })
+        const body = await res.json()
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+        const b = await (await fetch('/api/admin/enrich/game')).json(); setStats(b.stats)
+        if (body.finished) break
+      }
+      setFlash('Saved to records ✓'); setTimeout(() => setFlash(null), 1200)
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    finally { setCommitting(false) }
+  }
+
   const decide = async (choice: string) => {
     if (!round) return
     const cleanTruth = (truth.linkedinUrl || truth.companyName || truth.jobTitle) ? truth : undefined
@@ -164,6 +183,19 @@ export default function EnrichGame() {
           <div style={{ width: '100%', height: 6, background: '#EFEAE1', borderRadius: 3, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: GREEN, transition: 'width .3s' }} />
           </div>
+        </div>
+      )}
+
+      {/* Supervised write-back */}
+      {stats && (stats.uncommitted || 0) > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: '#EAF6F1', border: '1px solid #BFE3D6', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <span style={{ fontSize: 12.5, color: '#0F5C48' }}>
+            <strong>{stats.uncommitted}</strong> supervised {stats.uncommitted === 1 ? 'record' : 'records'} not yet saved to the database.
+          </span>
+          <button onClick={commit} disabled={committing}
+            style={{ marginLeft: 'auto', background: GREEN, color: '#FFFDFA', border: 'none', borderRadius: 9, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: committing ? 0.6 : 1 }}>
+            {committing ? 'Saving…' : '✓ Save my calls to the records'}
+          </button>
         </div>
       )}
 

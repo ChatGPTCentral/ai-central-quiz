@@ -29,9 +29,10 @@ export async function GET() {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const c = sb()
   const { data: next } = await c.from('enrich_game').select('*').is('labeled_at', null).order('created_at').limit(1).maybeSingle()
-  const { data: labeled } = await c.from('enrich_game').select('choice, truth, current, reran').not('labeled_at', 'is', null)
-  const rows = (labeled || []) as { choice: string | null; truth: { linkedinUrl?: string } | null; current: { linkedinUrl?: string } | null; reran: { linkedinUrl?: string; outcome?: string } | null }[]
+  const { data: labeled } = await c.from('enrich_game').select('choice, truth, current, reran, committed_at').not('labeled_at', 'is', null)
+  const rows = (labeled || []) as { choice: string | null; truth: { linkedinUrl?: string } | null; current: { linkedinUrl?: string } | null; reran: { linkedinUrl?: string; outcome?: string } | null; committed_at: string | null }[]
   const scored = rows.filter(r => r.choice && r.choice !== 'skip')
+  const uncommitted = rows.filter(r => r.choice && r.choice !== 'skip' && !r.committed_at).length
 
   // Lift of the re-run (tuned resolver) against the owner's labels: correct if
   // it now matches the ground-truth slug, or the current-that-was-right slug,
@@ -56,6 +57,7 @@ export async function GET() {
     reranDone: reran.length,
     reranScored,
     reranRight,
+    uncommitted,
   }
   const { count } = await c.from('enrich_game').select('*', { count: 'exact', head: true })
   stats.total = count || 0
