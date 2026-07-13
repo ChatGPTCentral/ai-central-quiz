@@ -18,6 +18,28 @@ function sb(): SupabaseClient {
 
 export interface Referrer { id: string; name: string | null; email: string | null }
 
+export interface TopReferrer {
+  id: string
+  name: string | null
+  email: string | null
+  isCustomer: boolean
+  referred: number
+  referredPaid: number
+}
+
+/** Leaderboard of who has brought in the most pass_share subscribers. */
+export async function topReferrers(): Promise<TopReferrer[]> {
+  try {
+    const { data, error } = await sb().rpc('top_referrers')
+    if (error) return []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return ((data as any[]) || []).map(r => ({
+      id: r.referrer_id, name: r.referrer_name, email: r.referrer_email,
+      isCustomer: !!r.referrer_is_customer, referred: Number(r.referred_count), referredPaid: Number(r.referred_paid),
+    }))
+  } catch { return [] }
+}
+
 /** Given a utm_ref like "AC-5872", return the sharer(s) it points to. */
 export async function findReferrers(utmRef?: string | null): Promise<Referrer[]> {
   if (!utmRef) return []

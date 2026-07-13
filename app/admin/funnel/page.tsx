@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { clarityUxByPage, type UxPageRow } from '@/lib/clarity'
+import { topReferrers, type TopReferrer } from '@/lib/referrer'
 import ClarityPullNow from '@/components/admin/ClarityPullNow.client'
 
 export const dynamic = 'force-dynamic'
@@ -165,6 +166,10 @@ export default async function FunnelPage() {
   }
   const utmRows = Array.from(utm.entries()).sort((a, b) => b[1].subs - a[1].subs).slice(0, 12)
 
+  // Top referrers via the pass_share loop (best-effort)
+  let referrers: TopReferrer[] = []
+  try { referrers = await topReferrers() } catch { /* section shows its empty state */ }
+
   // Clarity UX snapshots (best-effort; empty until the first pull lands)
   let ux: Awaited<ReturnType<typeof clarityUxByPage>> = { rows: [], snapshotDays: 0, lastFetched: null }
   try { ux = await clarityUxByPage(7) } catch { /* strip shows its empty state */ }
@@ -260,6 +265,43 @@ export default async function FunnelPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Top referrers — who brings in the most pass_share subscribers */}
+      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
+        <h2 className="text-sm font-black text-[#333333] mb-1">Top referrers</h2>
+        <p className="text-[11px] text-[#9C9C9C] mb-4">People whose shared pass brought in the most new quiz-takers (utm_source pass_share).</p>
+        {referrers.length === 0 ? (
+          <p className="text-sm text-[#9C9C9C]">No pass_share referrals yet.</p>
+        ) : (
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-[#E8E4DF] text-[10px] uppercase tracking-wider text-[#9C9C9C]">
+                <th className="text-left py-1.5 w-8">#</th>
+                <th className="text-left py-1.5">Referrer</th>
+                <th className="text-right py-1.5">Referred</th>
+                <th className="text-right py-1.5">Of those, paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {referrers.map((r, i) => (
+                <tr key={r.id} className="border-b border-[#F5F5F5]">
+                  <td className="py-1.5 tabular-nums text-[#9C9C9C]">{i + 1}</td>
+                  <td className="py-1.5">
+                    <a href={`/admin/submissions/${r.id}`} className="font-semibold text-[#046BB1] hover:underline">{r.name || r.email || '(no name)'}</a>
+                    {r.isCustomer && <span className="ml-2 text-[10px] font-bold text-[#2E7D32]">CUSTOMER</span>}
+                    {r.email && r.name && <span className="block text-[11px] text-[#9C9C9C]">{r.email}</span>}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums font-bold text-[#333333]">{r.referred}</td>
+                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.referredPaid > 0 ? '#2E7D32' : '#C4BDB2', fontWeight: r.referredPaid > 0 ? 700 : 400 }}>{r.referredPaid || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="text-[11px] text-[#9C9C9C] mt-3">
+          Matched by the pass ref (AC- + the first 4 characters of the sharer&rsquo;s id); a sharer must predate the lead. The 4-character ref can rarely collide, so a very high count is worth a spot-check.
+        </p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
