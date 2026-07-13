@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSubmission } from '@/lib/kv'
 import { personResultPath } from '@/lib/result-url'
+import { findReferrers } from '@/lib/referrer'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag } from '@/lib/country-flags'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
@@ -27,6 +28,10 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
   const continent = continentOf(item.country)
   const hasState = showState(item.country)
+
+  // Viral loop: for a pass_share lead, resolve who shared the pass that
+  // brought them in (utm_ref = the sharer's ref).
+  const referrers = item.utmSource === 'pass_share' ? await findReferrers(item.utmRef) : []
 
   const companyLinkedinUrl =
     item.companyLinkedinUrl ||
@@ -76,6 +81,13 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               title={[item.utmSource && `utm_source: ${item.utmSource}`, item.utmRef && `utm_ref: ${item.utmRef}`].filter(Boolean).join(' · ')}>
               ↗ {item.utmSource || 'direct'}{item.utmRef ? ` / ${item.utmRef}` : ''}
             </span>
+          )}
+          {referrers.length > 0 && (
+            <Link href={`/admin/submissions/${referrers[0].id}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#EAF6F1] text-[#0F8A6D] border border-[#0F8A6D]/30"
+              title={`Shared their pass → this lead. ${referrers.length > 1 ? referrers.length + ' possible referrers (4-char ref collision)' : ''}`}>
+              🔗 Referred by {referrers[0].name || referrers[0].email}{referrers.length > 1 ? ` +${referrers.length - 1}` : ''}
+            </Link>
           )}
           <a
             href={personResultPath({ id: item.id, name: item.name, score: item.score, persona: item.persona, stage: item.stage })}
