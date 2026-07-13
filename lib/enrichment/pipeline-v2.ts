@@ -46,6 +46,8 @@ export interface V2Input {
 export interface V2Stage {
   name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
   status: 'skipped' | 'ok' | 'miss' | 'error'
+  /** What this stage consumed (the ctx it saw) — surfaced by the inspector. */
+  input?: Record<string, unknown>
   result?: NormalizedPerson | InferredName | PhotoDemographics | BeehiivLookupResult | StripeLookupResult | { linkedinUrl?: string; triedQueries?: string[]; organicSample?: { url: string; title?: string; query?: string }[] }
   reason?: string
 }
@@ -135,6 +137,7 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
 
   // ── Stage 2: Google → LinkedIn URL (only if missing) ────────────
   let resolver: ResolverResult | undefined
+  const gInput = { name: ctx.name, companyName: ctx.companyName, jobTitle: ctx.jobTitle, country: ctx.country, emailDomain: ctx.email.split('@')[1] }
   if (!ctx.linkedinUrl) {
     if (opts.verifiedResolver) {
       // Shadow path: verified resolver (combos + LLM match). Accepts nothing
@@ -144,15 +147,17 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
         companyName: ctx.companyName, jobTitle: ctx.jobTitle, country: ctx.country,
       })
       resolver = r
-      const sample = r.candidates.slice(0, 8).map(c => ({ url: c.url, title: c.title, query: c.query }))
+      // Full candidates (with snippets + the LLM verdict) so the inspector can
+      // show exactly what the model saw and why it decided.
+      const detail = { triedQueries: r.triedQueries, confidence: r.confidence, reasoning: r.reasoning, matchedQuery: r.matchedQuery, candidates: r.candidates }
       if (r.outcome === 'matched') {
         if (r.linkedinUrl) ctx.linkedinUrl = r.linkedinUrl
         if (!ctx.companyName && r.companyName) ctx.companyName = r.companyName
         if (!ctx.jobTitle && r.jobTitle) ctx.jobTitle = r.jobTitle
         if (!ctx.country && r.country) ctx.country = r.country
-        stages.push({ name: 'google_search', status: 'ok', result: { linkedinUrl: r.linkedinUrl, triedQueries: r.triedQueries, organicSample: sample } })
+        stages.push({ name: 'google_search', status: 'ok', input: gInput, result: { linkedinUrl: r.linkedinUrl, ...detail } as V2Stage['result'] })
       } else {
-        stages.push({ name: 'google_search', status: 'miss', reason: `${r.outcome} (conf ${r.confidence.toFixed(2)}): ${r.reasoning}`, result: { triedQueries: r.triedQueries, organicSample: sample } })
+        stages.push({ name: 'google_search', status: 'miss', input: gInput, reason: `${r.outcome} (conf ${r.confidence.toFixed(2)}): ${r.reasoning}`, result: detail as V2Stage['result'] })
       }
     } else try {
       const search = await findLinkedInViaGoogle({
@@ -161,25 +166,26 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
       })
       if (search.linkedinUrl) {
         ctx.linkedinUrl = search.linkedinUrl
-        stages.push({ name: 'google_search', status: 'ok', result: { linkedinUrl: search.linkedinUrl, triedQueries: search.triedQueries, organicSample: search.organicSample } })
+        stages.push({ name: 'google_search', status: 'ok', input: gInput, result: { linkedinUrl: search.linkedinUrl, triedQueries: search.triedQueries, organicSample: search.organicSample } })
       } else {
-        stages.push({ name: 'google_search', status: 'miss', result: { triedQueries: search.triedQueries, organicSample: search.organicSample } })
+        stages.push({ name: 'google_search', status: 'miss', input: gInput, result: { triedQueries: search.triedQueries, organicSample: search.organicSample } })
       }
     } catch (err) {
-      stages.push({ name: 'google_search', status: 'error', reason: String(err) })
+      stages.push({ name: 'google_search', status: 'error', input: gInput, reason: String(err) })
     }
   } else {
-    stages.push({ name: 'google_search', status: 'skipped', reason: 'linkedin_url already known' })
+    stages.push({ name: 'google_search', status: 'skipped', input: gInput, reason: 'linkedin_url already known' })
   }
 
   // ── Stage 3: Apify profile scrape — PRIMARY work-profile source ──
+  const scrapeInput = { linkedinUrl: ctx.linkedinUrl }
   if (ctx.linkedinUrl) {
     try {
       tried.push('apify_profile')
       const profile = await scrapeLinkedInProfile(ctx.linkedinUrl)
       if (profile) {
         record('apify_profile', profile)
-        stages.push({ name: 'linkedin_scrape', status: 'ok', result: profile })
+        stages.push({ name: 'linkedin_scrape', status: 'ok', input: scrapeInput, result: profile })
       } else {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const attempts = (globalThis as any).__lastApifyProfileAttempts || []
@@ -188,30 +194,32 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
         stages.push({
           name: 'linkedin_scrape',
           status: 'miss',
+          input: scrapeInput,
           // Surface what each actor returned so the user can diagnose in the Lab page
           result: { linkedinUrl: ctx.linkedinUrl, attempts } as never,
           reason: `Tried ${attempts.length} actor(s) — all returned no usable data`,
         })
       }
     } catch (err) {
-      stages.push({ name: 'linkedin_scrape', status: 'error', reason: String(err) })
+      stages.push({ name: 'linkedin_scrape', status: 'error', input: scrapeInput, reason: String(err) })
     }
   } else {
-    stages.push({ name: 'linkedin_scrape', status: 'skipped', reason: 'no linkedin_url to scrape' })
+    stages.push({ name: 'linkedin_scrape', status: 'skipped', input: scrapeInput, reason: 'no linkedin_url to scrape' })
   }
 
   // ── Stage 4: Apollo — backup work-profile source (now that ctx has LinkedIn URL) ──
+  const apolloInput = { email: ctx.email, name: ctx.name, companyName: ctx.companyName, linkedinUrl: ctx.linkedinUrl }
   try {
     tried.push('apollo')
     const apolloResult = await apolloProvider.lookup(ctx)
     if (apolloResult) {
       record('apollo', apolloResult)
-      stages.push({ name: 'apollo', status: 'ok', result: apolloResult })
+      stages.push({ name: 'apollo', status: 'ok', input: apolloInput, result: apolloResult })
     } else {
-      stages.push({ name: 'apollo', status: 'miss' })
+      stages.push({ name: 'apollo', status: 'miss', input: apolloInput })
     }
   } catch (err) {
-    stages.push({ name: 'apollo', status: 'error', reason: String(err) })
+    stages.push({ name: 'apollo', status: 'error', input: apolloInput, reason: String(err) })
   }
 
   // ── Stage 5: Wiza — email-only fallback (no LinkedIn-URL endpoint) ──
