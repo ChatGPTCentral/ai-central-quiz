@@ -9,7 +9,7 @@ import { FomoNotifications } from '@/components/result2/FomoNotifications.client
 import { StageGauge } from '@/components/result2/StageGauge'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
-import { PassStudio } from '@/components/result2/PassStudio.client'
+import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType } from '@/lib/readiness-type'
@@ -212,12 +212,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     utmSource: segFields?.utm_source ?? null,
     page: 'result',
   })
-  const v3 = assignments.some(a => a.experimentKey === 'v3_structure' && a.variantKey === 'v3')
-
-  // Sections 5-7 as blocks so v3 can reorder them: the pass (the reward the
-  // hero promises) moves up right after the video; control keeps
-  // plan → reviews → pass. Only ~1/3 of viewers reached the pass in the
-  // day-1 scroll data, yet reachers shared at a very high rate.
+  // Fixed order (restructure): reviews → plan → pass at the very bottom,
+  // gated by LinkedIn. Sections kept as blocks for readability.
   const studyPlanSection = (
     <section style={{ borderTop: `3px solid ${INK}` }}>
       <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
@@ -260,10 +256,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </h2>
         <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
           Top {topPct}% of AI users worldwide, verified by the assessment.
-          Post it on LinkedIn, your card unfurls automatically.
+          Add your LinkedIn to unlock it, then post it, your card unfurls automatically.
         </p>
         <div className="mt-9">
-          <PassStudio
+          <PassGate
             name={passName}
             profileLabel={content.label}
             stageLabel={rung.className}
@@ -281,7 +277,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   return (
     <>
-      <TrackView event="result_view" props={{ pageVariant: v3 ? 'v3' : 'v2', stage: stageKey, persona, submissionId: rowId }} />
+      <TrackView event="result_view" props={{ pageVariant: 'v4', stage: stageKey, persona, submissionId: rowId }} />
       <ExperimentTracker assignments={assignments} submissionId={rowId} />
       <Confetti onLoad />
 
@@ -298,16 +294,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
               Scroll below to get your recommended plan, grab your member pass and share it with your network.
             </p>
-            {v3 && (
-              <div className="mt-5">
-                <span
-                  className="inline-flex items-center gap-2"
-                  style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700 }}
-                >
-                  🎟 Scroll down and get your pass ↓
-                </span>
-              </div>
-            )}
+            <div className="mt-5">
+              <span
+                className="inline-flex items-center gap-2"
+                style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700 }}
+              >
+                🎟 Scroll down to unlock your pass ↓
+              </span>
+            </div>
             <div className="mt-9">
               <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
             </div>
@@ -339,6 +333,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 allowFullScreen
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
               />
+              {/* Live trial notifications float over the video as it plays */}
+              <div style={{ position: 'absolute', top: 10, left: 10, right: 10, zIndex: 3, pointerEvents: 'none' }}>
+                <div style={{ pointerEvents: 'auto', maxWidth: 344 }}>
+                  <FomoNotifications overlay checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
+                </div>
+              </div>
             </div>
 
             {/* Compact offer card right where the post-video intent lands */}
@@ -356,28 +356,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 <BlockButton2 href={checkoutUrl} label="start my trial" placement="v2_video_cta" submissionId={rowId} />
               </div>
             </div>
-
-            {/* Live trials — seamless, right under the CTA, visitor's region first */}
-            <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
           </div>
         </section>
 
-        {/* ── 5-7 · plan / reviews / pass, order decided by v3_structure ── */}
-        {v3 ? (
-          <>
-            {passSection}
-            {studyPlanSection}
-            {reviewsSection}
-          </>
-        ) : (
-          <>
-            {studyPlanSection}
-            {reviewsSection}
-            {passSection}
-          </>
-        )}
+        {/* ── Reviews → your plan → the pass (reward at the very bottom) ── */}
+        {reviewsSection}
+        {studyPlanSection}
 
-        {/* ── 8 · SHORT FAQ ─────────────────────────────────────────── */}
+        {/* ── SHORT FAQ (objections before the reward) ──────────────── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
             <Eyebrow>Questions</Eyebrow>
@@ -387,20 +373,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* ── 9 · FINAL BAND ────────────────────────────────────────── */}
-        <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: INK }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-14 sm:py-18 text-center">
-            <h2 className="font-bold" style={{ fontSize: 'clamp(26px, 3.6vw, 42px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: PAPER }}>
-              Go from the top {topPct}% <span style={{ color: XANTHOUS }}>to the top 2%</span>
-            </h2>
-            <p className="mt-3 mx-auto max-w-[480px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: '#D8D2C6' }}>
-              $4.99 first month · cancel anytime · 30-day guarantee
-            </p>
-            <div className="mt-8 flex justify-center">
-              <BlockButton2 href={checkoutUrl} label="unlock the library" placement="v2_final_band" submissionId={rowId} />
-            </div>
-          </div>
-        </section>
+        {/* ── THE PASS · at the very bottom, unlocked with LinkedIn ──── */}
+        {passSection}
       </div>
 
       <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} />

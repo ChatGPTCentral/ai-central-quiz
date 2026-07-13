@@ -42,7 +42,7 @@ type Item =
 
 const EXIT_MS = 280
 
-export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry }: { checkoutUrl: string; submissionId?: string; visitorCountry?: string }) {
+export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry, overlay }: { checkoutUrl: string; submissionId?: string; visitorCountry?: string; overlay?: boolean }) {
   const [idx, setIdx] = useState(0)
   const [phase, setPhase] = useState<'in' | 'out'>('in')
   const paused = useRef(false)
@@ -108,8 +108,8 @@ export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry }:
 
   return (
     <div
-      className="mx-auto"
-      style={{ maxWidth: 480, height: 88, position: 'relative', marginTop: 26 }}
+      className={overlay ? '' : 'mx-auto'}
+      style={{ maxWidth: overlay ? 344 : 480, height: 88, position: 'relative', marginTop: overlay ? 0 : 26 }}
       aria-label="Recent trial notifications"
       onMouseEnter={() => { paused.current = true }}
       onMouseLeave={() => { paused.current = false }}
