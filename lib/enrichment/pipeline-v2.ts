@@ -21,6 +21,7 @@
 import { apolloProvider } from './apollo'
 import { wizaProvider } from './wiza'
 import { findLinkedInViaGoogle } from './google-linkedin-search'
+import { resolveIdentityViaGoogle, type ResolverResult } from './google-resolver'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { inferNameFromEmail, type InferredName } from './name-from-email'
 import { estimateDemographicsFromPhoto, type PhotoDemographics } from './photo-demographics'
@@ -69,9 +70,12 @@ export interface V2Result {
     jobTitleCanonical?: string
     industry?: string
   }
+  /** Present only when opts.verifiedResolver was used — the verified Google
+   *  match (confidence + reasoning + candidates) for the compare harness. */
+  resolver?: ResolverResult
 }
 
-export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza?: boolean } = {}): Promise<V2Result> {
+export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza?: boolean; verifiedResolver?: boolean } = {}): Promise<V2Result> {
   const email = input.email.trim().toLowerCase()
 
   // ── Cache check — protects API budget on re-runs (60-day TTL) ───
@@ -130,8 +134,27 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
   }
 
   // ── Stage 2: Google → LinkedIn URL (only if missing) ────────────
+  let resolver: ResolverResult | undefined
   if (!ctx.linkedinUrl) {
-    try {
+    if (opts.verifiedResolver) {
+      // Shadow path: verified resolver (combos + LLM match). Accepts nothing
+      // on low confidence, and seeds verified hints for the downstream lookups.
+      const r = await resolveIdentityViaGoogle({
+        name: ctx.name, email: ctx.email,
+        companyName: ctx.companyName, jobTitle: ctx.jobTitle, country: ctx.country,
+      })
+      resolver = r
+      const sample = r.candidates.slice(0, 8).map(c => ({ url: c.url, title: c.title, query: c.query }))
+      if (r.outcome === 'matched') {
+        if (r.linkedinUrl) ctx.linkedinUrl = r.linkedinUrl
+        if (!ctx.companyName && r.companyName) ctx.companyName = r.companyName
+        if (!ctx.jobTitle && r.jobTitle) ctx.jobTitle = r.jobTitle
+        if (!ctx.country && r.country) ctx.country = r.country
+        stages.push({ name: 'google_search', status: 'ok', result: { linkedinUrl: r.linkedinUrl, triedQueries: r.triedQueries, organicSample: sample } })
+      } else {
+        stages.push({ name: 'google_search', status: 'miss', reason: `${r.outcome} (conf ${r.confidence.toFixed(2)}): ${r.reasoning}`, result: { triedQueries: r.triedQueries, organicSample: sample } })
+      }
+    } else try {
       const search = await findLinkedInViaGoogle({
         name: ctx.name, email: ctx.email,
         companyName: ctx.companyName, jobTitle: ctx.jobTitle, country: ctx.country,
@@ -282,5 +305,5 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
     setCached(email, { data: merged, raw: raw as Record<string, NormalizedPerson['raw']>, status, providersTried: tried }).catch(() => {})
   }
 
-  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics, extras, standardized }
+  return { email, stages, merged, raw, providersTried: tried, status, aiDemographics, extras, standardized, resolver }
 }

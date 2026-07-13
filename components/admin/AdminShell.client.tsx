@@ -59,6 +59,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     label: 'Tools',
     items: [
       { href: '/admin/lab', label: 'Enrich', icon: 'enrich' },
+      { href: '/admin/enrich-compare', label: 'Enrich compare', icon: 'debug' },
       { href: '/admin/debug', label: 'Debug lookup', icon: 'debug' },
       { href: '/admin/stats', label: 'Stats', icon: 'stats' },
       { href: '/admin/flow', label: 'Flow', icon: 'flow' },
