@@ -61,6 +61,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
       { href: '/admin/lab', label: 'Enrich', icon: 'enrich' },
       { href: '/admin/enrich-compare', label: 'Enrich compare', icon: 'debug' },
       { href: '/admin/enrich-inspect', label: 'Enrich inspector', icon: 'flow' },
+      { href: '/admin/enrich-game', label: 'Enrich game', icon: 'stats' },
       { href: '/admin/debug', label: 'Debug lookup', icon: 'debug' },
       { href: '/admin/stats', label: 'Stats', icon: 'stats' },
       { href: '/admin/flow', label: 'Flow', icon: 'flow' },
