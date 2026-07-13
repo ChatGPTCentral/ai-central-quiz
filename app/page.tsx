@@ -1,8 +1,7 @@
 import Link from 'next/link'
 import AICentralLogo from '@/components/AICentralLogo'
-import FomoPopup from '@/components/FomoPopup'
+import FomoMarquee from '@/components/FomoMarquee.client'
 import TrackView from '@/components/TrackView'
-import FomoDiscovered from '@/components/FomoDiscovered.client'
 import { PassCard } from '@/components/result/PassCard'
 
 export const metadata = {
@@ -96,11 +95,6 @@ export default function HomePage({
               free, no card, 40 seconds
             </p>
 
-            {/* Live "discovered their AI Score" notifications */}
-            <div className="mt-6 sm:mt-7">
-              <FomoDiscovered quizHref={quizHref} />
-            </div>
-
             {/* Survey time + completions count — social-proof strip, hard-edge restyle. */}
             <div
               className="mt-5 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 py-2.5 font-mono"
@@ -137,7 +131,7 @@ export default function HomePage({
         </div>
       </main>
 
-      <FomoPopup variant="completed" />
+      <FomoMarquee />
     </div>
   )
 }
