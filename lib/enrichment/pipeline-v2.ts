@@ -41,6 +41,9 @@ export interface V2Input {
   companyName?: string
   jobTitle?: string
   country?: string
+  /** Quiz signals used by the verified resolver to corroborate a match. */
+  jobLevel?: string
+  workArea?: string
 }
 
 export interface V2Stage {
@@ -145,6 +148,7 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
       const r = await resolveIdentityViaGoogle({
         name: ctx.name, email: ctx.email,
         companyName: ctx.companyName, jobTitle: ctx.jobTitle, country: ctx.country,
+        jobLevel: input.jobLevel, workArea: input.workArea,
       })
       resolver = r
       // Full candidates (with snippets + the LLM verdict) so the inspector can

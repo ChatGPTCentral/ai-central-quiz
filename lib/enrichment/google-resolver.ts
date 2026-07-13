@@ -1,31 +1,30 @@
 // Verified Google → identity resolver (shadow of google-linkedin-search).
 //
-// The live findLinkedInViaGoogle grabs the FIRST linkedin.com/in URL it sees,
-// with no check that it's the right person — which is how a Gmail "John Smith"
-// gets attached to some unrelated John Smith (the Kafein contamination class of
-// bug). This resolver mimics manual research instead:
+// Tuned from the owner's labeling game (round 1). It mimics how the owner
+// actually researches a person from thin data:
+//   - Corporate email? the domain IS the employer → site:{domain} {name} and
+//     a "{name} {company-from-domain}" query, and the domain corroborates.
+//   - Free email + common name? the email HANDLE often carries the missing
+//     surname ("atruebayanes" → Trueba Yanes) or a keyword ("…freelance"),
+//     and the quiz's job level / work area corroborate ("student" → a
+//     university profile).
+//   - Trust Google's top-ranked LinkedIn result when the name (incl. the
+//     vanity URL), country and role are consistent — only refuse when several
+//     distinct same-name people fit equally and nothing disambiguates.
 //
-//   1. Run the owner's query combos: "{first} {last} {title}",
-//      "{first} {last} linkedin", "{first} {last} linkedin {country}",
-//      plus company/email variants.
-//   2. Collect the organic results WITH their snippets.
-//   3. Ask an LLM to READ the snippets and decide which result (if any) is
-//      THIS EXACT person, corroborated by title/company/country. It returns a
-//      confidence; below the threshold we accept NOTHING (unresolved beats
-//      wrong).
-//
-// Nothing here touches the live pipeline unless runV2 is called with
-// { verifiedResolver: true }.
+// Below the confidence threshold it still accepts NOTHING (unresolved beats
+// the wrong person). Nothing here runs unless runV2 gets { verifiedResolver }.
 
 const ACTOR_ID = 'apify~google-search-scraper'
 const APIFY_API = 'https://api.apify.com/v2'
 const SYNC_TIMEOUT_MS = 120_000
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
 const MODEL = 'claude-sonnet-4-5-20250929'
-const ACCEPT_THRESHOLD = 0.7
+const ACCEPT_THRESHOLD = 0.55
 
-// Same profile-URL matcher as the live finder: rejects /pub/dir/ disambiguation
-// listings, which are NOT profiles.
+const FREE_EMAIL = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'yahoo.co.in', 'ymail.com', 'hotmail.com', 'hotmail.co.uk', 'outlook.com', 'live.com', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'proton.me', 'protonmail.com', 'aol.com', 'gmx.com', 'gmx.net', 'mail.com', 'zoho.com', 'yandex.com', 'qq.com', '163.com'])
+
+// Matches LinkedIn profile URLs; rejects /pub/dir/ disambiguation listings.
 const LINKEDIN_PROFILE_RE = /https?:\/\/(?:[a-z]{2,3}\.)?(?:www\.|m\.)?linkedin\.com\/(?:(?:in|profile\/view)\/[^\s?&#"<>'`)]+|pub\/(?!dir\/)[^\s?&#"<>'`)]+)/i
 
 export interface ResolverInput {
@@ -34,6 +33,8 @@ export interface ResolverInput {
   companyName?: string
   jobTitle?: string
   country?: string
+  jobLevel?: string
+  workArea?: string
 }
 
 export interface SerpCandidate {
@@ -41,6 +42,7 @@ export interface SerpCandidate {
   title?: string
   snippet?: string
   query?: string
+  rank?: number
   isLinkedin: boolean
 }
 
@@ -54,7 +56,6 @@ export interface ResolverResult {
   matchedQuery?: string
   triedQueries: string[]
   candidates: SerpCandidate[]
-  /** 'matched' | 'rejected' (found candidates but none confident) | 'no_results' | 'unconfigured' | 'error' */
   outcome: 'matched' | 'rejected' | 'no_results' | 'unconfigured' | 'error'
 }
 
@@ -65,26 +66,77 @@ function splitName(name?: string): { first?: string; last?: string } {
   return { first: parts[0], last: parts[parts.length - 1] }
 }
 
-/** The owner's manual-research combos, most-specific first, deduped, capped. */
+interface EmailParts { domain?: string; isFree: boolean; companyGuess?: string; expandedName?: string; keyword?: string }
+
+/** Pull the research signals the owner reads out of an email address. */
+export function parseEmail(email: string | undefined, name: string | undefined): EmailParts {
+  const e = (email || '').trim().toLowerCase()
+  const at = e.indexOf('@')
+  if (at < 0) return { isFree: false }
+  const local = e.slice(0, at)
+  const domain = e.slice(at + 1)
+  const isFree = FREE_EMAIL.has(domain)
+
+  // Non-free domain → employer. "gpa-innovates.com" → "gpa innovates".
+  let companyGuess: string | undefined
+  if (!isFree && domain) {
+    const root = domain.split('.')[0]
+    if (root && root.length >= 3) companyGuess = root.replace(/[-_]+/g, ' ')
+  }
+
+  // Handle tokens → an expanded name (missing surname) and/or a keyword.
+  const { first, last } = splitName(name)
+  const alpha = local.replace(/[^a-z]/g, '')
+  let expandedName: string | undefined
+  if (last) {
+    const li = alpha.indexOf(last.toLowerCase())
+    if (li >= 0) {
+      const after = alpha.slice(li + last.length)
+      // Extra alpha after the surname is likely a second surname (Trueba
+      // Yanes). Skip when it's just the first name repeated (last.first emails).
+      if (after.length >= 3 && /^[a-z]+$/.test(after) && after !== (first || '').toLowerCase()) {
+        expandedName = [first, last, after].filter(Boolean).join(' ')
+      }
+    }
+  }
+  let keyword: string | undefined
+  const tokens = local.split(/[._\-+]+/).filter(t => /^[a-z]{4,}$/.test(t))
+  const nameLc = `${first || ''}${last || ''}`.toLowerCase()
+  for (const t of tokens) {
+    if (!nameLc.includes(t) && !t.includes((last || '').toLowerCase()) && t !== 'freelance' + '') { keyword = t; break }
+    if (t === 'freelance') { keyword = t; break }
+  }
+  return { domain, isFree, companyGuess, expandedName, keyword }
+}
+
+/** Query combos, most-specific first, deduped, capped. Encodes the owner's
+ *  manual-research order: domain/site first, then name+role, then handle. */
 export function buildResolverQueries(input: ResolverInput): string[] {
   const { first, last } = splitName(input.name)
   const full = [first, last].filter(Boolean).join(' ')
   const title = input.jobTitle?.trim()
   const company = input.companyName?.trim()
   const country = input.country?.trim()
+  const { domain, isFree, companyGuess, expandedName, keyword } = parseEmail(input.email, input.name)
+  const workAreaTerm = (input.workArea || '').split(/[,/]/)[0]?.trim()
   const out: string[] = []
-  const push = (q?: string) => {
+  const push = (q?: string | false) => {
     const t = (q || '').trim().replace(/\s+/g, ' ')
     if (t && full && !out.includes(t)) out.push(t)
   }
 
-  push(company && `${full} ${company} linkedin`)
-  push(title && `${full} ${title}`)
-  push(title && `${full} ${title} linkedin`)
-  push(country && `${full} linkedin ${country}`)
+  if (!isFree && domain) {
+    push(`site:${domain} ${full}`)
+    push(companyGuess && `${full} ${companyGuess} linkedin`)
+  }
+  if (company) push(`${full} ${company} linkedin`)
+  if (title) push(`${full} ${title} linkedin`)
+  if (expandedName && expandedName.toLowerCase() !== full.toLowerCase()) push(`${expandedName} linkedin${country ? ' ' + country : ''}`)
+  if (keyword) push(`${full} ${keyword} linkedin`)
+  if (country) push(`${full} linkedin ${country}`)
+  if (workAreaTerm) push(`${full} ${workAreaTerm} linkedin`)
   push(`${full} linkedin`)
-  push(company && `${full} ${company}`)
-  return out.slice(0, 6)
+  return out.slice(0, 7)
 }
 
 interface OrganicResult { url?: string; link?: string; href?: string; title?: string; description?: string; snippet?: string; displayedUrl?: string }
@@ -97,15 +149,7 @@ async function fetchSerp(queries: string[]): Promise<SerpCandidate[]> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      queries: queries.join('\n'),
-      resultsPerPage: 10,
-      maxPagesPerQuery: 1,
-      languageCode: 'en',
-      mobileResults: false,
-      saveHtml: false,
-      includeUnfilteredResults: false,
-    }),
+    body: JSON.stringify({ queries: queries.join('\n'), resultsPerPage: 10, maxPagesPerQuery: 1, languageCode: 'en', mobileResults: false, saveHtml: false, includeUnfilteredResults: false }),
     signal: AbortSignal.timeout(SYNC_TIMEOUT_MS + 5_000),
   })
   if (!res.ok) throw new Error(`Apify google search ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
@@ -113,33 +157,36 @@ async function fetchSerp(queries: string[]): Promise<SerpCandidate[]> {
   const out: SerpCandidate[] = []
   for (const block of items) {
     const term = block.searchQuery?.term
-    for (const r of (block.organicResults || []).slice(0, 6)) {
+    ;(block.organicResults || []).slice(0, 6).forEach((r, i) => {
       const u = r.url || r.link || r.href || r.displayedUrl || ''
-      if (!u) continue
-      out.push({ url: u, title: r.title, snippet: r.description || r.snippet, query: term, isLinkedin: LINKEDIN_PROFILE_RE.test(u) })
-    }
+      if (!u) return
+      out.push({ url: u, title: r.title, snippet: r.description || r.snippet, query: term, rank: i + 1, isLinkedin: LINKEDIN_PROFILE_RE.test(u) })
+    })
   }
   return out
 }
 
 interface LlmVerdict { matchIndex: number | null; linkedinUrl: string | null; company: string | null; title: string | null; country: string | null; confidence: number; reasoning: string }
 
-async function verifyMatch(input: ResolverInput, candidates: SerpCandidate[]): Promise<LlmVerdict | null> {
+async function verifyMatch(input: ResolverInput, candidates: SerpCandidate[], parts: EmailParts): Promise<LlmVerdict | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return null
-  // Only show the LLM candidates that carry some signal; number them for reference.
   const list = candidates
-    .map((c, i) => `[${i}] query="${c.query || ''}"\n  title: ${c.title || '(none)'}\n  url: ${c.url}\n  snippet: ${c.snippet || '(none)'}`)
+    .map((c, i) => `[${i}] rank ${c.rank} · query "${c.query || ''}"\n  title: ${c.title || '(none)'}\n  url: ${c.url}\n  snippet: ${c.snippet || '(none)'}`)
     .join('\n')
   const known = [
-    input.name && `name: ${input.name}`,
-    input.jobTitle && `title (from quiz/enrichment): ${input.jobTitle}`,
+    input.name && `name (as typed, may be partial): ${input.name}`,
+    parts.expandedName && `possible fuller name from email handle: ${parts.expandedName}`,
+    input.jobTitle && `title: ${input.jobTitle}`,
+    !parts.isFree && parts.companyGuess && `EMPLOYER inferred from their work email domain (${parts.domain}): ${parts.companyGuess}`,
     input.companyName && `company: ${input.companyName}`,
     input.country && `country: ${input.country}`,
-    input.email && `email domain: ${(input.email.split('@')[1] || '')}`,
+    input.jobLevel && `job level (from quiz): ${input.jobLevel}`,
+    input.workArea && `work area (from quiz): ${input.workArea}`,
+    input.email && `email: ${input.email}`,
   ].filter(Boolean).join('\n')
 
-  const prompt = `You are verifying a person's identity from Google search results, the way a careful researcher does: only accept a result if you are confident it is the SAME person, corroborated by matching name AND at least one of title / company / country / email-domain. When results are ambiguous or could be a different person with the same name, DO NOT guess.
+  const prompt = `You verify a person's identity from Google results, like a careful researcher. Results are listed in Google's ranked order (rank 1 = top).
 
 KNOWN about the person:
 ${known || '(only a name)'}
@@ -147,14 +194,20 @@ ${known || '(only a name)'}
 SEARCH RESULTS:
 ${list}
 
-Return ONLY a JSON object, no markdown:
-{"matchIndex": <index of the single best matching result, or null if none is a confident match>,
+How to decide (this mirrors how a human resolves thin data):
+- The LinkedIn profile at or near rank 1 for a precise name query is usually the right person. ACCEPT it when the profile's name (including the vanity URL slug, e.g. /in/lfferreira for "Luis F Ferreira") is consistent with the person AND nothing contradicts the country/role.
+- Corroboration that RAISES confidence: the inferred employer domain appears; the vanity slug or title encodes the name; the role fits the job level / work area (e.g. "student" → a university profile; "sales" → a sales role); the country matches.
+- Only REJECT when several DISTINCT people with this name fit equally well and NOTHING (employer domain, role, country, handle-derived surname) disambiguates them.
+- Never attach a prominent different person just because they share the name (e.g. a public figure) when the corroborating signals point elsewhere.
+
+Return ONLY JSON, no markdown:
+{"matchIndex": <index of the best matching result, or null>,
  "linkedinUrl": <the linkedin.com/in profile URL of the match, or null>,
- "company": <employer inferred from the matched result, or null>,
- "title": <job title inferred from the matched result, or null>,
- "country": <country inferred from the matched result, or null>,
- "confidence": <0.0-1.0, your probability this is the correct person>,
- "reasoning": "<one sentence: what corroborated or what made it ambiguous>"}`
+ "company": <employer from the match, else the inferred email-domain employer, else null>,
+ "title": <job title from the match, or null>,
+ "country": <country from the match, or null>,
+ "confidence": <0.0-1.0>,
+ "reasoning": "<one sentence: what corroborated, or why it stays ambiguous>"}`
 
   try {
     const res = await fetch(ANTHROPIC_API, {
@@ -169,37 +222,33 @@ Return ONLY a JSON object, no markdown:
     const jsonStr = text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim()
     const start = jsonStr.indexOf('{'); const end = jsonStr.lastIndexOf('}')
     if (start < 0 || end < 0) return null
-    const parsed = JSON.parse(jsonStr.slice(start, end + 1)) as LlmVerdict
-    return parsed
+    return JSON.parse(jsonStr.slice(start, end + 1)) as LlmVerdict
   } catch (err) {
     console.error('resolver LLM threw', err)
     return null
   }
 }
 
-/** Resolve a person's identity via verified Google search. Fail-open: any
- *  error returns an unresolved result, never throws into the pipeline. */
+/** Resolve identity via verified Google search. Fail-open (never throws). */
 export async function resolveIdentityViaGoogle(input: ResolverInput): Promise<ResolverResult> {
   const queries = buildResolverQueries(input)
+  const parts = parseEmail(input.email, input.name)
   const base: ResolverResult = { confidence: 0, reasoning: '', triedQueries: queries, candidates: [], outcome: 'no_results' }
   if (queries.length === 0) return { ...base, outcome: 'unconfigured', reasoning: 'no name to search on' }
 
   let candidates: SerpCandidate[]
-  try {
-    candidates = await fetchSerp(queries)
-  } catch (err) {
-    return { ...base, outcome: 'error', reasoning: String(err).slice(0, 160) }
-  }
+  try { candidates = await fetchSerp(queries) }
+  catch (err) { return { ...base, outcome: 'error', reasoning: String(err).slice(0, 160) } }
   if (candidates.length === 0) return base
 
-  const verdict = await verifyMatch(input, candidates)
+  // Employer fallback: for a work email, the domain IS the company even if no
+  // provider returns one.
+  const companyFallback = !parts.isFree ? (input.companyName || parts.companyGuess) : input.companyName
+
+  const verdict = await verifyMatch(input, candidates, parts)
   if (!verdict) {
-    // LLM unavailable → conservative fallback: accept a LinkedIn URL ONLY when
-    // exactly one distinct profile appears across all queries (weak signal).
     const profiles = Array.from(new Set(candidates.filter(c => c.isLinkedin).map(c => c.url.split('?')[0].split('#')[0])))
-    if (profiles.length === 1) {
-      return { ...base, linkedinUrl: profiles[0], confidence: 0.5, reasoning: 'LLM unavailable; single distinct LinkedIn profile across all queries', outcome: 'matched', candidates }
-    }
+    if (profiles.length === 1) return { ...base, linkedinUrl: profiles[0], companyName: companyFallback, confidence: 0.5, reasoning: 'LLM unavailable; single distinct LinkedIn profile across all queries', outcome: 'matched', candidates }
     return { ...base, reasoning: `LLM unavailable; ${profiles.length} distinct profiles, not resolving`, outcome: 'rejected', candidates }
   }
 
@@ -214,7 +263,7 @@ export async function resolveIdentityViaGoogle(input: ResolverInput): Promise<Re
 
   return {
     linkedinUrl,
-    companyName: verdict.company || undefined,
+    companyName: verdict.company || companyFallback || undefined,
     jobTitle: verdict.title || undefined,
     country: verdict.country || undefined,
     confidence: conf,

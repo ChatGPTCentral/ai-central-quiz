@@ -13,7 +13,7 @@ interface Cand {
   confidence?: number | null; reasoning?: string | null; outcome?: string | null
 }
 interface Round { id: string; submission_id: string; known: Record<string, string | null>; current: Cand; proposed: Cand }
-interface Stats { total: number; labeled: number; scored: number; newRight: number; currentRight: number; neither: number }
+interface Stats { total: number; labeled: number; scored: number; newRight: number; currentRight: number; neither: number; reranDone?: number; reranScored?: number; reranRight?: number }
 
 const INK = '#333', CREAM = '#FEF7E7', GREEN = '#0F8A6D', AMBER = '#9C6B2F'
 const TARGET = 40
@@ -106,6 +106,23 @@ export default function EnrichGame() {
     finally { preparingRef.current = false; setPreparing(false) }
   }
 
+  const rerun = async () => {
+    if (preparingRef.current) return
+    preparingRef.current = true; setPreparing(true); setError(null)
+    try {
+      for (let i = 0; i < 12; i++) {
+        const res = await fetch('/api/admin/enrich/game/prepare', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rerun: true, limit: 5 }),
+        })
+        const body = await res.json()
+        if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+        const r = await fetch('/api/admin/enrich/game'); const b = await r.json(); setStats(b.stats)
+        if (body.finished) break
+      }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    finally { preparingRef.current = false; setPreparing(false) }
+  }
+
   const decide = async (choice: string) => {
     if (!round) return
     const cleanTruth = (truth.linkedinUrl || truth.companyName || truth.jobTitle) ? truth : undefined
@@ -151,10 +168,21 @@ export default function EnrichGame() {
       {/* Empty / prepare state */}
       {!round && !loading && (
         <div style={{ background: '#FFFFFF', border: '1px solid #E8E4DF', borderRadius: 12, padding: 28, textAlign: 'center' }}>
-          {stats && stats.total >= TARGET && stats.labeled >= stats.total ? (
+          {stats && stats.labeled > 0 && stats.labeled >= stats.total ? (
             <>
               <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>🎉 All {stats.total} labeled — nice.</p>
-              <p style={{ fontSize: 13, color: '#6B6B6B', marginTop: 6 }}>Tell me to review your verdicts and I&rsquo;ll tune the resolver to match, then we play a fresh round.</p>
+              {(stats.reranScored || 0) > 0 ? (
+                <p style={{ fontSize: 14, color: INK, marginTop: 8 }}>
+                  Tuned resolver, re-scored against your labels: <strong style={{ color: GREEN }}>{stats.reranRight}/{stats.reranScored} correct</strong>
+                  <span style={{ color: '#9C9C9C' }}> (was {stats.newRight}/{stats.scored} before the tune)</span>
+                </p>
+              ) : (
+                <p style={{ fontSize: 13, color: '#6B6B6B', marginTop: 6 }}>Re-run the tuned resolver on the same 40 to see the lift on the exact cases you labeled (a few API credits, no re-labeling).</p>
+              )}
+              <button onClick={rerun} disabled={preparing}
+                style={{ marginTop: 12, background: GREEN, color: '#FFFDFA', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
+                {preparing ? `Re-running… ${stats.reranDone || 0}/${stats.labeled}` : '↻ Re-run tuned resolver on your labels'}
+              </button>
             </>
           ) : (
             <>

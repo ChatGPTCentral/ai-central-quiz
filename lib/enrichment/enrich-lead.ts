@@ -70,7 +70,7 @@ export async function enrichLeadAndNotify(
   // Hydrate whatever context we already have.
   const { data: row } = await c
     .from('submissions')
-    .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url')
+    .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url, job_level, work_area')
     .eq('id', rowId)
     .maybeSingle()
 
@@ -88,6 +88,8 @@ export async function enrichLeadAndNotify(
         companyName: (row.company_name as string) || undefined,
         jobTitle: (row.job_title as string) || undefined,
         country: (row.country as string) || undefined,
+        jobLevel: (row.job_level as string) || undefined,
+        workArea: (row.work_area as string) || undefined,
       }
       const v2 = await runV2(input, { useCache: !force, skipWiza })
       status = v2.status

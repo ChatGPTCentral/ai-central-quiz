@@ -18,20 +18,44 @@ function sb() {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CHOICES = ['new', 'current', 'both', 'neither', 'skip']
 
+/** LinkedIn vanity slug for loose URL equality (/in/<slug>). */
+function slug(u: unknown): string | null {
+  if (typeof u !== 'string') return null
+  const m = u.toLowerCase().match(/\/in\/([^/?#]+)/)
+  return m ? m[1].replace(/\/$/, '') : null
+}
+
 export async function GET() {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const c = sb()
   const { data: next } = await c.from('enrich_game').select('*').is('labeled_at', null).order('created_at').limit(1).maybeSingle()
-  const { data: labeled } = await c.from('enrich_game').select('choice').not('labeled_at', 'is', null)
-  const rows = labeled || []
+  const { data: labeled } = await c.from('enrich_game').select('choice, truth, current, reran').not('labeled_at', 'is', null)
+  const rows = (labeled || []) as { choice: string | null; truth: { linkedinUrl?: string } | null; current: { linkedinUrl?: string } | null; reran: { linkedinUrl?: string; outcome?: string } | null }[]
   const scored = rows.filter(r => r.choice && r.choice !== 'skip')
+
+  // Lift of the re-run (tuned resolver) against the owner's labels: correct if
+  // it now matches the ground-truth slug, or the current-that-was-right slug,
+  // or it still resolves the ones new already won.
+  const reran = rows.filter(r => r.reran)
+  let reranScored = 0, reranRight = 0
+  for (const r of reran) {
+    const truthSlug = r.truth?.linkedinUrl && r.truth.linkedinUrl !== 'N/A' ? slug(r.truth.linkedinUrl) : null
+    const reranSlug = slug(r.reran?.linkedinUrl)
+    if (truthSlug) { reranScored++; if (reranSlug && reranSlug === truthSlug) reranRight++; continue }
+    if (r.choice === 'current') { reranScored++; if (reranSlug && reranSlug === slug(r.current?.linkedinUrl)) reranRight++; continue }
+    if (r.choice === 'new' || r.choice === 'both') { reranScored++; if (reranSlug) reranRight++; continue }
+  }
+
   const stats = {
-    total: 0, // filled below
+    total: 0,
     labeled: rows.length,
     scored: scored.length,
     newRight: scored.filter(r => r.choice === 'new' || r.choice === 'both').length,
     currentRight: scored.filter(r => r.choice === 'current' || r.choice === 'both').length,
     neither: scored.filter(r => r.choice === 'neither').length,
+    reranDone: reran.length,
+    reranScored,
+    reranRight,
   }
   const { count } = await c.from('enrich_game').select('*', { count: 'exact', head: true })
   stats.total = count || 0

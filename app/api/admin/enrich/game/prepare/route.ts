@@ -28,11 +28,43 @@ interface Row {
 
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  let body: { limit?: number; target?: number }
+  let body: { limit?: number; target?: number; rerun?: boolean }
   try { body = await req.json() } catch { body = {} }
   const limit = Math.min(8, Math.max(1, Number(body.limit) || 5))
   const target = Math.min(60, Math.max(1, Number(body.target) || 40))
   const c = sb()
+
+  // ── Re-run mode: re-run the (now tuned) resolver on already-labeled rounds
+  // into `reran`, preserving the original proposed + the owner's verdict, so
+  // we can measure the lift against their labels without re-labeling. ──
+  if (body.rerun) {
+    try {
+      const { data: rows } = await c.from('enrich_game')
+        .select('id, known').not('labeled_at', 'is', null).is('reran', null).limit(limit)
+      const todo = (rows || []) as { id: string; known: Record<string, string | null> }[]
+      const { count: remaining } = await c.from('enrich_game').select('*', { count: 'exact', head: true }).not('labeled_at', 'is', null).is('reran', null)
+      if (todo.length === 0) return NextResponse.json({ reran: true, finished: true, remaining: 0 })
+      await Promise.all(todo.map(async (row) => {
+        const k = row.known || {}
+        let reran: Record<string, unknown>
+        try {
+          const v2 = await runV2({ email: (k.email || '') as string, name: k.name || undefined, country: k.country || undefined, jobLevel: k.jobLevel || undefined, workArea: k.workArea || undefined }, { verifiedResolver: true, useCache: false, skipWiza: true })
+          reran = {
+            linkedinUrl: v2.merged.linkedinUrl || v2.resolver?.linkedinUrl || null,
+            companyName: v2.merged.companyName || v2.resolver?.companyName || null,
+            jobTitle: v2.merged.jobTitle || v2.resolver?.jobTitle || null,
+            confidence: v2.resolver?.confidence ?? null,
+            reasoning: v2.resolver?.reasoning || null,
+            outcome: v2.resolver?.outcome || null,
+          }
+        } catch (err) { reran = { outcome: 'error', reasoning: String(err).slice(0, 160) } }
+        await c.from('enrich_game').update({ reran }).eq('id', row.id)
+      }))
+      return NextResponse.json({ reran: true, processed: todo.length, remaining: Math.max(0, (remaining || 0) - todo.length), finished: (remaining || 0) - todo.length <= 0 })
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
+    }
+  }
 
   try {
     const { count } = await c.from('enrich_game').select('*', { count: 'exact', head: true })
@@ -53,7 +85,7 @@ export async function POST(req: NextRequest) {
       const known = { name: r.name, email: r.email, country: r.country, jobLevel: r.job_level, workArea: r.work_area }
       const current = { linkedinUrl: r.linkedin_url, companyName: r.company_name, jobTitle: r.job_title, country: r.country, seniority: r.seniority, photoUrl: r.photo_url }
       try {
-        const v2 = await runV2({ email: r.email!, name: r.name || undefined, country: r.country || undefined }, { verifiedResolver: true, useCache: false, skipWiza: true })
+        const v2 = await runV2({ email: r.email!, name: r.name || undefined, country: r.country || undefined, jobLevel: r.job_level || undefined, workArea: r.work_area || undefined }, { verifiedResolver: true, useCache: false, skipWiza: true })
         const proposed = {
           linkedinUrl: v2.merged.linkedinUrl || v2.resolver?.linkedinUrl || null,
           companyName: v2.merged.companyName || v2.resolver?.companyName || null,

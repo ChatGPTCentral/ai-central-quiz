@@ -25,6 +25,7 @@ interface Body {
   submissionId?: string
   name?: string; email?: string; country?: string
   jobTitle?: string; companyName?: string; linkedinUrl?: string
+  jobLevel?: string; workArea?: string
   skipWiza?: boolean
 }
 
@@ -48,12 +49,12 @@ export async function POST(req: NextRequest) {
   let base: Body = {}
   if (body.submissionId) {
     const { data } = await c.from('submissions')
-      .select('name, email, country, job_title, company_name, linkedin_url')
+      .select('name, email, country, job_title, company_name, linkedin_url, job_level, work_area')
       .eq('id', body.submissionId).maybeSingle()
-    if (data) base = { name: data.name || undefined, email: data.email || undefined, country: data.country || undefined, jobTitle: data.job_title || undefined, companyName: data.company_name || undefined, linkedinUrl: data.linkedin_url || undefined }
+    if (data) base = { name: data.name || undefined, email: data.email || undefined, country: data.country || undefined, jobTitle: data.job_title || undefined, companyName: data.company_name || undefined, linkedinUrl: data.linkedin_url || undefined, jobLevel: data.job_level || undefined, workArea: data.work_area || undefined }
   }
   // Explicit body fields override the hydrated defaults (empty string clears).
-  const pick = (k: 'name' | 'email' | 'country' | 'jobTitle' | 'companyName' | 'linkedinUrl'): string | undefined => {
+  const pick = (k: 'name' | 'email' | 'country' | 'jobTitle' | 'companyName' | 'linkedinUrl' | 'jobLevel' | 'workArea'): string | undefined => {
     const v = body[k] !== undefined ? body[k] : base[k]
     return typeof v === 'string' && v.trim() ? v.trim() : undefined
   }
@@ -64,6 +65,8 @@ export async function POST(req: NextRequest) {
     jobTitle: pick('jobTitle'),
     companyName: pick('companyName'),
     linkedinUrl: pick('linkedinUrl'),
+    jobLevel: pick('jobLevel'),
+    workArea: pick('workArea'),
   }
   if (!input.email) return NextResponse.json({ error: 'email is required (type one or pick a record)' }, { status: 400 })
 
