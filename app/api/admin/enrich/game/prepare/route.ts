@@ -74,13 +74,20 @@ export async function POST(req: NextRequest) {
     const doneIds = new Set((existing || []).map(r => r.submission_id))
     const have = doneIds.size
 
+    // Whole launch cohort (since Jun 5), most-recent first, so the game can
+    // cover every lead — not just the last few.
+    const { count: available } = await c.from('submissions')
+      .select('*', { count: 'exact', head: true })
+      .eq('source', 'quiz_v2').is('archived_at', null).not('email', 'is', null)
+      .gte('staged_at', '2026-06-05T00:00:00Z')
     const { data: pool } = await c.from('submissions')
       .select('id, name, email, country, linkedin_url, company_name, job_title, photo_url, job_level, work_area, seniority')
       .eq('source', 'quiz_v2').is('archived_at', null).not('email', 'is', null)
-      .order('staged_at', { ascending: false }).limit(400)
+      .gte('staged_at', '2026-06-05T00:00:00Z')
+      .order('staged_at', { ascending: false }).limit(2000)
     const fresh = ((pool || []) as Row[]).filter(r => !doneIds.has(r.id))
     const candidates = fresh.slice(0, limit)
-    if (candidates.length === 0) return NextResponse.json({ added: 0, total: have, finished: true, hasMore: false, note: 'no more unplayed records' })
+    if (candidates.length === 0) return NextResponse.json({ added: 0, total: have, available: available || have, finished: true, hasMore: false, note: 'no more unplayed records' })
 
     const rounds = await Promise.all(candidates.map(async (r) => {
       const known = { name: r.name, email: r.email, country: r.country, jobLevel: r.job_level, workArea: r.work_area }

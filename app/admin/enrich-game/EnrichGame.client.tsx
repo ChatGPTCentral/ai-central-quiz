@@ -13,10 +13,9 @@ interface Cand {
   confidence?: number | null; reasoning?: string | null; outcome?: string | null
 }
 interface Round { id: string; submission_id: string; known: Record<string, string | null>; current: Cand; proposed: Cand }
-interface Stats { total: number; labeled: number; scored: number; newRight: number; currentRight: number; neither: number; reranDone?: number; reranScored?: number; reranRight?: number; uncommitted?: number }
+interface Stats { total: number; labeled: number; scored: number; newRight: number; currentRight: number; neither: number; reranDone?: number; reranScored?: number; reranRight?: number; uncommitted?: number; available?: number }
 
 const INK = '#333', CREAM = '#FEF7E7', GREEN = '#0F8A6D', AMBER = '#9C6B2F'
-const TARGET = 40
 
 function Photo({ url, name, accent }: { url?: string | null; name?: string | null; accent: string }) {
   const [broken, setBroken] = useState(false)
@@ -87,16 +86,14 @@ export default function EnrichGame() {
 
   useEffect(() => { loadNext() }, [loadNext])
 
-  // Add a fresh round of TARGET new (unplayed) records; start playing as soon
-  // as the first few land. Loops until a round's worth is added or pool dry.
+  // Prepare ALL remaining unplayed leads (loops until the pool is dry); start
+  // playing as soon as the first few land while the rest fill in behind you.
   const prepare = async () => {
     if (preparingRef.current) return
     preparingRef.current = true; setPreparing(true); setError(null)
     let loaded = !!round
     try {
-      const g0 = await (await fetch('/api/admin/enrich/game')).json()
-      const startTotal = g0.stats?.total || 0
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 80; i++) {
         const res = await fetch('/api/admin/enrich/game/prepare', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 5 }),
         })
@@ -104,8 +101,7 @@ export default function EnrichGame() {
         if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
         const b = await (await fetch('/api/admin/enrich/game')).json(); setStats(b.stats)
         if (!loaded) { await loadNext(); loaded = true }
-        const added = (b.stats?.total || 0) - startTotal
-        if (body.hasMore === false || added >= TARGET) break
+        if (body.hasMore === false) break
       }
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { preparingRef.current = false; setPreparing(false) }
@@ -170,6 +166,8 @@ export default function EnrichGame() {
   )
 
   const pct = stats ? Math.round((stats.labeled / Math.max(1, stats.total)) * 100) : 0
+  const available = stats?.available ?? 0
+  const remaining = Math.max(0, available - (stats?.total || 0))
 
   return (
     <div>
@@ -179,7 +177,7 @@ export default function EnrichGame() {
           <span style={{ fontSize: 12.5, fontWeight: 700, color: GREEN }}>New right: {stats.newRight}</span>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: AMBER }}>Current right: {stats.currentRight}</span>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: '#9C9C9C' }}>Neither: {stats.neither}</span>
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9C9C9C' }}>{stats.labeled}/{stats.total} labeled</span>
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9C9C9C' }}>{stats.labeled}/{stats.total} labeled · {available ? `${stats.total}/${available} of all leads covered` : ''}</span>
           <div style={{ width: '100%', height: 6, background: '#EFEAE1', borderRadius: 3, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: GREEN, transition: 'width .3s' }} />
           </div>
@@ -207,35 +205,37 @@ export default function EnrichGame() {
         <div style={{ background: '#FFFFFF', border: '1px solid #E8E4DF', borderRadius: 12, padding: 28, textAlign: 'center' }}>
           {stats && stats.labeled > 0 && stats.labeled >= stats.total ? (
             <>
-              <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>🎉 All {stats.total} labeled — nice.</p>
-              {(stats.reranScored || 0) > 0 ? (
+              <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>
+                {remaining > 0 ? `All ${stats.total} prepared are labeled — ${remaining} more leads to cover.` : `🎉 All ${available || stats.total} leads supervised.`}
+              </p>
+              {(stats.reranScored || 0) > 0 && (
                 <p style={{ fontSize: 14, color: INK, marginTop: 8 }}>
                   Tuned resolver, re-scored against your labels: <strong style={{ color: GREEN }}>{stats.reranRight}/{stats.reranScored} correct</strong>
                   <span style={{ color: '#9C9C9C' }}> (was {stats.newRight}/{stats.scored} before the tune)</span>
                 </p>
-              ) : (
-                <p style={{ fontSize: 13, color: '#6B6B6B', marginTop: 6 }}>Re-run the tuned resolver on the same 40 to see the lift on the exact cases you labeled (a few API credits, no re-labeling).</p>
               )}
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+                {remaining > 0 && (
+                  <button onClick={prepare} disabled={preparing}
+                    style={{ background: INK, color: CREAM, border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
+                    {preparing ? `Preparing… ${stats.total}/${available}` : `▶ Prepare the remaining ${remaining}`}
+                  </button>
+                )}
                 <button onClick={rerun} disabled={preparing}
-                  style={{ background: GREEN, color: '#FFFDFA', border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
-                  {preparing ? `Working… ${stats.reranDone || 0}/${stats.labeled}` : '↻ Re-run tuned resolver on your labels'}
-                </button>
-                <button onClick={prepare} disabled={preparing}
-                  style={{ background: INK, color: CREAM, border: 'none', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
-                  ▶ Prepare {TARGET} more records
+                  style={{ background: '#FFFFFF', color: INK, border: '2px solid #E8E4DF', borderRadius: 10, padding: '10px 20px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
+                  {preparing ? `Working…` : '↻ Re-run tuned resolver on your labels'}
                 </button>
               </div>
             </>
           ) : (
             <>
-              <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>Ready to play the last {TARGET}?</p>
+              <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>Ready to supervise {available ? `all ${available}` : 'your'} leads?</p>
               <p style={{ fontSize: 12.5, color: '#9C9C9C', margin: '6px 0 14px' }}>
-                Prepare runs the new pipeline fresh on each record (Apify + up to ~{TARGET} Apollo credits, current side is free). You can start playing after the first few are ready.
+                Prepare runs the new pipeline fresh on each record (Apify + up to ~{available || 'N'} Apollo credits total, current side is free). Play as soon as the first few are ready; the rest fill in behind you.
               </p>
               <button onClick={prepare} disabled={preparing}
                 style={{ background: INK, color: CREAM, border: 'none', borderRadius: 10, padding: '11px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: preparing ? 0.6 : 1 }}>
-                {preparing ? `Preparing… ${stats?.total || 0}/${TARGET}` : `▶ Prepare & play`}
+                {preparing ? `Preparing… ${stats?.total || 0}/${available || '…'}` : `▶ Prepare & play`}
               </button>
             </>
           )}
@@ -290,7 +290,7 @@ export default function EnrichGame() {
             )}
           </div>
 
-          {preparing && <p style={{ fontSize: 11, color: '#9C9C9C', marginTop: 10 }}>Preparing more rounds in the background… {stats?.total || 0}/{TARGET}</p>}
+          {preparing && <p style={{ fontSize: 11, color: '#9C9C9C', marginTop: 10 }}>Preparing more rounds in the background… {stats?.total || 0}/{available || '…'}</p>}
         </div>
       )}
     </div>
