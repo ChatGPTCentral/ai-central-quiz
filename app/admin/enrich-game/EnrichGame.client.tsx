@@ -111,15 +111,20 @@ export default function EnrichGame() {
     if (preparingRef.current) return
     preparingRef.current = true; setPreparing(true); setError(null)
     try {
-      for (let i = 0; i < 12; i++) {
+      // Drain the whole pending pool in one click (idempotent: the endpoint
+      // only picks rows where reran IS NULL, so re-clicking resumes safely).
+      // Safety cap well above 322/8 in case a batch stalls.
+      for (let i = 0; i < 100; i++) {
         const res = await fetch('/api/admin/enrich/game/prepare', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rerun: true, limit: 5 }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rerun: true, limit: 8 }),
         })
         const body = await res.json()
         if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
         const r = await fetch('/api/admin/enrich/game'); const b = await r.json(); setStats(b.stats)
-        if (body.finished) break
+        if (typeof body.remaining === 'number') setFlash(`Re-running tuned resolver… ${body.remaining} left`)
+        if (body.finished || (typeof body.remaining === 'number' && body.remaining <= 0)) break
       }
+      setFlash('Re-run complete ✓'); setTimeout(() => setFlash(null), 1600)
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
     finally { preparingRef.current = false; setPreparing(false) }
   }
