@@ -1,5 +1,28 @@
 # AI Central Quiz — working agreements for Claude
 
+## THE north-star metric (maximize this above everything)
+
+The one success metric for the whole project is the **quiz → paid-trial
+conversion rate**:
+
+- **Numerator** = people who (a) had **no Stripe payment ever** before the
+  quiz (i.e. genuinely free subscribers, not part of the 3-year existing
+  client backlog), AND (b) completed the quiz through the result, AND
+  (c) bought the **$4.99 trial AFTER** the moment they took the quiz.
+- **Denominator** = everyone who completed the quiz.
+
+This is the rate at which the quiz converts **free readers into paid trials**.
+Each such trial bills **$59.75/year one month later** when the trial ends, so
+maximizing this maximizes new paid customers and their LTV. That is the point
+of the quiz: turn free readers into paid ones via the $4.99 trial.
+
+NOT this metric: existing customers who happen to take the quiz; renewals;
+trials people entered BEFORE the quiz existed (the $4.99 offer was promoted
+before Jul 5). "First Stripe charge after `created_at`" is only a rough proxy
+— the true signal is "was free before the quiz, then bought the trial after,"
+and the owner keeps a manual spreadsheet of $4.99 trials sold as the source of
+truth to reconcile against.
+
 ## The roadmap board is the source of truth
 
 The project roadmap lives in the Supabase table `roadmap_tasks` (project
