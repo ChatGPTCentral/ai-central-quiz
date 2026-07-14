@@ -58,11 +58,11 @@ async function loadSubmissions(sinceIso: string) {
   const c = sb()
   const { data } = await c
     .from('submissions')
-    .select('id, email, staged_at, stripe_first_charge_at, utm_source')
+    .select('id, email, created_at, staged_at, stripe_first_charge_at, utm_source')
     .eq('source', 'quiz_v2')
     .is('archived_at', null)
-    .gte('staged_at', sinceIso)
-  return (data ?? []) as { id: string; email: string; staged_at: string | null; stripe_first_charge_at: string | null; utm_source: string | null }[]
+    .gte('created_at', sinceIso)
+  return (data ?? []) as { id: string; email: string; created_at: string | null; staged_at: string | null; stripe_first_charge_at: string | null; utm_source: string | null }[]
 }
 
 function uniquePeople(rows: EvRow[]): number {
@@ -92,13 +92,15 @@ export default async function FunnelPage() {
   // measurement layer shipped, while the CRM covers the whole window
   // (launch included). So the two CRM rows are clipped to the events era
   // for the chain, and their full-window totals ride along as notes.
+  // Quiz-completion time = the IMMUTABLE created_at. staged_at gets re-stamped
+  // by enrichment / re-segmentation, which was silently hiding real conversions
+  // (the charge looked "before" the bumped quiz time). Attribute on created_at.
+  const qtime = (s: { created_at?: string | null; staged_at?: string | null }) =>
+    new Date(s.created_at || s.staged_at || 0).getTime()
   const eventsStartMs = firstEventTs ? new Date(firstEventTs).getTime() : null
-  const subsEventsEra = eventsStartMs
-    ? subs.filter(s => s.staged_at && new Date(s.staged_at).getTime() >= eventsStartMs)
-    : subs
+  const subsEventsEra = eventsStartMs ? subs.filter(s => qtime(s) >= eventsStartMs) : subs
   const paidOf = (rows: typeof subs) => rows.filter(s =>
-    s.stripe_first_charge_at && s.staged_at &&
-    new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime(),
+    s.stripe_first_charge_at && new Date(s.stripe_first_charge_at).getTime() > qtime(s),
   ).length
 
   // ── Launch cohort (since Jul 5): the CRM truth over the whole launch,
@@ -106,10 +108,10 @@ export default async function FunnelPage() {
   // event-based steps below only exist from Jul 9 so they live in their own
   // panel rather than lying about a %-chain across two windows.
   const launchMs = new Date(LAUNCH_ISO).getTime()
-  const launchSubs = subs.filter(s => s.staged_at && new Date(s.staged_at).getTime() >= launchMs)
+  const launchSubs = subs.filter(s => qtime(s) >= launchMs)
   const launchCompleted = launchSubs.length
   const launchPaid = paidOf(launchSubs)
-  const launchPretracking = eventsStartMs ? launchSubs.filter(s => new Date(s.staged_at!).getTime() < eventsStartMs).length : 0
+  const launchPretracking = eventsStartMs ? launchSubs.filter(s => qtime(s) < eventsStartMs).length : 0
   const launchCvr = launchCompleted > 0 ? (launchPaid / launchCompleted) * 100 : 0
 
   // On-page funnel: the monotonic path through the pages, one person per
@@ -150,8 +152,7 @@ export default async function FunnelPage() {
     passViews: uniquePeople(by('pass_view')),
     takers: passShareSubs.length,
     paid: passShareSubs.filter(s =>
-      s.stripe_first_charge_at && s.staged_at &&
-      new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime(),
+      s.stripe_first_charge_at && new Date(s.stripe_first_charge_at).getTime() > qtime(s),
     ).length,
   }
 
@@ -161,7 +162,7 @@ export default async function FunnelPage() {
     const k = (s.utm_source || 'Direct / unknown').trim()
     const e = utm.get(k) || { subs: 0, paid: 0 }
     e.subs++
-    if (s.stripe_first_charge_at && s.staged_at && new Date(s.stripe_first_charge_at).getTime() > new Date(s.staged_at).getTime()) e.paid++
+    if (s.stripe_first_charge_at && new Date(s.stripe_first_charge_at).getTime() > qtime(s)) e.paid++
     utm.set(k, e)
   }
   const utmRows = Array.from(utm.entries()).sort((a, b) => b[1].subs - a[1].subs).slice(0, 12)
