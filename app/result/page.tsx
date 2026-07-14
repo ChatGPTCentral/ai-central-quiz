@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { cookies, headers } from 'next/headers'
 import TrackView from '@/components/TrackView'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
+import { ClarityTag } from '@/components/result2/ClarityTag.client'
 import { resolveExperiments } from '@/lib/experiments'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
@@ -278,6 +279,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   return (
     <>
       <TrackView event="result_view" props={{ pageVariant: 'v4', stage: stageKey, persona, submissionId: rowId }} />
+      <ClarityTag submissionId={rowId} variant="v4" />
       <ExperimentTracker assignments={assignments} submissionId={rowId} />
       <Confetti onLoad />
 

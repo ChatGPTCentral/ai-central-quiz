@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getSubmission } from '@/lib/kv'
 import { personResultPath } from '@/lib/result-url'
 import { findReferrers } from '@/lib/referrer'
+import { lastResultView } from '@/lib/result-view'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag } from '@/lib/country-flags'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
@@ -32,6 +33,8 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
   // Viral loop: for a pass_share lead, resolve who shared the pass that
   // brought them in (utm_ref = the sharer's ref).
   const referrers = item.utmSource === 'pass_share' ? await findReferrers(item.utmRef) : []
+  // Which result page this person actually saw (+ a way to find their recording).
+  const pageSeen = await lastResultView(item.id)
 
   const companyLinkedinUrl =
     item.companyLinkedinUrl ||
@@ -88,6 +91,19 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               title={`Shared their pass → this lead. ${referrers.length > 1 ? referrers.length + ' possible referrers (4-char ref collision)' : ''}`}>
               🔗 Referred by {referrers[0].name || referrers[0].email}{referrers.length > 1 ? ` +${referrers.length - 1}` : ''}
             </Link>
+          )}
+          {pageSeen && (
+            <span
+              title={`Saw the ${pageSeen.variantLabel} result page · ${pageSeen.views} view${pageSeen.views === 1 ? '' : 's'}, last ${new Date(pageSeen.lastSeen).toLocaleString()}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#F1EDE4] text-[#6B6B6B] border border-[#E8E4DF]"
+            >📄 Saw {pageSeen.variant}</span>
+          )}
+          {pageSeen?.clarityUrl && (
+            <a
+              href={pageSeen.clarityUrl} target="_blank" rel="noopener noreferrer"
+              title={`Find this session recording in Clarity: open recordings, then filter Custom tags → submissionId = ${item.id}`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#F3EEFA] text-[#8E5BD1] border border-[#8E5BD1]/30"
+            >🎬 Clarity ↗</a>
           )}
           <a
             href={personResultPath({ id: item.id, name: item.name, score: item.score, persona: item.persona, stage: item.stage })}
