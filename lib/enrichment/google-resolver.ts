@@ -284,7 +284,7 @@ Return ONLY JSON, no markdown:
     const res = await fetch(ANTHROPIC_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 400, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 400, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(25_000),
     })
     if (!res.ok) { console.error('resolver LLM error', res.status); return null }
