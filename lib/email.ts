@@ -24,6 +24,7 @@ import { personaDef } from './segmentation-v2'
 import { answerDisplay, answerDisplayList, formatDisplay } from './answer-labels'
 import { QUESTIONS_V2_MERGED } from './questions-v2-merged'
 import { isPlaceholderPhoto } from './enrichment/photo-filter'
+import { findReferrers, type Referrer } from './referrer'
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
@@ -137,9 +138,10 @@ export function buildResultUrl(r: SubmissionRow, siteUrl?: string): string | nul
 
 /** "New Lead from {UTM}: {Name} - {Country} - {Title} at {Company} - {AI Type}",
  *  omitting whatever is missing. */
-export function buildLeadSubject(r: SubmissionRow): string {
+export function buildLeadSubject(r: SubmissionRow, referrerName?: string | null): string {
   const utm = (r.utm_source || '').trim()
-  const prefix = utm ? `New Lead from ${utm}: ` : 'New Lead: '
+  const via = referrerName ? ` (via ${referrerName})` : ''
+  const prefix = utm ? `New Lead from ${utm}${via}: ` : 'New Lead: '
 
   const parts: string[] = []
   parts.push(r.name?.trim() || r.email || '(no name)')
@@ -162,14 +164,19 @@ export async function sendSubmitNotification(row: SubmissionRow, siteUrl?: strin
   const to = process.env.ADMIN_NOTIFY_EMAIL || 'chatgptcentral@gmail.com'
   const from = process.env.ADMIN_NOTIFY_FROM || 'AI Central <onboarding@resend.dev>'
 
-  const subject = buildLeadSubject(row)
+  // Viral loop: if a pass_share brought this lead in, resolve who shared it
+  // so the notification names the referrer (utm_ref = the sharer's ref).
+  const referrers = row.utm_source === 'pass_share' ? await findReferrers(row.utm_ref) : []
+  const referrerName = referrers[0]?.name || referrers[0]?.email || null
+
+  const subject = buildLeadSubject(row, referrerName)
   const adminLink = siteUrl
     ? `${siteUrl.replace(/\/$/, '')}/admin/submissions/${encodeURIComponent(row.id)}`
     : null
   const resultLink = buildResultUrl(row, siteUrl)
 
-  const html = renderHtml(row, adminLink, resultLink, siteUrl)
-  const text = renderText(row, adminLink, resultLink)
+  const html = renderHtml(row, adminLink, resultLink, siteUrl, referrers)
+  const text = renderText(row, adminLink, resultLink, siteUrl, referrers)
 
   if (!apiKey) {
     console.log(`[email] RESEND_API_KEY not set; would send "${subject}" to ${to}`)
@@ -300,7 +307,7 @@ function sectionHeader(title: string): string {
   return `<tr><td colspan="2" style="padding:18px 0 8px;border-top:1px solid #E8E4DF;color:#9C9C9C;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;">${escape(title)}</td></tr>`
 }
 
-function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: string | null, siteUrl?: string): string {
+function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: string | null, siteUrl?: string, referrers: Referrer[] = []): string {
   const fullName = r.name || '(no name)'
   const sd = r.stage ? stageDef(r.stage) : null
   const overview = buildOverview(r)
@@ -394,6 +401,12 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
     const utm = [r.utm_source, r.utm_ref].filter(present).join(' · ')
     engagementRows.push(row('Attribution', escape(utm)))
   }
+  if (referrers.length) {
+    const rf = referrers[0]
+    const label = (rf.name || rf.email || 'a member') + (referrers.length > 1 ? ` (+${referrers.length - 1} possible)` : '')
+    const href = siteUrl ? `${siteUrl.replace(/\/$/, '')}/admin/submissions/${encodeURIComponent(rf.id)}` : null
+    engagementRows.push(row('Referred by', `🔗 ${href ? link(href, label) : escape(label)}`))
+  }
   if (present(r.beehiiv_status)) engagementRows.push(row('Beehiiv', escape(r.beehiiv_status!)))
   if (present(r.subscription_tier)) engagementRows.push(row('Tier', escape(r.subscription_tier!)))
   if (present(r.stripe_customer_id)) {
@@ -468,7 +481,7 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
 </html>`
 }
 
-function renderText(r: SubmissionRow, adminLink: string | null, resultLink: string | null): string {
+function renderText(r: SubmissionRow, adminLink: string | null, resultLink: string | null, siteUrl?: string, referrers: Referrer[] = []): string {
   const lines: string[] = []
   lines.push(`${r.name || '(no name)'} <${r.email || ''}>`)
   lines.push('')
@@ -478,6 +491,11 @@ function renderText(r: SubmissionRow, adminLink: string | null, resultLink: stri
   if (r.linkedin_url) lines.push(`LinkedIn:   ${r.linkedin_url}`)
   if (adminLink) lines.push(`Admin edit: ${adminLink}`)
   if (r.company_website) lines.push(`Company:    ${r.company_website}`)
+  if (referrers.length) {
+    const rf = referrers[0]
+    const href = siteUrl ? `${siteUrl.replace(/\/$/, '')}/admin/submissions/${rf.id}` : ''
+    lines.push(`Referred by: ${rf.name || rf.email || 'a member'}${referrers.length > 1 ? ` (+${referrers.length - 1})` : ''}${href ? ` — ${href}` : ''}`)
+  }
   lines.push('')
   lines.push('Their answers:')
   const qaLine = (dbCol: string, fallback: string, answer: string) => {
