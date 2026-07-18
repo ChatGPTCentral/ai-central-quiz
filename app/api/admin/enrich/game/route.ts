@@ -64,7 +64,7 @@ export async function GET() {
   const { count: available } = await c.from('submissions')
     .select('*', { count: 'exact', head: true })
     .eq('source', 'quiz_v2').is('archived_at', null).not('email', 'is', null)
-    .gte('staged_at', '2026-06-05T00:00:00Z')
+    .gte('created_at', '2026-07-05T00:00:00Z')
   ;(stats as typeof stats & { available: number }).available = available || 0
   return NextResponse.json({ round: next || null, stats })
 }

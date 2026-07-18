@@ -23,8 +23,8 @@ they came from. Tags remain the source of truth — the referrer is diagnostic.
 - **Direct links**: append `?utm_source=...` (and optionally `&utm_ref=...`)
   to `https://quiz.thecentral.ai/quiz-v2`.
 - Values land on the submission row (`utm_source`, `utm_ref`), the dashboard
-  UTM chart, `/admin/funnel`'s source table, the advanced filter, and the CSV
-  export — no further setup.
+  UTM chart and source table (`/admin/dashboard`), the advanced filter, and
+  the CSV export — no further setup.
 
 ## Naming convention
 
@@ -80,7 +80,7 @@ https://quiz.thecentral.ai/quiz-v2?utm_source=newsletter&utm_ref=<issue-or-campa
 
 ## After pasting
 
-Give it a day of traffic, then check `/admin/funnel` → "Completions → paid,
-by source". The `thecentral.ai` bucket should shrink toward zero as the new
+Give it a day of traffic, then check the dashboard (`/admin/dashboard`)
+source breakdown. The `thecentral.ai` bucket should shrink toward zero as the new
 names take over; whatever remains is stale caches or unknown placements
 (check the new `referrer` prop on `quiz_view` events to hunt those down).

@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 /** "Pull now" for the Clarity snapshot (each run spends 4 of the API's 10
- *  daily calls). Refreshes the funnel page when rows land. */
+ *  daily calls). Refreshes the host page (UX health on /admin/experiments)
+ *  when rows land. */
 export default function ClarityPullNow() {
   const router = useRouter()
   const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')

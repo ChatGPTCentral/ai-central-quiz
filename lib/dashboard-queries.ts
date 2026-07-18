@@ -22,7 +22,7 @@ const LIST_COLUMNS = [
   'company_size', 'company_industry', 'company_sub_industry',
   'company_revenue', 'company_funding', 'company_founded_year',
   'country', 'region', 'city',
-  'enrichment_status', 'enriched_at',
+  'enrichment_status', 'enriched_at', 'enrichment_verified_at',
   // demographics
   'age_bracket', 'age_ai_estimate', 'sex_ai_estimate', 'ai_estimate_confidence',
   // source / utm
