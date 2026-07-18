@@ -326,6 +326,13 @@ export default function ExperimentsPanel({
       {initialExperiments.length === 0 && !editing && (
         <p className="text-sm text-[#9C9C9C]">No experiments yet. Start with an A/A test (two variants, zero overrides) to validate the plumbing.</p>
       )}
+      {initialExperiments.length > 0 && !initialExperiments.some(r => r.status === 'running') && !editing && (
+        <div className="mb-5 rounded-xl border border-[#E7B02F66] bg-[#FDF6E3] px-4 py-3 text-[13px] text-[#6B5200]">
+          <strong>Nothing is being tested right now.</strong> Every experiment below has ended, so 100% of visitors see the
+          current result page. The engine and tracking stay wired; hit <strong>+ New experiment</strong> and Start to open the
+          next test. Ended experiments are kept for their results history.
+        </div>
+      )}
       {initialExperiments.map(row => {
         const st = STATUS_STYLE[row.status] || STATUS_STYLE.draft
         const res = initialResults[row.key]

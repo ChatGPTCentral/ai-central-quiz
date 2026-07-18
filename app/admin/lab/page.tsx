@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 type Status = 'skipped' | 'ok' | 'miss' | 'error'
 
@@ -40,11 +41,27 @@ const STATUS_COLOR: Record<Status, { bg: string; fg: string; label: string }> = 
 }
 
 export default function LabPage() {
+  return (
+    <Suspense>
+      <LabPageInner />
+    </Suspense>
+  )
+}
+
+function LabPageInner() {
+  const searchParams = useSearchParams()
   const [identifier, setIdentifier] = useState('')
   const [running, setRunning] = useState(false)
   const [save, setSave] = useState(false)
   const [result, setResult] = useState<V2Result | null>(null)
   const [error, setError] = useState('')
+
+  // Handoff from other admin pages (e.g. Debug lookup): /admin/lab?email=…
+  useEffect(() => {
+    const e = searchParams.get('email')
+    if (e) setIdentifier(e)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function run() {
     if (!identifier.trim()) return
@@ -73,9 +90,15 @@ export default function LabPage() {
 
   return (
     <div className="p-8 max-w-5xl">
-      <h1 className="text-2xl font-black text-[#333333] mb-1">✨ Enrichment Lab</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-2xl font-black text-[#333333] mb-1">✨ Enrichment Lab</h1>
+        <div className="flex items-center gap-4 text-[11.5px] font-bold">
+          <a href="/admin/enrich-inspect" className="text-[#046BB1] hover:underline">Deep inspector (current vs verified) →</a>
+          <a href="/admin/enrich-game" className="text-[#046BB1] hover:underline">Labeling game →</a>
+        </div>
+      </div>
       <p className="text-sm text-[#9C9C9C] mb-6">
-        Test the 8-stage v2 pipeline on any submission (or any email) without touching the live data.
+        Test the v2 pipeline on any submission (or any email) without touching the live data.
         Stages run in order: <strong>name from email → Google → LinkedIn scrape → Apollo → AI vision → Beehiiv → Stripe</strong>.
         Toggle <strong>Save</strong> to write merged results + run the Stage + Persona classifier on the row.
       </p>

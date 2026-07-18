@@ -9,9 +9,21 @@ export default function AdminFlowPage() {
   return (
     <div className="min-h-screen bg-[#F5F5F5] p-8">
       <div className="max-w-5xl mx-auto">
-        <div className="mb-8">
+        <div className="mb-4">
           <h1 className="text-2xl font-black text-black mb-1">Quiz Flow Diagram</h1>
           <p className="text-sm text-gray-500">AI Central · Survey v2 · {QUESTIONS.length} steps → 6 stages + 4 personas</p>
+        </div>
+
+        {/* What this page is (and is not) */}
+        <div className="mb-8 px-4 py-3 rounded-xl border border-[#E0E0E0] bg-white text-[12.5px] text-gray-600 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>
+            This is the <strong>static structure</strong> of the quiz + classifier, drawn live from the form config (edits in the Form editor show up here automatically).
+            It has no traffic data, and everyone follows this same path until the result page.
+          </span>
+          <span>
+            Where paths actually diverge: <a href="/admin/funnel" className="font-bold text-[#046BB1] hover:underline">Funnel</a> for live step drop-off,{' '}
+            <a href="/admin/experiments" className="font-bold text-[#046BB1] hover:underline">Experiments</a> for per-variant result-page paths.
+          </span>
         </div>
 
         {/* Flow steps */}

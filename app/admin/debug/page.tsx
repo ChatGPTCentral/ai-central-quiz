@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 
 type PrefillResult = {
@@ -55,20 +55,32 @@ const SOURCE_COLORS: Record<string, string> = {
   apollo: 'bg-orange-100 text-orange-700',
 }
 
+interface RecentLead { name: string | null; email: string; created_at: string }
+
 export default function DebugPage() {
   const [email, setEmail] = useState('')
   const [result, setResult] = useState<PrefillResult | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [recent, setRecent] = useState<RecentLead[]>([])
 
-  async function onLookup(e?: React.FormEvent) {
-    e?.preventDefault()
-    if (!email) return
+  // Quick-pick candidates: the latest quiz submissions, so debugging starts
+  // from real records instead of hand-typed emails.
+  useEffect(() => {
+    fetch('/api/admin/lookup?recent=1')
+      .then(r => r.json())
+      .then(b => setRecent(Array.isArray(b.recent) ? b.recent : []))
+      .catch(() => { /* chips just don't render */ })
+  }, [])
+
+  async function runLookup(target: string) {
+    if (!target) return
+    setEmail(target)
     setLoading(true)
     setError('')
     setResult(null)
     try {
-      const res = await fetch(`/api/admin/lookup?email=${encodeURIComponent(email)}`)
+      const res = await fetch(`/api/admin/lookup?email=${encodeURIComponent(target)}`)
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'Lookup failed')
@@ -82,14 +94,23 @@ export default function DebugPage() {
     }
   }
 
+  async function onLookup(e?: React.FormEvent) {
+    e?.preventDefault()
+    runLookup(email)
+  }
+
   return (
     <div className="p-8 max-w-4xl">
       <h1 className="text-2xl font-black text-black mb-1">Debug lookup</h1>
+      <p className="text-sm text-gray-500 mb-2">
+        What the public quiz PREFILL path returns for an email: past submission, Survey v2 stage + persona, Beehiiv custom fields, Apollo enrichment, and the merged result. This intentionally mirrors the legacy prefill API the quiz calls, not the full pipeline.
+      </p>
       <p className="text-sm text-gray-500 mb-6">
-        Paste an email to see what the prefill API would return. Surfaces past submission, Survey v2 stage + persona, Beehiiv custom fields, Apollo enrichment, and the merged result
+        To run the full current enrichment pipeline on an email (Google-first, Apify, AI vision), use the{' '}
+        <a className="font-bold text-[#046BB1] hover:underline" href={`/admin/lab${email ? `?email=${encodeURIComponent(email)}` : ''}`}>Enrichment Lab →</a>
       </p>
 
-      <form onSubmit={onLookup} className="flex gap-2 mb-8">
+      <form onSubmit={onLookup} className="flex gap-2 mb-3">
         <input
           type="email"
           value={email}
@@ -105,6 +126,25 @@ export default function DebugPage() {
           {loading ? 'Looking up…' : 'Lookup'}
         </button>
       </form>
+
+      {recent.length > 0 && (
+        <div className="mb-8">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Recent submissions</div>
+          <div className="flex flex-wrap gap-1.5">
+            {recent.map(r => (
+              <button
+                key={r.email}
+                onClick={() => runLookup(r.email)}
+                disabled={loading}
+                title={`${r.email} · ${new Date(r.created_at).toLocaleString()}`}
+                className="px-2.5 py-1 rounded-full border border-[#E0E0E0] bg-white text-[11.5px] text-[#333] hover:border-black transition-colors disabled:opacity-40"
+              >
+                {r.name || r.email}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-sm text-red-700">{error}</div>
