@@ -5,7 +5,6 @@
 
 import { scrapeLinkedInProfile } from './linkedin-scrape'
 import { apolloProvider } from './apollo'
-import { wizaProvider } from './wiza'
 import { estimateDemographicsFromPhoto } from './photo-demographics'
 import { findBeehiivSubscriberByEmail } from './beehiiv-lookup'
 import { findStripeCustomerByEmail } from './stripe-lookup'
@@ -14,7 +13,7 @@ import { normalizeCountry, titleCase } from '../normalize'
 import { standardizeSeniority, standardizeTitle, bracketCompanySize } from './standardize'
 import type { NormalizedPerson } from './types'
 
-export type FieldName = 'photo' | 'demographics' | 'beehiiv' | 'stripe' | 'apify' | 'apollo' | 'wiza'
+export type FieldName = 'photo' | 'demographics' | 'beehiiv' | 'stripe' | 'apify' | 'apollo'
 
 export interface FieldEnrichResult {
   rowId: string
@@ -169,17 +168,6 @@ export async function enrichRowFields(c: any, id: string, fields: FieldName[]): 
       else applyNormalizedPerson(update, updated, a)
     } catch (err) {
       skipped.push({ field: 'apollo', reason: String(err) })
-    }
-  }
-
-  // ── WIZA (re-run email lookup) ──────────────────────────────────
-  if (fields.includes('wiza')) {
-    try {
-      const w = await wizaProvider.lookup({ email: row.email })
-      if (!w) skipped.push({ field: 'wiza', reason: 'Wiza returned no match' })
-      else applyNormalizedPerson(update, updated, w)
-    } catch (err) {
-      skipped.push({ field: 'wiza', reason: String(err) })
     }
   }
 

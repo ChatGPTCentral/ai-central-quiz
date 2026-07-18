@@ -23,7 +23,6 @@ export async function GET() {
     enrichment: {
       APIFY:      hasAny(['APIFY_API_KEY', 'APIFY_TOKEN', 'APIFY_API_TOKEN']),
       APOLLO:     has('APOLLO_API_KEY'),
-      WIZA:       has('WIZA_API_KEY'),
       ANTHROPIC:  has('ANTHROPIC_API_KEY'),
     },
     integrations: {

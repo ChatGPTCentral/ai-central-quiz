@@ -26,7 +26,6 @@ interface Body {
   name?: string; email?: string; country?: string
   jobTitle?: string; companyName?: string; linkedinUrl?: string
   jobLevel?: string; workArea?: string
-  skipWiza?: boolean
 }
 
 /** Trim a V2Result to the fields the inspector renders (drop bulky raw). */
@@ -70,11 +69,10 @@ export async function POST(req: NextRequest) {
   }
   if (!input.email) return NextResponse.json({ error: 'email is required (type one or pick a record)' }, { status: 400 })
 
-  const skipWiza = body.skipWiza !== false
   try {
     // Run sequentially to keep the two flows' logging clean; both fresh (no cache).
-    const current = await runV2(input, { verifiedResolver: false, useCache: false, skipWiza })
-    const proposed = await runV2(input, { verifiedResolver: true, useCache: false, skipWiza })
+    const current = await runV2(input, { verifiedResolver: false, useCache: false })
+    const proposed = await runV2(input, { verifiedResolver: true, useCache: false })
     return NextResponse.json({ input, current: view(current), proposed: view(proposed) })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })

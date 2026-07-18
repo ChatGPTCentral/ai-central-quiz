@@ -6,7 +6,6 @@
 //     1. name_from_email      (only if name missing)
 //     2. google_search        (find linkedin.com/in/...)
 //     3. apollo (by email)    ← fallback work-profile lookup if URL not found
-//     4. wiza (by email)      ← also fallback (Wiza only takes email)
 //
 //   IF we now have a LinkedIn URL (either pre-existing or just found):
 //     5. apify_profile        ← THE source for work-profile from a URL
@@ -19,7 +18,6 @@
 // so the merge step has the maximum set of signals to combine.
 
 import { apolloProvider } from './apollo'
-import { wizaProvider } from './wiza'
 import { findLinkedInViaGoogle } from './google-linkedin-search'
 import { resolveIdentityViaGoogle, type ResolverResult } from './google-resolver'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
@@ -47,7 +45,7 @@ export interface V2Input {
 }
 
 export interface V2Stage {
-  name: 'name_from_email' | 'google_search' | 'apollo' | 'wiza' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
+  name: 'name_from_email' | 'google_search' | 'apollo' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
   status: 'skipped' | 'ok' | 'miss' | 'error'
   /** What this stage consumed (the ctx it saw) — surfaced by the inspector. */
   input?: Record<string, unknown>
@@ -80,7 +78,7 @@ export interface V2Result {
   resolver?: ResolverResult
 }
 
-export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza?: boolean; verifiedResolver?: boolean } = {}): Promise<V2Result> {
+export async function runV2(input: V2Input, opts: { useCache?: boolean; verifiedResolver?: boolean } = {}): Promise<V2Result> {
   const email = input.email.trim().toLowerCase()
 
   // ── Cache check — protects API budget on re-runs (60-day TTL) ───
@@ -224,24 +222,6 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; skipWiza
     }
   } catch (err) {
     stages.push({ name: 'apollo', status: 'error', input: apolloInput, reason: String(err) })
-  }
-
-  // ── Stage 5: Wiza — email-only fallback (no LinkedIn-URL endpoint) ──
-  // Strictly additive on top of Apify. Skipped when opts.skipWiza=true to
-  // save ~$0.02/row on bulk imports.
-  if (opts.skipWiza) {
-    stages.push({ name: 'wiza', status: 'skipped', reason: 'skipWiza=true' })
-  } else try {
-    tried.push('wiza')
-    const wizaResult = await wizaProvider.lookup(ctx)
-    if (wizaResult) {
-      record('wiza', wizaResult)
-      stages.push({ name: 'wiza', status: 'ok', result: wizaResult })
-    } else {
-      stages.push({ name: 'wiza', status: 'miss' })
-    }
-  } catch (err) {
-    stages.push({ name: 'wiza', status: 'error', reason: String(err) })
   }
 
   const merged = mergeEnrichment(results, tried)

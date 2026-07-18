@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         const k = row.known || {}
         let reran: Record<string, unknown>
         try {
-          const v2 = await runV2({ email: (k.email || '') as string, name: k.name || undefined, country: k.country || undefined, jobLevel: k.jobLevel || undefined, workArea: k.workArea || undefined }, { verifiedResolver: true, useCache: false, skipWiza: true })
+          const v2 = await runV2({ email: (k.email || '') as string, name: k.name || undefined, country: k.country || undefined, jobLevel: k.jobLevel || undefined, workArea: k.workArea || undefined }, { verifiedResolver: true, useCache: false })
           reran = {
             linkedinUrl: v2.merged.linkedinUrl || v2.resolver?.linkedinUrl || null,
             companyName: v2.merged.companyName || v2.resolver?.companyName || null,
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
       const known = { name: r.name, email: r.email, country: r.country, jobLevel: r.job_level, workArea: r.work_area }
       const current = { linkedinUrl: r.linkedin_url, companyName: r.company_name, jobTitle: r.job_title, country: r.country, seniority: r.seniority, photoUrl: r.photo_url }
       try {
-        const v2 = await runV2({ email: r.email!, name: r.name || undefined, country: r.country || undefined, jobLevel: r.job_level || undefined, workArea: r.work_area || undefined }, { verifiedResolver: true, useCache: false, skipWiza: true })
+        const v2 = await runV2({ email: r.email!, name: r.name || undefined, country: r.country || undefined, jobLevel: r.job_level || undefined, workArea: r.work_area || undefined }, { verifiedResolver: true, useCache: false })
         const proposed = {
           linkedinUrl: v2.merged.linkedinUrl || v2.resolver?.linkedinUrl || null,
           companyName: v2.merged.companyName || v2.resolver?.companyName || null,

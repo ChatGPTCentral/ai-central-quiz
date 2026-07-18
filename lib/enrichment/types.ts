@@ -1,4 +1,4 @@
-export type EnrichmentSource = 'apollo' | 'databar' | 'wiza' | 'apify' | 'apify_profile'
+export type EnrichmentSource = 'apollo' | 'databar' | 'apify' | 'apify_profile'
 
 export interface NormalizedPerson {
   source: EnrichmentSource

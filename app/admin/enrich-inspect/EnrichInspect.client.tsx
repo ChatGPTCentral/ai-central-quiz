@@ -28,7 +28,7 @@ interface Flow {
 const DOT: Record<string, string> = { ok: '#2E7D32', miss: '#E65100', skipped: '#C4BDB2', error: '#B3261E' }
 const STAGE_LABEL: Record<string, string> = {
   name_from_email: 'Name from email', google_search: 'Google → identity', linkedin_scrape: 'LinkedIn profile scrape',
-  apollo: 'Apollo lookup', wiza: 'Wiza reverse-lookup', photo_ai_demographics: 'Photo AI demographics',
+  apollo: 'Apollo lookup', photo_ai_demographics: 'Photo AI demographics',
   beehiiv_lookup: 'Beehiiv lookup', stripe_lookup: 'Stripe lookup',
 }
 

@@ -1,7 +1,7 @@
 // Background lead enrichment + admin notification.
 //
 // Runs the SAME v2 pipeline the admin "Run agent" button uses (runV2 —
-// Apollo, Wiza, Apify LinkedIn scraper, standardization, photo AI
+// Apollo, Apify LinkedIn scraper, standardization, photo AI
 // demographics, Beehiiv + Stripe extras), writes the results back onto the
 // submission row, re-classifies stage/persona, then sends the new-lead
 // notification email from the freshly enriched row.
@@ -21,11 +21,6 @@ import { assignSegmentationV2 } from '../segmentation-v2'
 import { fromRow, type DbRow } from '../kv'
 import { sendSubmitNotification, type SubmissionRow } from '../email'
 
-// Enrichment scope for automatic (on-submit) runs. Flip to true to skip the
-// pricier Wiza reverse-lookup credits per lead; false = full parity with the
-// admin agent.
-export const AUTO_ENRICH_SKIP_WIZA = false
-
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key =
@@ -42,8 +37,6 @@ export interface EnrichLeadOptions {
   reEnrich?: boolean
   /** Overwrite existing enriched values (default false — only fill gaps). */
   force?: boolean
-  /** Skip the Wiza reverse-lookup stage (defaults to AUTO_ENRICH_SKIP_WIZA). */
-  skipWiza?: boolean
   /** Sender base URL for the result/admin links in the email. */
   siteUrl?: string
 }
@@ -59,7 +52,6 @@ export async function enrichLeadAndNotify(
 ): Promise<{ enriched: boolean; status?: string; fieldsUpdated: string[]; emailed: boolean }> {
   const reEnrich = opts.reEnrich !== false
   const force = opts.force === true
-  const skipWiza = opts.skipWiza ?? AUTO_ENRICH_SKIP_WIZA
   const siteUrl = opts.siteUrl ?? process.env.NEXT_PUBLIC_SITE_URL
 
   const c = sb()
@@ -91,7 +83,7 @@ export async function enrichLeadAndNotify(
         jobLevel: (row.job_level as string) || undefined,
         workArea: (row.work_area as string) || undefined,
       }
-      const v2 = await runV2(input, { useCache: !force, skipWiza })
+      const v2 = await runV2(input, { useCache: !force })
       status = v2.status
 
       // ── Build the column update (mirrors the admin v2/row save) ──────

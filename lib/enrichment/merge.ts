@@ -12,7 +12,7 @@ const FIELDS: (keyof Omit<MergedEnrichment, 'sources' | 'providersTried'>)[] = [
 
 /**
  * Merge an ordered list of NormalizedPerson results into a single MergedEnrichment.
- * Earlier providers win — pass providers in priority order (Apollo → Databar → Wiza).
+ * Earlier providers win — pass providers in priority order (Apollo first).
  */
 export function mergeEnrichment(
   results: (NormalizedPerson | null)[],

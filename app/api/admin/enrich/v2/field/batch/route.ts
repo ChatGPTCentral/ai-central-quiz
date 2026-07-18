@@ -57,13 +57,12 @@ export async function POST(req: NextRequest) {
         demographics: 'age_ai_estimate.is.null,sex_ai_estimate.is.null',
         beehiiv:      'subscription_tier.is.null,subscription_tier.eq.',
         stripe:       'stripe_customer_id.is.null,stripe_customer_id.eq.',
-        // apify/apollo/wiza re-runs are per-row triggers from the detail page,
+        // apify/apollo re-runs are per-row triggers from the detail page,
         // not batch jobs, but we accept them in the schema for symmetry —
         // missingOnly filter uses the same proxy column (job_title) for all
         // three since none have a single "did this run succeed" column.
         apify:        'job_title.is.null,job_title.eq.',
         apollo:       'job_title.is.null,job_title.eq.',
-        wiza:         'job_title.is.null,job_title.eq.',
       }
       q = q.or(filterFor[field])
     }

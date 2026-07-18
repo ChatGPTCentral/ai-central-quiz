@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         // A correction with a LinkedIn → re-enrich from it for a full profile.
         try {
           const email = val(r.known?.email) || ''
-          const v2 = await runV2({ email, name: val(r.known?.name), linkedinUrl: truthLinkedin, country: val(r.known?.country) }, { useCache: false, skipWiza: true })
+          const v2 = await runV2({ email, name: val(r.known?.name), linkedinUrl: truthLinkedin, country: val(r.known?.country) }, { useCache: false })
           set('linkedin_url', truthLinkedin)
           set('company_name', val(truth.companyName) || val(v2.merged.companyName))
           set('job_title', val(truth.jobTitle) || val(v2.merged.jobTitle))

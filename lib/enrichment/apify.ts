@@ -3,7 +3,7 @@ import type { Provider, NormalizedPerson } from './types'
 // Apify actor: M2FMdjRVeF1HPGFcc — "LinkedIn Profile Search Scraper No Cookies"
 // https://console.apify.com/actors/M2FMdjRVeF1HPGFcc/input
 //
-// Use case: when earlier providers (Apollo/Databar/Wiza) gave us a name + company
+// Use case: when earlier providers (Apollo) gave us a name + company
 // but no LinkedIn URL, search LinkedIn by "<name> <company>" and grab the top hit.
 // Skipped entirely if neither name nor company are available.
 

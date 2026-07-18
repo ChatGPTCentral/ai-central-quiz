@@ -32,7 +32,7 @@ function client() {
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { id?: string; email?: string; save?: boolean; skipWiza?: boolean; force?: boolean }
+  let body: { id?: string; email?: string; save?: boolean; force?: boolean }
   try { body = await req.json() }
   catch { return NextResponse.json({ error: 'Invalid body' }, { status: 400 }) }
 
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
   // body.force === true bypasses the 60-day enrichment_cache so the user can
   // explicitly re-run all the paid actors on a row.
   const force = body.force === true
-  const v2 = await runV2(input, { useCache: !force, skipWiza: body.skipWiza === true })
+  const v2 = await runV2(input, { useCache: !force })
 
   // Save back if requested AND we have a row id.
   // SPLIT the save into two passes so audit-trail jsonb bloat can NEVER block

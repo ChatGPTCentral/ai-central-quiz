@@ -19,7 +19,7 @@ interface ProviderCard {
   description: string
   data: unknown
   /** Field name to pass to /api/admin/enrich/v2/field for re-running */
-  reRunField?: 'photo' | 'demographics' | 'beehiiv' | 'stripe' | 'apify' | 'apollo' | 'wiza'
+  reRunField?: 'photo' | 'demographics' | 'beehiiv' | 'stripe' | 'apify' | 'apollo'
 }
 
 export default function RawDataSection({ rowId, enrichmentRaw }: Props) {
@@ -42,9 +42,6 @@ export default function RawDataSection({ rowId, enrichmentRaw }: Props) {
     { key: 'claude_vision', label: 'Claude vision',          icon: '✨', reRunField: 'demographics',
       description: 'Age bracket + sex presentation estimated from the photo',
       data: v2.claude_vision },
-    { key: 'wiza',          label: 'Wiza',                   icon: '🔍', reRunField: 'wiza',
-      description: 'Email-only reverse lookup — sometimes finds extras Apollo misses',
-      data: v2.wiza },
   ]
 
   return (
