@@ -42,12 +42,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Rate limited', code: 'RATE_LIMITED' }, { status: 429 })
   }
 
-  let body: { answers?: Record<string, string | string[]>; utmSource?: string; utmRef?: string }
+  let body: { answers?: Record<string, string | string[]>; utmSource?: string; utmRef?: string; clientId?: string }
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid body' }, { status: 400 })
   }
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const partialClientId = typeof body.clientId === 'string' && UUID_RE.test(body.clientId) ? body.clientId : null
   const answers = body.answers || {}
   // Convert answers against the live published config (so editor changes apply
   // immediately) — fall back to the seed array if the config fetch fails.
@@ -108,17 +110,24 @@ export async function POST(req: NextRequest) {
     if (error) console.error('v2 update failed:', error.message)
   } else {
     rowId = randomUUID()
-    // Vercel injects x-vercel-ip-country (ISO 3166 alpha-2) on every edge
-    // request — capture it as the user's submit-time geolocation, distinct
-    // from `country` which downstream enrichment overwrites with company /
-    // role location.
+    // Vercel injects x-vercel-ip-* geo headers (country ISO code, URI-encoded
+    // city, country-region) on every edge request — capture them as the
+    // user's submit-time geolocation, distinct from `country` which
+    // downstream enrichment overwrites with company / role location.
     const ipCountry = req.headers.get('x-vercel-ip-country') || null
+    const geo = (h: string) => {
+      const val = req.headers.get(h)
+      if (!val) return null
+      try { return decodeURIComponent(val) } catch { return val }
+    }
     const { error } = await c.from('submissions').insert({
       id: rowId,
       ts: Date.now(),
       created_at: new Date().toISOString(),
       ip,
       ip_country: ipCountry,
+      ip_city: geo('x-vercel-ip-city'),
+      ip_region: geo('x-vercel-ip-country-region'),
       user_agent: req.headers.get('user-agent') || null,
       ...dbUpdate,
     })
@@ -127,7 +136,9 @@ export async function POST(req: NextRequest) {
 
   // Promote out of "In progress": a completed submission removes any matching
   // partial capture so it no longer shows in the in-progress admin section.
-  deletePartial(v.email).catch(err => console.error('[partials] cleanup failed:', err))
+  // Cleared by email AND the quiz session's clientId, so a row whose email
+  // was captured mid-typing (…@yahoo.c) still promotes correctly.
+  deletePartial(v.email, partialClientId).catch(err => console.error('[partials] cleanup failed:', err))
 
   // Re-read and classify
   const { data: rowAfter } = await c.from('submissions').select('*').eq('id', rowId).maybeSingle()

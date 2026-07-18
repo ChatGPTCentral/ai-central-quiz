@@ -116,9 +116,16 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [animKey, setAnimKey] = useState(0)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const emailPrefilled = useRef(false)
-  const partialSent = useRef(false)
+  const partialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startTracked = useRef(false)
   const stepShownAt = useRef(Date.now())
+  // Stable per-quiz-session id so every partial save UPDATES the same server
+  // row (email corrections replace the first mid-typing capture; progress
+  // keeps counting up). Restored with the draft so refreshes keep the row.
+  const clientId = useRef<string>('')
+  if (!clientId.current && typeof crypto !== 'undefined' && crypto.randomUUID) {
+    clientId.current = crypto.randomUUID()
+  }
 
   // Embed-mode plumbing (same protocol as /quiz)
   const isEmbed = searchParams.get('embed') === '1' || searchParams.get('ac-embed-id') !== null
@@ -148,7 +155,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     try {
       const raw = localStorage.getItem(DRAFT_KEY)
       if (raw) {
-        const draft = JSON.parse(raw) as { answers?: Answers; step?: number; history?: number[]; ts?: number }
+        const draft = JSON.parse(raw) as { answers?: Answers; step?: number; history?: number[]; ts?: number; clientId?: string }
         const fresh = draft.ts && Date.now() - draft.ts < 1000 * 60 * 60 * 24 // 24h
         if (fresh && draft.answers && Object.keys(draft.answers).length > 0) {
           setAnswers(draft.answers)
@@ -156,6 +163,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
             setStep(draft.step)
             setHistory(Array.isArray(draft.history) && draft.history.length ? draft.history : [draft.step])
           }
+          if (draft.clientId) clientId.current = draft.clientId
         }
       }
     } catch { /* ignore corrupt draft */ }
@@ -178,29 +186,33 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   useEffect(() => {
     if (Object.keys(answers).length === 0) return
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ answers, step, history, ts: Date.now() }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ answers, step, history, ts: Date.now(), clientId: clientId.current }))
     } catch { /* storage full / unavailable — non-fatal */ }
   }, [answers, step, history])
 
   // Server-side in-progress capture: once we have a name + a valid email
-  // (email is Q2, so this fires early), POST a partial (once) so the lead
-  // is collected even if they abandon mid-funnel.
+  // (email is Q2, so this fires early), keep the partial in sync as answers
+  // accumulate. Debounced, and keyed by clientId so every save UPDATES the
+  // same row — a mid-typing email ("…@yahoo.c") gets corrected by the next
+  // save instead of being frozen forever, and progress counts up for real.
   useEffect(() => {
-    if (partialSent.current) return
     const name = String(answers.name || '').trim()
     const email = String(answers.email || '').trim().toLowerCase()
     if (!name || !isValidEmail(email)) return
-    partialSent.current = true
-    const utmSource =
-      searchParams.get('utm_source') || searchParams.get('utmSource') || searchParams.get('source') || ''
-    const utmRef =
-      searchParams.get('utm_ref') || searchParams.get('ref') || searchParams.get('utm_medium') || searchParams.get('utm_campaign') || ''
-    fetch('/api/submit-quiz-v2/partial', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answers, utmSource, utmRef }),
-      keepalive: true,
-    }).catch(() => { /* fire-and-forget */ })
+    if (partialTimer.current) clearTimeout(partialTimer.current)
+    partialTimer.current = setTimeout(() => {
+      const utmSource =
+        searchParams.get('utm_source') || searchParams.get('utmSource') || searchParams.get('source') || ''
+      const utmRef =
+        searchParams.get('utm_ref') || searchParams.get('ref') || searchParams.get('utm_medium') || searchParams.get('utm_campaign') || ''
+      fetch('/api/submit-quiz-v2/partial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers, utmSource, utmRef, clientId: clientId.current || undefined }),
+        keepalive: true,
+      }).catch(() => { /* fire-and-forget */ })
+    }, 1200)
+    return () => { if (partialTimer.current) clearTimeout(partialTimer.current) }
   }, [answers, searchParams])
 
   const q = QUESTIONS[step - 1]
@@ -311,7 +323,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       const res = await fetch('/api/submit-quiz-v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers, utmSource, utmRef }),
+        body: JSON.stringify({ answers, utmSource, utmRef, clientId: clientId.current || undefined }),
       })
       const data = await res.json()
       if (!data.success) {

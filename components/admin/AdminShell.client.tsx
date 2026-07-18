@@ -51,6 +51,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     label: 'Records',
     items: [
       { href: '/admin/submissions', label: 'People', icon: 'people' },
+      { href: '/admin/referrers', label: 'Referrers', icon: 'people' },
       { href: '/admin/board', label: 'Board', icon: 'board' },
       { href: '/admin/in-progress', label: 'In progress', icon: 'inprogress' },
     ],
@@ -59,11 +60,8 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     label: 'Tools',
     items: [
       { href: '/admin/lab', label: 'Enrich', icon: 'enrich' },
-      { href: '/admin/enrich-compare', label: 'Enrich compare', icon: 'debug' },
-      { href: '/admin/enrich-inspect', label: 'Enrich inspector', icon: 'flow' },
       { href: '/admin/enrich-game', label: 'Enrich game', icon: 'stats' },
       { href: '/admin/debug', label: 'Debug lookup', icon: 'debug' },
-      { href: '/admin/stats', label: 'Stats', icon: 'stats' },
       { href: '/admin/flow', label: 'Flow', icon: 'flow' },
       { href: '/admin/editor', label: 'Form editor', icon: 'editor' },
     ],

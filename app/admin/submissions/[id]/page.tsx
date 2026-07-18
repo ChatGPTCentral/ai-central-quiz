@@ -5,7 +5,7 @@ import { personResultPath } from '@/lib/result-url'
 import { findReferrers } from '@/lib/referrer'
 import { lastResultView } from '@/lib/result-view'
 import { continentOf, showState } from '@/lib/geo'
-import { countryFlag } from '@/lib/country-flags'
+import { countryFlag, isoToFlag } from '@/lib/country-flags'
 import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
@@ -41,15 +41,22 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
     (item.enrichment as Record<string, unknown> | undefined)?.companyLinkedinUrl as string | undefined ||
     (item.enrichmentRaw as Record<string, Record<string, unknown> | undefined> | undefined)?.apollo_legacy?.['Company Linkedin Url'] as string | undefined
 
-  const surveyFields: { label: string; value?: string }[] = [
-    { label: 'AI familiarity', value: item.aiLevel },
+  // v2 quiz fields always show; the fillout-era v1 fields (AI familiarity,
+  // Learning style, Time commitment, Main goal) only render when a legacy
+  // record actually carries a value — the current quiz never writes them.
+  const surveyFields: { label: string; value?: string; legacy?: boolean }[] = [
+    { label: 'AI familiarity', value: item.aiLevel, legacy: true },
     { label: 'Work area', value: item.workArea },
-    { label: 'Learning style', value: item.learningStyle },
-    { label: 'Time commitment', value: item.timeCommitment },
-    { label: 'Main goal', value: item.mainGoal },
+    { label: 'Learning style', value: item.learningStyle, legacy: true },
+    { label: 'Time commitment', value: item.timeCommitment, legacy: true },
+    { label: 'Main goal', value: item.mainGoal, legacy: true },
     { label: 'AI tools used', value: item.aiTools },
     { label: 'Job level', value: item.jobLevel },
-  ]
+  ].filter(f => !f.legacy || (f.value && f.value.trim() !== ''))
+
+  // Where the person actually was when they took the quiz (Vercel edge geo),
+  // distinct from the enriched company/role location above.
+  const submittedFrom = [item.ipCity, item.ipRegion, item.ipCountry].filter(Boolean).join(', ')
 
   const stage = stageDef(item.stage)
   const persona = personaDef(item.persona)
@@ -187,6 +194,15 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             </FieldRow>
             {hasState && <FieldRow label="State / Province"><InlineField rowId={item.id} field="region" value={item.region || ''} placeholder="state" /></FieldRow>}
             <FieldRow label="Continent"><span className="text-sm text-[#333333]">{continent}</span></FieldRow>
+            {submittedFrom && (
+              <FieldRow label="Submitted from">
+                <span className="inline-flex items-center gap-1.5 text-sm text-[#333333]">
+                  {item.ipCountry && <span className="text-base leading-none">{isoToFlag(item.ipCountry)}</span>}
+                  {submittedFrom}
+                  <span title="Visitor's actual location at submit time (IP geolocation), unlike the fields above which enrichment fills with company / role location" className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-px rounded bg-[#EAF3FA] text-[#046BB1]">IP</span>
+                </span>
+              </FieldRow>
+            )}
           </ProfileSection>
 
           <ProfileSection title="Workographic">

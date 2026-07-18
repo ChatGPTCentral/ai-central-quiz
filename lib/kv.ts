@@ -40,6 +40,12 @@ export interface StoredSubmission {
   country?: string
   region?: string
   city?: string
+  // Submit-time geolocation from Vercel edge headers (the visitor's actual
+  // location when they took the quiz, unlike country/region/city above which
+  // enrichment overwrites with company / role location).
+  ipCountry?: string
+  ipCity?: string
+  ipRegion?: string
   enrichment?: MergedEnrichment
   enrichmentRaw?: Record<string, NormalizedPerson['raw']>
   enrichmentStatus?: 'complete' | 'partial' | 'failed'
@@ -148,6 +154,11 @@ export interface DbRow {
   country: string | null
   region: string | null
   city: string | null
+  // Optional: written only by the submit route at insert time; toRow omits
+  // them so admin/enrichment saves can never stomp the captured values.
+  ip_country?: string | null
+  ip_city?: string | null
+  ip_region?: string | null
   enrichment: MergedEnrichment | null
   enrichment_raw: Record<string, NormalizedPerson['raw']> | null
   enrichment_status: 'complete' | 'partial' | 'failed' | null
@@ -311,6 +322,11 @@ export function fromRow(r: DbRow): StoredSubmission {
     country: r.country || undefined,
     region: r.region || undefined,
     city: r.city || undefined,
+    // Read-only in this mapper: written solely by the submit route at insert
+    // time, so save paths can never stomp them (toRow omits the columns).
+    ipCountry: r.ip_country || undefined,
+    ipCity: r.ip_city || undefined,
+    ipRegion: r.ip_region || undefined,
     enrichment: r.enrichment ?? undefined,
     enrichmentRaw: r.enrichment_raw ?? undefined,
     enrichmentStatus: r.enrichment_status ?? undefined,

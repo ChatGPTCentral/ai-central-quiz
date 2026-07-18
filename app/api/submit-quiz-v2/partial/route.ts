@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 })
   }
 
-  let body: { answers?: Record<string, unknown>; utmSource?: string; utmRef?: string }
+  let body: { answers?: Record<string, unknown>; utmSource?: string; utmRef?: string; clientId?: string }
   try { body = await req.json() }
   catch { return NextResponse.json({ ok: false, error: 'invalid_body' }, { status: 400 }) }
 
@@ -30,6 +30,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'email_required' }, { status: 400 })
   }
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const clientId = typeof body.clientId === 'string' && UUID_RE.test(body.clientId) ? body.clientId : null
+
+  // Vercel URI-encodes the city header (e.g. S%C3%A3o%20Paulo).
+  const geo = (h: string) => {
+    const v = req.headers.get(h)
+    if (!v) return null
+    try { return decodeURIComponent(v) } catch { return v }
+  }
+
   try {
     await savePartial({
       email,
@@ -38,6 +48,9 @@ export async function POST(req: NextRequest) {
       utmSource: (body.utmSource || '').trim().slice(0, 120) || null,
       utmRef: (body.utmRef || '').trim().slice(0, 120) || null,
       ipCountry: req.headers.get('x-vercel-ip-country') || null,
+      ipCity: geo('x-vercel-ip-city'),
+      ipRegion: geo('x-vercel-ip-country-region'),
+      clientId,
     })
     return NextResponse.json({ ok: true })
   } catch (e) {

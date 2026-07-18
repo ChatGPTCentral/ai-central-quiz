@@ -1,4 +1,5 @@
 import { listPartials, type PartialRow } from '@/lib/partials'
+import DeletePartial from './DeletePartial.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,8 @@ export default async function InProgressPage() {
         <p className="text-sm text-[#9C9C9C] mt-1">
           People who entered a name + email but haven&apos;t finished the quiz. A row disappears
           here the moment they complete (it becomes a real submission). No enrichment or emails run on these.
+          The capture now live-updates as they type and advance; rows saved before Jul 18 were written once,
+          early, so their email can be cut short and their progress reads 0.
         </p>
       </header>
 
@@ -67,6 +70,7 @@ export default async function InProgressPage() {
                 <th className="px-4 py-3 font-bold">Progress</th>
                 <th className="px-4 py-3 font-bold">Source</th>
                 <th className="px-4 py-3 font-bold">Last activity</th>
+                <th className="px-2 py-3 w-10" aria-label="Delete" />
               </tr>
             </thead>
             <tbody>
@@ -88,9 +92,14 @@ export default async function InProgressPage() {
                     </td>
                     <td className="px-4 py-3 text-[12px] text-[#555]">
                       {r.utm_source || <span className="text-[#C9C7BF]">direct</span>}
-                      {r.ip_country ? <span className="text-[#9C9C9C]"> · {r.ip_country}</span> : null}
+                      {r.ip_city || r.ip_country ? (
+                        <span className="text-[#9C9C9C]"> · {[r.ip_city, r.ip_region, r.ip_country].filter(Boolean).join(', ')}</span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-[12px] text-[#9C9C9C]" title={r.updated_at}>{timeAgo(r.updated_at)}</td>
+                    <td className="px-2 py-3 text-right">
+                      <DeletePartial id={r.id} email={r.email} />
+                    </td>
                   </tr>
                 )
               })}
