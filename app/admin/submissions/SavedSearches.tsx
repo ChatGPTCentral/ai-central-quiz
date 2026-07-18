@@ -64,19 +64,16 @@ export default function SavedSearches({
 
   const noneActive = current.size === 0 && !onlyArchived && !stripeOnly
 
+  // Redesign 2c: hard-edge saved-filter chips (white, warm border, latte +
+  // fulvous on hover; active = latte with fulvous border). Radius 0.
+  const chipBase: React.CSSProperties = { padding: '4px 11px', fontSize: 11.5, fontWeight: 600, color: '#1A1A1A' }
   return (
     <section className="mb-4">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[#9C9C9C] mb-2">
-        Broken-record filters
-      </p>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C' }}>Saved filters</span>
         <Link
           href={hrefFor('all')}
-          className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
-            noneActive
-              ? 'bg-[#333333] text-[#FFFDFA]'
-              : 'bg-[#F5F5F5] text-[#9C9C9C] hover:bg-[#E8E4DF]'
-          }`}
+          style={{ ...chipBase, border: '1px solid #333333', background: noneActive ? '#333333' : '#FFFFFF', color: noneActive ? '#FFFDFA' : '#1A1A1A', fontWeight: 700 }}
         >
           All
         </Link>
@@ -86,41 +83,29 @@ export default function SavedSearches({
             <Link
               key={c.key}
               href={hrefFor(c.key)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
-                active
-                  ? 'bg-[#BE3B3B] text-[#FFFDFA]'
-                  : 'bg-white border border-[#E8E4DF] text-[#333333] hover:bg-[#FEF7E7] hover:border-[#E48715]'
-              }`}
+              className="hover:bg-[#FEF7E7] hover:border-[#E48715]"
+              style={{ ...chipBase, border: `1px solid ${active ? '#E48715' : '#C9C2B4'}`, background: active ? '#FEF7E7' : '#FFFFFF', color: active ? '#B26A00' : '#1A1A1A' }}
               title={active ? `Remove '${c.label}' filter` : `Show only rows with '${c.label}'`}
             >
-              <span className="text-[12px]">{c.emoji}</span>
-              {c.label}
+              {c.emoji} {c.label}
             </Link>
           )
         })}
         <Link
           href={stripeOnlyHref()}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${
-            stripeOnly
-              ? 'bg-[#62A758] text-white'
-              : 'bg-white border border-[#E8E4DF] text-[#333333] hover:bg-[#FEF7E7] hover:border-[#62A758]'
-          }`}
+          className="hover:bg-[#FEF7E7] hover:border-[#E48715]"
+          style={{ ...chipBase, border: `1px solid ${stripeOnly ? '#62A758' : '#C9C2B4'}`, background: stripeOnly ? '#FFFFFF' : '#FFFFFF', color: stripeOnly ? '#2D6A26' : '#1A1A1A' }}
           title={stripeOnly ? 'Showing only Stripe-imported rows' : 'Show only Stripe customers'}
         >
-          <span className="text-[12px]">💳</span>
-          {stripeOnly ? 'Stripe only' : 'Stripe customers'}
+          💳 {stripeOnly ? 'Stripe only' : 'Stripe customers'}
         </Link>
         <Link
           href={archiveHref()}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ml-auto ${
-            onlyArchived
-              ? 'bg-[#9C9C9C] text-white'
-              : 'bg-white border border-[#E8E4DF] text-[#9C9C9C] hover:bg-[#F5F5F5]'
-          }`}
-          title={onlyArchived ? 'Showing only archived rows — click to exit' : 'Browse archived rows'}
+          className="ml-auto hover:bg-[#FEF7E7]"
+          style={{ ...chipBase, border: `1px solid ${onlyArchived ? '#333333' : '#C9C2B4'}`, background: onlyArchived ? '#333333' : '#FFFFFF', color: onlyArchived ? '#FFFDFA' : '#6B6B6B' }}
+          title={onlyArchived ? 'Showing only archived rows, click to exit' : 'Browse archived rows'}
         >
-          <span className="text-[12px]">🗄️</span>
-          {onlyArchived ? 'Showing archive' : 'Archive'}
+          🗄️ {onlyArchived ? 'Showing archive' : 'Archive'}
         </Link>
       </div>
     </section>
