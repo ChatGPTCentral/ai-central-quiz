@@ -6,7 +6,7 @@ import { findReferrers } from '@/lib/referrer'
 import { lastResultView } from '@/lib/result-view'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag, isoToFlag } from '@/lib/country-flags'
-import { stageDef, personaDef } from '@/lib/segmentation-v2'
+import { stageDef, personaDef, STAGES } from '@/lib/segmentation-v2'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
@@ -70,31 +70,46 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
   const chip = (def: { key: string; label: string; emoji: string; color: string } | undefined, reason?: string) =>
     def && def.key !== 'unknown' ? (
-      <span className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full text-xs font-bold"
-        style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }} title={reason || def.label}>
+      <span className="inline-flex items-center" style={{ gap: 7, border: `1px solid ${def.color}`, color: def.color, padding: '3px 9px', fontSize: 11.5, fontWeight: 700 }} title={reason || def.label}>
+        <span style={{ width: 8, height: 8, background: def.color }} />
         {def.emoji} {def.label}
       </span>
     ) : null
 
+  const dent = (label: string, value: React.ReactNode, color: string, last = false) => (
+    <div style={{ padding: '6px 14px', borderRight: last ? 'none' : '1px solid #E8E2D4' }}>
+      <div style={{ fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#9C9C9C' }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color, marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    </div>
+  )
+
+  const shortId = item.id.slice(0, 4).toUpperCase()
+
   return (
     <div className="min-h-screen" style={{ background: '#FFFDFA' }}>
-      {/* ── Top bar ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 px-8 py-4" style={{ borderBottom: '1px solid #E8E4DF' }}>
-        <div className="flex items-center gap-2 text-sm min-w-0">
-          <Link href="/admin/submissions" className="text-[#9C9C9C] hover:text-[#333333]">People</Link>
+      {/* ── Top bar: breadcrumb + KPI dents + actions ───────── */}
+      <div className="flex items-center justify-between flex-wrap" style={{ gap: 12, padding: '14px 32px' }}>
+        <div className="flex items-center min-w-0" style={{ gap: 8, fontSize: 13 }}>
+          <Link href="/admin/submissions" className="text-[#6B6B6B] hover:text-[#1A1A1A]">People</Link>
           <span className="text-[#C4BDB2]">›</span>
-          <span className="font-bold text-[#1A1A1A] truncate">{item.name || item.email}</span>
+          <span className="truncate" style={{ fontWeight: 800, color: '#1A1A1A' }}>{item.name || item.email}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap" style={{ gap: 8 }}>
+          <div className="flex" style={{ border: '1px solid #333333', marginRight: 6 }}>
+            {dent('LTV', paid ? `$${item.lifetimeValueUsd!.toFixed(2)}` : '—', paid ? '#2D6A26' : '#C4BDB2')}
+            {dent('Stage', stage && stage.key !== 'unknown' ? `${stage.emoji} S${stage.key.charAt(1)}` : '—', stage && stage.key !== 'unknown' ? '#046BB1' : '#C4BDB2')}
+            {dent('Score', item.score ?? '—', '#1A1A1A')}
+            {dent('Health', `${filled}/6`, filled === 6 ? '#62A758' : filled >= 4 ? '#E48715' : '#BE3B3B', true)}
+          </div>
           {(item.utmSource || item.utmRef) && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#FEF7E7] text-[#E48715] border border-[#E48715]/30"
+            <span style={{ border: '1px solid #C9C2B4', background: '#FFFDFA', color: '#6B6B6B', padding: '4px 9px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
               title={[item.utmSource && `utm_source: ${item.utmSource}`, item.utmRef && `utm_ref: ${item.utmRef}`].filter(Boolean).join(' · ')}>
               ↗ {item.utmSource || 'direct'}{item.utmRef ? ` / ${item.utmRef}` : ''}
             </span>
           )}
           {referrers.length > 0 && (
             <Link href={`/admin/submissions/${referrers[0].id}`}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#EAF6F1] text-[#0F8A6D] border border-[#0F8A6D]/30"
+              style={{ border: '1px solid #0F8A6D', color: '#0F8A6D', padding: '4px 9px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
               title={`Shared their pass → this lead. ${referrers.length > 1 ? referrers.length + ' possible referrers (4-char ref collision)' : ''}`}>
               🔗 Referred by {referrers[0].name || referrers[0].email}{referrers.length > 1 ? ` +${referrers.length - 1}` : ''}
             </Link>
@@ -102,63 +117,83 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
           {pageSeen && (
             <span
               title={`Saw the ${pageSeen.variantLabel} result page · ${pageSeen.views} view${pageSeen.views === 1 ? '' : 's'}, last ${new Date(pageSeen.lastSeen).toLocaleString()}`}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#F1EDE4] text-[#6B6B6B] border border-[#E8E4DF]"
+              style={{ border: '1px solid #C9C2B4', color: '#6B6B6B', padding: '4px 9px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
             >📄 Saw {pageSeen.variant}</span>
           )}
           {pageSeen?.clarityUrl && (
             <a
               href={pageSeen.clarityUrl} target="_blank" rel="noopener noreferrer"
               title={`Find this session recording in Clarity: open recordings, then filter Custom tags → submissionId = ${item.id}`}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-[#F3EEFA] text-[#8E5BD1] border border-[#8E5BD1]/30"
+              style={{ border: '1px solid #8E5BD1', color: '#8E5BD1', padding: '4px 9px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
             >🎬 Clarity ↗</a>
           )}
           <a
             href={personResultPath({ id: item.id, name: item.name, score: item.score, persona: item.persona, stage: item.stage })}
             target="_blank" rel="noopener noreferrer"
             title="Open the result page this person received"
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-[#E8E4DF] text-[12px] font-bold text-[#E48715] hover:bg-[#FAF7F1]"
+            style={{ border: '1px solid #333333', background: '#FFFDFA', color: '#1A1A1A', padding: '6px 12px', fontSize: 12, fontWeight: 700 }}
+            className="hover:bg-[#FEF7E7]"
           >🎯 Result page ↗</a>
           {item.linkedinUrl && (
-            <a href={item.linkedinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-[#E8E4DF] text-[12px] font-bold text-[#0A66C2] hover:bg-[#FAF7F1]">in ↗</a>
+            <a href={item.linkedinUrl} target="_blank" rel="noopener noreferrer" style={{ border: '1px solid #0A66C2', color: '#0A66C2', padding: '6px 12px', fontSize: 12, fontWeight: 700 }} className="hover:bg-[#FEF7E7]">in ↗</a>
           )}
           <EnrichHeaderButton id={item.id} status={item.enrichmentStatus} enrichedAt={item.enrichedAt} />
         </div>
       </div>
 
+      {/* ── Tab strip (anchors into the dossier) ────────────── */}
+      <div className="flex items-center" style={{ borderBottom: '2px solid #333333', padding: '0 32px' }}>
+        <span style={{ padding: '9px 18px', fontSize: 12.5, fontWeight: 700, background: '#333333', color: '#FFFDFA' }}>Overview</span>
+        <a href="#survey" style={{ padding: '9px 18px', fontSize: 12.5, fontWeight: 700, color: '#6B6B6B' }} className="hover:text-[#1A1A1A]">Survey</a>
+        <a href="#revenue" style={{ padding: '9px 18px', fontSize: 12.5, fontWeight: 700, color: '#6B6B6B' }} className="hover:text-[#1A1A1A]">Revenue</a>
+        <a href="#enrichment" style={{ padding: '9px 18px', fontSize: 12.5, fontWeight: 700, color: '#6B6B6B' }} className="hover:text-[#1A1A1A]">Enrichment</a>
+        <a href="#rawdata" style={{ padding: '9px 18px', fontSize: 12.5, fontWeight: 700, color: '#6B6B6B' }} className="hover:text-[#1A1A1A]">Raw data</a>
+        <span className="ml-auto self-center" style={{ fontSize: 10.5, color: '#9C9C9C' }}>
+          submitted {new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · id AC-{shortId}
+        </span>
+      </div>
+
       {/* ── Three-pane body ─────────────────────────────────── */}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(260px,300px) minmax(0,1fr) minmax(280px,320px)' }}>
         {/* LEFT · profile rail */}
-        <aside className="p-6" style={{ borderRight: '1px solid #E8E4DF' }}>
-          <PhotoEditor id={item.id} currentPhotoUrl={item.photoUrl} name={item.name} email={item.email} />
+        <aside style={{ padding: '28px 26px', borderRight: '1px solid #333333' }}>
+          {/* Stamp-frame portrait (hover-edit preserved inside) */}
+          <div style={{ border: '4px solid #333333', background: '#FFFDFA', padding: 5, maxWidth: 210 }}>
+            <div style={{ filter: 'grayscale(1)' }}>
+              <PhotoEditor id={item.id} currentPhotoUrl={item.photoUrl} name={item.name} email={item.email} />
+            </div>
+          </div>
           <div className="mt-4 min-w-0">
-            <div className="text-xl font-black text-[#333333] leading-tight">
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', color: '#1A1A1A', lineHeight: 1.15 }}>
               <InlineField rowId={item.id} field="name" value={item.name || ''} placeholder="full name" />
             </div>
-            <p className="text-[13px] text-[#9C9C9C] mt-0.5 break-all">{item.email}</p>
-            <div className="text-[13.5px] text-[#666] mt-1.5">
+            <p className="break-all" style={{ fontSize: 12.5, color: '#6B6B6B', marginTop: 4 }}>{item.email}</p>
+            <div style={{ fontSize: 13, color: '#1A1A1A', marginTop: 8, fontWeight: 600 }}>
               <InlineField rowId={item.id} field="jobTitle" value={item.jobTitle || ''} placeholder="job title" />
-              {(item.jobTitle || item.companyName) && <span className="text-[#C4BDB2] mx-1">·</span>}
+              {(item.jobTitle || item.companyName) && <span className="mx-1" style={{ color: '#C4BDB2' }}>·</span>}
               <InlineField rowId={item.id} field="companyName" value={item.companyName || ''} placeholder="company" />
             </div>
             <LinkedInReplacer id={item.id} value={item.linkedinUrl} />
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <div className="flex items-center flex-wrap" style={{ gap: 6, marginTop: 16 }}>
               {chip(stage, item.stageReason)}
               {chip(persona, item.personaReason)}
               {item.score !== undefined && (
-                <span className="inline-block px-3 py-0.5 rounded-full text-xs font-bold bg-[#333333] text-[#FFFDFA]">Score {item.score}</span>
+                <span style={{ background: '#333333', color: '#FFFDFA', padding: '3px 9px', fontSize: 11.5, fontWeight: 700 }}>Score {item.score}</span>
               )}
             </div>
 
             {/* Survey v2 pills */}
             {(item.frequencyScore != null || item.depthScore != null || item.breadthScore != null || item.momentum != null || item.friction || item.intent30d) && (
-              <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[10px]">
-                <span className="w-full font-bold uppercase tracking-widest text-[#9C9C9C] mb-0.5">Survey v2</span>
-                {item.frequencyScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">freq {item.frequencyScore}/3</span>}
-                {item.depthScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">depth {item.depthScore}/6</span>}
-                {item.breadthScore != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">breadth {item.breadthScore}</span>}
-                {item.momentum != null && <span className="px-1.5 py-0.5 rounded bg-[#F5F5F5] text-[#333333]">momentum {item.momentum > 0 ? '+' : ''}{item.momentum}</span>}
-                {item.friction && <span className="px-1.5 py-0.5 rounded bg-[#FEF7E7] text-[#BE593B]">🛑 {item.friction.replace(/_/g, ' ')}</span>}
-                {item.intent30d && <span className="px-1.5 py-0.5 rounded bg-[#62A758]/15 text-[#2D6A26]">🎯 {item.intent30d.replace(/_/g, ' ')}</span>}
+              <div style={{ marginTop: 18, borderTop: '1px solid #E8E2D4', paddingTop: 12 }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 8 }}>Survey v2</div>
+                <div className="flex flex-wrap" style={{ gap: 6 }}>
+                  {item.frequencyScore != null && <span style={{ border: '1px solid #D9D2C4', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums' }}>freq {item.frequencyScore}/3</span>}
+                  {item.depthScore != null && <span style={{ border: '1px solid #D9D2C4', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums' }}>depth {item.depthScore}/6</span>}
+                  {item.breadthScore != null && <span style={{ border: '1px solid #D9D2C4', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums' }}>breadth {item.breadthScore}</span>}
+                  {item.momentum != null && <span style={{ border: '1px solid #D9D2C4', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums' }}>momentum {item.momentum > 0 ? '+' : ''}{item.momentum}</span>}
+                  {item.friction && <span style={{ border: '1px solid #BE593B', background: '#FEF7E7', padding: '2px 8px', fontSize: 10.5, color: '#BE593B' }}>🛑 {item.friction.replace(/_/g, ' ')}</span>}
+                  {item.intent30d && <span style={{ border: '1px solid #62A758', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#2D6A26' }}>🎯 {item.intent30d.replace(/_/g, ' ')}</span>}
+                </div>
               </div>
             )}
           </div>
@@ -205,7 +240,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             )}
           </ProfileSection>
 
-          <ProfileSection title="Workographic">
+          <ProfileSection title="Workographic" id="enrichment">
             <FieldRow label="Headline"><InlineField rowId={item.id} field="jobTitle" value={item.jobTitle || ''} placeholder="LinkedIn headline / raw job title" /></FieldRow>
             <FieldRow label="Standardized job title">
               {item.jobTitleStandardized ? (
@@ -229,7 +264,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             {item.companySize && <FieldRow label="Company size"><span className="text-sm text-[#333333]">{item.companySize}</span></FieldRow>}
           </ProfileSection>
 
-          <ProfileSection title="Survey response">
+          <ProfileSection title="Survey response" id="survey">
             {surveyFields.map(f => (
               <FieldRow key={f.label} label={f.label}>
                 <span className={`text-sm ${f.value ? 'text-[#333333]' : 'text-[#E8E4DF]'}`}>{f.value || '—'}</span>
@@ -238,7 +273,9 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             {item.buyingIntent && <FieldRow label="Buying intent"><span className="text-sm text-[#333333]">{item.buyingIntent}</span></FieldRow>}
           </ProfileSection>
 
-          <RawDataSection rowId={item.id} enrichmentRaw={item.enrichmentRaw} />
+          <div id="rawdata" style={{ scrollMarginTop: 60 }}>
+            <RawDataSection rowId={item.id} enrichmentRaw={item.enrichmentRaw} />
+          </div>
 
           <details className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-6">
             <summary className="cursor-pointer px-5 py-3 text-xs font-bold uppercase tracking-widest text-[#9C9C9C] hover:bg-[#FFFDFA]">Metadata</summary>
@@ -254,106 +291,122 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         </div>
 
         {/* RIGHT · insight rail */}
-        <aside className="p-6 flex flex-col gap-4" style={{ borderLeft: '1px solid #E8E4DF' }}>
-          {/* Revenue */}
-          <InsightPanel title="Revenue" action={stripeIds[0] ? { label: 'Stripe ↗', href: `https://dashboard.stripe.com/customers/${stripeIds[0]}` } : undefined}>
-            {paid ? (
-              <>
-                <div className="text-[26px] font-black text-[#2E7D32] leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>${item.lifetimeValueUsd!.toFixed(2)}</div>
-                {item.stripeFirstChargeAt && <p className="text-[11.5px] text-[#9C9C9C] mt-1.5">first {new Date(item.stripeFirstChargeAt).toLocaleDateString()}</p>}
-                {item.stripeProducts && item.stripeProducts.length > 0 && (
-                  <div className="mt-3 flex flex-col gap-1.5">
-                    {item.stripeProducts.map((p, i) => (
-                      <div key={i} className="flex items-center justify-between gap-3 text-[12px]">
-                        <span className="truncate text-[#333]" title={p.name}>{p.name || 'Unknown product'}</span>
-                        <span className="tabular-nums font-bold text-[#1A1A1A] shrink-0">${p.totalAmount.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : <p className="text-[13px] text-[#9C9C9C]">No Stripe customer</p>}
-          </InsightPanel>
-
-          {/* AI adoption ladder */}
-          {stage && stage.key !== 'unknown' && (
-            <InsightPanel title="AI adoption ladder">
-              <div className="flex items-center gap-2">
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: stage.color }} />
-                <span className="text-[15px] font-bold" style={{ color: stage.color }}>{stage.label}</span>
-              </div>
-              <p className="text-[11.5px] text-[#9C9C9C] mt-1.5">
-                {[item.frequencyScore != null && `freq ${item.frequencyScore}/3`, item.depthScore != null && `depth ${item.depthScore}/6`, item.breadthScore != null && `breadth ${item.breadthScore}`].filter(Boolean).join(' · ')}
-              </p>
-              {persona && persona.key !== 'unknown' && (
-                <div className="mt-3 rounded-md p-3" style={{ background: '#FEF7E7', border: '1px solid #F0E4C8' }}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#E48715] mb-1">Next best action</p>
-                  <p className="text-[12px] text-[#333] leading-snug">{persona.description}</p>
-                </div>
+        <aside className="flex flex-col" style={{ padding: '28px 26px', gap: 18, borderLeft: '1px solid #333333', background: '#FBF7EE' }}>
+          {/* Revenue plate */}
+          <div id="revenue" style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
+            <div className="flex items-center justify-between" style={{ padding: '9px 14px', background: '#333333' }}>
+              <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#FFFDFA' }}>Revenue</span>
+              {stripeIds[0] && (
+                <a href={`https://dashboard.stripe.com/customers/${stripeIds[0]}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, fontWeight: 700, color: '#E7B02F' }} className="hover:underline">Stripe ↗</a>
               )}
-            </InsightPanel>
+            </div>
+            <div style={{ padding: '14px 16px' }}>
+              {paid ? (
+                <>
+                  <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em', color: '#2D6A26', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>${item.lifetimeValueUsd!.toFixed(2)}</div>
+                  {item.stripeFirstChargeAt && <div style={{ fontSize: 10.5, color: '#9C9C9C', marginTop: 6 }}>first charge {new Date(item.stripeFirstChargeAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>}
+                  {item.stripeProducts && item.stripeProducts.length > 0 && (
+                    <div className="flex flex-col" style={{ marginTop: 12, borderTop: '1px solid #E8E2D4', paddingTop: 10, gap: 7 }}>
+                      {item.stripeProducts.map((p, i) => (
+                        <div key={i} className="flex items-baseline justify-between" style={{ gap: 10, fontSize: 11.5 }}>
+                          <span className="truncate" style={{ color: '#1A1A1A' }} title={p.name}>{p.name || 'Unknown product'}</span>
+                          <span className="shrink-0" style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#1A1A1A' }}>${p.totalAmount.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : <p style={{ fontSize: 13, color: '#9C9C9C' }}>No Stripe customer</p>}
+            </div>
+          </div>
+
+          {/* AI adoption ladder rung map */}
+          <div style={{ border: '1px solid #333333', background: '#FFFFFF', padding: '14px 16px' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 10 }}>AI adoption ladder</div>
+            <div className="flex flex-col" style={{ gap: 2 }}>
+              {[...STAGES.filter(s => s.key !== 'unknown')].reverse().map(def => {
+                const isCurrent = stage?.key === def.key
+                return (
+                  <div key={def.key} className="flex items-center" style={{ gap: 9, padding: '3px 6px', fontSize: 11, background: isCurrent ? '#FEF7E7' : 'transparent', borderLeft: `2px solid ${isCurrent ? '#E7B02F' : 'transparent'}` }}>
+                    <span style={{ width: 8, height: 8, background: def.color, flexShrink: 0 }} />
+                    <span style={{ color: '#1A1A1A', fontWeight: isCurrent ? 800 : 400 }}>{def.emoji} {def.label}</span>
+                    <span className="ml-auto" style={{ fontVariantNumeric: 'tabular-nums', color: '#9C9C9C', fontSize: 10 }}>S{def.key.charAt(1)}</span>
+                  </div>
+                )
+              })}
+            </div>
+            {(item.frequencyScore != null || item.depthScore != null || item.breadthScore != null) && (
+              <div style={{ fontSize: 10.5, color: '#6B6B6B', marginTop: 10, borderTop: '1px solid #E8E2D4', paddingTop: 8 }}>
+                {[item.frequencyScore != null && `freq ${item.frequencyScore}/3`, item.depthScore != null && `depth ${item.depthScore}/6`, item.breadthScore != null && `breadth ${item.breadthScore}`].filter(Boolean).join(' · ')}
+              </div>
+            )}
+          </div>
+
+          {/* Next best action */}
+          {persona && persona.key !== 'unknown' && (
+            <div style={{ border: '1px solid #E48715', background: '#FEF7E7', padding: '14px 16px' }}>
+              <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B26A00', marginBottom: 6 }}>Next best action</div>
+              <div style={{ fontSize: 12, color: '#333333', lineHeight: 1.5 }}>{persona.description}</div>
+              <a href="https://app.beehiiv.com/automations" target="_blank" rel="noopener noreferrer" className="inline-flex" style={{ marginTop: 10 }}>
+                <span style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, background: '#333333', color: '#FFFDFA' }}>Queue nurture email</span>
+                <span className="inline-flex items-center justify-center" style={{ width: 26, background: '#333333', borderLeft: '1px solid rgba(255,253,250,0.25)', color: '#E7B02F', fontSize: 12 }}>↗</span>
+              </a>
+            </div>
           )}
 
           {/* Newsletter */}
-          <InsightPanel title="Newsletter">
+          <div style={{ border: '1px solid #333333', background: '#FFFFFF', padding: '14px 16px' }}>
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 8 }}>Newsletter</div>
             <Row k="Status" v={item.beehiivStatus
-              ? <span className={item.beehiivStatus === 'active' ? 'text-[#2E7D32] font-semibold' : 'text-[#9C9C9C]'}>{item.beehiivStatus === 'active' ? '● ' : ''}{item.beehiivStatus}</span>
-              : <span className="text-[#C4BDB2]">not in Beehiiv</span>} />
-            <Row k="Tier" v={item.subscriptionTier || <span className="text-[#C4BDB2]">—</span>} />
-            <Row k="Signup source" v={item.utmSourceBeehiiv || <span className="text-[#C4BDB2]">—</span>} />
-          </InsightPanel>
+              ? <span style={{ color: item.beehiivStatus === 'active' ? '#2D6A26' : '#9C9C9C', fontWeight: item.beehiivStatus === 'active' ? 700 : 400 }}>{item.beehiivStatus === 'active' ? '● ' : ''}{item.beehiivStatus}{item.subscriptionTier ? ` · ${item.subscriptionTier}` : ''}</span>
+              : <span style={{ color: '#C4BDB2' }}>not in Beehiiv</span>} />
+            <Row k="Signup source" v={item.utmSourceBeehiiv || <span style={{ color: '#C4BDB2' }}>—</span>} />
+            {pageSeen && <Row k="Saw variant" v={`${pageSeen.variant} · ${pageSeen.views} view${pageSeen.views === 1 ? '' : 's'}`} />}
+          </div>
 
           {/* Data health */}
-          <InsightPanel title="Data health" action={undefined} rightNote={`${filled} of 6`}>
-            <div className="h-1.5 rounded-full overflow-hidden mb-2.5" style={{ background: '#F0ECE5' }}>
-              <div className="h-full rounded-full" style={{ width: `${(filled / 6) * 100}%`, background: '#62A758' }} />
+          <div style={{ border: '1px solid #333333', background: '#FFFFFF', padding: '14px 16px' }}>
+            <div className="flex items-baseline justify-between" style={{ marginBottom: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C' }}>Data health</span>
+              <span style={{ fontSize: 11, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{filled} / 6</span>
+            </div>
+            <div className="flex" style={{ gap: 3 }}>
+              {Array.from({ length: 6 }, (_, i) => (
+                <span key={i} style={{ flex: 1, height: 8, background: i < filled ? '#62A758' : '#F1ECE0' }} />
+              ))}
             </div>
             {missing.length === 0 ? (
-              <p className="text-[12px] text-[#2E7D32]">All key fields present</p>
+              <div style={{ fontSize: 10.5, color: '#2D6A26', marginTop: 8 }}>All key fields present</div>
             ) : (
-              <>
-                <p className="text-[11px] text-[#9C9C9C] mb-1.5">Missing</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {missing.map(m => (
-                    <span key={m} className="text-[11px] px-2 py-0.5 rounded" style={{ background: '#FEF7E7', color: '#B26A00', border: '1px solid #F0E4C8' }}>{m}</span>
-                  ))}
-                </div>
-              </>
+              <div className="flex flex-wrap" style={{ gap: 6, marginTop: 8 }}>
+                {missing.map(m => (
+                  <span key={m} style={{ fontSize: 10.5, padding: '1px 7px', background: '#FEF7E7', color: '#B26A00', border: '1px solid #E48715' }}>{m}</span>
+                ))}
+              </div>
             )}
-          </InsightPanel>
+          </div>
         </aside>
       </div>
     </div>
   )
 }
 
-function ProfileSection({ title, children }: { title: string; children: React.ReactNode }) {
+function ProfileSection({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) {
   return (
-    <section className="bg-white border border-[#E8E4DF] rounded-xl overflow-hidden mb-4">
-      <h2 className="text-xs font-bold uppercase tracking-widest text-[#9C9C9C] px-5 pt-4 pb-1">{title}</h2>
-      <div className="px-5 py-2">{children}</div>
+    <section id={id} style={{ border: '1px solid #333333', background: '#FFFFFF', marginBottom: 18, scrollMarginTop: 60 }}>
+      <div style={{ padding: '10px 18px', background: '#FEF7E7', borderBottom: '1px solid #333333' }}>
+        <h2 style={{ margin: 0, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>{title}</h2>
+      </div>
+      <div style={{ padding: '6px 18px' }}>{children}</div>
     </section>
   )
 }
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-4 py-2.5 border-b border-[#F5F5F5] last:border-b-0">
-      <span className="text-xs font-medium text-[#9C9C9C] w-32 shrink-0 pt-0.5 uppercase tracking-wider">{label}</span>
-      <div className="flex-1 min-w-0">{children}</div>
-    </div>
-  )
-}
-
-function InsightPanel({ title, action, rightNote, children }: { title: string; action?: { label: string; href: string }; rightNote?: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white border border-[#E8E4DF] rounded-xl p-4">
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C]">{title}</span>
-        {action && <a href={action.href} target="_blank" rel="noopener noreferrer" className="text-[11.5px] font-bold text-[#046BB1] hover:underline">{action.label}</a>}
-        {rightNote && <span className="text-[11.5px] font-bold text-[#333]">{rightNote}</span>}
-      </div>
-      {children}
+    <div className="flex items-baseline last:border-b-0" style={{ gap: 16, padding: '9px 0', borderBottom: '1px solid #F1ECE2' }}>
+      <span className="shrink-0" style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9C9C9C', width: 150 }}>{label}</span>
+      <div className="flex-1 min-w-0" style={{ fontSize: 13.5, color: '#1A1A1A' }}>{children}</div>
     </div>
   )
 }
