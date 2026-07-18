@@ -36,9 +36,10 @@ export default async function InProgressPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-6 sm:px-8 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-[#333333]">In progress</h1>
+    <div>
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Records · started but not finished</div>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>In progress</h1>
         <p className="text-sm text-[#9C9C9C] mt-1">
           People who entered a name + email but haven&apos;t finished the quiz. A row disappears
           here the moment they complete (it becomes a real submission). No enrichment or emails run on these.
@@ -47,6 +48,7 @@ export default async function InProgressPage() {
         </p>
       </header>
 
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 pb-8 pt-1">
       {error && (
         <div className="mb-6 px-4 py-3 rounded-md border border-amber-200 bg-amber-50 text-xs text-amber-900">
           <div className="font-semibold mb-1">Couldn&apos;t load in-progress captures.</div>
@@ -107,6 +109,7 @@ export default async function InProgressPage() {
           </table>
         </div>
       )}
+      </div>
     </div>
   )
 }

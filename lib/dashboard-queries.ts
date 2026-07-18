@@ -191,7 +191,10 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (f.workArea)                  r = r.ilike('work_area', `%${f.workArea}%`)
   // Launch scope: the new quiz funnel, submitted since launch. Keyed on
   // staged_at (not ts/created_at, which the Stripe import overwrites).
-  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2').gte('staged_at', LAUNCH_ISO)
+  // Launch sample anchors on IMMUTABLE created_at (enrichment re-stamps
+  // staged_at, which used to shuffle the cohort between pages). Legacy rows
+  // without created_at fall back to staged_at.
+  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2').or(`created_at.gte.${LAUNCH_ISO},and(created_at.is.null,staged_at.gte.${LAUNCH_ISO})`)
   if (f.search) {
     r = r.or(`name.ilike.%${f.search}%,email.ilike.%${f.search}%,company_name.ilike.%${f.search}%`)
   }

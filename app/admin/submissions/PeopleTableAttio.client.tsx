@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { StoredSubmission } from '@/lib/kv'
 import { personResultPath } from '@/lib/result-url'
-import { stageDef, personaDef, STAGES } from '@/lib/segmentation-v2'
+import { stageDef, personaDef } from '@/lib/segmentation-v2'
 import { encodeSpec } from '@/lib/advanced-filter'
 import Avatar from '@/components/admin/Avatar.client'
 
@@ -19,7 +19,7 @@ const INK = '#1A1A1A'
 const LATTE = '#FEF7E7'
 const ROWHAIR = '#F1ECE2'
 
-const COLS_KEY = 'admin_people_cols_v2'
+const COLS_KEY = 'admin_people_cols_v3'
 
 interface ColDef { key: string; label: string; width: string; defaultOn: boolean }
 const COLS: ColDef[] = [
@@ -31,9 +31,17 @@ const COLS: ColDef[] = [
   { key: 'ltv', label: 'LTV', width: '88px', defaultOn: true },
   { key: 'newsletter', label: 'Newsletter', width: '96px', defaultOn: true },
   { key: 'enriched', label: 'Enriched', width: '78px', defaultOn: true },
+  { key: 'verified', label: 'Verified', width: '78px', defaultOn: false },
   { key: 'country', label: 'Country', width: '110px', defaultOn: false },
+  { key: 'city', label: 'City (IP)', width: '110px', defaultOn: false },
   { key: 'source', label: 'Source', width: '110px', defaultOn: false },
   { key: 'score', label: 'Score', width: '64px', defaultOn: false },
+  { key: 'seniority', label: 'Seniority', width: '110px', defaultOn: false },
+  { key: 'industry', label: 'Industry', width: '130px', defaultOn: false },
+  { key: 'size', label: 'Company size', width: '110px', defaultOn: false },
+  { key: 'tier', label: 'Tier', width: '90px', defaultOn: false },
+  { key: 'linkedin', label: 'LinkedIn', width: '70px', defaultOn: false },
+  { key: 'submitted', label: 'Submitted', width: '100px', defaultOn: false },
 ]
 
 function DotChip({ label, color, bold }: { label: string; color: string; bold?: boolean }) {
@@ -46,14 +54,12 @@ function DotChip({ label, color, bold }: { label: string; color: string; bold?: 
 }
 
 export default function PeopleTableAttio({
-  items, total, offset = 0, pageSize = 100, stageMix = [], paidCount = 0,
+  items, total, offset = 0, pageSize = 100,
 }: {
   items: StoredSubmission[]
   total: number
   offset?: number
   pageSize?: number
-  stageMix?: { key: string; count: number }[]
-  paidCount?: number
 }) {
   const router = useRouter()
   const sp = useSearchParams()
@@ -62,21 +68,46 @@ export default function PeopleTableAttio({
   const [archiving, setArchiving] = useState(false)
   const colsRef = useRef<HTMLDivElement>(null)
 
-  // Column visibility, persisted.
+  // Column visibility + order (drag ⠿ to reorder, spreadsheet-style), persisted.
   const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries(COLS.map(c => [c.key, c.defaultOn])))
+  const [order, setOrder] = useState<string[]>(() => COLS.map(c => c.key))
+  const dragKey = useRef<string | null>(null)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(COLS_KEY)
-      if (raw) setOn(prev => ({ ...prev, ...JSON.parse(raw) }))
+      if (raw) {
+        const saved = JSON.parse(raw) as { on?: Record<string, boolean>; order?: string[] }
+        if (saved.on) setOn(prev => ({ ...prev, ...saved.on }))
+        if (Array.isArray(saved.order)) {
+          const known = saved.order.filter(k => COLS.some(c => c.key === k))
+          const missing = COLS.map(c => c.key).filter(k => !known.includes(k))
+          setOrder([...known, ...missing])
+        }
+      }
     } catch { /* defaults stand */ }
   }, [])
+  const persist = (nextOn: Record<string, boolean>, nextOrder: string[]) => {
+    try { localStorage.setItem(COLS_KEY, JSON.stringify({ on: nextOn, order: nextOrder })) } catch { /* non-fatal */ }
+  }
   const toggleCol = (key: string) => setOn(prev => {
     const next = { ...prev, [key]: !prev[key] }
     if (!Object.values(next).some(Boolean)) return prev // never zero columns
-    try { localStorage.setItem(COLS_KEY, JSON.stringify(next)) } catch { /* non-fatal */ }
+    persist(next, order)
     return next
   })
-  const visible = COLS.filter(c => on[c.key])
+  const dropOn = (targetKey: string) => {
+    const from = dragKey.current
+    dragKey.current = null
+    if (!from || from === targetKey) return
+    setOrder(prev => {
+      const next = prev.filter(k => k !== from)
+      next.splice(next.indexOf(targetKey), 0, from)
+      persist(on, next)
+      return next
+    })
+  }
+  const ordered = order.map(k => COLS.find(c => c.key === k)!).filter(Boolean)
+  const visible = ordered.filter(c => on[c.key])
   const grid = `38px ${visible.map(c => c.width).join(' ')}`
 
   useEffect(() => {
@@ -103,18 +134,6 @@ export default function PeopleTableAttio({
     { label: 'Not enriched', href: '/admin/submissions?enrichmentStatus=failed', active: sp.get('enrichmentStatus') === 'failed' },
     { label: 'Archive', href: '/admin/submissions?onlyArchived=1', active: sp.get('onlyArchived') === '1' },
   ]
-
-  // ── Ladder mix strip data ──
-  const ladderDefs = useMemo(() => [STAGES.find(s => s.key === 'unknown')!, ...STAGES.filter(s => s.key !== 'unknown')], [])
-  const mixTotal = stageMix.reduce((a, b) => a + b.count, 0)
-  const mixOf = (key: string) => stageMix.find(s => s.key === key)?.count || 0
-  const paidPct = mixTotal > 0 ? (paidCount / mixTotal) * 100 : 0
-  const stageHref = (key: string) => {
-    const u = new URLSearchParams(sp.toString())
-    if (u.get('stage') === key) u.delete('stage'); else u.set('stage', key)
-    u.delete('offset')
-    return `/admin/submissions?${u.toString()}`
-  }
 
   // Active-filter chips derived from the URL.
   const chips = useMemo(() => {
@@ -207,55 +226,28 @@ export default function PeopleTableAttio({
           {colsOpen && (
             <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, width: 230, background: '#FFFDFA', border: '1px solid #333333', boxShadow: '0 4px 14px rgba(0,0,0,0.18)', zIndex: 50, textAlign: 'left' }}>
               <div style={{ padding: '9px 14px', background: LATTE, borderBottom: '1px solid #333333', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: INK }}>Table columns</div>
-              <div style={{ padding: '8px 6px' }}>
-                {COLS.map(c => (
-                  <label key={c.key} className="flex items-center hover:bg-[#FEF7E7]" style={{ gap: 9, padding: '5px 8px', fontSize: 12, color: INK, cursor: 'pointer' }}>
+              <div style={{ padding: '8px 6px', maxHeight: 340, overflowY: 'auto' }}>
+                {ordered.map(c => (
+                  <label
+                    key={c.key}
+                    className="flex items-center hover:bg-[#FEF7E7]"
+                    style={{ gap: 9, padding: '5px 8px', fontSize: 12, color: INK, cursor: 'pointer' }}
+                    draggable
+                    onDragStart={() => { dragKey.current = c.key }}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => dropOn(c.key)}
+                  >
                     <input type="checkbox" checked={!!on[c.key]} onChange={() => toggleCol(c.key)} style={{ width: 13, height: 13, accentColor: '#333333' }} />
                     <span style={{ flex: 1 }}>{c.label}</span>
+                    <span title="Drag to reorder" style={{ color: '#C4BDB2', fontSize: 11, cursor: 'grab' }}>⠿</span>
                   </label>
                 ))}
               </div>
-              <div style={{ padding: '8px 14px', borderTop: '1px solid #E8E2D4', fontSize: 10, color: MUTE }}>saved on this browser</div>
+              <div style={{ padding: '8px 14px', borderTop: '1px solid #E8E2D4', fontSize: 10, color: MUTE }}>drag ⠿ to reorder · saved on this browser</div>
             </div>
           )}
         </div>
       </div>
-
-      {/* Ladder mix strip */}
-      {mixTotal > 0 && (
-        <div style={{ border: '1px solid #333333', background: '#FFFFFF', padding: '14px 18px', marginBottom: 18 }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: MUTE }}>Ladder mix · click a rung to filter</span>
-            <span style={{ fontSize: 11, color: '#6B6B6B' }}>{paidCount} paid · <strong style={{ color: '#BE3B3B' }}>{paidPct.toFixed(1)}%</strong> quiz → paid</span>
-          </div>
-          <div className="flex" style={{ height: 22, border: '1px solid #333333' }}>
-            {ladderDefs.map(def => {
-              const c = mixOf(def.key)
-              if (c === 0) return null
-              return (
-                <a
-                  key={def.key}
-                  href={stageHref(def.key)}
-                  title={`${def.label} · ${c.toLocaleString()}`}
-                  style={{ width: `${(c / mixTotal) * 100}%`, background: def.color, borderRight: '1px solid #FFFDFA' }}
-                />
-              )
-            })}
-          </div>
-          <div className="flex flex-wrap" style={{ columnGap: 18, rowGap: 6, marginTop: 10 }}>
-            {ladderDefs.map(def => {
-              const c = mixOf(def.key)
-              if (c === 0) return null
-              return (
-                <a key={def.key} href={stageHref(def.key)} className="inline-flex items-center hover:underline" style={{ gap: 6, fontSize: 11, color: INK }}>
-                  <span style={{ width: 8, height: 8, background: def.color }} />
-                  {def.emoji} {def.label} <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{c.toLocaleString()}</strong>
-                </a>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Active filter chips */}
       {chips.length > 0 && (
@@ -318,6 +310,14 @@ export default function PeopleTableAttio({
               case 'country': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.country ? '#4A4A4A' : '#C4BDB2' }}>{r.country || '—'}</span>
               case 'source': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 11.5, color: r.utmSource ? '#4A4A4A' : '#C4BDB2' }}>{r.utmSource || '—'}</span>
               case 'score': return <span key={key} style={{ padding: '0 12px', textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: '#E48715', fontVariantNumeric: 'tabular-nums' }}>{typeof r.score === 'number' ? r.score : '—'}</span>
+              case 'verified': return <span key={key} style={{ padding: '0 12px', textAlign: 'center', fontSize: 11.5, color: r.enrichmentVerifiedAt ? '#2D6A26' : '#B26A00' }} title={r.enrichmentVerifiedAt ? `Verified ${new Date(r.enrichmentVerifiedAt).toLocaleDateString()}` : 'Pending verification (enrich game)'}>{r.enrichmentVerifiedAt ? '✓' : '⏳'}</span>
+              case 'city': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.ipCity ? '#4A4A4A' : '#C4BDB2' }}>{r.ipCity || '—'}</span>
+              case 'seniority': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.seniority ? '#4A4A4A' : '#C4BDB2' }}>{r.seniority || '—'}</span>
+              case 'industry': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.companyIndustry ? '#4A4A4A' : '#C4BDB2' }}>{r.companyIndustry || '—'}</span>
+              case 'size': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.companySize ? '#4A4A4A' : '#C4BDB2' }}>{r.companySize || '—'}</span>
+              case 'tier': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 11.5, color: r.subscriptionTier ? '#4A4A4A' : '#C4BDB2' }}>{r.subscriptionTier || '—'}</span>
+              case 'linkedin': return <span key={key} style={{ padding: '0 12px', textAlign: 'center' }}>{r.linkedinUrl ? <a href={r.linkedinUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, fontWeight: 800, background: '#0A66C2', color: '#FFF', padding: '2px 6px' }}>in</a> : <span style={{ color: '#C4BDB2', fontSize: 12 }}>—</span>}</span>
+              case 'submitted': return <span key={key} style={{ padding: '0 12px', fontSize: 11.5, color: '#4A4A4A', fontVariantNumeric: 'tabular-nums' }}>{r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</span>
               default: return null
             }
           }

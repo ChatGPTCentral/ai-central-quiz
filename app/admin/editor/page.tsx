@@ -36,12 +36,14 @@ export default async function EditorIndexPage() {
   const anyError = rows.find(r => r.error)?.error ?? null
 
   return (
-    <div className="max-w-3xl mx-auto px-8 py-10">
-      <header className="mb-8">
-        <h1 className="text-2xl font-bold text-[#333333]">Form editor</h1>
+    <div>
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Tools · draft and publish the survey</div>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Form editor</h1>
         <p className="text-sm text-[#9C9C9C] mt-1">Edit, draft, and publish the live survey without a code push.</p>
       </header>
 
+      <div className="max-w-3xl mx-auto px-8 pb-10 pt-1">
       {anyError && (
         <div className="mb-6 px-4 py-3 rounded-md border border-amber-200 bg-amber-50 text-xs text-amber-900">
           <div className="font-semibold mb-1">DB not migrated yet — read-only preview mode.</div>
@@ -69,6 +71,7 @@ export default async function EditorIndexPage() {
             <span className="text-xs text-[#9C9C9C] shrink-0">{f.path}</span>
           </Link>
         ))}
+      </div>
       </div>
     </div>
   )

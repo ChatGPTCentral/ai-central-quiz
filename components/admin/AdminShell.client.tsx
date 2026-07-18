@@ -44,7 +44,6 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
   {
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
-      { href: '/admin/funnel', label: 'Funnel', icon: 'funnel' },
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
       { href: '/admin/roadmap', label: 'Roadmap', icon: 'roadmap' },
     ],
@@ -54,7 +53,6 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     items: [
       { href: '/admin/submissions', label: 'People', icon: 'people' },
       { href: '/admin/referrers', label: 'Referrers', icon: 'people' },
-      { href: '/admin/board', label: 'Board', icon: 'board' },
       { href: '/admin/in-progress', label: 'In progress', icon: 'inprogress' },
     ],
   },

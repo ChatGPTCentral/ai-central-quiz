@@ -54,18 +54,21 @@ async function getStagePersonaDistribution(): Promise<{
 export default async function SettingsPage() {
   const { stageDist, personaDist, total } = await getStagePersonaDistribution()
   return (
-    <div className="p-8 max-w-6xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-black text-[#333333] mb-1">Settings</h1>
-        <p className="text-sm text-[#9C9C9C]">
+    <div>
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Ops · classification and sync</div>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Settings</h1>
+        <p className="text-sm text-[#9C9C9C] mt-1">
           Inspect and override the classification that powers the dashboard.
         </p>
-      </div>
+      </header>
 
-      <SegmentsPanel stageDist={stageDist} personaDist={personaDist} total={total} />
-      <SeniorityClassifier />
-      <StripeSync />
-      <ResendNotification />
+      <div className="p-8 pt-1 max-w-6xl">
+        <SegmentsPanel stageDist={stageDist} personaDist={personaDist} total={total} />
+        <SeniorityClassifier />
+        <StripeSync />
+        <ResendNotification />
+      </div>
     </div>
   )
 }

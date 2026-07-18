@@ -89,20 +89,26 @@ function LabPageInner() {
   }
 
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-black text-[#333333] mb-1">✨ Enrichment Lab</h1>
-        <div className="flex items-center gap-4 text-[11.5px] font-bold">
-          <a href="/admin/enrich-inspect" className="text-[#046BB1] hover:underline">Deep inspector (current vs verified) →</a>
-          <a href="/admin/enrich-game" className="text-[#046BB1] hover:underline">Labeling game →</a>
+    <div>
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div className="flex items-baseline justify-between flex-wrap" style={{ gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Tools · run the live pipeline</div>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Enrichment lab</h1>
+          </div>
+          <div className="flex items-center gap-4 text-[11.5px] font-bold">
+            <a href="/admin/enrich-inspect" className="text-[#046BB1] hover:underline">Deep inspector (current vs verified) →</a>
+            <a href="/admin/enrich-game" className="text-[#046BB1] hover:underline">Labeling game →</a>
+          </div>
         </div>
-      </div>
-      <p className="text-sm text-[#9C9C9C] mb-6">
-        Test the v2 pipeline on any submission (or any email) without touching the live data.
-        Stages run in order: <strong>name from email → Google → LinkedIn scrape → Apollo → AI vision → Beehiiv → Stripe</strong>.
-        Toggle <strong>Save</strong> to write merged results + run the Stage + Persona classifier on the row.
-      </p>
+        <p className="text-sm text-[#9C9C9C] mt-1.5">
+          Test the v2 pipeline on any submission (or any email) without touching the live data.
+          Stages run in order: <strong>name from email → Google → LinkedIn scrape → Apollo → AI vision → Beehiiv → Stripe</strong>.
+          Toggle <strong>Save</strong> to write merged results + run the Stage + Persona classifier on the row.
+        </p>
+      </header>
 
+      <div className="p-8 pt-1 max-w-5xl">
       <div className="flex gap-2 items-end mb-6">
         <div className="flex-1">
           <label className="text-[10px] font-bold uppercase tracking-widest text-[#9C9C9C] block mb-1">Email or row UUID</label>
@@ -186,6 +192,7 @@ function LabPageInner() {
           </details>
         </>
       )}
+      </div>
     </div>
   )
 }

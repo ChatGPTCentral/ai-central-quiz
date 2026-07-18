@@ -13,7 +13,6 @@ interface Person { id: string; name?: string | null; email: string; jobTitle?: s
 
 const NAV = [
   { label: 'Go to Dashboard', href: '/admin/dashboard', keys: 'G D' },
-  { label: 'Go to Funnel', href: '/admin/funnel', keys: 'G F' },
   { label: 'Go to Experiments', href: '/admin/experiments', keys: 'G E' },
   { label: 'Go to People', href: '/admin/submissions', keys: 'G P' },
 ]

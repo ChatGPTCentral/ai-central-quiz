@@ -14,13 +14,19 @@ interface Props {
   display?: (v: string) => React.ReactNode
   /** Fires after a successful save with the new value. */
   onAfterSave?: (newValue: string) => void
+  /**
+   * Overrides the default `text-sm text-[#333333]` on the read-mode span and
+   * edit input — lets the dossier name render at display size while keeping
+   * the exact same edit behavior.
+   */
+  textClassName?: string
 }
 
 /**
  * Inline editable field — click to edit, Enter or blur to save, ESC to cancel.
  * Uses the existing PATCH /api/admin/submissions/[id] endpoint.
  */
-export default function InlineField({ rowId, field, value, placeholder, asLink, display, onAfterSave }: Props) {
+export default function InlineField({ rowId, field, value, placeholder, asLink, display, onAfterSave, textClassName }: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -66,7 +72,7 @@ export default function InlineField({ rowId, field, value, placeholder, asLink, 
         }}
         placeholder={placeholder}
         disabled={saving}
-        className="w-full px-2 py-1 border border-[#046BB1] rounded text-sm outline-none bg-white"
+        className={`w-full px-2 py-1 border border-[#046BB1] rounded outline-none bg-white ${textClassName || 'text-sm'}`}
       />
     )
   }
@@ -86,7 +92,7 @@ export default function InlineField({ rowId, field, value, placeholder, asLink, 
       <span
         onDoubleClick={() => setEditing(true)}
         title="Double-click to edit"
-        className="cursor-text hover:bg-[#FEF7E7] -mx-1 px-1 py-0.5 rounded text-sm text-[#333333]"
+        className={`cursor-text hover:bg-[#FEF7E7] -mx-1 px-1 py-0.5 rounded ${textClassName || 'text-sm text-[#333333]'}`}
       >{display ? display(value) : value}</span>
     )
   }

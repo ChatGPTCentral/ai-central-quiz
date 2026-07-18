@@ -100,16 +100,20 @@ export default function DebugPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl">
-      <h1 className="text-2xl font-black text-black mb-1">Debug lookup</h1>
-      <p className="text-sm text-gray-500 mb-2">
-        What the public quiz PREFILL path returns for an email: past submission, Survey v2 stage + persona, Beehiiv custom fields, Apollo enrichment, and the merged result. This intentionally mirrors the legacy prefill API the quiz calls, not the full pipeline.
-      </p>
-      <p className="text-sm text-gray-500 mb-6">
-        To run the full current enrichment pipeline on an email (Google-first, Apify, AI vision), use the{' '}
-        <a className="font-bold text-[#046BB1] hover:underline" href={`/admin/lab${email ? `?email=${encodeURIComponent(email)}` : ''}`}>Enrichment Lab →</a>
-      </p>
+    <div>
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Tools · prefill path inspector</div>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Debug lookup</h1>
+        <p className="text-sm text-gray-500 mt-1 mb-2">
+          What the public quiz PREFILL path returns for an email: past submission, Survey v2 stage + persona, Beehiiv custom fields, Apollo enrichment, and the merged result. This intentionally mirrors the legacy prefill API the quiz calls, not the full pipeline.
+        </p>
+        <p className="text-sm text-gray-500">
+          To run the full current enrichment pipeline on an email (Google-first, Apify, AI vision), use the{' '}
+          <a className="font-bold text-[#046BB1] hover:underline" href={`/admin/lab${email ? `?email=${encodeURIComponent(email)}` : ''}`}>Enrichment Lab →</a>
+        </p>
+      </header>
 
+      <div className="p-8 pt-1 max-w-4xl">
       <form onSubmit={onLookup} className="flex gap-2 mb-3">
         <input
           type="email"
@@ -282,6 +286,7 @@ export default function DebugPage() {
           </section>
         </div>
       )}
+      </div>
     </div>
   )
 }

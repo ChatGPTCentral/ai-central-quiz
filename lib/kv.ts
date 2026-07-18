@@ -71,6 +71,9 @@ export interface StoredSubmission {
   createdAt?: string            // immutable insert time — the attribution
                                 // anchor (staged_at gets re-stamped by
                                 // enrichment). Read-only: toRow omits it.
+  enrichmentVerifiedAt?: string // stamped when the owner confirmed this
+                                // profile in the enrich-game. Read-only
+                                // here: toRow omits it.
   // Future survey-v2 fields (NULL until quiz v2 ships)
   frequencyScore?: number       // 0..3 (last-7-days usage)
   depthScore?: number           // 0..5 (count of depth ticks)
@@ -206,6 +209,9 @@ export interface DbRow {
   stripe_customer_id: string | null
   lifetime_value_usd: number | string | null   // numeric(10,2) — Supabase returns as string
   created_at?: string
+  // Optional: stamped by the enrich-game verify route; toRow omits it so
+  // admin/enrichment saves can never stomp the verification.
+  enrichment_verified_at?: string | null
 }
 
 function toRow(s: StoredSubmission): DbRow {
@@ -349,6 +355,7 @@ export function fromRow(r: DbRow): StoredSubmission {
     personaReason: r.persona_reason ?? undefined,
     stagedAt: r.staged_at ?? undefined,
     createdAt: r.created_at ?? undefined,
+    enrichmentVerifiedAt: r.enrichment_verified_at ?? undefined,
     frequencyScore: r.frequency_score ?? undefined,
     depthScore: r.depth_score ?? undefined,
     depthActions: r.depth_actions ?? undefined,

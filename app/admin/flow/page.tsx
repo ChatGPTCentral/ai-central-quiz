@@ -7,13 +7,15 @@ const PERSONA_BOXES = PERSONAS.filter(p => p.key !== 'unknown')
 
 export default function AdminFlowPage() {
   return (
-    <div className="min-h-screen bg-[#F5F5F5] p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="mb-4">
-          <h1 className="text-2xl font-black text-black mb-1">Quiz Flow Diagram</h1>
-          <p className="text-sm text-gray-500">AI Central · Survey v2 · {QUESTIONS.length} steps → 6 stages + 4 personas</p>
-        </div>
+    <div className="min-h-screen bg-[#F5F5F5]">
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Tools · static quiz structure</div>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Quiz flow diagram</h1>
+        <p className="text-sm text-gray-500 mt-1">AI Central · Survey v2 · {QUESTIONS.length} steps → 6 stages + 4 personas</p>
+      </header>
 
+      <div className="p-8 pt-1">
+      <div className="max-w-5xl mx-auto">
         {/* What this page is (and is not) */}
         <div className="mb-8 px-4 py-3 rounded-xl border border-[#E0E0E0] bg-white text-[12.5px] text-gray-600 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span>
@@ -21,7 +23,7 @@ export default function AdminFlowPage() {
             It has no traffic data, and everyone follows this same path until the result page.
           </span>
           <span>
-            Where paths actually diverge: <a href="/admin/funnel" className="font-bold text-[#046BB1] hover:underline">Funnel</a> for live step drop-off,{' '}
+            Where paths actually diverge: <a href="/admin/dashboard" className="font-bold text-[#046BB1] hover:underline">Dashboard</a> for live step drop-off,{' '}
             <a href="/admin/experiments" className="font-bold text-[#046BB1] hover:underline">Experiments</a> for per-variant result-page paths.
           </span>
         </div>
@@ -119,6 +121,7 @@ export default function AdminFlowPage() {
           </div>
         </div>
 
+      </div>
       </div>
     </div>
   )

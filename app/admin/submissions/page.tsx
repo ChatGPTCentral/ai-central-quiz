@@ -1,6 +1,5 @@
 import {
   filteredSubmissions,
-  filteredSubmissionsAll,
   parseFilters,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
@@ -29,25 +28,10 @@ export default async function SubmissionsListPage({
   let error: string | null = null
   let items: Awaited<ReturnType<typeof filteredSubmissions>>['items'] = []
   let total = 0
-  // Ladder mix over the WHOLE filtered set (not just this page of 100).
-  let stageMix: { key: string; count: number }[] = []
-  let paidCount = 0
-
   try {
-    const [list, whole] = await Promise.all([
-      filteredSubmissions(filters, { offset, limit: PAGE_SIZE }),
-      filteredSubmissionsAll(filters),
-    ])
+    const list = await filteredSubmissions(filters, { offset, limit: PAGE_SIZE })
     items = list.items
     total = list.total
-    const m = new Map<string, number>()
-    for (const r of whole) {
-      const k = r.stage || 'unknown'
-      m.set(k, (m.get(k) || 0) + 1)
-      const quizAt = r.createdAt || r.stagedAt
-      if (r.stripeFirstChargeAt && quizAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) paidCount++
-    }
-    stageMix = Array.from(m.entries()).map(([key, count]) => ({ key, count }))
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
   }
@@ -83,19 +67,29 @@ export default async function SubmissionsListPage({
         </div>
       </header>
 
-      <div style={{ padding: '24px 36px 96px' }}>
+      <div className="flex items-start" style={{ padding: '24px 36px 96px', gap: 20 }}>
         {!error && (
           <>
-            <SavedSearches searchParams={searchParams} />
-            <AdvancedFilter />
-            <PeopleTableAttio
-              items={items}
-              total={total}
-              offset={offset}
-              pageSize={PAGE_SIZE}
-              stageMix={stageMix}
-              paidCount={paidCount}
-            />
+            <div className="flex-1 min-w-0">
+              <SavedSearches searchParams={searchParams} />
+              <PeopleTableAttio
+                items={items}
+                total={total}
+                offset={offset}
+                pageSize={PAGE_SIZE}
+              />
+            </div>
+            {/* Same segment builder as the dashboard: build a segment, save it */}
+            <aside className="shrink-0" style={{ width: 300 }}>
+              <div style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
+                <div style={{ padding: '10px 14px', background: '#FEF7E7', borderBottom: '1px solid #333333', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>
+                  Segments · build &amp; save
+                </div>
+                <div style={{ padding: '10px 12px' }}>
+                  <AdvancedFilter />
+                </div>
+              </div>
+            </aside>
           </>
         )}
       </div>

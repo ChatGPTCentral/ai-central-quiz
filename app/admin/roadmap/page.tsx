@@ -22,24 +22,27 @@ export default async function RoadmapPage() {
   const onOwner = tasks.filter(t => t.status === 'waiting_owner').length
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-1.5 gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-black text-[#333333]">Roadmap</h1>
+    <div>
+      <header style={{ padding: '26px 36px 18px' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Project · source of truth</div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Roadmap</h1>
           <span style={{ fontSize: 11, fontWeight: 600, color: '#9C9C9C', border: '1px solid #E8E4DF', borderRadius: 4, padding: '2px 8px', background: '#FAF7F1' }}>
             {open} open · {shipped} shipped{onOwner > 0 ? ` · ${onOwner} on you` : ''}
           </span>
         </div>
-      </div>
-      <p className="mb-5" style={{ fontSize: 12.5, color: '#9C9C9C' }}>
-        Source of truth for the funnel project. Claude keeps it in sync: cards close when work ships, with the commit attached. Drag to move, click to expand.
-      </p>
+        <p style={{ fontSize: 12.5, color: '#9C9C9C', margin: '6px 0 0' }}>
+          Source of truth for the funnel project. Claude keeps it in sync: cards close when work ships, with the commit attached. Drag to move, click to expand.
+        </p>
+      </header>
 
-      {error ? (
-        <p className="text-sm text-[#BE3B3B]">Error: {error}</p>
-      ) : (
-        <RoadmapBoard initialTasks={tasks} />
-      )}
+      <div className="p-8 pt-1">
+        {error ? (
+          <p className="text-sm text-[#BE3B3B]">Error: {error}</p>
+        ) : (
+          <RoadmapBoard initialTasks={tasks} />
+        )}
+      </div>
     </div>
   )
 }

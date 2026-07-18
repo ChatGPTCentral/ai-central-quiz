@@ -14,11 +14,17 @@ export default function PhotoEditor({
   currentPhotoUrl,
   name,
   email,
+  fill,
 }: {
   id: string
   currentPhotoUrl?: string
   name?: string
   email: string
+  /**
+   * Fill the parent container as a square, hard-edged portrait (for the
+   * dossier stamp frame) instead of the default 96px rounded thumbnail.
+   */
+  fill?: boolean
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
@@ -45,6 +51,11 @@ export default function PhotoEditor({
     }
   }
 
+  const boxClass = fill
+    ? 'w-full object-cover bg-[#F5F5F5]'
+    : 'w-24 h-24 rounded-2xl object-cover bg-[#F5F5F5] border border-[#E8E4DF]'
+  const boxStyle = fill ? { aspectRatio: '1 / 1', display: 'block' as const } : undefined
+
   return (
     <div className="relative group shrink-0">
       {currentPhotoUrl ? (
@@ -53,10 +64,14 @@ export default function PhotoEditor({
           src={currentPhotoUrl}
           alt={name || email}
           referrerPolicy="no-referrer"
-          className="w-24 h-24 rounded-2xl object-cover bg-[#F5F5F5] border border-[#E8E4DF]"
+          className={boxClass}
+          style={boxStyle}
         />
       ) : (
-        <div className="w-24 h-24 rounded-2xl bg-[#F5F5F5] border border-[#E8E4DF] flex items-center justify-center text-3xl font-black text-[#9C9C9C]">
+        <div
+          className={`${fill ? 'w-full bg-[#F5F5F5] text-7xl' : 'w-24 h-24 rounded-2xl bg-[#F5F5F5] border border-[#E8E4DF] text-3xl'} flex items-center justify-center font-black text-[#9C9C9C]`}
+          style={fill ? { aspectRatio: '1 / 1' } : undefined}
+        >
           {(name || email).slice(0, 1).toUpperCase()}
         </div>
       )}
@@ -65,7 +80,7 @@ export default function PhotoEditor({
       {!editing && (
         <button
           onClick={() => { setUrl(currentPhotoUrl || ''); setEditing(true) }}
-          className="absolute inset-0 rounded-2xl bg-black/0 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100"
+          className={`absolute inset-0 ${fill ? '' : 'rounded-2xl'} bg-black/0 group-hover:bg-black/55 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100`}
           title="Replace photo URL"
         >
           <span className="text-[#FFFDFA] text-[10px] font-bold uppercase tracking-wider">✎ Edit URL</span>

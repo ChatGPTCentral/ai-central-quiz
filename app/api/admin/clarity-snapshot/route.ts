@@ -1,4 +1,4 @@
-// Manual "Pull now" for Clarity snapshots (button on /admin/funnel).
+// Manual "Pull now" for Clarity snapshots (button on /admin/experiments).
 // Same snapshot as the cron, admin-gated; counts against Clarity's
 // 10-calls/day quota (each run spends 4), so it's a button, not a poller.
 
