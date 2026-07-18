@@ -68,6 +68,9 @@ export interface StoredSubmission {
   persona?: string              // decision_maker | operator | maker | learner | unknown
   personaReason?: string
   stagedAt?: string             // ISO timestamp of last v2 classification
+  createdAt?: string            // immutable insert time — the attribution
+                                // anchor (staged_at gets re-stamped by
+                                // enrichment). Read-only: toRow omits it.
   // Future survey-v2 fields (NULL until quiz v2 ships)
   frequencyScore?: number       // 0..3 (last-7-days usage)
   depthScore?: number           // 0..5 (count of depth ticks)
@@ -345,6 +348,7 @@ export function fromRow(r: DbRow): StoredSubmission {
     persona: r.persona ?? undefined,
     personaReason: r.persona_reason ?? undefined,
     stagedAt: r.staged_at ?? undefined,
+    createdAt: r.created_at ?? undefined,
     frequencyScore: r.frequency_score ?? undefined,
     depthScore: r.depth_score ?? undefined,
     depthActions: r.depth_actions ?? undefined,

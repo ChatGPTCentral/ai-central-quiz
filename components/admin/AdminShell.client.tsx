@@ -19,7 +19,9 @@ type IconName =
   | 'enrich' | 'debug' | 'stats' | 'flow' | 'editor' | 'settings'
 
 function Icon({ name, active }: { name: IconName; active?: boolean }) {
-  const c = active ? '#1A1A1A' : '#6B6B6B'
+  // On the jet-black sidebar: inactive icons battleship grey, active rich
+  // black (they sit on the paper active plate).
+  const c = active ? '#1A1A1A' : '#9C9C9C'
   const p = { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: c, strokeWidth: 1.75, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
   switch (name) {
     case 'dashboard': return <svg {...p}><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></svg>
@@ -79,8 +81,10 @@ export default function AdminShell({ children }: Props) {
 
   const openPalette = () => window.dispatchEvent(new Event('ac:cmdk'))
 
-  const W = collapsed ? 62 : 232
+  const W = collapsed ? 62 : 240
 
+  // NavPlate: jet-black sidebar, active item = full-width paper plate with a
+  // 3px xanthous left bar. Radius 0 everywhere.
   const navItem = (n: { href: string; label: string; icon: IconName }) => {
     const active = pathname === n.href || pathname.startsWith(n.href + '/')
     return (
@@ -88,17 +92,19 @@ export default function AdminShell({ children }: Props) {
         key={n.href}
         href={n.href}
         title={n.label}
-        className={`group flex items-center gap-2.5 rounded-[5px] transition-colors ${collapsed ? 'justify-center px-0' : 'px-2.5'}`}
+        className="group flex items-center transition-colors"
         style={{
-          height: 30,
+          height: 32,
+          gap: 10,
           fontSize: 13,
-          fontWeight: active ? 600 : 500,
-          color: active ? '#1A1A1A' : '#3D3D3D',
-          background: active ? '#FFFFFF' : 'transparent',
-          border: active ? '1px solid #E8E4DF' : '1px solid transparent',
-          boxShadow: active ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
+          fontWeight: active ? 700 : 500,
+          color: active ? '#1A1A1A' : 'rgba(255,253,250,0.78)',
+          background: active ? '#FFFDFA' : 'transparent',
+          borderLeft: `3px solid ${active ? '#E7B02F' : 'transparent'}`,
+          padding: collapsed ? '0 0 0 0' : '0 16px 0 16px',
+          justifyContent: collapsed ? 'center' : 'flex-start',
         }}
-        onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#F1EDE4' }}
+        onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(255,253,250,0.08)' }}
         onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent' }}
       >
         <span className="shrink-0"><Icon name={n.icon} active={active} /></span>
@@ -108,73 +114,77 @@ export default function AdminShell({ children }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#F4F1EB' }}>
+    <div className="min-h-screen flex" style={{ background: '#FFFDFA' }}>
       <aside
         className="sticky top-0 self-start h-screen flex flex-col shrink-0 transition-all duration-200"
-        style={{ width: W, background: '#FBF8F2', borderRight: '1px solid #E8E4DF' }}
+        style={{ width: W, background: '#333333' }}
       >
         {/* Brand + collapse */}
-        <div className="flex items-center justify-between gap-2" style={{ padding: '14px 12px 8px' }}>
+        <div className="flex items-center justify-between gap-2" style={{ padding: collapsed ? '16px 8px 12px' : '16px 16px 12px' }}>
           {collapsed ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-square.svg" alt="AI Central" style={{ width: 26, height: 26, margin: '0 auto' }} />
+            <img src="/logo-light.svg" alt="AI Central" style={{ width: 26, height: 26, margin: '0 auto' }} />
           ) : (
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center min-w-0" style={{ gap: 10 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-square.svg" alt="" style={{ width: 22, height: 22 }} />
-              <span style={{ fontSize: 14, fontWeight: 800, color: '#1A1A1A', letterSpacing: '-0.01em' }}>AI Central</span>
+              <img src="/logo-light.svg" alt="" style={{ width: 28, height: 28, display: 'block' }} />
+              <div className="min-w-0" style={{ lineHeight: 1.2 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: '#FFFDFA', letterSpacing: '-0.01em' }}>AI Central</div>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#E7B02F', marginTop: 1 }}>Admin console</div>
+              </div>
             </div>
           )}
           <button
             onClick={() => setCollapsed(c => !c)}
             title={collapsed ? 'Expand' : 'Collapse'}
-            className="leading-none rounded"
+            className="leading-none"
             style={{ color: '#9C9C9C', fontSize: 15, padding: '2px 5px' }}
           >
             {collapsed ? '›' : '‹'}
           </button>
         </div>
+        <div style={{ borderTop: '1px solid rgba(255,253,250,0.14)', margin: collapsed ? '0 8px' : '0 16px' }} />
 
-        {/* Search / ⌘K affordance */}
+        {/* Search plate / ⌘K affordance */}
         <button
           onClick={openPalette}
           title="Search people (⌘K)"
-          className="flex items-center gap-2"
-          style={{ margin: '4px 12px 12px', height: 30, background: '#FFFFFF', border: '1px solid #E8E4DF', borderRadius: 5, padding: collapsed ? 0 : '0 9px', justifyContent: collapsed ? 'center' : 'flex-start' }}
+          className="flex items-center"
+          style={{ margin: collapsed ? '14px 8px' : '14px 16px', height: 32, gap: 8, background: 'rgba(255,253,250,0.07)', border: '1px solid rgba(255,253,250,0.22)', borderRadius: 0, padding: collapsed ? 0 : '0 10px', justifyContent: collapsed ? 'center' : 'flex-start' }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9C9C9C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
           {!collapsed && <>
-            <span style={{ fontSize: 12.5, color: '#9C9C9C' }}>Search</span>
-            <span style={{ marginLeft: 'auto', fontSize: 10, color: '#9C9C9C', border: '1px solid #E8E4DF', borderRadius: 3, padding: '1px 5px', background: '#FAF7F1', fontWeight: 600 }}>⌘K</span>
+            <span style={{ fontSize: 12, color: 'rgba(255,253,250,0.55)' }}>Search people</span>
+            <span style={{ marginLeft: 'auto', fontSize: 9.5, fontWeight: 600, color: 'rgba(255,253,250,0.6)', border: '1px solid rgba(255,253,250,0.25)', padding: '1px 5px' }}>⌘K</span>
           </>}
         </button>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto flex flex-col" style={{ padding: '2px 8px 8px', gap: 18 }}>
+        <nav className="flex-1 overflow-y-auto flex flex-col" style={{ padding: '0 0 12px' }}>
           {GROUPS.map((g, i) => (
-            <div key={g.label ?? i} className="flex flex-col" style={{ gap: 1 }}>
+            <div key={g.label ?? i} className="flex flex-col">
               {g.label && !collapsed && (
-                <p style={{ margin: '0 0 3px', padding: '0 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9C9C9C' }}>{g.label}</p>
+                <p style={{ margin: '14px 0 4px', padding: '0 16px 0 19px', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#9C9C9C' }}>{g.label}</p>
               )}
-              {g.label && collapsed && <div style={{ borderTop: '1px solid #E8E4DF', margin: '6px 8px 2px' }} />}
+              {g.label && collapsed && <div style={{ borderTop: '1px solid rgba(255,253,250,0.14)', margin: '10px 8px 6px' }} />}
               {g.items.map(navItem)}
             </div>
           ))}
         </nav>
 
         {/* Footer: settings + identity + sign out */}
-        <div className="flex flex-col" style={{ padding: '8px 8px 10px', gap: 2, borderTop: '1px solid #E8E4DF' }}>
+        <div style={{ borderTop: '1px solid rgba(255,253,250,0.14)', padding: '10px 0 12px' }}>
           {navItem({ href: '/admin/settings', label: 'Classifications', icon: 'settings' })}
-          <div className="flex items-center gap-2" style={{ padding: collapsed ? 0 : '6px 4px 2px', justifyContent: collapsed ? 'center' : 'flex-start' }}>
-            <span className="flex items-center justify-center shrink-0" style={{ width: 26, height: 26, borderRadius: '50%', background: '#333333', color: '#FEF7E7', fontSize: 10, fontWeight: 700 }}>AC</span>
+          <div className="flex items-center" style={{ gap: 9, padding: collapsed ? '10px 0 0' : '10px 16px 0 19px', justifyContent: collapsed ? 'center' : 'flex-start' }}>
+            <span className="flex items-center justify-center shrink-0" style={{ width: 26, height: 26, background: '#FEF7E7', color: '#333333', fontSize: 10, fontWeight: 800 }}>AC</span>
             {!collapsed && (
-              <div className="min-w-0 leading-tight">
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#1A1A1A' }}>Admin</div>
-                <div style={{ fontSize: 10.5, color: '#9C9C9C' }}>Signed in</div>
+              <div className="min-w-0" style={{ lineHeight: 1.25 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#FFFDFA' }}>Admin</div>
+                <div style={{ fontSize: 10, color: '#9C9C9C' }}>Signed in</div>
               </div>
             )}
             <form action="/api/admin/logout" method="POST" className={collapsed ? 'hidden' : 'ml-auto'}>
-              <button type="submit" title="Sign out" style={{ color: '#9C9C9C', padding: 4 }} className="hover:text-[#333333]">
+              <button type="submit" title="Sign out" style={{ color: '#9C9C9C', padding: 4 }} className="hover:text-[#FFFDFA]">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
               </button>
             </form>
