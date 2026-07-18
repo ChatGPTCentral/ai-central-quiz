@@ -1,6 +1,6 @@
-import Link from 'next/link'
 import {
   filteredSubmissions,
+  filteredSubmissionsAll,
   parseFilters,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
@@ -13,9 +13,9 @@ export const dynamic = 'force-dynamic'
 const PAGE_SIZE = 100
 
 /**
- * Pure-table submissions view. Same `PeopleTable` component as the dashboard
- * (column toggle, photo lightbox, row-level enrich), just without the chart
- * dashboard above it — for when you want max table real-estate.
+ * People (redesign 2c): hard-edge records table with view tabs, saved
+ * filters, the ladder-mix strip and a column chooser. Same queries and
+ * filter engine as before — this page only restyles and re-arranges.
  */
 export default async function SubmissionsListPage({
   searchParams,
@@ -29,11 +29,25 @@ export default async function SubmissionsListPage({
   let error: string | null = null
   let items: Awaited<ReturnType<typeof filteredSubmissions>>['items'] = []
   let total = 0
+  // Ladder mix over the WHOLE filtered set (not just this page of 100).
+  let stageMix: { key: string; count: number }[] = []
+  let paidCount = 0
 
   try {
-    const list = await filteredSubmissions(filters, { offset, limit: PAGE_SIZE })
+    const [list, whole] = await Promise.all([
+      filteredSubmissions(filters, { offset, limit: PAGE_SIZE }),
+      filteredSubmissionsAll(filters),
+    ])
     items = list.items
     total = list.total
+    const m = new Map<string, number>()
+    for (const r of whole) {
+      const k = r.stage || 'unknown'
+      m.set(k, (m.get(k) || 0) + 1)
+      const quizAt = r.createdAt || r.stagedAt
+      if (r.stripeFirstChargeAt && quizAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) paidCount++
+    }
+    stageMix = Array.from(m.entries()).map(([key, count]) => ({ key, count }))
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
   }
@@ -42,60 +56,49 @@ export default async function SubmissionsListPage({
   exportParams.delete('offset')
   const exportHref = `/api/admin/export.csv?${exportParams.toString()}`
 
-  const nextOffset = offset + PAGE_SIZE
-  const prevOffset = Math.max(0, offset - PAGE_SIZE)
-  const hasNext = nextOffset < total
-  const hasPrev = offset > 0
-  const linkForPage = (newOffset: number) => {
-    const u = new URLSearchParams(searchParams as Record<string, string>)
-    u.set('offset', String(newOffset))
-    return `/admin/submissions?${u.toString()}`
-  }
+  const q = searchParams.q || ''
 
   return (
-    <div className="flex">
-      <div className="flex-1 p-8 min-w-0">
-        <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-black text-[#333333] flex items-center gap-2.5">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333333" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-              People
-            </h1>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#9C9C9C', border: '1px solid #E8E4DF', borderRadius: 4, padding: '2px 8px', background: '#FAF7F1' }}>
-              {error ? 'error' : `${total.toLocaleString()} records`}
-            </span>
+    <div>
+      <header className="flex items-end justify-between flex-wrap" style={{ padding: '26px 36px 18px', borderBottom: '2px solid #333333', gap: 16 }}>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Records · quiz, Stripe and Beehiiv merged</div>
+          <div className="flex items-baseline" style={{ gap: 12 }}>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>People</h1>
+            <span style={{ border: '1px solid #333333', padding: '2px 9px', fontSize: 11.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{total.toLocaleString()}</span>
           </div>
-          <a
-            href={exportHref}
-            className="px-4 py-2 rounded-md bg-[#333333] text-[#FFFDFA] text-[13px] font-bold hover:opacity-90 inline-flex items-center gap-2"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-            Export CSV
-          </a>
+          {error && <p style={{ fontSize: 12.5, color: '#BE3B3B', marginTop: 6 }}>Error: {error}</p>}
         </div>
+        <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
+          <form action="/admin/submissions" method="GET" className="inline-flex items-center" style={{ width: 230, height: 34, border: '1px solid #333333', background: '#FFFFFF', padding: '0 10px', gap: 8 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9C9C9C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Search name, email, company"
+              style={{ fontSize: 12, color: '#1A1A1A', outline: 'none', border: 'none', background: 'transparent', width: '100%' }}
+            />
+          </form>
+          <a href={exportHref} style={{ padding: '8px 15px', fontSize: 12, fontWeight: 700, background: '#333333', color: '#FFFDFA' }}>Export csv ↗</a>
+        </div>
+      </header>
 
-        {error ? <p className="text-sm text-[#BE3B3B]">Error: {error}</p> : (
+      <div style={{ padding: '24px 36px 96px' }}>
+        {!error && (
           <>
             <SavedSearches searchParams={searchParams} />
             <AdvancedFilter />
-            <PeopleTableAttio items={items} total={total} />
-            <div className="flex items-center justify-between px-1 py-3 mt-2">
-              <p className="text-xs text-[#9C9C9C]">
-                Showing {offset + 1}–{Math.min(offset + items.length, total)} of {total.toLocaleString()}
-              </p>
-              <div className="flex gap-2">
-                {hasPrev && (
-                  <Link href={linkForPage(prevOffset)} className="px-3 py-1.5 rounded-md bg-white border border-[#E8E4DF] text-xs font-medium hover:bg-[#FFFDFA]">← Previous</Link>
-                )}
-                {hasNext && (
-                  <Link href={linkForPage(nextOffset)} className="px-3 py-1.5 rounded-md bg-white border border-[#E8E4DF] text-xs font-medium hover:bg-[#FFFDFA]">Next →</Link>
-                )}
-              </div>
-            </div>
+            <PeopleTableAttio
+              items={items}
+              total={total}
+              offset={offset}
+              pageSize={PAGE_SIZE}
+              stageMix={stageMix}
+              paidCount={paidCount}
+            />
           </>
         )}
       </div>
-
     </div>
   )
 }
