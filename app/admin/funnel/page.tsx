@@ -172,211 +172,222 @@ export default async function FunnelPage() {
   const uxPath = (u: string) => { try { return new URL(u).pathname || '/' } catch { return u } }
   const uxRows: UxPageRow[] = ux.rows.slice(0, 8)
 
+  // ── 2b render: horizontal funnel + hard-edge tables ──────────────
+  const INK = '#1A1A1A'
+  const MUTE = '#9C9C9C'
+  const HAIR = '#E8E2D4'
+  const ROWHAIR = '#F1ECE2'
+  const LATTE = '#FEF7E7'
+  const eyebrow = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: MUTE } as const
+  const th = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B' } as const
+  const tnum = { fontVariantNumeric: 'tabular-nums' } as const
+  const fmt = (n: number) => n.toLocaleString()
+
+  // SVG funnel geometry (square-root scale so the tail stays readable).
+  const stations = [
+    ...steps.map(s => ({ label: s.label, n: s.n, last: false })),
+    { label: 'Net-new paid', n: trackedPaid, last: true },
+  ]
+  const FX = [20, 272, 524, 776, 1028]
+  const FBW = 10
+  const FCY = 170
+  const fMax = Math.max(...stations.map(s => s.n), 1)
+  const fh = stations.map(s => Math.sqrt(s.n) / Math.sqrt(fMax) * 240)
+  const F_FILLS = ['rgba(4,107,177,0.85)', 'rgba(4,107,177,0.6)', 'rgba(4,107,177,0.38)', 'rgba(4,107,177,0.22)']
+  const segs = stations.slice(0, -1).map((s, i) => {
+    const x1 = FX[i] + FBW, x2 = FX[i + 1]
+    const pts = `${x1},${(FCY - fh[i] / 2).toFixed(1)} ${x2},${(FCY - fh[i + 1] / 2).toFixed(1)} ${x2},${(FCY + fh[i + 1] / 2).toFixed(1)} ${x1},${(FCY + fh[i] / 2).toFixed(1)}`
+    const rate = s.n > 0 ? (stations[i + 1].n / s.n) * 100 : 0
+    const drop = s.n - stations[i + 1].n
+    return { pts, fill: F_FILLS[i], midX: (x1 + x2) / 2, rate, drop, darkLabel: i >= 2 }
+  })
+  const DROP_CAPTIONS = ['left on landing', 'abandoned mid-quiz', 'saw result, no checkout', 'checkout, no charge']
+  const overallPct = stations[0].n > 0 ? (trackedPaid / stations[0].n) * 100 : 0
+  const bestCtrPl = placements.reduce<{ pl: string; ctr: number } | null>((best, p) => {
+    if (p.views === 0 || p.clicks === 0) return best
+    const ctr = p.clicks / p.views
+    return !best || ctr > best.ctr ? { pl: p.pl, ctr } : best
+  }, null)
+  const eventsSinceLabel = firstEventTs
+    ? new Date(firstEventTs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : 'tracking'
+
   return (
-    <div className="p-8 max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-black text-[#333333] mb-1">Funnel</h1>
-        <p className="text-sm text-[#9C9C9C]">
-          Two windows, kept separate on purpose: the launch cohort is the CRM truth since Jul 5; the on-page funnel is what the first-party events can see, which is only from{' '}
-          {firstEventTs ? <strong className="text-[#333333]">{new Date(firstEventTs).toLocaleDateString()}</strong> : 'when tracking deployed'}.
-        </p>
-        {error && <p className="text-sm text-[#BE3B3B] mt-2">Error: {error}</p>}
-      </div>
+    <div>
+      <header className="flex items-end justify-between flex-wrap" style={{ padding: '26px 36px 18px', borderBottom: '2px solid #333333', gap: 16 }}>
+        <div>
+          <div style={{ ...eyebrow, marginBottom: 4 }}>Conversion · two windows, kept separate on purpose</div>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Funnel</h1>
+          {error && <p style={{ fontSize: 12.5, color: '#BE3B3B', marginTop: 6 }}>Error: {error}</p>}
+        </div>
+        <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
+          <span style={{ border: '1px solid #333333', padding: '6px 12px', fontSize: 11, fontWeight: 700, background: '#FFFDFA', ...tnum }}>CRM · since Jul 5</span>
+          <span style={{ border: '1px solid #333333', padding: '6px 12px', fontSize: 11, fontWeight: 700, background: LATTE, ...tnum }}>Events · since {eventsSinceLabel}</span>
+          <a href="/api/admin/export.csv" style={{ padding: '8px 15px', fontSize: 12, fontWeight: 700, background: '#333333', color: '#FFFDFA' }}>Export csv ↗</a>
+        </div>
+      </header>
 
-      {/* Launch cohort — CRM truth since Jul 5 (the real business funnel) */}
-      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
-        <h2 className="text-sm font-black text-[#333333] mb-1">Launch cohort · since Jul 5</h2>
-        <p className="text-[11px] text-[#9C9C9C] mb-4">
-          Everyone who completed the quiz since launch, straight from the CRM, so the whole launch wave is counted, tracking or not.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div style={{ padding: '28px 36px 44px' }}>
+        {/* Launch cohort strip — CRM truth since Jul 5 */}
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', border: '1px solid #333333', background: '#FFFFFF', marginBottom: 24 }}>
           {[
-            { label: 'Quiz completed', n: launchCompleted, sub: `${launchPretracking} before tracking` },
-            { label: 'Net-new paid', n: launchPaid, sub: 'charged after the quiz' },
+            { label: 'Quiz completed', n: fmt(launchCompleted), sub: `${fmt(launchPretracking)} before tracking` },
+            { label: 'Net-new paid', n: fmt(launchPaid), sub: 'charged after the quiz' },
             { label: 'Completed → paid', n: `${launchCvr.toFixed(1)}%`, sub: 'launch conversion' },
-          ].map(c => (
-            <div key={c.label} style={{ background: '#FAF7F1', border: '1px solid #EFEAE1', borderRadius: 8, padding: '12px 14px' }}>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[#9C9C9C]">{c.label}</div>
-              <div className="text-2xl font-black text-[#333333] tabular-nums mt-0.5">{typeof c.n === 'number' ? c.n.toLocaleString() : c.n}</div>
-              <div className="text-[10.5px] text-[#9C9C9C] mt-0.5">{c.sub}</div>
+          ].map((c, i) => (
+            <div key={c.label} style={{ padding: '18px 22px', borderLeft: i > 0 ? '1px solid #333333' : 'none' }}>
+              <div style={eyebrow}>{c.label}</div>
+              <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.03em', color: INK, lineHeight: 1, marginTop: 10, ...tnum }}>{c.n}</div>
+              <div style={{ fontSize: 11, color: MUTE, marginTop: 8 }}>{c.sub}</div>
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-[#9C9C9C] mt-3">
-          Landing, quiz-start, result and checkout can&rsquo;t be shown for the launch wave, those beacons didn&rsquo;t exist until Jul 9. The on-page funnel below is that measured slice.
-        </p>
-      </section>
 
-      {/* Funnel bars — events era only, one coherent window */}
-      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
-        <h2 className="text-sm font-black text-[#333333] mb-1">On-page funnel · since tracking (Jul 9)</h2>
-        <p className="text-[11px] text-[#9C9C9C] mb-4">
-          Unique people per step, all from first-party events so the drop-off %s are apples-to-apples. This is the window the A/B test reads from.
-        </p>
-        <div className="flex flex-col gap-2">
-          {steps.map((s, i) => {
-            const prev = i > 0 ? steps[i - 1].n : null
-            const rate = prev && prev > 0 ? (s.n / prev) * 100 : null
-            return (
-              <div key={s.key} className="flex items-center gap-3 text-[13px]">
-                <div className="w-40 shrink-0 font-medium text-[#333333]">{s.label}</div>
-                <div className="flex-1 relative h-6 bg-[#F5F5F5] rounded">
-                  <div
-                    className="absolute inset-y-0 left-0 rounded transition-all"
-                    style={{ width: `${(s.n / maxN) * 100}%`, backgroundColor: '#046BB1' }}
-                  />
-                </div>
-                <div className="w-14 shrink-0 text-right tabular-nums font-bold text-[#333333]">{s.n.toLocaleString()}</div>
-                <div className="w-20 shrink-0 text-right tabular-nums text-[#9C9C9C]">
-                  {rate !== null ? `${rate.toFixed(0)}% of prev` : ''}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-        {/* Context stats kept OUT of the monotonic bars on purpose */}
-        <div className="mt-4 flex flex-wrap gap-x-8 gap-y-2 border-t border-[#F0EDE8] pt-3 text-[12px]">
-          <span className="text-[#9C9C9C]">Result page opens: <strong className="text-[#333333] tabular-nums">{resultOpens.toLocaleString()}</strong> <span className="text-[10.5px]">(counts revisits, shared links and admin 🎯, so not a funnel step)</span></span>
-          <span className="text-[#9C9C9C]">Net-new paid, this slice: <strong className="text-[#333333] tabular-nums">{trackedPaid}</strong> <span className="text-[10.5px]">(launch-cohort total is {launchPaid}, above)</span></span>
-        </div>
-        <p className="text-[11px] text-[#9C9C9C] mt-3">
-          &ldquo;Quiz completed&rdquo; here is the {steps[2].n} tracked since Jul 9, a subset of the {launchCompleted} launch total above. Every bar is a true subset of the one above it.
-        </p>
-      </section>
-
-      {/* Viral loop */}
-      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mb-6">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-sm font-black text-[#333333] mb-1">Viral loop</h2>
-          <a href="/admin/referrers" className="text-[11.5px] font-bold text-[#046BB1] hover:underline">Who referred who → Referrers</a>
-        </div>
-        <p className="text-[11px] text-[#9C9C9C] mb-4">share_click → /pass views → quiz-takers arriving with utm pass_share → net-new paid</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Shares clicked', n: viral.shares },
-            { label: 'Pass views', n: viral.passViews },
-            { label: 'Takers via share', n: viral.takers },
-            { label: 'Net-new paid', n: viral.paid },
-          ].map(s => (
-            <div key={s.label} className="border border-[#F0EDE8] rounded-lg p-3">
-              <div className="text-2xl font-black tabular-nums text-[#333333]">{s.n.toLocaleString()}</div>
-              <div className="text-[11px] text-[#9C9C9C] mt-0.5">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* CTA performance by placement */}
-        <section className="bg-white border border-[#E8E4DF] rounded-xl p-6">
-          <h2 className="text-sm font-black text-[#333333] mb-4">CTA view → click by placement</h2>
-          {placements.length === 0 ? (
-            <p className="text-sm text-[#9C9C9C]">No placement data yet.</p>
-          ) : (
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-[#E8E4DF] text-[10px] uppercase tracking-wider text-[#9C9C9C]">
-                  <th className="text-left py-1.5">Placement</th>
-                  <th className="text-right py-1.5">Viewers</th>
-                  <th className="text-right py-1.5">Clickers</th>
-                  <th className="text-right py-1.5">CTR</th>
-                </tr>
-              </thead>
-              <tbody>
-                {placements.map(p => (
-                  <tr key={p.pl} className="border-b border-[#F5F5F5]">
-                    <td className="py-1.5 font-mono text-[12px] text-[#333333]">{p.pl}</td>
-                    <td className="py-1.5 text-right tabular-nums">{p.views > 0 ? p.views : '–'}</td>
-                    <td className="py-1.5 text-right tabular-nums font-semibold">{p.clicks}</td>
-                    <td className="py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">
-                      {p.views > 0 ? `${((p.clicks / p.views) * 100).toFixed(1)}%` : '–'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p className="text-[11px] text-[#9C9C9C] mt-3">
-            Viewers accrue from when impression tracking shipped; “–” means the placement predates it.
-          </p>
-        </section>
-
-        {/* By UTM source */}
-        <section className="bg-white border border-[#E8E4DF] rounded-xl p-6">
-          <h2 className="text-sm font-black text-[#333333] mb-4">Completions → paid, by source</h2>
-          {utmRows.length === 0 ? (
-            <p className="text-sm text-[#9C9C9C]">No submissions in the window.</p>
-          ) : (
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-[#E8E4DF] text-[10px] uppercase tracking-wider text-[#9C9C9C]">
-                  <th className="text-left py-1.5">Source</th>
-                  <th className="text-right py-1.5">Completed</th>
-                  <th className="text-right py-1.5">Net-new paid</th>
-                  <th className="text-right py-1.5">CVR</th>
-                </tr>
-              </thead>
-              <tbody>
-                {utmRows.map(([k, v]) => (
-                  <tr key={k} className="border-b border-[#F5F5F5]">
-                    <td className="py-1.5 text-[#333333]">{k}</td>
-                    <td className="py-1.5 text-right tabular-nums">{v.subs}</td>
-                    <td className="py-1.5 text-right tabular-nums">{v.paid}</td>
-                    <td className="py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">
-                      {v.subs > 0 ? `${((v.paid / v.subs) * 100).toFixed(1)}%` : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
-
-      {/* UX health from Clarity snapshots */}
-      <section className="bg-white border border-[#E8E4DF] rounded-xl p-6 mt-6">
-        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <h2 className="text-sm font-black text-[#333333]">UX health (Clarity)</h2>
-          <ClarityPullNow />
-        </div>
-        {uxRows.length === 0 ? (
-          <p className="text-sm text-[#9C9C9C]">
-            No snapshots yet. The cron pulls daily at 06:30 UTC once CLARITY_API_TOKEN is set on Vercel, or hit Pull now for the trailing day.
-          </p>
-        ) : (
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-[#E8E4DF] text-[10px] uppercase tracking-wider text-[#9C9C9C]">
-                <th className="text-left py-1.5">Page</th>
-                <th className="text-right py-1.5">Sessions</th>
-                <th className="text-right py-1.5">Scroll depth</th>
-                <th className="text-right py-1.5">Rage</th>
-                <th className="text-right py-1.5">Dead</th>
-                <th className="text-right py-1.5">Quick-backs</th>
-                <th className="text-right py-1.5">JS errors</th>
-              </tr>
-            </thead>
-            <tbody>
-              {uxRows.map(r => (
-                <tr key={r.url} className="border-b border-[#F5F5F5]">
-                  <td className="py-1.5 font-mono text-[12px] text-[#333333]" title={r.url}>{uxPath(r.url)}</td>
-                  <td className="py-1.5 text-right tabular-nums">{r.sessions.toLocaleString()}</td>
-                  <td className="py-1.5 text-right tabular-nums font-semibold text-[#046BB1]">{r.scrollDepth === null ? '–' : `${r.scrollDepth}%`}</td>
-                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.rage > 0 ? '#BE3B3B' : undefined, fontWeight: r.rage > 0 ? 700 : 400 }}>{r.rage}</td>
-                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.dead > 0 ? '#BE593B' : undefined, fontWeight: r.dead > 0 ? 700 : 400 }}>{r.dead}</td>
-                  <td className="py-1.5 text-right tabular-nums">{r.quickback}</td>
-                  <td className="py-1.5 text-right tabular-nums" style={{ color: r.scriptErrors > 0 ? '#BE3B3B' : undefined, fontWeight: r.scriptErrors > 0 ? 700 : 400 }}>{r.scriptErrors}</td>
-                </tr>
+        {/* Hero: horizontal funnel */}
+        <div style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
+          <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: '1px solid #333333' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>On-page funnel · since tracking ({eventsSinceLabel})</span>
+            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>unique people per station · band height on a square-root scale so the tail stays readable</span>
+          </div>
+          <div style={{ padding: '18px 24px 6px' }}>
+            <svg viewBox="0 0 1060 340" style={{ width: '100%', display: 'block' }} preserveAspectRatio="xMidYMid meet">
+              {segs.map((g, i) => <polygon key={i} points={g.pts} fill={g.fill} />)}
+              {stations.map((s, i) => (
+                <rect key={i} x={FX[i]} y={(FCY - fh[i] / 2 - 6).toFixed(1)} width={FBW} height={(fh[i] + 12).toFixed(1)} fill={s.last ? '#62A758' : '#333333'} />
               ))}
-            </tbody>
-          </table>
-        )}
-        <p className="text-[11px] text-[#9C9C9C] mt-3">
-          Summed over the last {ux.snapshotDays || 0} daily snapshot{ux.snapshotDays === 1 ? '' : 's'} (Clarity’s API only serves the trailing day, so history accrues here).
-          {ux.lastFetched && <> Last pull {new Date(ux.lastFetched).toLocaleString()}.</>}
-          {' '}Recordings and heatmaps stay in the Clarity dashboard.
-        </p>
-      </section>
+              {stations.map((s, i) => {
+                const end = i === stations.length - 1
+                return (
+                  <g key={`t${i}`}>
+                    <text x={end ? 1038 : FX[i]} y={16} textAnchor={end ? 'end' : 'start'} fill={MUTE} style={{ font: '700 10.5px Inter,sans-serif', letterSpacing: '0.06em' }}>{s.label}</text>
+                    <text x={end ? 1038 : FX[i]} y={38} textAnchor={end ? 'end' : 'start'} fill={s.last ? '#62A758' : INK} style={{ font: '800 21px Inter,sans-serif' }}>{fmt(s.n)}</text>
+                  </g>
+                )
+              })}
+              {segs.map((g, i) => (
+                <g key={`r${i}`}>
+                  <text x={g.midX} y={176} textAnchor="middle" fill={g.darkLabel ? '#046BB1' : '#FFFDFA'} style={{ font: '800 14px Inter,sans-serif' }}>{g.rate.toFixed(0)}%</text>
+                  <text x={g.midX} y={196} textAnchor="middle" fill={g.darkLabel ? '#6B6B6B' : 'rgba(255,253,250,0.75)'} style={{ font: '500 9.5px Inter,sans-serif' }}>continue</text>
+                  <text x={g.midX} y={322} textAnchor="middle" fill="#8A8375" style={{ font: '700 11px Inter,sans-serif' }}>−{fmt(g.drop)} · {DROP_CAPTIONS[i]}</text>
+                </g>
+              ))}
+            </svg>
+          </div>
+          <div className="flex flex-wrap" style={{ borderTop: `1px solid ${HAIR}`, padding: '10px 20px', columnGap: 28, rowGap: 6, fontSize: 11.5, color: '#6B6B6B' }}>
+            <span>Overall landing → paid: <strong style={{ color: '#BE3B3B', ...tnum }}>{overallPct.toFixed(1)}%</strong></span>
+            <span>Completed → paid: <strong style={{ color: INK, ...tnum }}>{launchCvr.toFixed(1)}%</strong></span>
+            <span>Result page opens: <strong style={{ color: INK, ...tnum }}>{fmt(resultOpens)}</strong> · tracked separately, revisits and shared links inflate it</span>
+            <span>Net-new paid in this slice: <strong style={{ color: INK, ...tnum }}>{fmt(trackedPaid)}</strong> of the {fmt(launchPaid)} launch total</span>
+          </div>
+        </div>
+
+        {/* CTA by placement + completions by source */}
+        <div className="grid grid-cols-1 lg:grid-cols-2" style={{ gap: 20, marginTop: 24 }}>
+          <div style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
+            <div className="flex items-baseline justify-between" style={{ padding: '12px 16px', background: LATTE, borderBottom: '1px solid #333333' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>CTA view → click by placement</span>
+              <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>unique viewers vs clickers</span>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 80px 76px 62px', ...th, borderBottom: `1px solid ${HAIR}`, padding: '0 16px' }}>
+              <span style={{ padding: '8px 0' }}>Placement</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Viewers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clickers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>CTR</span>
+            </div>
+            {placements.length === 0 && <p style={{ padding: '10px 16px', fontSize: 12, color: MUTE }}>No placement events yet.</p>}
+            {placements.map(p => (
+              <div key={p.pl} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: '1fr 80px 76px 62px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '0 16px' }}>
+                <span className="flex items-center" style={{ padding: '8px 0', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: INK, gap: 8, minWidth: 0 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.pl}</span>
+                  {bestCtrPl?.pl === p.pl && <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', background: '#E7B02F', color: '#333333', padding: '1px 6px', flexShrink: 0 }}>Best</span>}
+                </span>
+                <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{p.views > 0 ? fmt(p.views) : '–'}</span>
+                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, ...tnum }}>{fmt(p.clicks)}</span>
+                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{p.views > 0 ? `${((p.clicks / p.views) * 100).toFixed(1)}%` : '–'}</span>
+              </div>
+            ))}
+            <p style={{ padding: '8px 16px 10px', fontSize: 10.5, color: MUTE }}>Viewers accrue from when impression tracking shipped; &ndash; means the placement predates it.</p>
+          </div>
+
+          <div style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
+            <div className="flex items-baseline justify-between" style={{ padding: '12px 16px', background: LATTE, borderBottom: '1px solid #333333' }}>
+              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Completions → paid, by source</span>
+              <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>submissions = reliable attribution</span>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 84px 90px 62px', ...th, borderBottom: `1px solid ${HAIR}`, padding: '0 16px' }}>
+              <span style={{ padding: '8px 0' }}>Source</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Completed</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Net-new</span><span style={{ padding: '8px 0', textAlign: 'right' }}>CVR</span>
+            </div>
+            {utmRows.length === 0 && <p style={{ padding: '10px 16px', fontSize: 12, color: MUTE }}>No submissions in the window.</p>}
+            {utmRows.map(([k, v]) => (
+              <div key={k} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: '1fr 84px 90px 62px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '0 16px' }}>
+                <span style={{ padding: '8px 0', color: INK, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k}</span>
+                <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{fmt(v.subs)}</span>
+                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, ...tnum }}>{fmt(v.paid)}</span>
+                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{v.subs > 0 ? `${((v.paid / v.subs) * 100).toFixed(1)}%` : '–'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Viral loop chain */}
+        <div className="flex items-stretch flex-wrap" style={{ border: '1px solid #333333', background: '#FFFFFF', marginTop: 20 }}>
+          <div className="flex items-center" style={{ padding: '14px 20px', background: '#333333' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#E7B02F' }}>Viral loop</span>
+          </div>
+          {[
+            { n: viral.shares, label: 'shares clicked' },
+            { n: viral.passViews, label: 'pass views' },
+            { n: viral.takers, label: 'takers via share' },
+            { n: viral.paid, label: 'net-new paid' },
+          ].map((v, i, arr) => (
+            <div key={v.label} className="flex items-center" style={{ flex: 1, gap: 14, padding: '14px 20px', borderLeft: `1px solid ${HAIR}`, minWidth: 130 }}>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: INK, lineHeight: 1, ...tnum }}>{fmt(v.n)}</div>
+                <div style={{ fontSize: 10.5, color: MUTE, marginTop: 4 }}>{v.label}</div>
+              </div>
+              {i < arr.length - 1 && <span style={{ marginLeft: 'auto', color: '#C4BDB2', fontSize: 15 }}>→</span>}
+            </div>
+          ))}
+          <div className="flex items-center" style={{ padding: '0 20px 0 4px' }}>
+            <a href="/admin/referrers" style={{ fontSize: 11, color: '#046BB1', fontWeight: 700, maxWidth: 190, lineHeight: 1.4 }} className="hover:underline">
+              {viral.paid} of the {fmt(launchPaid)} net-new paid came through shared passes · who referred who →
+            </a>
+          </div>
+        </div>
+
+        {/* UX health · Clarity */}
+        <div style={{ border: '1px solid #333333', background: '#FFFFFF', marginTop: 20 }}>
+          <div className="flex items-baseline justify-between flex-wrap" style={{ padding: '12px 16px', background: LATTE, borderBottom: '1px solid #333333', gap: 10 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>UX health · Clarity</span>
+            <span className="inline-flex items-center" style={{ gap: 10 }}>
+              <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>
+                {ux.snapshotDays || 0} daily snapshot{ux.snapshotDays === 1 ? '' : 's'}{ux.lastFetched ? ` · last pull ${new Date(ux.lastFetched).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+              </span>
+              <ClarityPullNow />
+            </span>
+          </div>
+          {uxRows.length === 0 ? (
+            <p style={{ padding: '12px 16px', fontSize: 12.5, color: MUTE }}>
+              No snapshots yet. The cron pulls daily at 06:30 UTC once CLARITY_API_TOKEN is set on Vercel, or hit Pull now for the trailing day.
+            </p>
+          ) : (
+            <>
+              <div className="grid" style={{ gridTemplateColumns: 'minmax(90px,1fr) 84px 100px 60px 60px 96px 84px', ...th, borderBottom: `1px solid ${HAIR}`, padding: '0 16px' }}>
+                <span style={{ padding: '8px 0' }}>Page</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Sessions</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Scroll depth</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Rage</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Dead</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Quick-backs</span><span style={{ padding: '8px 0', textAlign: 'right' }}>JS errors</span>
+              </div>
+              {uxRows.map(r => (
+                <div key={r.url} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: 'minmax(90px,1fr) 84px 100px 60px 60px 96px 84px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '0 16px' }}>
+                  <span style={{ padding: '8px 0', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: INK }} title={r.url}>{uxPath(r.url)}</span>
+                  <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{fmt(r.sessions)}</span>
+                  <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{r.scrollDepth === null ? '–' : `${r.scrollDepth}%`}</span>
+                  <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.rage > 0 ? 800 : 400, color: r.rage > 0 ? '#BE3B3B' : undefined, ...tnum }}>{r.rage}</span>
+                  <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.dead > 0 ? 800 : 400, color: r.dead > 0 ? '#BE593B' : undefined, ...tnum }}>{r.dead}</span>
+                  <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{r.quickback}</span>
+                  <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.scriptErrors > 0 ? 800 : 400, color: r.scriptErrors > 0 ? '#BE3B3B' : undefined, ...tnum }}>{r.scriptErrors}</span>
+                </div>
+              ))}
+              <p style={{ padding: '8px 16px 10px', fontSize: 10.5, color: MUTE }}>Recordings and heatmaps stay in the Clarity dashboard.</p>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
