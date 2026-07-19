@@ -49,9 +49,39 @@ export default function HomePage({
         </div>
       </nav>
 
-      <main className="flex-1 min-h-0 flex items-start lg:items-center justify-center px-5 sm:px-8 py-6 lg:py-0">
+      {/* xl:pr reserves the right rail the fixed FOMO marquee occupies, so the
+          flipped hero copy never runs underneath it. */}
+      <main className="flex-1 min-h-0 flex items-start lg:items-center justify-center px-5 sm:px-8 py-6 lg:py-0 xl:pr-[280px]">
         <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
-          {/* Left column — the hero copy + CTA. */}
+          {/* Left column — the hook: the member pass the quiz mints for you.
+              "YOUR NAME" placeholder makes the reward tangible at a glance.
+              (Flipped to the left per owner request.) */}
+          <div className="w-full max-w-[440px] mx-auto flex flex-col items-center">
+            <PassCard
+              name="YOUR NAME"
+              personaLabel="AI Professional"
+              stageLine="STAGE: ?????"
+              passPct="Top ??% World"
+              issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
+              refNo="AC-????"
+              description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
+            />
+
+            {/* Result-page LinkedIn share button, reused here as a quiz-start CTA. */}
+            <Link
+              href={quizHref}
+              className="mt-6 inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
+              style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600, textDecoration: 'none' }}
+              aria-label="Share on LinkedIn"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
+                <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
+              </svg>
+              Share on LinkedIn
+            </Link>
+          </div>
+
+          {/* Right column — the hero copy + CTA. */}
           <div className="text-center lg:text-left">
             <p className="uppercase mb-4" style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.05em', color: FULVOUS }}>
               The 40-second AI readiness quiz
@@ -113,20 +143,6 @@ export default function HomePage({
                 2,768 COMPLETED
               </span>
             </div>
-          </div>
-
-          {/* Right column — the hook: the member pass the quiz mints for you.
-              "YOUR NAME" placeholder makes the reward tangible at a glance. */}
-          <div className="w-full max-w-[440px] mx-auto">
-            <PassCard
-              name="YOUR NAME"
-              personaLabel="AI Professional"
-              stageLine="STAGE: ?????"
-              passPct="Top ??% World"
-              issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
-              refNo="AC-????"
-              description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
-            />
           </div>
         </div>
       </main>
