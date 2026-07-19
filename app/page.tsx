@@ -52,7 +52,51 @@ export default function HomePage({
       {/* xl:pr reserves the right rail the fixed FOMO marquee occupies, so the
           flipped hero copy never runs underneath it. */}
       <main className="flex-1 min-h-0 flex items-start lg:items-center justify-center px-5 sm:px-8 py-6 lg:py-0 xl:pr-[280px]">
-        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+        {/* ── MOBILE (<lg) — owner's explicit order: headline → tagline →
+            LinkedIn-style CTA (see where I rank) → free note → description →
+            card. Hidden on lg+, which uses the flipped two-column grid. ── */}
+        <div className="lg:hidden w-full max-w-md mx-auto flex flex-col items-center text-center">
+          <h1
+            className="font-bold"
+            style={{ fontSize: 'clamp(30px, 8.5vw, 40px)', lineHeight: 1.04, letterSpacing: '-0.035em', color: RICH, marginBottom: 12 }}
+          >
+            Most people haven&apos;t started with AI.{' '}
+            <span style={{ color: FULVOUS }}>Where do you rank?</span>
+          </h1>
+          <p className="uppercase" style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.05em', color: FULVOUS, marginBottom: 18 }}>
+            The 40-second AI readiness quiz
+          </p>
+          <Link
+            href={quizHref}
+            aria-label="see where I rank"
+            className="inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors w-full"
+            style={{ color: '#FFFFFF', padding: '14px 28px', fontSize: 16, fontWeight: 600, textDecoration: 'none' }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
+              <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
+            </svg>
+            see where I rank
+          </Link>
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10, marginBottom: 18 }}>free, no card, 40 seconds</p>
+          <p style={{ fontSize: 16, fontWeight: 300, lineHeight: 1.5, color: '#4A4A4A', marginBottom: 22 }}>
+            Take the quiz to get your <strong style={{ color: INK, fontWeight: 600 }}>AI Readiness Type</strong> and
+            see exactly where you land versus everyone else, then a plan to climb
+          </p>
+          <div className="w-full max-w-[400px]">
+            <PassCard
+              name="YOUR NAME"
+              personaLabel="AI Professional"
+              stageLine="STAGE: ?????"
+              passPct="Top ??% World"
+              issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
+              refNo="AC-????"
+              description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
+            />
+          </div>
+        </div>
+
+        {/* ── DESKTOP (lg+) — the flipped two-column hero. ── */}
+        <div className="hidden w-full max-w-6xl lg:grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
           {/* Left column — the hook: the member pass the quiz mints for you.
               "YOUR NAME" placeholder makes the reward tangible at a glance.
               (Flipped to the left per owner request.) */}
