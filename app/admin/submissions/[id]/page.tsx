@@ -6,7 +6,7 @@ import { findReferrers } from '@/lib/referrer'
 import { lastResultView } from '@/lib/result-view'
 import { continentOf, showState } from '@/lib/geo'
 import { countryFlag, isoToFlag } from '@/lib/country-flags'
-import { stageDef, personaDef, STAGES } from '@/lib/segmentation-v2'
+import { stageDef, STAGES } from '@/lib/segmentation-v2'
 import DeleteButton from './DeleteButton.client'
 import InlineField from './InlineField.client'
 import EnrichHeaderButton from './EnrichHeaderButton.client'
@@ -66,7 +66,6 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
   const locFlag = submittedFrom ? isoToFlag(item.ipCountry) : countryFlag(item.country)
 
   const stage = stageDef(item.stage)
-  const persona = personaDef(item.persona)
   const paid = typeof item.lifetimeValueUsd === 'number' && item.lifetimeValueUsd > 0
   const stripeIds = item.stripeCustomerIds?.length ? item.stripeCustomerIds : (item.stripeCustomerId ? [item.stripeCustomerId] : [])
   const missing = ([
@@ -263,10 +262,9 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       {/* AI adoption ladder rung map (+ segmentation chips) */}
       <div style={{ border: '1px solid #333333', background: '#FFFFFF', padding: '14px 16px' }}>
         <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 10 }}>AI adoption ladder</div>
-        {(chip(stage, item.stageReason) || chip(persona, item.personaReason)) && (
+        {chip(stage, item.stageReason) && (
           <div className="flex items-center flex-wrap" style={{ gap: 6, marginBottom: 10 }}>
             {chip(stage, item.stageReason)}
-            {chip(persona, item.personaReason)}
           </div>
         )}
         <div className="flex flex-col" style={{ gap: 2 }}>
@@ -289,10 +287,10 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       </div>
 
       {/* Next best action */}
-      {persona && persona.key !== 'unknown' && (
+      {stage && stage.key !== 'unknown' && (
         <div style={{ border: '1px solid #E48715', background: '#FEF7E7', padding: '14px 16px' }}>
           <div style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#B26A00', marginBottom: 6 }}>Next best action</div>
-          <div style={{ fontSize: 12, color: '#333333', lineHeight: 1.5 }}>{persona.description}</div>
+          <div style={{ fontSize: 12, color: '#333333', lineHeight: 1.5 }}>{nextBestActionForStage(stage.key)}</div>
           <a href="https://app.beehiiv.com/automations" target="_blank" rel="noopener noreferrer" className="inline-flex" style={{ marginTop: 10 }}>
             <span style={{ padding: '6px 12px', fontSize: 11, fontWeight: 700, background: '#333333', color: '#FFFDFA' }}>Queue nurture email</span>
             <span className="inline-flex items-center justify-center" style={{ width: 26, background: '#333333', borderLeft: '1px solid rgba(255,253,250,0.25)', color: '#E7B02F', fontSize: 12 }}>↗</span>
@@ -396,7 +394,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               >🎬 Clarity</span>
             )}
             <a
-              href={personResultPath({ id: item.id, name: item.name, score: item.score, persona: item.persona, stage: item.stage })}
+              href={personResultPath({ id: item.id, name: item.name, score: item.score, stage: item.stage })}
               target="_blank" rel="noopener noreferrer"
               title="Open the result page this person received"
               className="hover:bg-[#FEF7E7]"
@@ -429,17 +427,17 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             </div>
           </div>
 
-          {/* Verification status (enrichment game) */}
+          {/* Verification status (enrich tuner → verify new records) */}
           <div style={{ marginTop: 18, maxWidth: 272 }}>
             {item.enrichmentVerifiedAt ? (
               <div
-                title={`Profile confirmed in the enrichment game on ${new Date(item.enrichmentVerifiedAt).toLocaleString()}`}
+                title={`Profile confirmed on ${new Date(item.enrichmentVerifiedAt).toLocaleString()}`}
                 style={{ border: '2px solid #62A758', background: '#FFFFFF', color: '#2D6A26', padding: '9px 12px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}
               >✓ Verified by you {fmtDate(item.enrichmentVerifiedAt)}</div>
             ) : (
               <Link
                 href="/admin/enrich-game"
-                title="Not verified yet — open the enrichment game to confirm this profile"
+                title="Not verified yet — confirm this profile in the enrich tuner"
                 className="block hover:opacity-80"
                 style={{ border: '2px solid #E48715', background: '#FEF7E7', color: '#B26A00', padding: '9px 12px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}
               >⏳ Pending verification →</Link>
@@ -461,6 +459,14 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       </div>
     </div>
   )
+}
+
+/** Stage-keyed "next best action" line for the right-rail panel (replaces the
+ *  retired persona.description). */
+function nextBestActionForStage(key: string): string {
+  if (key === 'S4_power_user' || key === 'S5_builder') return 'Power user, queue the advanced workflow series'
+  if (key === 'S3_practitioner') return 'Practitioner, nudge toward daily workflows'
+  return 'Send the getting-started series'
 }
 
 function ProfileSection({ title, children }: { title: string; children: React.ReactNode }) {

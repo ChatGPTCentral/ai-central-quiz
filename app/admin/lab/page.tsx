@@ -98,7 +98,7 @@ function LabPageInner() {
           </div>
           <div className="flex items-center gap-4 text-[11.5px] font-bold">
             <a href="/admin/enrich-inspect" className="text-[#046BB1] hover:underline">Deep inspector (current vs verified) →</a>
-            <a href="/admin/enrich-game" className="text-[#046BB1] hover:underline">Labeling game →</a>
+            <a href="/admin/enrich-game" className="text-[#046BB1] hover:underline">Enrich tuner →</a>
           </div>
         </div>
         <p className="text-sm text-[#9C9C9C] mt-1.5">

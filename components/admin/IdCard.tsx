@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { countryFlag } from '@/lib/country-flags'
-import { stageDef, personaDef } from '@/lib/segmentation-v2'
+import { stageDef } from '@/lib/segmentation-v2'
 
 export interface IdCardPerson {
   id: string
@@ -180,19 +180,6 @@ export default function IdCard({ person, onPhotoClick, compact = false }: Props)
                 className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
                 style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
                 title={person.stageReason || def.label}
-              >
-                {def.emoji} {def.label}
-              </span>
-            )
-          })()}
-          {(() => {
-            const def = personaDef(person.persona)
-            if (!def || def.key === 'unknown') return null
-            return (
-              <span
-                className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider"
-                style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
-                title={person.personaReason || def.label}
               >
                 {def.emoji} {def.label}
               </span>

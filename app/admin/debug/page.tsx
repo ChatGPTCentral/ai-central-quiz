@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { stageDef, personaDef } from '@/lib/segmentation-v2'
+import { stageDef } from '@/lib/segmentation-v2'
 
 type PrefillResult = {
   email: string
@@ -188,7 +188,7 @@ export default function DebugPage() {
           </section>
 
           {/* Segmentation v2 snapshot — stage + persona + raw v2 inputs */}
-          {result.history.found && (result.history.stage || result.history.persona) && (
+          {result.history.found && result.history.stage && (
             <section className="bg-white border border-[#E0E0E0] rounded-xl p-5">
               <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">📈 AI ladder · v2 segmentation</h2>
               <div className="flex items-center gap-2 flex-wrap mb-3">
@@ -205,25 +205,9 @@ export default function DebugPage() {
                     </span>
                   )
                 })()}
-                {(() => {
-                  const def = personaDef(result.history.persona)
-                  if (!def || def.key === 'unknown') return null
-                  return (
-                    <span
-                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider"
-                      style={{ backgroundColor: def.color + '22', color: def.color, border: `1px solid ${def.color}40` }}
-                      title={result.history.personaReason}
-                    >
-                      {def.emoji} {def.label}
-                    </span>
-                  )
-                })()}
               </div>
               {result.history.stageReason && (
                 <p className="text-[11px] text-gray-500 mb-1"><strong>Why stage:</strong> {result.history.stageReason}</p>
-              )}
-              {result.history.personaReason && (
-                <p className="text-[11px] text-gray-500 mb-3"><strong>Why persona:</strong> {result.history.personaReason}</p>
               )}
 
               {/* Raw v2 signals */}
@@ -238,7 +222,7 @@ export default function DebugPage() {
                   {result.history.intent30d && <span className="px-1.5 py-0.5 rounded bg-[#62A758]/15 text-[#2D6A26] text-[10px]" title="30-day intent">🎯 {result.history.intent30d.replace(/_/g, ' ')}</span>}
                 </div>
               ) : (
-                <p className="text-[11px] text-gray-400 italic mt-2">No Survey v2 signals yet · stage / persona inferred from legacy fields</p>
+                <p className="text-[11px] text-gray-400 italic mt-2">No Survey v2 signals yet · stage inferred from legacy fields</p>
               )}
             </section>
           )}

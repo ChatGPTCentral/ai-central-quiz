@@ -133,21 +133,18 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      {/* Main bento + segment-builder rail */}
-      <div className="flex items-start" style={{ padding: '0 36px 44px', gap: 20 }}>
-        <div className="flex-1 min-w-0">
-          <DashboardBento rows={rows} sample={sample} funnelEvents={events.funnel} placements={events.placements} />
-        </div>
-        <aside className="shrink-0" style={{ width: 300 }}>
-          <div style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
-            <div style={{ padding: '10px 14px', background: '#FEF7E7', borderBottom: '1px solid #333333', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>
-              Segments · build &amp; save
-            </div>
-            <div style={{ padding: '10px 12px' }}>
-              <AdvancedFilter />
-            </div>
+      {/* Segment builder as a full-width strip at the top, so the bento below
+          spans the whole width. */}
+      <div style={{ padding: '0 36px 44px' }}>
+        <div style={{ border: '1px solid #333333', background: '#FFFFFF', marginBottom: 16 }}>
+          <div style={{ padding: '10px 14px', background: '#FEF7E7', borderBottom: '1px solid #333333', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>
+            Segments · build &amp; save
           </div>
-        </aside>
+          <div style={{ padding: '10px 14px' }}>
+            <AdvancedFilter />
+          </div>
+        </div>
+        <DashboardBento rows={rows} sample={sample} funnelEvents={events.funnel} placements={events.placements} />
       </div>
     </div>
   )

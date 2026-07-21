@@ -9,6 +9,7 @@ import { getLivePublishedConfig } from '@/lib/form-config'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
 import { enrichLeadAndNotify } from '@/lib/enrichment/enrich-lead'
 import { deletePartial } from '@/lib/partials'
+import { assessLead } from '@/lib/lead-quality'
 import { createClient } from '@supabase/supabase-js'
 
 // The quiz taker gets a fast response; enrichment + the admin email run in
@@ -66,6 +67,29 @@ export async function POST(req: NextRequest) {
 
   if (!v.email || !v.name) {
     return NextResponse.json({ success: false, error: 'Name and email required' }, { status: 400 })
+  }
+
+  // Lead-quality guardrail. Hard-block ONLY the egregious fakes (placeholder
+  // names like "john doe"/"test test", keyboard mashing, disposable domains,
+  // synthetic local-parts); the client nudges for these too, so a real person
+  // never sees this. Softer flags are kept (we still save the lead) and just
+  // logged for now.
+  const assess = assessLead({ name: v.name, email: v.email })
+  if (assess.fake) {
+    console.warn('[submit-quiz-v2] blocked low-quality lead:', v.email, assess.reasons.join(','))
+    return NextResponse.json(
+      { success: false, error: 'Please enter your real name and a valid email to get your result', code: 'LOW_QUALITY' },
+      { status: 400 },
+    )
+  }
+  if (assess.reasons.length > 0) {
+    // Soft flag: NOT blocking. Kept for observability / manual triage.
+    // TODO(lead-quality): once scripts/migrations/2026-07-lead-quality.sql is
+    // applied, add `suspected_fake: true` (and lead_quality_reasons:
+    // assess.reasons.join(',')) to the insert/update payload below to persist
+    // this. Left out of the payload for now so a missing column can't break
+    // inserts.
+    console.warn('[submit-quiz-v2] suspected-fake lead (kept):', v.email, assess.reasons.join(','))
   }
 
   const utmSource = (body.utmSource || '').trim().slice(0, 120) || null

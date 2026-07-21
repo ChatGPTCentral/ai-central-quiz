@@ -20,7 +20,6 @@
 //                           Resend account (e.g. AI Central <noreply@app.thecentral.ai>)
 
 import { stageDef } from './segmentation-v2'
-import { personaDef } from './segmentation-v2'
 import { answerDisplay, answerDisplayList, formatDisplay } from './answer-labels'
 import { QUESTIONS_V2_MERGED } from './questions-v2-merged'
 import { isPlaceholderPhoto } from './enrichment/photo-filter'
@@ -273,11 +272,9 @@ export function buildOverview(r: SubmissionRow): string {
 
   // One line tying the enrichment to the quiz result.
   const sd = r.stage ? stageDef(r.stage) : null
-  const pd = r.persona ? personaDef(r.persona) : null
   const readiness: string[] = []
   if (sd && sd.key !== 'unknown') readiness.push(`lands on the ${sd.label} rung`)
   if (present(r.score)) readiness.push(`scores ${r.score}/100`)
-  if (pd && pd.key !== 'unknown') readiness.push(`reads as a ${pd.label}`)
   if (readiness.length) sentences.push(`On the quiz, ${name.split(' ')[0]} ${readiness.join(', ')}.`)
 
   return sentences.join(' ')
@@ -365,8 +362,6 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
   const resultRows: string[] = []
   if (present(r.score)) resultRows.push(row('Score', `<strong style="color:#E48715;font-size:18px;">${r.score}</strong> <span style="color:#9C9C9C;font-size:12px;">/ 100</span>`))
   if (sd && sd.key !== 'unknown') resultRows.push(row('AI type', escape(sd.label)))
-  const pd = r.persona ? personaDef(r.persona) : null
-  if (pd && pd.key !== 'unknown') resultRows.push(row('Persona', escape(pd.label)))
 
   // ── 4. Enrichment details ──
   const personLocation = [r.city, r.region, r.country].filter(present).join(', ')
@@ -516,7 +511,6 @@ function renderText(r: SubmissionRow, adminLink: string | null, resultLink: stri
   lines.push('')
   if (present(r.score)) lines.push(`Score: ${r.score}/100`)
   if (r.stage) { const sd = stageDef(r.stage); if (sd && sd.key !== 'unknown') lines.push(`AI type: ${sd.label}`) }
-  if (r.persona) { const pd = personaDef(r.persona); if (pd && pd.key !== 'unknown') lines.push(`Persona: ${pd.label}`) }
   if (r.beehiiv_status) lines.push(`Beehiiv: ${r.beehiiv_status}`)
   if (r.stripe_customer_id) lines.push(`Stripe: ${r.stripe_customer_id}${r.lifetime_value_usd ? ` (LTV ${fmtMoney(r.lifetime_value_usd)})` : ''}`)
   lines.push('')

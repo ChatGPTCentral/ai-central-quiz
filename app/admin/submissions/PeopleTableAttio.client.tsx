@@ -4,35 +4,38 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { StoredSubmission } from '@/lib/kv'
 import { personResultPath } from '@/lib/result-url'
-import { stageDef, personaDef } from '@/lib/segmentation-v2'
+import { stageDef } from '@/lib/segmentation-v2'
 import { encodeSpec } from '@/lib/advanced-filter'
+import { countryFlag } from '@/lib/country-flags'
 import Avatar from '@/components/admin/Avatar.client'
 
 // ── People table (redesign 2c) ───────────────────────────────────────
 // Hard-edge records table: view tabs, ladder-mix strip (click a rung to
 // filter), column chooser popover (persisted), active-filter chips, dense
-// grid with avatars + square stage/persona dots, row → detail, floating
-// bulk bar with Enrich / Export / Archive.
+// grid with avatars + square stage dots, row → detail, floating bulk bar
+// with Enrich / Export / Archive. Name and email are separate columns;
+// country carries an emoji flag.
 
 const MUTE = '#9C9C9C'
 const INK = '#1A1A1A'
 const LATTE = '#FEF7E7'
 const ROWHAIR = '#F1ECE2'
 
-const COLS_KEY = 'admin_people_cols_v3'
+const COLS_KEY = 'admin_people_cols_v4'
 
 interface ColDef { key: string; label: string; width: string; defaultOn: boolean }
 const COLS: ColDef[] = [
-  { key: 'person', label: 'Person', width: 'minmax(230px,1.7fr)', defaultOn: true },
+  { key: 'name', label: 'Name', width: 'minmax(180px,1.3fr)', defaultOn: true },
+  { key: 'email', label: 'Email', width: 'minmax(200px,1.5fr)', defaultOn: true },
   { key: 'stage', label: 'Stage', width: '148px', defaultOn: true },
-  { key: 'persona', label: 'Persona', width: '138px', defaultOn: true },
+  { key: 'country', label: 'Country', width: '132px', defaultOn: true },
   { key: 'company', label: 'Company', width: 'minmax(150px,1.2fr)', defaultOn: true },
   { key: 'title', label: 'Title', width: 'minmax(140px,1.1fr)', defaultOn: true },
   { key: 'ltv', label: 'LTV', width: '88px', defaultOn: true },
   { key: 'newsletter', label: 'Newsletter', width: '96px', defaultOn: true },
   { key: 'enriched', label: 'Enriched', width: '78px', defaultOn: true },
+  { key: 'linkedin', label: 'LinkedIn', width: '78px', defaultOn: true },
   { key: 'verified', label: 'Verified', width: '78px', defaultOn: false },
-  { key: 'country', label: 'Country', width: '110px', defaultOn: false },
   { key: 'city', label: 'City (IP)', width: '110px', defaultOn: false },
   { key: 'source', label: 'Source', width: '110px', defaultOn: false },
   { key: 'score', label: 'Score', width: '64px', defaultOn: false },
@@ -40,7 +43,6 @@ const COLS: ColDef[] = [
   { key: 'industry', label: 'Industry', width: '130px', defaultOn: false },
   { key: 'size', label: 'Company size', width: '110px', defaultOn: false },
   { key: 'tier', label: 'Tier', width: '90px', defaultOn: false },
-  { key: 'linkedin', label: 'LinkedIn', width: '70px', defaultOn: false },
   { key: 'submitted', label: 'Submitted', width: '100px', defaultOn: false },
 ]
 
@@ -109,6 +111,12 @@ export default function PeopleTableAttio({
   const ordered = order.map(k => COLS.find(c => c.key === k)!).filter(Boolean)
   const visible = ordered.filter(c => on[c.key])
   const grid = `38px ${visible.map(c => c.width).join(' ')}`
+  // Sum each column's minimum (px, or the min side of a minmax) so the grid can
+  // overflow-scroll horizontally instead of crushing columns when many are on.
+  const minTableWidth = 38 + visible.reduce((sum, c) => {
+    const m = c.width.match(/(\d+)px/)
+    return sum + (m ? parseInt(m[1], 10) : 120)
+  }, 0)
 
   useEffect(() => {
     if (!colsOpen) return
@@ -139,7 +147,7 @@ export default function PeopleTableAttio({
   const chips = useMemo(() => {
     const out: { key: string; label: string; value: string }[] = []
     const labelFor: Record<string, string> = {
-      stage: 'Stage', persona: 'Persona', seniority: 'Seniority', industry: 'Industry',
+      stage: 'Stage', seniority: 'Seniority', industry: 'Industry',
       country: 'Country', source: 'Source', companySize: 'Company size', beehiivStatus: 'Newsletter',
       enrichmentStatus: 'Enrichment', sexAiEstimate: 'Sex', age: 'Age', q: 'Search', sample: 'Sample',
       onlyArchived: 'Archive', spec: 'Custom filter',
@@ -263,29 +271,26 @@ export default function PeopleTableAttio({
         </div>
       )}
 
-      {/* Table */}
-      <div style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
+      {/* Table (horizontal scroll when many columns are on) */}
+      <div style={{ overflowX: 'auto' }}>
+      <div style={{ border: '1px solid #333333', background: '#FFFFFF', minWidth: minTableWidth }}>
         <div style={{ display: 'grid', gridTemplateColumns: grid, height: 36, background: LATTE, borderBottom: '1px solid #333333', alignItems: 'center' }}>
           <span className="flex justify-center"><input type="checkbox" checked={allSelected} onChange={toggleAll} style={{ width: 13, height: 13, accentColor: '#333333' }} /></span>
           {visible.map(c => (
-            <span key={c.key} style={{ ...thStyle, justifyContent: c.key === 'ltv' || c.key === 'score' ? 'flex-end' : c.key === 'enriched' ? 'center' : 'flex-start' }}>{c.label}</span>
+            <span key={c.key} style={{ ...thStyle, justifyContent: c.key === 'ltv' || c.key === 'score' ? 'flex-end' : (c.key === 'enriched' || c.key === 'linkedin' || c.key === 'verified') ? 'center' : 'flex-start' }}>{c.label}</span>
           ))}
         </div>
 
         {items.map(r => {
           const sd = r.stage ? stageDef(r.stage) : null
-          const pd = r.persona ? personaDef(r.persona) : null
           const isSel = selected.has(r.id)
           const enriched = r.enrichmentStatus === 'complete' || r.enrichmentStatus === 'partial' || !!r.jobTitle || !!r.companyName
           const cell = (key: string) => {
             switch (key) {
-              case 'person': return (
+              case 'name': return (
                 <span key={key} style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                   <Avatar name={r.name} email={r.email} photoUrl={r.photoUrl} size={26} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate" style={{ fontSize: 13, fontWeight: 700, color: INK }}>{r.name || '(no name)'}</span>
-                    <span className="block truncate" style={{ fontSize: 11, color: MUTE }}>{r.email}</span>
-                  </span>
+                  <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13, fontWeight: 700, color: r.name ? INK : '#C4BDB2' }}>{r.name || '(no name)'}</span>
                   <a
                     href={personResultPath({ id: r.id, name: r.name, score: r.score, persona: r.persona, stage: r.stage })}
                     target="_blank" rel="noopener noreferrer"
@@ -296,8 +301,8 @@ export default function PeopleTableAttio({
                   >🎯</a>
                 </span>
               )
+              case 'email': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.email ? '#4A4A4A' : '#C4BDB2' }}>{r.email || '—'}</span>
               case 'stage': return <span key={key} style={{ padding: '0 12px' }}>{sd && sd.key !== 'unknown' ? <DotChip label={sd.label} color={sd.color} bold /> : <span style={{ color: '#C4BDB2', fontSize: 12 }}>—</span>}</span>
-              case 'persona': return <span key={key} style={{ padding: '0 12px' }}>{pd && pd.key !== 'unknown' ? <DotChip label={pd.label} color={pd.color} /> : <span style={{ color: '#C4BDB2', fontSize: 12 }}>—</span>}</span>
               case 'company': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12.5, color: r.companyName ? INK : '#C4BDB2' }}>{r.companyName || '—'}</span>
               case 'title': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.jobTitle ? '#4A4A4A' : '#C4BDB2' }}>{r.jobTitle || '—'}</span>
               case 'ltv': return (
@@ -307,7 +312,7 @@ export default function PeopleTableAttio({
               )
               case 'newsletter': return <span key={key} style={{ padding: '0 12px', fontSize: 11.5, color: r.beehiivStatus === 'active' ? '#2D6A26' : MUTE }}>{r.beehiivStatus || '—'}</span>
               case 'enriched': return <span key={key} style={{ padding: '0 12px', textAlign: 'center', fontSize: 12.5, color: enriched ? '#62A758' : '#C4BDB2' }}>{enriched ? '✓' : '—'}</span>
-              case 'country': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.country ? '#4A4A4A' : '#C4BDB2' }}>{r.country || '—'}</span>
+              case 'country': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.country ? '#4A4A4A' : '#C4BDB2' }}>{r.country ? `${countryFlag(r.country)} ${r.country}` : '—'}</span>
               case 'source': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 11.5, color: r.utmSource ? '#4A4A4A' : '#C4BDB2' }}>{r.utmSource || '—'}</span>
               case 'score': return <span key={key} style={{ padding: '0 12px', textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: '#E48715', fontVariantNumeric: 'tabular-nums' }}>{typeof r.score === 'number' ? r.score : '—'}</span>
               case 'verified': return <span key={key} style={{ padding: '0 12px', textAlign: 'center', fontSize: 11.5, color: r.enrichmentVerifiedAt ? '#2D6A26' : '#B26A00' }} title={r.enrichmentVerifiedAt ? `Verified ${new Date(r.enrichmentVerifiedAt).toLocaleDateString()}` : 'Pending verification (enrich game)'}>{r.enrichmentVerifiedAt ? '✓' : '⏳'}</span>
@@ -338,6 +343,7 @@ export default function PeopleTableAttio({
         {items.length === 0 && (
           <div style={{ padding: 40, textAlign: 'center', color: MUTE, fontSize: 13 }}>No people match these filters.</div>
         )}
+      </div>
       </div>
 
       {/* Pagination */}

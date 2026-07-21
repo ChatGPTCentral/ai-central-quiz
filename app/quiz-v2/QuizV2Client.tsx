@@ -12,6 +12,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { resolveNextStep, type V2Question } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { track } from '@/lib/track'
+import { isEgregiousFake } from '@/lib/lead-quality'
 
 type Answers = Record<string, string | string[]>
 
@@ -248,9 +249,23 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   }, [isWelcome, isMulti, q.required, q.type, multiAnswer, singleAnswer])
 
   const validateStep = (): boolean => {
+    // Light inline nudge for the EGREGIOUS fakes only (placeholder names,
+    // keyboard mashing, disposable / synthetic emails). Soft flags never block
+    // here — assessLead keeps `fake` false for those. Mirrors the server guard
+    // so a real person gets nudged before submit instead of a 400.
+    if (q.id === 'name' || q.type === 'split-text') {
+      if (isEgregiousFake({ name: singleAnswer })) {
+        setInputError('Please enter your real name')
+        return false
+      }
+    }
     if (q.type === 'email') {
       if (!isValidEmail(singleAnswer)) {
         setInputError('Please enter a valid email address')
+        return false
+      }
+      if (isEgregiousFake({ email: singleAnswer })) {
+        setInputError('Please enter a real email address to get your result')
         return false
       }
     }

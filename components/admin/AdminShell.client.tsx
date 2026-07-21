@@ -60,7 +60,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     label: 'Tools',
     items: [
       { href: '/admin/lab', label: 'Enrich', icon: 'enrich' },
-      { href: '/admin/enrich-game', label: 'Enrich game', icon: 'stats' },
+      { href: '/admin/enrich-game', label: 'Enrich tuner', icon: 'stats' },
       { href: '/admin/debug', label: 'Debug lookup', icon: 'debug' },
       { href: '/admin/flow', label: 'Flow', icon: 'flow' },
       { href: '/admin/editor', label: 'Form editor', icon: 'editor' },

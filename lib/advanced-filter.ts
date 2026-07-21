@@ -86,8 +86,6 @@ export const FILTERABLE_FIELDS: Record<string, { col: string; type: 'text' | 'nu
   // AI adoption ladder (v2)
   stage:                 { col: 'stage',                 type: 'enum',
                            enum: ['S0_unaware', 'S1_curious', 'S2_experimenter', 'S3_practitioner', 'S4_power_user', 'S5_builder', 'unknown'] },
-  persona:               { col: 'persona',               type: 'enum',
-                           enum: ['decision_maker', 'operator', 'maker', 'learner', 'unknown'] },
   friction:              { col: 'friction',              type: 'enum',
                            enum: ['no_starting_point', 'no_time', 'too_noisy', 'no_trust', 'cant_build', 'no_friction'] },
   intent30d:             { col: 'intent_30d',            type: 'enum',

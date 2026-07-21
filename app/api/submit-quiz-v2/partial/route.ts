@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkRateLimit } from '@/lib/validation'
 import { savePartial } from '@/lib/partials'
+import { assessLead } from '@/lib/lead-quality'
 
 // Captures an in-progress quiz once the user has a name + valid email but
 // hasn't finished. Fire-and-forget from the client. NEVER runs enrichment,
@@ -28,6 +29,14 @@ export async function POST(req: NextRequest) {
   // Only capture once we genuinely have a reachable lead.
   if (!email || !isValidEmail(email)) {
     return NextResponse.json({ ok: false, error: 'email_required' }, { status: 400 })
+  }
+
+  // Keep egregious fakes (disposable domains, synthetic local-parts,
+  // placeholder names) out of the in-progress list. Non-blocking by design:
+  // this is fire-and-forget from the client, so we 200 with skipped=true and
+  // simply don't persist. Soft flags still get captured.
+  if (assessLead({ name, email }).fake) {
+    return NextResponse.json({ ok: true, skipped: 'low_quality' })
   }
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

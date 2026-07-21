@@ -54,6 +54,29 @@ const eyebrow: React.CSSProperties = { fontSize: 10, fontWeight: 700, textTransf
 const panelTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: INK }
 const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 
+/** CTA placement thumbnail — the actual component shown, screenshotted into
+ *  public/admin-placements/<placement>.png. Falls back to a clean "no preview"
+ *  tile for placements we haven't captured (or that only render mid-video). */
+function PlacementThumb({ placement }: { placement: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <span style={{ width: 138, height: 56, border: '1px dashed #C9C2B4', background: '#FBF7EE', color: '#B7B0A4', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        no preview
+      </span>
+    )
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/admin-placements/${placement}.png`}
+      alt={placement}
+      style={{ width: 138, height: 56, objectFit: 'cover', objectPosition: 'top', border: '1px solid #C9C2B4', background: TRACK }}
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 function countBy(rows: BentoRow[], pick: (r: BentoRow) => string | null | undefined): { label: string; value: number }[] {
   const m = new Map<string, number>()
   for (const r of rows) {
@@ -156,7 +179,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements 
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]
 }) {
   const [stageFilter, setStageFilter] = useState<string | null>(null)
-  const [pct, setPct] = useState(false)
+  const [pct, setPct] = useState(true) // percentages by default (owner pref)
 
   const ladderDefs = useMemo(() => [STAGES.find(s => s.key === 'unknown')!, ...STAGES.filter(s => s.key !== 'unknown')], [])
   const ladderCounts = useMemo(() => {
@@ -199,9 +222,9 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements 
     { label: 'Net-new paid', n: wholeNetNew, last: true },
   ]
   const FX = [20, 272, 524, 776, 1028]
-  const FCY = 168
+  const FCY = 120
   const fMax = Math.max(...stations.map(s => s.n), 1)
-  const fh = stations.map(s => Math.sqrt(s.n) / Math.sqrt(fMax) * 220)
+  const fh = stations.map(s => Math.sqrt(s.n) / Math.sqrt(fMax) * 150)
   const F_FILLS = ['rgba(4,107,177,0.85)', 'rgba(4,107,177,0.6)', 'rgba(4,107,177,0.38)', 'rgba(4,107,177,0.22)']
   const segs = stations.slice(0, -1).map((s, i) => {
     const x1 = FX[i] + 10, x2 = FX[i + 1]
@@ -258,8 +281,10 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements 
             <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>The funnel · everything since Jul 5</span>
             <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>completed + paid come from the same rows as the KPIs · band height on a square-root scale · whole cohort (the rung filter doesn&rsquo;t apply to page events)</span>
           </div>
-          <div style={{ padding: '14px 20px 2px' }}>
-            <svg viewBox="0 0 1060 300" style={{ width: '100%', display: 'block' }} preserveAspectRatio="xMidYMid meet">
+          {/* Capped width + shorter viewBox so the funnel reads as a compact
+              diagram, not a full-bleed hero. */}
+          <div style={{ padding: '12px 20px 4px', maxWidth: 780, margin: '0 auto' }}>
+            <svg viewBox="0 0 1060 210" style={{ width: '100%', display: 'block' }} preserveAspectRatio="xMidYMid meet">
               {segs.map((g, i) => <polygon key={i} points={g.pts} fill={g.fill} />)}
               {stations.map((s, i) => (
                 <rect key={i} x={FX[i]} y={(FCY - fh[i] / 2 - 6).toFixed(1)} width={10} height={(fh[i] + 12).toFixed(1)} fill={s.last ? '#62A758' : '#333333'} />
@@ -268,15 +293,15 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements 
                 const end = i === stations.length - 1
                 return (
                   <g key={`t${i}`}>
-                    <text x={end ? 1038 : FX[i]} y={16} textAnchor={end ? 'end' : 'start'} fill={MUTE} style={{ font: '700 10.5px Inter,sans-serif', letterSpacing: '0.06em' }}>{s.label}</text>
-                    <text x={end ? 1038 : FX[i]} y={38} textAnchor={end ? 'end' : 'start'} fill={s.last ? '#62A758' : INK} style={{ font: '800 21px Inter,sans-serif' }}>{s.n.toLocaleString()}</text>
+                    <text x={end ? 1038 : FX[i]} y={14} textAnchor={end ? 'end' : 'start'} fill={MUTE} style={{ font: '700 10px Inter,sans-serif', letterSpacing: '0.06em' }}>{s.label}</text>
+                    <text x={end ? 1038 : FX[i]} y={34} textAnchor={end ? 'end' : 'start'} fill={s.last ? '#62A758' : INK} style={{ font: '800 18px Inter,sans-serif' }}>{s.n.toLocaleString()}</text>
                   </g>
                 )
               })}
               {segs.map((g, i) => (
                 <g key={`r${i}`}>
-                  <text x={g.midX} y={FCY + 6} textAnchor="middle" fill={g.darkLabel ? '#046BB1' : '#FFFDFA'} style={{ font: '800 14px Inter,sans-serif' }}>{g.rate.toFixed(0)}%</text>
-                  <text x={g.midX} y={FCY + 24} textAnchor="middle" fill={g.darkLabel ? '#6B6B6B' : 'rgba(255,253,250,0.75)'} style={{ font: '500 9.5px Inter,sans-serif' }}>continue</text>
+                  <text x={g.midX} y={FCY + 5} textAnchor="middle" fill={g.darkLabel ? '#046BB1' : '#FFFDFA'} style={{ font: '800 13px Inter,sans-serif' }}>{g.rate.toFixed(0)}%</text>
+                  <text x={g.midX} y={FCY + 21} textAnchor="middle" fill={g.darkLabel ? '#6B6B6B' : 'rgba(255,253,250,0.75)'} style={{ font: '500 9px Inter,sans-serif' }}>continue</text>
                 </g>
               ))}
             </svg>
@@ -366,19 +391,13 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements 
             <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>CTA view → click by placement</span>
             <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>unique viewers vs clickers, since Jul 5</span>
           </div>
-          <div className="grid" style={{ gridTemplateColumns: '150px 1fr 80px 76px 62px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
+          <div className="grid" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
             <span style={{ padding: '8px 0' }}>Shown</span><span style={{ padding: '8px 0' }}>Placement</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Viewers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clickers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>CTR</span>
           </div>
           {placements.length === 0 && <p style={{ padding: '10px 20px', fontSize: 12, color: MUTE }}>No placement events yet.</p>}
           {placements.map(p => (
-            <div key={p.placement} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: '150px 1fr 80px 76px 62px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '6px 20px' }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/admin-placements/${p.placement}.png`}
-                alt={p.placement}
-                style={{ width: 130, height: 52, objectFit: 'cover', objectPosition: 'top', border: '1px solid #C9C2B4', background: TRACK }}
-                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-              />
+            <div key={p.placement} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '6px 20px' }}>
+              <PlacementThumb placement={p.placement} />
               <span className="flex items-center" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: INK, gap: 8, minWidth: 0 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.placement}</span>
                 {bestCtr === p.placement && <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', background: '#E7B02F', color: '#333333', padding: '1px 6px', flexShrink: 0 }}>Best</span>}
