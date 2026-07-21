@@ -25,7 +25,7 @@ function bucketKey(iso: string, gran: Gran): string {
   return d.toISOString().slice(0, 10)
 }
 
-type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; completed: number; checkout: number }>>
+type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; checkout: number }>>
 
 // Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
 // by day / week / month so the progression charts can toggle granularity.
@@ -39,11 +39,11 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
   const uniq = { landing: new Set<string>(), started: new Set<string>(), checkout: new Set<string>() }
   const pl = new Map<string, { views: Set<string>; clicks: Set<string> }>()
   // Per-granularity unique-actor sets: gran → bucket → {views,starts,checkout}.
-  const ev: Record<Gran, Map<string, { views: Set<string>; starts: Set<string>; completed: Set<string>; checkout: Set<string> }>> = { day: new Map(), week: new Map(), month: new Map() }
-  const bump = (gran: Gran, bucket: string, kind: 'views' | 'starts' | 'completed' | 'checkout', who: string) => {
+  const ev: Record<Gran, Map<string, { views: Set<string>; starts: Set<string>; checkout: Set<string> }>> = { day: new Map(), week: new Map(), month: new Map() }
+  const bump = (gran: Gran, bucket: string, kind: 'views' | 'starts' | 'checkout', who: string) => {
     if (!bucket) return
     const m = ev[gran]
-    const e = m.get(bucket) || { views: new Set<string>(), starts: new Set<string>(), completed: new Set<string>(), checkout: new Set<string>() }
+    const e = m.get(bucket) || { views: new Set<string>(), starts: new Set<string>(), checkout: new Set<string>() }
     e[kind].add(who); m.set(bucket, e)
   }
   const PAGE = 1000
@@ -56,8 +56,11 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
       .range(offset, offset + PAGE - 1)
     if (error || !data) break
     for (const r of data as { event: string; anon_id: string | null; session_id: string | null; props: Record<string, unknown> | null; ts: string }[]) {
-      const who = r.anon_id || r.session_id || `row-${Math.random()}`
-      const kind = r.event === 'quiz_view' ? 'views' : r.event === 'quiz_start' ? 'starts' : r.event === 'result_view' ? 'completed' : r.event === 'checkout_click' ? 'checkout' : null
+      // Unique ACTORS (matches count(distinct coalesce(anon_id,session_id))).
+      // Skip rows with no identifier so counts aren't inflated to row totals.
+      const who = r.anon_id || r.session_id
+      if (!who) continue
+      const kind = r.event === 'quiz_view' ? 'views' : r.event === 'quiz_start' ? 'starts' : r.event === 'checkout_click' ? 'checkout' : null
       if (kind) { for (const g of GRANS) bump(g, bucketKey(r.ts, g), kind, who) }
       if (r.event === 'quiz_view') uniq.landing.add(who)
       else if (r.event === 'quiz_start') uniq.started.add(who)
@@ -75,7 +78,7 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     if (data.length < PAGE) break
   }
   const eventBuckets: EventBuckets = { day: {}, week: {}, month: {} }
-  for (const g of GRANS) for (const [bucket, s] of Array.from(ev[g])) eventBuckets[g][bucket] = { views: s.views.size, starts: s.starts.size, completed: s.completed.size, checkout: s.checkout.size }
+  for (const g of GRANS) for (const [bucket, s] of Array.from(ev[g])) eventBuckets[g][bucket] = { views: s.views.size, starts: s.starts.size, checkout: s.checkout.size }
   return {
     funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size },
     placements: Array.from(pl.entries())
@@ -155,9 +158,9 @@ export default async function DashboardPage({
       bucket,
       views: evb[bucket]?.views || 0,
       starts: evb[bucket]?.starts || 0,
-      completed: evb[bucket]?.completed || 0,   // result_view events (coherent, event-based)
+      completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
       checkout: evb[bucket]?.checkout || 0,
-      netNew: subs.get(bucket)?.netNew || 0,     // paid: from the CRM cohort (created_at)
+      netNew: subs.get(bucket)?.netNew || 0,       // paid: CRM cohort (created_at)
       partial: bucket === nowBucket,
     }))
   }
