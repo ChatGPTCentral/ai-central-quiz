@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-// The enrichment game: for each of the last 40 people, see their photo + both
-// pipelines' guesses, pick the winner (or neither), and optionally tell me the
-// real profile and how you found it. Your verdicts become the eval set I tune
-// the resolver against, so the two flows converge on your judgment.
+// The enrich tuner: for each person, see their photo + both pipelines' guesses,
+// pick the winner (or neither), and optionally tell me the real profile and how
+// you found it. Your verdicts become the eval set I tune the resolver against,
+// so the two flows converge on your judgment.
 
 interface Cand {
   linkedinUrl?: string | null; companyName?: string | null; jobTitle?: string | null
