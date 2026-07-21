@@ -7,37 +7,55 @@ import {
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
 import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
-import DashboardBento, { type BentoRow, type FunnelEventCounts, type PlacementStat } from './DashboardBento.client'
+import DashboardBento, { type BentoRow, type FunnelEventCounts, type PlacementStat, type WeeklyPoint } from './DashboardBento.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 30
 
+// Monday (UTC) that starts the ISO week containing `iso` → 'YYYY-MM-DD'.
+function weekStartUTC(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const dow = (d.getUTCDay() + 6) % 7 // Mon=0 … Sun=6
+  d.setUTCDate(d.getUTCDate() - dow)
+  return d.toISOString().slice(0, 10)
+}
+
 // Funnel + placement events, all in the ONE launch window (since Jul 5).
 // Events only started accruing when tracking shipped, but the window is the
 // same as the CRM cohort so every number on this page shares one clock.
-async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: PlacementStat[] }> {
+type WeekEvents = Record<string, { views: number; starts: number; checkout: number }>
+async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: PlacementStat[]; weeklyEvents: WeekEvents }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[] }
+  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], weeklyEvents: {} as WeekEvents }
   if (!url || !key) return empty
   const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
   const uniq = { landing: new Set<string>(), started: new Set<string>(), checkout: new Set<string>() }
   const pl = new Map<string, { views: Set<string>; clicks: Set<string> }>()
+  // Per-week unique actors, so the trend view shares this one events read.
+  const wk = new Map<string, { views: Set<string>; starts: Set<string>; checkout: Set<string> }>()
+  const bump = (week: string, kind: 'views' | 'starts' | 'checkout', who: string) => {
+    if (!week) return
+    const e = wk.get(week) || { views: new Set<string>(), starts: new Set<string>(), checkout: new Set<string>() }
+    e[kind].add(who); wk.set(week, e)
+  }
   const PAGE = 1000
   for (let offset = 0; offset < 50_000; offset += PAGE) {
     const { data, error } = await c
       .from('funnel_events')
-      .select('event, anon_id, session_id, props')
+      .select('event, anon_id, session_id, props, ts')
       .gte('ts', `${LAUNCH_ISO}T00:00:00Z`)
       .order('ts', { ascending: true })
       .range(offset, offset + PAGE - 1)
     if (error || !data) break
-    for (const r of data as { event: string; anon_id: string | null; session_id: string | null; props: Record<string, unknown> | null }[]) {
+    for (const r of data as { event: string; anon_id: string | null; session_id: string | null; props: Record<string, unknown> | null; ts: string }[]) {
       const who = r.anon_id || r.session_id || `row-${Math.random()}`
-      if (r.event === 'quiz_view') uniq.landing.add(who)
-      else if (r.event === 'quiz_start') uniq.started.add(who)
+      const week = weekStartUTC(r.ts)
+      if (r.event === 'quiz_view') { uniq.landing.add(who); bump(week, 'views', who) }
+      else if (r.event === 'quiz_start') { uniq.started.add(who); bump(week, 'starts', who) }
       else if (r.event === 'checkout_click') {
-        uniq.checkout.add(who)
+        uniq.checkout.add(who); bump(week, 'checkout', who)
         const p = typeof r.props?.placement === 'string' ? (r.props.placement as string) : '(unknown)'
         const e = pl.get(p) || { views: new Set<string>(), clicks: new Set<string>() }
         e.clicks.add(who); pl.set(p, e)
@@ -49,11 +67,14 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     }
     if (data.length < PAGE) break
   }
+  const weeklyEvents: WeekEvents = {}
+  for (const [week, s] of Array.from(wk)) weeklyEvents[week] = { views: s.views.size, starts: s.starts.size, checkout: s.checkout.size }
   return {
     funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size },
     placements: Array.from(pl.entries())
       .map(([placement, s]) => ({ placement, views: s.views.size, clicks: s.clicks.size }))
       .sort((a, b) => b.views - a.views || b.clicks - a.clicks),
+    weeklyEvents,
   }
 }
 
@@ -69,7 +90,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[] }
+  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], weeklyEvents: {} as WeekEvents }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -99,6 +120,37 @@ export default async function DashboardPage({
       netNew,
     }
   })
+
+  // ── Weekly progression series (since launch) ──
+  // Completions + net-new bucket on the same immutable created_at as the KPIs;
+  // funnel-event counts come from the one events read above. Capped to the
+  // launch window so the trend lines up with the funnel (events start Jul 5).
+  const launchWeek = weekStartUTC(`${LAUNCH_ISO}T00:00:00Z`)
+  const subWeekly = new Map<string, { completed: number; netNew: number }>()
+  for (const r of allRows) {
+    const quizAt = r.createdAt || r.stagedAt
+    if (!quizAt) continue
+    const wk = weekStartUTC(quizAt)
+    if (!wk || wk < launchWeek) continue
+    const e = subWeekly.get(wk) || { completed: 0, netNew: 0 }
+    e.completed++
+    if (r.stripeFirstChargeAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) e.netNew++
+    subWeekly.set(wk, e)
+  }
+  const weekKeys = Array.from(new Set([...Array.from(subWeekly.keys()), ...Object.keys(events.weeklyEvents)]))
+    .filter(w => w >= launchWeek).sort()
+  // The bucket containing today is still filling — flag it so the trend deltas
+  // compare the last COMPLETE week (a partial week is not a real drop).
+  const nowWeek = weekStartUTC(new Date().toISOString())
+  const weekly: WeeklyPoint[] = weekKeys.slice(-10).map(week => ({
+    week,
+    views: events.weeklyEvents[week]?.views || 0,
+    starts: events.weeklyEvents[week]?.starts || 0,
+    checkout: events.weeklyEvents[week]?.checkout || 0,
+    completed: subWeekly.get(week)?.completed || 0,
+    netNew: subWeekly.get(week)?.netNew || 0,
+    partial: week === nowWeek,
+  }))
 
   const exportParams = new URLSearchParams(searchParams as Record<string, string>)
   exportParams.delete('offset')
@@ -144,7 +196,7 @@ export default async function DashboardPage({
             <AdvancedFilter />
           </div>
         </div>
-        <DashboardBento rows={rows} sample={sample} funnelEvents={events.funnel} placements={events.placements} />
+        <DashboardBento rows={rows} sample={sample} funnelEvents={events.funnel} placements={events.placements} weekly={weekly} />
       </div>
     </div>
   )
