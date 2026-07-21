@@ -31,7 +31,9 @@ export interface BentoRow {
 }
 export interface FunnelEventCounts { landing: number; started: number; checkout: number }
 export interface PlacementStat { placement: string; views: number; clicks: number }
-export interface WeeklyPoint { week: string; views: number; starts: number; checkout: number; completed: number; netNew: number; partial: boolean }
+export interface SeriesPoint { bucket: string; views: number; starts: number; checkout: number; completed: number; netNew: number; partial: boolean }
+export type Gran = 'day' | 'week' | 'month'
+export type Series = Record<Gran, SeriesPoint[]>
 
 const INK = '#1A1A1A'
 const MUTE = '#9C9C9C'
@@ -58,12 +60,19 @@ const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 /** CTA placement thumbnail — the actual component shown, screenshotted into
  *  public/admin-placements/<placement>.png. Falls back to a clean "no preview"
  *  tile for placements we haven't captured (or that only render mid-video). */
+function humanizePlacement(p: string): string {
+  return p.replace(/^v2_/, '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()).trim() || p
+}
 function PlacementThumb({ placement }: { placement: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) {
+    // Clean labeled tile for placements we haven't captured (legacy CTAs, or
+    // ones that only render mid-video) — never an empty "no preview" box.
+    const isV2 = placement.startsWith('v2_')
     return (
-      <span style={{ width: 138, height: 56, border: '1px dashed #C9C2B4', background: '#FBF7EE', color: '#B7B0A4', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        no preview
+      <span title={placement} style={{ width: 138, height: 56, border: `1px solid ${isV2 ? '#CBD9E6' : '#E0DACE'}`, background: isV2 ? 'linear-gradient(135deg,#EAF2F9,#F8FBFD)' : 'linear-gradient(135deg,#F6F1E5,#FBF8F1)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '0 6px' }}>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>🖼️</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#6B6B6B', textAlign: 'center', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{humanizePlacement(placement)}</span>
       </span>
     )
   }
@@ -177,15 +186,24 @@ function HBarPanel({ title, rows, color, pct, borderLeft }: { title: string; row
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-/** 'YYYY-MM-DD' → 'Mon D' (parsed by hand to dodge timezone drift). */
-function fmtWeek(w?: string): string {
-  if (!w) return ''
-  const [, m, d] = w.split('-').map(Number)
+/** 'YYYY-MM-DD' / 'YYYY-MM' → readable date (parsed by hand to dodge TZ drift). */
+function labelBucket(b: string, gran: Gran): string {
+  if (!b) return ''
+  if (gran === 'month') { const p = b.split('-'); return `${MONTHS[(+p[1] || 1) - 1]} '${p[0].slice(2)}` }
+  const [, m, d] = b.split('-').map(Number)
   return `${MONTHS[(m || 1) - 1]} ${d}`
 }
+/** Compact x-axis tick: day-of-month · M/D for weeks · month abbr. */
+function tickLabel(b: string, gran: Gran): string {
+  if (!b) return ''
+  if (gran === 'month') { const m = +b.split('-')[1]; return MONTHS[(m || 1) - 1] }
+  const [, m, d] = b.split('-').map(Number)
+  return gran === 'day' ? String(d) : `${m}/${d}`
+}
+const GRAN_LABEL: Record<Gran, string> = { day: 'D', week: 'W', month: 'M' }
 
-/** Horizontal funnel: one bar per station, width ∝ count, with the step
- *  "continue %" as a connector between rows. Reads at any width. */
+/** Horizontal funnel: one bar per station, width ∝ count, the count read out
+ *  right before its label ("870 Landing view"). No intermediate rates. */
 function FunnelBars({ stations }: { stations: { label: string; n: number; last?: boolean }[] }) {
   const top = Math.max(stations[0]?.n || 0, 1)
   const SHADES = ['#046BB1', 'rgba(4,107,177,0.82)', 'rgba(4,107,177,0.64)', 'rgba(4,107,177,0.46)']
@@ -193,24 +211,15 @@ function FunnelBars({ stations }: { stations: { label: string; n: number; last?:
     <div style={{ padding: '18px 24px 22px' }}>
       {stations.map((s, i) => {
         const w = Math.max((s.n / top) * 100, 1.5)
-        const overall = (s.n / top) * 100
-        const step = i > 0 && stations[i - 1].n > 0 ? (s.n / stations[i - 1].n) * 100 : null
         const fill = s.last ? '#62A758' : SHADES[Math.min(i, SHADES.length - 1)]
         return (
-          <div key={s.label}>
-            {i > 0 && (
-              <div className="flex items-center" style={{ gap: 8, padding: '5px 0 5px 146px' }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: (step ?? 100) >= 100 ? MUTE : '#B26A00', ...tnum }}>↓ {step != null ? `${step.toFixed(0)}%` : '–'}</span>
-                <span style={{ fontSize: 10.5, color: MUTE }}>continue</span>
-              </div>
-            )}
-            <div className="flex items-center" style={{ gap: 12 }}>
-              <span style={{ width: 134, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: INK }}>{s.label}</span>
-              <div style={{ flex: 1, height: 30, background: TRACK, position: 'relative', minWidth: 0 }}>
-                <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${w}%`, background: fill }} />
-              </div>
-              <span style={{ width: 66, flexShrink: 0, textAlign: 'right', fontSize: 15, fontWeight: 800, color: s.last ? '#2D6A26' : INK, ...tnum }}>{s.n.toLocaleString()}</span>
-              <span style={{ width: 44, flexShrink: 0, textAlign: 'right', fontSize: 10.5, color: MUTE, ...tnum }}>{overall.toFixed(0)}%</span>
+          <div key={s.label} className="flex items-center" style={{ gap: 14, marginBottom: i < stations.length - 1 ? 11 : 0 }}>
+            <span className="flex items-baseline" style={{ width: 214, flexShrink: 0, gap: 8 }}>
+              <strong style={{ fontSize: 17, fontWeight: 800, color: s.last ? '#2D6A26' : INK, ...tnum }}>{s.n.toLocaleString()}</strong>
+              <span style={{ fontSize: 12.5, color: '#4A4A4A', whiteSpace: 'nowrap' }}>{s.label}</span>
+            </span>
+            <div style={{ flex: 1, height: 26, background: TRACK, position: 'relative', minWidth: 0 }}>
+              <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${w}%`, background: fill }} />
             </div>
           </div>
         )
@@ -219,55 +228,56 @@ function FunnelBars({ stations }: { stations: { label: string; n: number; last?:
   )
 }
 
-/** One weekly small-multiple. Headline value + delta compare the last two
- *  COMPLETE weeks (a still-filling current week is never counted as a drop);
- *  the in-progress week shows as a faded trailing bar with a "so far" caption. */
-function MiniTrend({ title, points, fmt, color, borderLeft, sub }: {
-  title: string; points: { week: string; value: number; partial: boolean }[]; fmt: (n: number) => string
-  color: string; borderLeft: boolean; sub?: string
+/** Funnel-step conversion trend. Own day/week/month toggle, the rate on each
+ *  bar, hover for exact numbers, headline = the CURRENT period. */
+function StepTrend({ title, sub, series, num, den, color, borderLeft }: {
+  title: string; sub: string; series: Series
+  num: (p: SeriesPoint) => number; den: (p: SeriesPoint) => number
+  color: string; borderLeft: boolean
 }) {
-  const max = Math.max(...points.map(p => p.value), 1)
-  const complete = points.filter(p => !p.partial)
-  const headline = complete[complete.length - 1]
-  const prevPt = complete[complete.length - 2]
-  const last = headline?.value ?? 0
-  const prev = prevPt?.value ?? 0
-  const delta = prev > 0 ? ((last - prev) / prev) * 100 : (last > 0 ? 100 : 0)
-  const up = last >= prev
-  const partialPt = points.find(p => p.partial)
+  const [gran, setGran] = useState<Gran>('week')
+  const rows = series[gran].map(p => {
+    const d = den(p), n = num(p)
+    return { bucket: p.bucket, partial: p.partial, rate: d > 0 ? (n / d) * 100 : 0, n, d }
+  })
+  const max = Math.max(...rows.map(r => r.rate), 1)
+  const last = rows[rows.length - 1]
+  const gap = gran === 'day' ? 3 : 5
   return (
-    <div style={{ padding: '18px 24px', borderTop: '1px solid #333333', borderLeft: borderLeft ? '1px solid #333333' : 'none', minWidth: 0 }}>
-      <div style={panelTitle}>{title}</div>
-      <div className="flex items-baseline flex-wrap" style={{ gap: 8, marginTop: 7 }}>
-        <span style={{ fontSize: 23, fontWeight: 800, letterSpacing: '-0.02em', color: INK, ...tnum }}>{fmt(last)}</span>
-        {prevPt && (
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: up ? '#2D8879' : '#BE3B3B', ...tnum }}>{up ? '▲' : '▼'} {Math.abs(delta).toFixed(0)}% vs prior wk</span>
-        )}
+    <div style={{ padding: '15px 18px', borderTop: '1px solid #333333', borderLeft: borderLeft ? '1px solid #333333' : 'none', minWidth: 0 }}>
+      <div className="flex items-start justify-between" style={{ gap: 6 }}>
+        <span style={{ ...panelTitle, fontSize: 10.5 }}>{title}</span>
+        <div className="inline-flex" style={{ border: '1px solid #D8D2C6', flexShrink: 0 }}>
+          {(['day', 'week', 'month'] as Gran[]).map((g, i) => (
+            <button key={g} onClick={() => setGran(g)} title={g} style={{ padding: '1px 6px', fontSize: 9.5, fontWeight: 800, borderLeft: i ? '1px solid #D8D2C6' : 'none', background: gran === g ? '#333333' : 'transparent', color: gran === g ? '#FFFDFA' : '#9C9C9C', cursor: 'pointer' }}>{GRAN_LABEL[g]}</button>
+          ))}
+        </div>
       </div>
-      {headline && <div style={{ fontSize: 9.5, color: MUTE, marginTop: 3 }}>full week of {fmtWeek(headline.week)}</div>}
-      <div className="flex items-end" style={{ gap: 5, height: 54, marginTop: 10, borderBottom: '1px solid #333333' }}>
-        {points.map(p => (
-          <div key={p.week} className="flex flex-col justify-end" style={{ flex: 1, height: '100%' }} title={`${fmtWeek(p.week)}${p.partial ? ' (in progress)' : ''}: ${fmt(p.value)}`}>
-            <div style={{ width: '100%', height: `${(p.value / max) * 100}%`, minHeight: p.value > 0 ? 2 : 0, background: color, opacity: p.partial ? 0.32 : (p.week === headline?.week ? 1 : 0.5) }} />
+      <div className="flex items-baseline flex-wrap" style={{ gap: 7, marginTop: 6 }}>
+        <span style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-0.02em', color: INK, ...tnum }}>{last ? `${last.rate.toFixed(1)}%` : '–'}</span>
+        {last && <span style={{ fontSize: 9.5, color: MUTE, ...tnum }}>{last.n}/{last.d} · {labelBucket(last.bucket, gran)}{last.partial ? ' (so far)' : ''}</span>}
+      </div>
+      <div className="flex items-end" style={{ gap, height: 60, marginTop: 10, borderBottom: '1px solid #333333' }}>
+        {rows.map(r => (
+          <div key={r.bucket} className="flex flex-col items-center justify-end" style={{ flex: 1, height: '100%', minWidth: 0 }} title={`${labelBucket(r.bucket, gran)}${r.partial ? ' · in progress' : ''}: ${r.rate.toFixed(1)}% (${r.n}/${r.d})`}>
+            <span style={{ fontSize: 8.5, fontWeight: 700, color: '#6B6B6B', lineHeight: 1, ...tnum }}>{r.d > 0 ? Math.round(r.rate) : ''}</span>
+            <div style={{ width: gran === 'day' ? '80%' : '68%', height: `${(r.rate / max) * 100}%`, minHeight: r.rate > 0 ? 2 : 0, background: color, opacity: r.partial ? 0.42 : 1, marginTop: 3 }} />
           </div>
         ))}
-        {points.length === 0 && <span style={{ fontSize: 11, color: MUTE, alignSelf: 'center', margin: '0 auto' }}>No data yet.</span>}
+        {rows.length === 0 && <span style={{ fontSize: 11, color: MUTE, alignSelf: 'center', margin: '0 auto' }}>No data yet.</span>}
       </div>
-      <div className="flex justify-between" style={{ marginTop: 5, fontSize: 9.5, color: MUTE }}>
-        <span>{fmtWeek(points[0]?.week)}</span>
-        <span>{fmtWeek(points[points.length - 1]?.week)}</span>
+      <div className="flex" style={{ gap, marginTop: 4 }}>
+        {rows.map(r => <span key={r.bucket} style={{ flex: 1, textAlign: 'center', fontSize: 8, color: MUTE, whiteSpace: 'nowrap', overflow: 'hidden', ...tnum }}>{tickLabel(r.bucket, gran)}</span>)}
       </div>
-      {partialPt && <div style={{ fontSize: 9.5, color: '#B26A00', marginTop: 5, fontWeight: 600 }}>{fmtWeek(partialPt.week)} wk in progress: {fmt(partialPt.value)} so far</div>}
-      {sub && <div style={{ fontSize: 9.5, color: MUTE, marginTop: 4 }}>{sub}</div>}
+      <div style={{ fontSize: 9, color: MUTE, marginTop: 6 }}>{sub}</div>
     </div>
   )
 }
 
-export default function DashboardBento({ rows, sample, funnelEvents, placements, weekly }: {
-  rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; weekly: WeeklyPoint[]
+export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct }: {
+  rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; series: Series; pct: boolean
 }) {
   const [stageFilter, setStageFilter] = useState<string | null>(null)
-  const [pct, setPct] = useState(true) // percentages by default (owner pref)
 
   const ladderDefs = useMemo(() => [STAGES.find(s => s.key === 'unknown')!, ...STAGES.filter(s => s.key !== 'unknown')], [])
   const ladderCounts = useMemo(() => {
@@ -309,12 +319,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
     { label: 'Checkout clicked', n: funnelEvents.checkout, last: false },
     { label: 'Net-new paid', n: wholeNetNew, last: true },
   ]
-  // Weekly trend series (from the launch-window prop). Carry `partial` so the
-  // MiniTrend can exclude the still-filling current week from the delta.
-  const trendCompleted = weekly.map(w => ({ week: w.week, value: w.completed, partial: w.partial }))
-  const trendNetNew = weekly.map(w => ({ week: w.week, value: w.netNew, partial: w.partial }))
-  const trendCheckoutRate = weekly.map(w => ({ week: w.week, value: w.views > 0 ? (w.checkout / w.views) * 100 : 0, partial: w.partial }))
-  const hasWeekly = weekly.length > 0
+  const hasSeries = series.week.length > 0 || series.day.length > 0
 
   const bestCtr = placements.reduce<string | null>((best, p) => {
     if (!p.views || !p.clicks) return best
@@ -325,18 +330,14 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
 
   return (
     <div>
-      {/* Toggle row + active filter chip */}
-      <div className="flex items-center" style={{ gap: 10, marginBottom: 12 }}>
-        <div className="inline-flex" style={{ border: '1px solid #333333' }}>
-          <button onClick={() => setPct(false)} style={{ padding: '5px 12px', fontSize: 11.5, fontWeight: 700, background: !pct ? '#333333' : 'transparent', color: !pct ? '#FFFDFA' : '#6B6B6B' }}>Numbers</button>
-          <button onClick={() => setPct(true)} style={{ padding: '5px 12px', fontSize: 11.5, fontWeight: 700, borderLeft: '1px solid #333333', background: pct ? '#333333' : 'transparent', color: pct ? '#FFFDFA' : '#6B6B6B' }}>Percentages</button>
-        </div>
-        {filtDef && (
+      {/* Active filter chip (the N/% toggle now lives in the page header) */}
+      {filtDef && (
+        <div className="flex items-center" style={{ gap: 10, marginBottom: 12 }}>
           <button onClick={() => setStageFilter(null)} className="inline-flex items-center" style={{ gap: 8, border: '1px solid #E48715', background: LATTE, color: '#B26A00', padding: '4px 10px', fontSize: 11.5, fontWeight: 700 }}>
             {filtDef.emoji} {filtDef.label} · {(ladderCounts.get(filtDef.key) || 0).toLocaleString()} people <span style={{ fontSize: 12 }}>✕</span>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
         {/* ── Row 1 · KPIs in the owner's order ── */}
@@ -359,25 +360,26 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
         <div style={{ borderTop: '1px solid #333333' }}>
           <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
             <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>The funnel · everything since Jul 5</span>
-            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>bar length ∝ people · % between bars = share who continue · completed + paid share the KPIs&rsquo; rows (whole cohort, the rung filter doesn&rsquo;t apply to page events)</span>
+            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>count then stage, bar length ∝ people · completed + paid share the KPIs&rsquo; rows (whole cohort, the rung filter doesn&rsquo;t apply to page events)</span>
           </div>
           <FunnelBars stations={stations} />
         </div>
 
-        {/* ── Row 2b · progression over time ── */}
+        {/* ── Row 2b · step conversions over time ── */}
         <div style={{ borderTop: '1px solid #333333' }}>
           <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Progression · by week</span>
-            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>are we getting better? each bar is one week since launch, newest on the right</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Progression · each funnel step over time</span>
+            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>are we getting better? big number = current period · toggle day / week / month · hover a bar for the exact rate</span>
           </div>
-          {hasWeekly ? (
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-              <MiniTrend title="Quiz completions" points={trendCompleted} fmt={n => Math.round(n).toLocaleString()} color="#046BB1" borderLeft={false} sub="people who finished the quiz that week" />
-              <MiniTrend title="Net-new trials" points={trendNetNew} fmt={n => Math.round(n).toLocaleString()} color="#62A758" borderLeft sub="first-ever payment after the quiz · recent weeks still maturing" />
-              <MiniTrend title="Checkout-click rate" points={trendCheckoutRate} fmt={n => `${n.toFixed(1)}%`} color="#E48715" borderLeft sub="checkout clicks ÷ landing views · lag-free funnel health" />
+          {hasSeries ? (
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+              <StepTrend title="Landing → Start" sub="quiz starts ÷ landing views" series={series} num={p => p.starts} den={p => p.views} color="#046BB1" borderLeft={false} />
+              <StepTrend title="Start → Complete" sub="result page shown ÷ quiz starts" series={series} num={p => p.completed} den={p => p.starts} color="#3B4C99" borderLeft />
+              <StepTrend title="Complete → Checkout" sub="checkout clicks ÷ result shown" series={series} num={p => p.checkout} den={p => p.completed} color="#E48715" borderLeft />
+              <StepTrend title="Checkout → Paid" sub="net-new paid ÷ checkout clicks · paid lags" series={series} num={p => p.netNew} den={p => p.checkout} color="#62A758" borderLeft />
             </div>
           ) : (
-            <p style={{ padding: '16px 24px', fontSize: 12, color: MUTE }}>No weekly data in this window yet.</p>
+            <p style={{ padding: '16px 24px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>
           )}
         </div>
 

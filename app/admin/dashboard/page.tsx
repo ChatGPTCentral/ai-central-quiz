@@ -6,39 +6,45 @@ import {
   LAUNCH_LABEL,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
-import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
-import DashboardBento, { type BentoRow, type FunnelEventCounts, type PlacementStat, type WeeklyPoint } from './DashboardBento.client'
+import DashboardArea from './DashboardArea.client'
+import { type BentoRow, type FunnelEventCounts, type PlacementStat, type SeriesPoint, type Series } from './DashboardBento.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 30
 
-// Monday (UTC) that starts the ISO week containing `iso` → 'YYYY-MM-DD'.
-function weekStartUTC(iso: string): string {
+type Gran = 'day' | 'week' | 'month'
+const GRANS: Gran[] = ['day', 'week', 'month']
+
+// Bucket an ISO timestamp for a given granularity → a sortable key.
+//   day → YYYY-MM-DD · week → Monday YYYY-MM-DD · month → YYYY-MM
+function bucketKey(iso: string, gran: Gran): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  const dow = (d.getUTCDay() + 6) % 7 // Mon=0 … Sun=6
-  d.setUTCDate(d.getUTCDate() - dow)
+  if (gran === 'month') return d.toISOString().slice(0, 7)
+  if (gran === 'week') { const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10) }
   return d.toISOString().slice(0, 10)
 }
 
-// Funnel + placement events, all in the ONE launch window (since Jul 5).
-// Events only started accruing when tracking shipped, but the window is the
-// same as the CRM cohort so every number on this page shares one clock.
-type WeekEvents = Record<string, { views: number; starts: number; checkout: number }>
-async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: PlacementStat[]; weeklyEvents: WeekEvents }> {
+type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; completed: number; checkout: number }>>
+
+// Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
+// by day / week / month so the progression charts can toggle granularity.
+async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: PlacementStat[]; eventBuckets: EventBuckets }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], weeklyEvents: {} as WeekEvents }
+  const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
+  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], eventBuckets: emptyBuckets }
   if (!url || !key) return empty
   const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
   const uniq = { landing: new Set<string>(), started: new Set<string>(), checkout: new Set<string>() }
   const pl = new Map<string, { views: Set<string>; clicks: Set<string> }>()
-  // Per-week unique actors, so the trend view shares this one events read.
-  const wk = new Map<string, { views: Set<string>; starts: Set<string>; checkout: Set<string> }>()
-  const bump = (week: string, kind: 'views' | 'starts' | 'checkout', who: string) => {
-    if (!week) return
-    const e = wk.get(week) || { views: new Set<string>(), starts: new Set<string>(), checkout: new Set<string>() }
-    e[kind].add(who); wk.set(week, e)
+  // Per-granularity unique-actor sets: gran → bucket → {views,starts,checkout}.
+  const ev: Record<Gran, Map<string, { views: Set<string>; starts: Set<string>; completed: Set<string>; checkout: Set<string> }>> = { day: new Map(), week: new Map(), month: new Map() }
+  const bump = (gran: Gran, bucket: string, kind: 'views' | 'starts' | 'completed' | 'checkout', who: string) => {
+    if (!bucket) return
+    const m = ev[gran]
+    const e = m.get(bucket) || { views: new Set<string>(), starts: new Set<string>(), completed: new Set<string>(), checkout: new Set<string>() }
+    e[kind].add(who); m.set(bucket, e)
   }
   const PAGE = 1000
   for (let offset = 0; offset < 50_000; offset += PAGE) {
@@ -51,11 +57,12 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     if (error || !data) break
     for (const r of data as { event: string; anon_id: string | null; session_id: string | null; props: Record<string, unknown> | null; ts: string }[]) {
       const who = r.anon_id || r.session_id || `row-${Math.random()}`
-      const week = weekStartUTC(r.ts)
-      if (r.event === 'quiz_view') { uniq.landing.add(who); bump(week, 'views', who) }
-      else if (r.event === 'quiz_start') { uniq.started.add(who); bump(week, 'starts', who) }
+      const kind = r.event === 'quiz_view' ? 'views' : r.event === 'quiz_start' ? 'starts' : r.event === 'result_view' ? 'completed' : r.event === 'checkout_click' ? 'checkout' : null
+      if (kind) { for (const g of GRANS) bump(g, bucketKey(r.ts, g), kind, who) }
+      if (r.event === 'quiz_view') uniq.landing.add(who)
+      else if (r.event === 'quiz_start') uniq.started.add(who)
       else if (r.event === 'checkout_click') {
-        uniq.checkout.add(who); bump(week, 'checkout', who)
+        uniq.checkout.add(who)
         const p = typeof r.props?.placement === 'string' ? (r.props.placement as string) : '(unknown)'
         const e = pl.get(p) || { views: new Set<string>(), clicks: new Set<string>() }
         e.clicks.add(who); pl.set(p, e)
@@ -67,14 +74,14 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     }
     if (data.length < PAGE) break
   }
-  const weeklyEvents: WeekEvents = {}
-  for (const [week, s] of Array.from(wk)) weeklyEvents[week] = { views: s.views.size, starts: s.starts.size, checkout: s.checkout.size }
+  const eventBuckets: EventBuckets = { day: {}, week: {}, month: {} }
+  for (const g of GRANS) for (const [bucket, s] of Array.from(ev[g])) eventBuckets[g][bucket] = { views: s.views.size, starts: s.starts.size, completed: s.completed.size, checkout: s.checkout.size }
   return {
     funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size },
     placements: Array.from(pl.entries())
       .map(([placement, s]) => ({ placement, views: s.views.size, clicks: s.clicks.size }))
       .sort((a, b) => b.views - a.views || b.clicks - a.clicks),
-    weeklyEvents,
+    eventBuckets,
   }
 }
 
@@ -90,7 +97,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], weeklyEvents: {} as WeekEvents }
+  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -121,83 +128,61 @@ export default async function DashboardPage({
     }
   })
 
-  // ── Weekly progression series (since launch) ──
+  // ── Weekly/daily/monthly progression series (since launch) ──
   // Completions + net-new bucket on the same immutable created_at as the KPIs;
-  // funnel-event counts come from the one events read above. Capped to the
-  // launch window so the trend lines up with the funnel (events start Jul 5).
-  const launchWeek = weekStartUTC(`${LAUNCH_ISO}T00:00:00Z`)
-  const subWeekly = new Map<string, { completed: number; netNew: number }>()
-  for (const r of allRows) {
-    const quizAt = r.createdAt || r.stagedAt
-    if (!quizAt) continue
-    const wk = weekStartUTC(quizAt)
-    if (!wk || wk < launchWeek) continue
-    const e = subWeekly.get(wk) || { completed: 0, netNew: 0 }
-    e.completed++
-    if (r.stripeFirstChargeAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) e.netNew++
-    subWeekly.set(wk, e)
+  // event counts come from the one events read. Built for all three
+  // granularities so each chart can toggle day / week / month.
+  const nowIso = new Date().toISOString()
+  const buildSeries = (gran: Gran): SeriesPoint[] => {
+    const launchBucket = bucketKey(`${LAUNCH_ISO}T00:00:00Z`, gran)
+    const nowBucket = bucketKey(nowIso, gran)
+    const subs = new Map<string, { completed: number; netNew: number }>()
+    for (const r of allRows) {
+      const quizAt = r.createdAt || r.stagedAt
+      if (!quizAt) continue
+      const b = bucketKey(quizAt, gran)
+      if (!b || b < launchBucket) continue
+      const e = subs.get(b) || { completed: 0, netNew: 0 }
+      e.completed++
+      if (r.stripeFirstChargeAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) e.netNew++
+      subs.set(b, e)
+    }
+    const evb = events.eventBuckets[gran]
+    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb)]))
+      .filter(k => k >= launchBucket).sort()
+    const cap = gran === 'day' ? 21 : gran === 'week' ? 12 : 12
+    return keys.slice(-cap).map(bucket => ({
+      bucket,
+      views: evb[bucket]?.views || 0,
+      starts: evb[bucket]?.starts || 0,
+      completed: evb[bucket]?.completed || 0,   // result_view events (coherent, event-based)
+      checkout: evb[bucket]?.checkout || 0,
+      netNew: subs.get(bucket)?.netNew || 0,     // paid: from the CRM cohort (created_at)
+      partial: bucket === nowBucket,
+    }))
   }
-  const weekKeys = Array.from(new Set([...Array.from(subWeekly.keys()), ...Object.keys(events.weeklyEvents)]))
-    .filter(w => w >= launchWeek).sort()
-  // The bucket containing today is still filling — flag it so the trend deltas
-  // compare the last COMPLETE week (a partial week is not a real drop).
-  const nowWeek = weekStartUTC(new Date().toISOString())
-  const weekly: WeeklyPoint[] = weekKeys.slice(-10).map(week => ({
-    week,
-    views: events.weeklyEvents[week]?.views || 0,
-    starts: events.weeklyEvents[week]?.starts || 0,
-    checkout: events.weeklyEvents[week]?.checkout || 0,
-    completed: subWeekly.get(week)?.completed || 0,
-    netNew: subWeekly.get(week)?.netNew || 0,
-    partial: week === nowWeek,
-  }))
+  const series: Series = { day: buildSeries('day'), week: buildSeries('week'), month: buildSeries('month') }
 
   const exportParams = new URLSearchParams(searchParams as Record<string, string>)
   exportParams.delete('offset')
   exportParams.set('sample', sample)
   const exportHref = `/api/admin/export.csv?${exportParams.toString()}`
-  const sampleHref = (s: 'launch' | 'all') => {
-    const p = new URLSearchParams(searchParams as Record<string, string>)
-    p.set('sample', s)
-    p.delete('offset')
-    return `/admin/dashboard?${p.toString()}`
-  }
 
   const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const rangeLabel = sample === 'launch' ? `${LAUNCH_LABEL} - ${today}` : 'all data'
 
   return (
-    <div>
-      <header className="flex items-end justify-between flex-wrap" style={{ padding: '26px 36px 20px', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>
-            Overview · {sample === 'launch' ? 'launch cohort' : 'all records'} · {rangeLabel} · one datasource for every number
-          </div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: '#1A1A1A' }}>Dashboard</h1>
-          {error && <p style={{ fontSize: 12.5, color: '#BE3B3B', marginTop: 6 }}>Error: {error}</p>}
-        </div>
-        <div className="flex items-center" style={{ gap: 10 }}>
-          <div className="inline-flex" style={{ border: '1px solid #333333' }}>
-            <a href={sampleHref('launch')} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, background: sample === 'launch' ? '#333333' : 'transparent', color: sample === 'launch' ? '#FFFDFA' : '#6B6B6B' }}>Launch ({LAUNCH_LABEL}+)</a>
-            <a href={sampleHref('all')} style={{ padding: '8px 14px', fontSize: 12, fontWeight: 700, borderLeft: '1px solid #333333', background: sample === 'all' ? '#333333' : 'transparent', color: sample === 'all' ? '#FFFDFA' : '#6B6B6B' }}>All data</a>
-          </div>
-          <a href={exportHref} style={{ padding: '8px 15px', fontSize: 12, fontWeight: 700, background: '#333333', color: '#FFFDFA' }}>Export csv ↗</a>
-        </div>
-      </header>
-
-      {/* Segment builder as a full-width strip at the top, so the bento below
-          spans the whole width. */}
-      <div style={{ padding: '0 36px 44px' }}>
-        <div style={{ border: '1px solid #333333', background: '#FFFFFF', marginBottom: 16 }}>
-          <div style={{ padding: '10px 14px', background: '#FEF7E7', borderBottom: '1px solid #333333', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>
-            Segments · build &amp; save
-          </div>
-          <div style={{ padding: '10px 14px' }}>
-            <AdvancedFilter />
-          </div>
-        </div>
-        <DashboardBento rows={rows} sample={sample} funnelEvents={events.funnel} placements={events.placements} weekly={weekly} />
-      </div>
-    </div>
+    <DashboardArea
+      rows={rows}
+      sample={sample}
+      funnelEvents={events.funnel}
+      placements={events.placements}
+      series={series}
+      exportHref={exportHref}
+      launchLabel={LAUNCH_LABEL}
+      rangeLabel={rangeLabel}
+      searchParamsStr={sp.toString()}
+      error={error}
+    />
   )
 }
