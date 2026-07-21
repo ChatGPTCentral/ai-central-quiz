@@ -40,6 +40,9 @@ const FREE_EMAIL = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.c
 // Matches LinkedIn profile URLs; rejects /pub/dir/ disambiguation listings.
 const LINKEDIN_PROFILE_RE = /https?:\/\/(?:[a-z]{2,3}\.)?(?:www\.|m\.)?linkedin\.com\/(?:(?:in|profile\/view)\/[^\s?&#"<>'`)]+|pub\/(?!dir\/)[^\s?&#"<>'`)]+)/i
 
+export interface VerifiedExample {
+  name?: string; email?: string; linkedinUrl?: string; companyName?: string; jobTitle?: string
+}
 export interface ResolverInput {
   name?: string
   email?: string
@@ -48,6 +51,13 @@ export interface ResolverInput {
   country?: string
   jobLevel?: string
   workArea?: string
+  /** Owner-verified colleagues at the same email domain — injected into the
+   *  match prompt as ground-truth few-shot so the resolver reinforces itself
+   *  as the owner verifies more contacts (see /api/admin/enrich/verify). */
+  verifiedExamples?: VerifiedExample[]
+  /** Accept threshold override (from resolver_config, re-tuned weekly against
+   *  the owner's labels). Falls back to the built-in default when unset. */
+  acceptThreshold?: number
 }
 
 export interface SerpCandidate {
@@ -251,10 +261,18 @@ async function verifyMatch(input: ResolverInput, candidates: SerpCandidate[], pa
     input.email && `email: ${input.email}`,
   ].filter(Boolean).join('\n')
 
+  // Self-reinforcing few-shot: owner-verified colleagues at the SAME email
+  // domain. The right person almost always shares their employer, so these are
+  // strong corroboration and calibrate the model to the owner's past calls.
+  const examples = (input.verifiedExamples || []).filter(e => e.linkedinUrl || e.companyName).slice(0, 6)
+  const exampleBlock = examples.length
+    ? `\n\nOWNER-VERIFIED colleagues at this same email domain (ground truth the owner already confirmed — treat the shared employer as strong corroboration, and lean toward the same company when a candidate fits):\n${examples.map(e => `- ${e.name || '(name?)'}${e.email ? ` <${e.email}>` : ''} → ${e.linkedinUrl || '(no linkedin)'}${e.companyName ? ` · ${e.companyName}` : ''}${e.jobTitle ? ` · ${e.jobTitle}` : ''}`).join('\n')}`
+    : ''
+
   const prompt = `You verify a person's identity from Google results, like a careful researcher. Results are listed in Google's ranked order (rank 1 = top).
 
 KNOWN about the person:
-${known || '(only a name)'}
+${known || '(only a name)'}${exampleBlock}
 
 SEARCH RESULTS:
 ${list}
@@ -334,7 +352,9 @@ export async function resolveIdentityViaGoogle(input: ResolverInput): Promise<Re
     if (tok.length >= 4 && !hay.includes(tok)) conf = Math.max(0, conf - 0.2)
   }
 
-  if (conf < ACCEPT_THRESHOLD || verdict.matchIndex == null) {
+  const threshold = (typeof input.acceptThreshold === 'number' && input.acceptThreshold > 0 && input.acceptThreshold < 1)
+    ? input.acceptThreshold : ACCEPT_THRESHOLD
+  if (conf < threshold || verdict.matchIndex == null) {
     return { ...base, confidence: conf, reasoning: verdict.reasoning || 'below confidence threshold', outcome: 'rejected', candidates }
   }
   const matched = candidates[verdict.matchIndex]
