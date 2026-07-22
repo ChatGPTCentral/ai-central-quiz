@@ -205,7 +205,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // study plan and reviews, hero anchor to it, exit-rescue dwell 60s→240s.
   const cookieStore = cookies()
   const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
-  const { assignments } = await resolveExperiments({
+  const { assignments, overrides } = await resolveExperiments({
     anonId,
     cookieVariant: k => cookieStore.get(`ac_exp_${k}`)?.value,
     stage: stageKey,
@@ -213,6 +213,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     utmSource: segFields?.utm_source ?? null,
     page: 'result',
   })
+  // Apply a variant's copy override for a slot (token-expanded), else the
+  // hardcoded default. `overrides` is empty unless an experiment is running AND
+  // NEXT_PUBLIC_EXPERIMENTS_ENABLED === 'true', so with the flag off this is a
+  // no-op and the page renders exactly as before.
+  const ov = (slot: string, current: string) => (overrides[slot] != null ? p(overrides[slot]) : current)
   // Fixed order (restructure): reviews → plan → pass at the very bottom,
   // gated by LinkedIn. Sections kept as blocks for readability.
   const studyPlanSection = (
@@ -227,7 +232,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex justify-center">
-          <BlockButton2 href={checkoutUrl} label="unlock my study plan" placement="v2_study_plan" submissionId={rowId} />
+          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', 'unlock my study plan')} placement="v2_study_plan" submissionId={rowId} />
         </div>
       </div>
     </section>
@@ -346,16 +351,20 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             {/* Compact offer card right where the post-video intent lands */}
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-6 items-center" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '22px 26px' }}>
               <div>
-                <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>
-                  Get everything in the video, <span style={{ color: FULVOUS }}>$4.99 first month</span>
-                </p>
+                {overrides['offerCard.headline'] != null ? (
+                  <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>{p(overrides['offerCard.headline'])}</p>
+                ) : (
+                  <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>
+                    Get everything in the video, <span style={{ color: FULVOUS }}>$4.99 first month</span>
+                  </p>
+                )}
                 <p className="mt-1.5" style={{ fontSize: 13, lineHeight: 1.5, color: BODY, fontWeight: 300 }}>
                   1,200+ tutorials and 50+ templates, with a track matched to your {rung.className} result.
                   Then $4.98/mo billed yearly ($59.75), cancel in your trial month and pay nothing more. 30-day guarantee.
                 </p>
               </div>
               <div className="justify-self-start sm:justify-self-end">
-                <BlockButton2 href={checkoutUrl} label="start my trial" placement="v2_video_cta" submissionId={rowId} />
+                <BlockButton2 href={checkoutUrl} label={ov('offerCard.ctaLabel', 'start my trial')} placement="v2_video_cta" submissionId={rowId} />
               </div>
             </div>
           </div>
@@ -379,7 +388,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         {passSection}
       </div>
 
-      <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} />
+      <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', 'Claim offer ↗')} />
     </>
   )
 }
