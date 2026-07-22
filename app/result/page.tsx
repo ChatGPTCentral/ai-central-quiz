@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import TrackView from '@/components/TrackView'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
 import { ClarityTag } from '@/components/result2/ClarityTag.client'
-import { resolveExperiments } from '@/lib/experiments'
+import { resolveExperiments, getVariantOverrides } from '@/lib/experiments'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
 import { FomoNotifications } from '@/components/result2/FomoNotifications.client'
@@ -205,14 +205,20 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // study plan and reviews, hero anchor to it, exit-rescue dwell 60s→240s.
   const cookieStore = cookies()
   const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
-  const { assignments, overrides } = await resolveExperiments({
-    anonId,
-    cookieVariant: k => cookieStore.get(`ac_exp_${k}`)?.value,
-    stage: stageKey,
-    persona,
-    utmSource: segFields?.utm_source ?? null,
-    page: 'result',
-  })
+  // Admin preview: ?xv=<variantKey> (or expKey:variantKey) force-renders that
+  // variant's copy WITHOUT recording an exposure or an assignment, so the owner
+  // can eyeball each version. Real visitors never carry this param.
+  const previewVar = typeof searchParams.xv === 'string' ? searchParams.xv.trim() : ''
+  const { assignments, overrides } = previewVar
+    ? { assignments: [] as { experimentKey: string; variantKey: string }[], overrides: await getVariantOverrides('result', previewVar) }
+    : await resolveExperiments({
+        anonId,
+        cookieVariant: k => cookieStore.get(`ac_exp_${k}`)?.value,
+        stage: stageKey,
+        persona,
+        utmSource: segFields?.utm_source ?? null,
+        page: 'result',
+      })
   // Apply a variant's copy override for a slot (token-expanded), else the
   // hardcoded default. `overrides` is empty unless an experiment is running AND
   // NEXT_PUBLIC_EXPERIMENTS_ENABLED === 'true', so with the flag off this is a

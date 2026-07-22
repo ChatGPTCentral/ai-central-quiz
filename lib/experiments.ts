@@ -139,6 +139,23 @@ export const getActiveExperiments = unstable_cache(
   { revalidate: 30, tags: [EXPERIMENTS_CACHE_TAG] },
 )
 
+/** Preview helper: the copy overrides for a specific variant, WITHOUT recording
+ *  an exposure or touching assignment. Powers the ?xv= preview URL on /result so
+ *  the owner can eyeball each rendered variant. Spec = `expKey:variantKey` or a
+ *  bare `variantKey` (first running experiment on the page that has it). */
+export async function getVariantOverrides(page: string, spec: string): Promise<Record<string, string>> {
+  const [a, b] = spec.split(':')
+  const expKey = b ? a : null
+  const varKey = (b ?? a).trim()
+  if (!varKey) return {}
+  const exps = (await getActiveExperiments()).filter(e => e.page === page && (!expKey || e.key === expKey))
+  for (const e of exps) {
+    const v = e.variants.find(vv => vv.key === varKey)
+    if (v) return v.overrides
+  }
+  return {}
+}
+
 /** FNV-1a 32-bit — synchronous, dependency-free, deterministic. */
 export function fnv1a32(str: string): number {
   let h = 0x811c9dc5
