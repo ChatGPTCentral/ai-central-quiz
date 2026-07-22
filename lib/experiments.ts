@@ -52,7 +52,11 @@ export interface Experiment {
 }
 
 export function experimentsEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_EXPERIMENTS_ENABLED === 'true'
+  // On by default now that we're intentionally live. Nothing actually runs until
+  // an experiment is moved to 'running' in /admin/experiments (getActiveExperiments
+  // filters to status='running'), so "enabled" alone changes nothing on the page.
+  // Set NEXT_PUBLIC_EXPERIMENTS_ENABLED='false' as an emergency kill-switch.
+  return process.env.NEXT_PUBLIC_EXPERIMENTS_ENABLED !== 'false'
 }
 
 let _client: SupabaseClient | null = null
