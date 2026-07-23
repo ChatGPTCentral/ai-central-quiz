@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { sendEvent } from '@/lib/events-client'
 import { firePlacementView } from '@/components/CheckoutLink.client'
+import { useCheckout } from '@/components/checkout-context'
 
 const DURATION_SECONDS = 15 * 60 // 15 minutes
 
@@ -14,6 +15,7 @@ const DURATION_SECONDS = 15 * 60 // 15 minutes
  */
 export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗' }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+  const { mode, open } = useCheckout()
 
   useEffect(() => {
     const key = 'ac_quiz_offer_start'
@@ -40,6 +42,7 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
 
   const goCheckout = () => {
     sendEvent('checkout_click', { props: { placement: 'v2_offer_bar_banner' }, submissionId })
+    if (mode === 'embedded') { open(); return }
     window.location.href = paymentUrl
   }
 
@@ -85,7 +88,7 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
           href={paymentUrl}
           className="font-black uppercase ac-neoncta"
           style={{ backgroundColor: '#E7B02F', color: '#0D0D0D', fontSize: 12.5, padding: '12px 16px', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}
-          onClick={e => { e.stopPropagation(); sendEvent('checkout_click', { props: { placement: 'v2_offer_bar' }, submissionId }) }}
+          onClick={e => { e.stopPropagation(); sendEvent('checkout_click', { props: { placement: 'v2_offer_bar' }, submissionId }); if (mode === 'embedded') { e.preventDefault(); open() } }}
         >
           {ctaLabel}
         </a>

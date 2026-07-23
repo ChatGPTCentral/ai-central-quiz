@@ -19,6 +19,7 @@ import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
+import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
@@ -224,6 +225,18 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // NEXT_PUBLIC_EXPERIMENTS_ENABLED === 'true', so with the flag off this is a
   // no-op and the page renders exactly as before.
   const ov = (slot: string, current: string) => (overrides[slot] != null ? p(overrides[slot]) : current)
+
+  // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
+  // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
+  // beehiiv link 1:1); 'link' arm: unchanged, navigates to the beehiiv link.
+  // Assignment comes from the running experiment; `?checkout=embedded|link`
+  // force-previews a mode for eyeballing WITHOUT recording an exposure. Gated
+  // on the publishable key so we never intercept clicks we can't fulfil.
+  const checkoutPreview = typeof searchParams.checkout === 'string' ? searchParams.checkout.trim() : ''
+  const embedAssigned = assignments.some(a => a.experimentKey === 'checkout_embed_v1' && a.variantKey === 'embedded')
+  const canEmbed = !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  const checkoutMode: 'link' | 'embedded' =
+    canEmbed && (checkoutPreview === 'embedded' || (checkoutPreview !== 'link' && embedAssigned)) ? 'embedded' : 'link'
   // Fixed order (restructure): reviews → plan → pass at the very bottom,
   // gated by LinkedIn. Sections kept as blocks for readability.
   const studyPlanSection = (
@@ -288,7 +301,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   )
 
   return (
-    <>
+    <CheckoutModalProvider
+      mode={checkoutMode}
+      submissionId={rowId}
+      anonId={anonId ?? undefined}
+      utmSource={segFields?.utm_source ?? undefined}
+      utmRef={typeof searchParams.utm_ref === 'string' ? searchParams.utm_ref : undefined}
+      fallbackUrl={checkoutUrl}
+    >
       <TrackView event="result_view" props={{ pageVariant: 'v4', stage: stageKey, persona, submissionId: rowId }} />
       <ClarityTag submissionId={rowId} variant="v4" />
       <ExperimentTracker assignments={assignments} submissionId={rowId} />
@@ -395,6 +415,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       </div>
 
       <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', 'Claim offer ↗')} />
-    </>
+    </CheckoutModalProvider>
   )
 }

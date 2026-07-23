@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { sendEvent } from '@/lib/events-client'
+import { useCheckout } from '@/components/checkout-context'
 
 /**
  * A checkout CTA anchor that fires a first-party `checkout_click` event
@@ -11,10 +12,15 @@ import { sendEvent } from '@/lib/events-client'
  * funnel can report a true view→click rate per placement instead of
  * guessing whether "zero clicks" meant bad copy or never-seen.
  *
- * Deliberately a plain <a>: no preventDefault, no await — navigation is
- * untouched and sendBeacon survives the unload. With JS off it degrades to
- * a working link. Styling is pure passthrough so server components can wrap
- * their existing markup without visual change.
+ * Normally a plain <a>: no preventDefault, no await — navigation is untouched
+ * and sendBeacon survives the unload. With JS off it degrades to a working
+ * link. Styling is pure passthrough so server components can wrap their
+ * existing markup without visual change.
+ *
+ * Inside CheckoutModalProvider(mode='embedded') it instead intercepts the
+ * click (preventDefault) and opens the on-page checkout modal, still firing
+ * the same `checkout_click` first so the funnel step is identical across arms.
+ * Without a provider (the default) the mode is 'link' and nothing changes.
  */
 
 // In-memory fallback when sessionStorage is blocked (private mode etc.).
@@ -63,6 +69,7 @@ export default function CheckoutLink({
   children: React.ReactNode
 }) {
   const anchorRef = useRef<HTMLAnchorElement>(null)
+  const { mode, open } = useCheckout()
 
   useEffect(() => {
     const el = anchorRef.current
@@ -94,7 +101,10 @@ export default function CheckoutLink({
       aria-label={ariaLabel}
       target={target}
       rel={rel}
-      onClick={() => sendEvent('checkout_click', { props: { placement }, submissionId })}
+      onClick={e => {
+        sendEvent('checkout_click', { props: { placement }, submissionId })
+        if (mode === 'embedded') { e.preventDefault(); open() }
+      }}
     >
       {children}
     </a>

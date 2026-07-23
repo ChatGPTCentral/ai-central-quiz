@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { sendEvent } from '@/lib/events-client'
 import { firePlacementView } from '@/components/CheckoutLink.client'
+import { useCheckout } from '@/components/checkout-context'
 
 // FOMO trial notifications: light translucent text cards (soft radius),
 // opening with a 24h ROUNDUP ("36 Marketing Directors started a trial…"),
@@ -45,6 +46,7 @@ const EXIT_MS = 280
 export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry, overlay }: { checkoutUrl: string; submissionId?: string; visitorCountry?: string; overlay?: boolean }) {
   const [idx, setIdx] = useState(0)
   const [phase, setPhase] = useState<'in' | 'out'>('in')
+  const { mode, open } = useCheckout()
   const paused = useRef(false)
   const reduced = useRef(false)
   const itemsRef = useRef<Item[]>([])
@@ -117,7 +119,7 @@ export function FomoNotifications({ checkoutUrl, submissionId, visitorCountry, o
       <a
         key={idx}
         href={checkoutUrl}
-        onClick={() => sendEvent('checkout_click', { props: { placement: 'v2_fomo_notification' }, submissionId })}
+        onClick={e => { sendEvent('checkout_click', { props: { placement: 'v2_fomo_notification' }, submissionId }); if (mode === 'embedded') { e.preventDefault(); open() } }}
         className={`ac-fomo3 ${reduced.current ? 'ac-fomo3-fade' : phase === 'in' ? 'ac-fomo3-in' : 'ac-fomo3-out'}`}
         style={{
           position: 'absolute', inset: 0,
