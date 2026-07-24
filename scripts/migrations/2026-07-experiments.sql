@@ -71,13 +71,12 @@ create table if not exists experiment_weight_history (
 );
 
 -- Per-variant results: exposures (unique people), unique checkout clickers,
--- net-new-paid conversions (dashboard rule + charge-after-experiment guard).
+-- net-new-paid conversions (first-ever Stripe charge AFTER exposure).
 create or replace function experiment_results(exp_key text)
 returns table (variant_key text, exposures bigint, clickers bigint, net_new_paid bigint)
 language sql stable as $$
-  with exp as (select started_at from experiments where key = exp_key),
-  assign as (
-    select a.variant_key, a.anon_id, a.submission_id, a.email
+  with assign as (
+    select a.variant_key, a.anon_id, a.submission_id, a.email, a.first_exposure_at
     from experiment_assignments a where a.experiment_key = exp_key
   ),
   clicks as (
@@ -87,15 +86,18 @@ language sql stable as $$
     group by f.variant_key
   ),
   conv as (
+    -- net-new paid = the person's FIRST-ever Stripe charge landed AFTER they
+    -- were exposed to the variant. Anchored on first_exposure_at (immutable,
+    -- set once on first exposure) instead of staged_at, which enrichment
+    -- re-stamps to now() and which used to hide real conversions whose charge
+    -- predated the last enrichment run.
     select a.variant_key, count(distinct a.anon_id) as net_new_paid
     from assign a
     join submissions s
       on (a.submission_id is not null and s.id = a.submission_id)
       or (a.submission_id is null and a.email is not null and lower(s.email) = lower(a.email))
-    cross join exp
     where s.stripe_first_charge_at is not null
-      and s.staged_at is not null
-      and s.stripe_first_charge_at::timestamptz > greatest(s.staged_at, coalesce(exp.started_at, s.staged_at))
+      and s.stripe_first_charge_at::timestamptz > a.first_exposure_at
     group by a.variant_key
   ),
   expo as (select variant_key, count(*) as exposures from assign group by variant_key)
