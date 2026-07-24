@@ -1,5 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Canonicalize the raw Vercel host to the custom domain. ~26% of sessions
+  // were landing on ai-central-quiz.vercel.app — a different registrable domain
+  // than quiz.thecentral.ai — so their cookies / anon-id / experiment bucket /
+  // analytics never carried across. 308 every path on it to the custom domain,
+  // preserving path + query, so a session lives on one domain end to end.
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'ai-central-quiz.vercel.app' }],
+        destination: 'https://quiz.thecentral.ai/:path*',
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     return [
       {
