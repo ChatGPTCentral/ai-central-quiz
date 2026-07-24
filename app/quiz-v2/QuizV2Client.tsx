@@ -13,12 +13,14 @@ import { resolveNextStep, type V2Question } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { track } from '@/lib/track'
 import { isEgregiousFake } from '@/lib/lead-quality'
+import ExperimentTracker from '@/components/ExperimentTracker.client'
 
 type Answers = Record<string, string | string[]>
 
 interface Props {
   questions: V2Question[]
   accent?: string
+  assignments?: { experimentKey: string; variantKey: string }[]
 }
 
 const DEFAULT_ACCENT = '#E48715'
@@ -593,14 +595,19 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   )
 }
 
-export default function QuizV2Client({ questions, accent }: Props) {
+export default function QuizV2Client({ questions, accent, assignments }: Props) {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFFDFA' }}>
-        <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#E8E4DF', borderTopColor: '#E48715' }} />
-      </div>
-    }>
-      <QuizV2Content questions={questions} accent={accent} />
-    </Suspense>
+    <>
+      {/* Entry A/B exposure beacon (quiz_entry_v1). Fires once on mount, sets
+          the sticky variant cookie, records the assignment. Renders nothing. */}
+      <ExperimentTracker assignments={assignments ?? []} />
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFFDFA' }}>
+          <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#E8E4DF', borderTopColor: '#E48715' }} />
+        </div>
+      }>
+        <QuizV2Content questions={questions} accent={accent} />
+      </Suspense>
+    </>
   )
 }
