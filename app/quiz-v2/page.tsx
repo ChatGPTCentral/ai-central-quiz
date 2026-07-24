@@ -11,7 +11,7 @@ import QuizV2Client from './QuizV2Client'
 // Reads the anon cookie for the entry A/B assignment → renders per request.
 export const dynamic = 'force-dynamic'
 
-export default async function QuizV2Page() {
+export default async function QuizV2Page({ searchParams }: { searchParams: { qentry?: string } }) {
   let questions = QUESTIONS_V2_MERGED
   let accent: string | undefined
   try {
@@ -44,9 +44,13 @@ export default async function QuizV2Page() {
   } catch (err) {
     console.error('[quiz-v2] experiment resolve failed, serving control order:', err)
   }
-  const questionFirst = assignments.some(
-    a => a.experimentKey === 'quiz_entry_v1' && a.variantKey === 'question_first',
-  )
+  // ?qentry=question_first|control force-previews an arm for eyeballing,
+  // without recording an exposure (real visitors never carry it).
+  const preview = typeof searchParams.qentry === 'string' ? searchParams.qentry.trim() : ''
+  const questionFirst =
+    preview === 'question_first' ||
+    (preview !== 'control' &&
+      assignments.some(a => a.experimentKey === 'quiz_entry_v1' && a.variantKey === 'question_first'))
   if (questionFirst) {
     const pii = questions.filter(q => q.id === 'name' || q.id === 'email')
     const rest = questions.filter(q => q.id !== 'name' && q.id !== 'email')
