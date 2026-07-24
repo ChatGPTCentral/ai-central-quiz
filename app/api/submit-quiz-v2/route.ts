@@ -158,6 +158,22 @@ export async function POST(req: NextRequest) {
     if (error) console.error('v2 insert failed:', error.message)
   }
 
+  // Attribute experiment exposures to this submission. The quiz-entry A/B
+  // fires its exposure at quiz load — before any submission or email exists —
+  // so its assignment row starts with no link. Backfill every assignment for
+  // this anon that still lacks one, so experiment_results() can join
+  // assignment → this submission → paid. Result-page experiments already carry
+  // their submission_id (set at exposure), so `is null` leaves them untouched.
+  const anonId = req.cookies.get('ac_aid')?.value
+  if (anonId && UUID_RE.test(anonId)) {
+    const { error: baErr } = await c
+      .from('experiment_assignments')
+      .update({ submission_id: rowId, email: v.email })
+      .eq('anon_id', anonId)
+      .is('submission_id', null)
+    if (baErr) console.error('[submit] experiment assignment backfill failed:', baErr.message)
+  }
+
   // Promote out of "In progress": a completed submission removes any matching
   // partial capture so it no longer shows in the in-progress admin section.
   // Cleared by email AND the quiz session's clientId, so a row whose email
