@@ -208,6 +208,9 @@ function applyFilters(q: any, f: DashboardFilters): any {
   } else if (!f.includeArchived) {
     r = r.is('archived_at', null)
   }
+  // Test submissions (?test=1 on the quiz) are real rows so the whole flow can
+  // be walked end to end, but they must never appear in a reported number.
+  r = r.or('is_test.is.null,is_test.eq.false')
   return r
 }
 

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Rate limited', code: 'RATE_LIMITED' }, { status: 429 })
   }
 
-  let body: { answers?: Record<string, string | string[]>; utmSource?: string; utmRef?: string; clientId?: string }
+  let body: { answers?: Record<string, string | string[]>; utmSource?: string; utmRef?: string; clientId?: string; isTest?: boolean }
   try {
     body = await req.json()
   } catch {
@@ -108,7 +108,14 @@ export async function POST(req: NextRequest) {
   const existing = await findSubmissionByEmail(v.email)
   const c = sb()
 
+  // Test run: a real row (so /result?id=…, checkout and the pass all work) that
+  // is excluded from every reported number, and that skips the side effects we
+  // do not want to fire for a dry run — Beehiiv subscribe, enrichment credits,
+  // and the admin notification email.
+  const isTest = body.isTest === true
+
   const dbUpdate = {
+    is_test: isTest,
     name: v.name,
     email: v.email,
     ai_tools: v.ai_tools ?? null,
@@ -209,7 +216,7 @@ export async function POST(req: NextRequest) {
   // the subscriber; retakes PATCH the stage. If a new submission collides
   // with an already-subscribed email, we still update so the stage doesn't
   // get dropped (the v1 short-circuit bug).
-  const hasBeehiiv = !!process.env.BEEHIIV_API_KEY && process.env.BEEHIIV_API_KEY !== 'your_beehiiv_api_key_here'
+  const hasBeehiiv = !isTest && !!process.env.BEEHIIV_API_KEY && process.env.BEEHIIV_API_KEY !== 'your_beehiiv_api_key_here'
   let alreadySubscribed = false
   if (hasBeehiiv && computedStage) {
     if (existing) {
@@ -250,12 +257,13 @@ export async function POST(req: NextRequest) {
   // providers can run, then the email is sent from the fully enriched row —
   // no more "not enriched" notifications. New submissions only (retakes are
   // already known); resend one manually via /api/admin/notify/resend.
-  if (!existing) {
+  if (!existing && !isTest) {
     waitUntil(
       enrichLeadAndNotify(rowId, { siteUrl: process.env.NEXT_PUBLIC_SITE_URL })
         .catch(err => console.error('[submit] background enrich/notify failed:', err)),
     )
   }
+  if (isTest) console.log(`[submit] TEST submission ${rowId} — excluded from reporting, no Beehiiv/enrichment/notify`)
 
   return NextResponse.json({
     success: true,

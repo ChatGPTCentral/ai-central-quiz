@@ -337,10 +337,14 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         searchParams.get('utm_medium') ||
         searchParams.get('utm_campaign') || ''
 
+      // ?test=1 → a real submission the owner can walk end to end, flagged so
+      // it never lands in a reported number and skips the costly/outward side
+      // effects (Beehiiv subscribe, enrichment credits, the admin email).
+      const isTest = searchParams.get('test') === '1'
       const res = await fetch('/api/submit-quiz-v2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers, utmSource, utmRef, clientId: clientId.current || undefined }),
+        body: JSON.stringify({ answers, utmSource, utmRef, clientId: clientId.current || undefined, isTest }),
       })
       const data = await res.json()
       if (!data.success) {
