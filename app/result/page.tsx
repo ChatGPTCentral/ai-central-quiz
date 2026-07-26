@@ -21,6 +21,7 @@ import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
+import { OfferStack } from '@/components/result2/OfferStack'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
@@ -395,25 +396,13 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               </div>
             </div>
 
-            {/* Compact offer card right where the post-video intent lands */}
-            <div className="mt-8 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-6 items-center" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '22px 26px' }}>
-              <div>
-                {overrides['offerCard.headline'] != null ? (
-                  <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>{p(overrides['offerCard.headline'])}</p>
-                ) : (
-                  <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>
-                    Get everything in the video, <span style={{ color: FULVOUS }}>$4.99 first month</span>
-                  </p>
-                )}
-                <p className="mt-1.5" style={{ fontSize: 13, lineHeight: 1.5, color: BODY, fontWeight: 300 }}>
-                  1,200+ tutorials and 50+ templates, with a track matched to your {rung.className} result.
-                  Then $4.98/mo billed yearly ($59.75), cancel in your trial month and pay nothing more. 30-day guarantee.
-                </p>
-              </div>
-              <div className="justify-self-start sm:justify-self-end">
-                <BlockButton2 href={checkoutUrl} label={ov('offerCard.ctaLabel', 'start my trial')} placement="v2_video_cta" submissionId={rowId} />
-              </div>
-            </div>
+            {/* The offer stack, right where the post-video intent lands. */}
+            <OfferStack
+              checkoutUrl={checkoutUrl}
+              submissionId={rowId}
+              rungClassName={rung.className}
+              ctaLabel={ov('offerCard.ctaLabel', 'start my trial')}
+            />
           </div>
         </section>
 
