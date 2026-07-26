@@ -265,12 +265,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const studyPlanSection = (
     <section style={{ borderTop: `3px solid ${INK}` }}>
       <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
-        <Eyebrow>Your 30-day plan · week 1 is free</Eyebrow>
+        <Eyebrow>Your recommended study plan</Eyebrow>
         <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
           The first month, mapped for a {rung.className.toLowerCase()}
         </h2>
         <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
-          {p('Five tutorials from the library, sequenced for exactly where you are. Week 1 is unlocked right now, no card, start it tonight in 15 minutes.')}
+          {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">

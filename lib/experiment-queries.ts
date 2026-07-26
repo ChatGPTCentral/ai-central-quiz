@@ -33,32 +33,49 @@ export async function listExperiments(): Promise<ExperimentRow[]> {
 export interface VariantResult extends VariantStats {
   clickers: number
   netNewPaid: number
+  completions: number
   clickRate: number
+  completionRate: number
 }
 
+type Zero = { exposures: number; clickers: number; net_new_paid: number; completions: number }
+const ZERO: Zero = { exposures: 0, clickers: 0, net_new_paid: 0, completions: 0 }
+
 /** Per-variant results via the experiment_results() SQL function, with
- *  Bayesian stats computed on the experiment's primary metric. */
+ *  Bayesian stats computed on the experiment's primary metric.
+ *  `quiz_completed` exists because quiz-entry style tests change whether people
+ *  FINISH — and unlike paid it has the volume to actually conclude. */
 export async function experimentResults(row: ExperimentRow): Promise<VariantResult[]> {
   const { data, error } = await client().rpc('experiment_results', { exp_key: row.key })
   if (error) throw new Error(error.message)
-  const byKey = new Map<string, { exposures: number; clickers: number; net_new_paid: number }>()
-  for (const r of (data || []) as { variant_key: string; exposures: number; clickers: number; net_new_paid: number }[]) {
-    byKey.set(r.variant_key, { exposures: Number(r.exposures), clickers: Number(r.clickers), net_new_paid: Number(r.net_new_paid) })
+  const byKey = new Map<string, Zero>()
+  for (const r of (data || []) as { variant_key: string; exposures: number; clickers: number; net_new_paid: number; completions: number }[]) {
+    byKey.set(r.variant_key, {
+      exposures: Number(r.exposures), clickers: Number(r.clickers),
+      net_new_paid: Number(r.net_new_paid), completions: Number(r.completions ?? 0),
+    })
   }
   const variants: ExperimentVariant[] = Array.isArray(row.variants) ? row.variants : []
-  const primary: 'checkout_click' | 'net_new_paid' = row.primary_metric === 'net_new_paid' ? 'net_new_paid' : 'checkout_click'
+  const primary: 'checkout_click' | 'net_new_paid' | 'quiz_completed' =
+    row.primary_metric === 'net_new_paid' ? 'net_new_paid'
+      : row.primary_metric === 'quiz_completed' ? 'quiz_completed'
+      : 'checkout_click'
+  const conversionsFor = (r: Zero) =>
+    primary === 'net_new_paid' ? r.net_new_paid : primary === 'quiz_completed' ? r.completions : r.clickers
   const counts: VariantCounts[] = variants.map(v => {
-    const r = byKey.get(v.key) || { exposures: 0, clickers: 0, net_new_paid: 0 }
-    return { key: v.key, exposures: r.exposures, conversions: primary === 'net_new_paid' ? r.net_new_paid : r.clickers }
+    const r = byKey.get(v.key) || ZERO
+    return { key: v.key, exposures: r.exposures, conversions: conversionsFor(r) }
   })
   const stats = computeStats(counts)
   return stats.map(s => {
-    const r = byKey.get(s.key) || { exposures: 0, clickers: 0, net_new_paid: 0 }
+    const r = byKey.get(s.key) || ZERO
     return {
       ...s,
       clickers: r.clickers,
       netNewPaid: r.net_new_paid,
+      completions: r.completions,
       clickRate: r.exposures > 0 ? r.clickers / r.exposures : 0,
+      completionRate: r.exposures > 0 ? r.completions / r.exposures : 0,
     }
   })
 }

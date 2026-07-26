@@ -77,13 +77,18 @@ export function StudyPlan({
   const deep = stageKey === 'S3_practitioner' || stageKey === 'S4_power_user' || stageKey === 'S5_builder'
   const plan = deep ? DEEP_PLAN : EARLY_PLAN
   const weeks = ['Week 1', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
+  // Owner call: the free week-1 tutorial is OFF for now — it sent people
+  // off-domain to the publisher before they had bought anything. The ladder
+  // stays (locked rows + progress rail) so the wall still reads; flip this to
+  // true to bring the playable first level back.
+  const FREE_FIRST_STEP = false
 
   return (
     <div className="mt-8">
-      <Progress unlocked={1} total={plan.length} />
+      <Progress unlocked={FREE_FIRST_STEP ? 1 : 0} total={plan.length} />
 
       {plan.map((t, i) => {
-        const locked = i > 0
+        const locked = FREE_FIRST_STEP ? i > 0 : true
         const rail = (
           <span className="flex flex-col items-center shrink-0" style={{ width: 40 }}>
             <span
@@ -126,7 +131,7 @@ export function StudyPlan({
             />
             <span className="min-w-0 flex-1">
               <span className="block" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', color: locked ? MUTE : GREEN }}>
-                {weeks[i].toUpperCase()}{locked ? ' · LOCKED' : ' · FREE, NO CARD'}
+                {weeks[i].toUpperCase()}{locked ? ' · IN THE LIBRARY' : ' · FREE, NO CARD'}
               </span>
               <span className="block mt-1" style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.25, color: locked ? '#6E675A' : RICH }}>{t.title}</span>
               <span className="block mt-1" style={{ fontSize: 12.5, lineHeight: 1.45, color: BODY, fontWeight: 300 }}>{t.desc}</span>

@@ -34,8 +34,14 @@ function arcPath(fromPct: number, toPct: number, r: number): string {
 
 export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; aheadPct: number }) {
   const rungs = STAGES.filter(s => s.key !== 'unknown')
-  const currentIdx = Math.max(0, rungs.findIndex(s => s.key === stageKey))
   const needle = Math.min(99, Math.max(1, aheadPct))
+  // Which band do we light up? Prefer the person's actual stage. When it is
+  // missing or 'unknown', fall back to the band the NEEDLE sits in — never to
+  // index 0, which used to highlight "Unaware" while the needle pointed at
+  // Curious, so the chart contradicted itself.
+  const byStage = rungs.findIndex(s => s.key === stageKey)
+  const byNeedle = BOUNDARIES.findIndex(b => needle >= b.from && needle < b.to)
+  const currentIdx = byStage >= 0 ? byStage : byNeedle >= 0 ? byNeedle : BOUNDARIES.length - 1
   const needleTip = pt(needle, R - STROKE / 2 - 8)
   const needleTag = pt(needle, R + 30)
 
