@@ -43,8 +43,21 @@ export default async function SubmissionsListPage({
   const q = searchParams.q || ''
 
   return (
-    <div>
-      <header className="flex items-end justify-between flex-wrap" style={{ padding: '26px 36px 18px', borderBottom: '2px solid #333333', gap: 16 }}>
+    <div className="ac-people">
+      {/* The body is a flex row with a fixed 300px shrink-0 aside, so on a phone
+          the main column collapsed to almost nothing and the saved-filter chips
+          stacked one per line under the segments panel. Below 900px the two
+          stack instead, the aside goes full width beneath the table, and the
+          generous desktop padding tightens up. */}
+      <style>{`
+        @media (max-width: 900px) {
+          .ac-people .ac-people-head { padding: 18px 16px 14px !important; }
+          .ac-people .ac-people-body { flex-direction: column; padding: 16px 16px 80px !important; }
+          .ac-people .ac-people-aside { width: 100% !important; }
+          .ac-people .ac-people-search { width: 100% !important; }
+        }
+      `}</style>
+      <header className="ac-people-head flex items-end justify-between flex-wrap" style={{ padding: '26px 36px 18px', borderBottom: '2px solid #333333', gap: 16 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#9C9C9C', marginBottom: 4 }}>Records · quiz, Stripe and Beehiiv merged</div>
           <div className="flex items-baseline" style={{ gap: 12 }}>
@@ -54,7 +67,7 @@ export default async function SubmissionsListPage({
           {error && <p style={{ fontSize: 12.5, color: '#BE3B3B', marginTop: 6 }}>Error: {error}</p>}
         </div>
         <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
-          <form action="/admin/submissions" method="GET" className="inline-flex items-center" style={{ width: 230, height: 34, border: '1px solid #333333', background: '#FFFFFF', padding: '0 10px', gap: 8 }}>
+          <form action="/admin/submissions" method="GET" className="ac-people-search inline-flex items-center" style={{ width: 230, height: 34, border: '1px solid #333333', background: '#FFFFFF', padding: '0 10px', gap: 8 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9C9C9C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
             <input
               name="q"
@@ -67,7 +80,7 @@ export default async function SubmissionsListPage({
         </div>
       </header>
 
-      <div className="flex items-start" style={{ padding: '24px 36px 96px', gap: 20 }}>
+      <div className="ac-people-body flex items-start" style={{ padding: '24px 36px 96px', gap: 20 }}>
         {!error && (
           <>
             <div className="flex-1 min-w-0">
@@ -80,7 +93,7 @@ export default async function SubmissionsListPage({
               />
             </div>
             {/* Same segment builder as the dashboard: build a segment, save it */}
-            <aside className="shrink-0" style={{ width: 300 }}>
+            <aside className="ac-people-aside shrink-0" style={{ width: 300 }}>
               <div style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
                 <div style={{ padding: '10px 14px', background: '#FEF7E7', borderBottom: '1px solid #333333', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>
                   Segments · build &amp; save

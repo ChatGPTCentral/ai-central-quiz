@@ -247,8 +247,13 @@ export default function AdminShell({ children }: Props) {
           }
           .ac-side--open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,.4); }
           .ac-main { padding-top: 52px; }
-          /* Admin pages set their own page padding; keep it tighter on a phone. */
           .ac-main > * { max-width: 100vw; }
+          /* Every admin page hardcodes a 36px side padding inline, which on a
+             390px screen spends a fifth of the width on margins. A stylesheet
+             !important beats a plain inline declaration, so this tightens all
+             of them at once without touching ten files. */
+          .ac-main header { padding-left: 16px !important; padding-right: 16px !important; }
+          .ac-main h1 { font-size: 22px !important; }
         }
         @media (prefers-reduced-motion: reduce) { .ac-side { transition: none; } }
       `}</style>
