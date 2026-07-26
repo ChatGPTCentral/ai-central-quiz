@@ -58,6 +58,29 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     ],
   },
 
+  // ── The cost of the gap ────────────────────────────────────────
+  // The quiz's job is not only to measure, it is to make the taker state, in
+  // their own number, what the status quo costs them. The result page quotes
+  // this straight back ("you said 4-7 hours a week"), and nobody argues with
+  // their own answer. Sales signal only: NOT scored, NOT part of the stage.
+  {
+    id: 'hoursLost',
+    type: 'chips',
+    label: 'Roughly how many hours a week go on work AI could already be doing?',
+    sublabel: 'Your honest guess is fine',
+    required: true,
+    dbColumn: 'hours_lost',
+    scoring: 'value',
+    layout: 'rows',
+    options: [
+      { label: 'Under 1 hour',     value: '0.5', score: 0.5 },
+      { label: '1 to 3 hours',     value: '2',   score: 2 },
+      { label: '4 to 7 hours',     value: '5.5', score: 5.5 },
+      { label: '8 to 15 hours',    value: '11',  score: 11 },
+      { label: 'More than 15',     value: '18',  score: 18 },
+    ],
+  },
+
   {
     id: 'aiTools',
     type: 'multi-chips',
@@ -108,7 +131,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'momentum',
     type: 'chips',
-    label: 'Compared to 6 months ago, your AI usage is…',
+    label: 'Compared to 6 months ago, are you gaining ground on AI or falling behind?',
     required: true,
     dbColumn: 'momentum',
     scoring: 'value',
@@ -125,8 +148,8 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'friction',
     type: 'chips',
-    label: "What's slowing you down?",
-    sublabel: 'The biggest thing keeping you from going further',
+    label: "What's actually stopping you going further?",
+    sublabel: 'Be honest, this is what we build your plan around',
     required: true,
     dbColumn: 'friction',
     scoring: 'enum',
@@ -137,6 +160,23 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
       { label: "I don't trust the outputs",                  value: 'no_trust',          emoji: '🛑' },
       { label: "I want to build something but don't know how", value: 'cant_build',      emoji: '🏗️' },
       { label: "Nothing, I'm flying",                        value: 'no_friction',       emoji: '✈️' },
+    ],
+  },
+
+  // Turns the hours into something they WANT. The plan is then framed as
+  // buying this back, not as buying tutorials.
+  {
+    id: 'hoursFor',
+    type: 'chips',
+    label: 'If you got those hours back, what would you actually do with them?',
+    required: true,
+    dbColumn: 'hours_would_use_for',
+    scoring: 'enum',
+    options: [
+      { label: 'The real work I never get to', value: 'real_work',   emoji: '🎯' },
+      { label: 'Grow the business',            value: 'grow',        emoji: '📈' },
+      { label: 'Learn or build something new', value: 'learn_build', emoji: '🛠️' },
+      { label: 'Finish on time, for once',     value: 'log_off',     emoji: '🌅' },
     ],
   },
 
@@ -188,7 +228,7 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'intent_30d',
     type: 'chips',
-    label: 'In the next 30 days, what do you actually want to do?',
+    label: '30 days from now, what do you want to be true?',
     required: true,
     dbColumn: 'intent_30d',
     scoring: 'enum',
@@ -237,6 +277,10 @@ export interface V2DbValues {
   momentum?: number
   friction?: string
   intent_30d?: string
+  // Cost-of-the-gap answers. Sales signals; never fed into calculateScoreV2 or
+  // assignStage, so every historical score and stage stays comparable.
+  hours_lost?: number
+  hours_would_use_for?: string
 }
 
 export function answersToDb(
@@ -268,10 +312,12 @@ export function answersToDb(
       if (!Number.isNaN(n)) {
         if (q.dbColumn === 'frequency_score') out.frequency_score = n
         else if (q.dbColumn === 'momentum') out.momentum = n
+        else if (q.dbColumn === 'hours_lost') out.hours_lost = n
       }
     } else if (q.scoring === 'enum' && typeof raw === 'string') {
       if (q.dbColumn === 'friction') out.friction = raw
       else if (q.dbColumn === 'intent_30d') out.intent_30d = raw
+      else if (q.dbColumn === 'hours_would_use_for') out.hours_would_use_for = raw
     } else if (typeof raw === 'string') {
       if (q.dbColumn === 'name')     out.name = raw
       else if (q.dbColumn === 'email')    out.email = raw.toLowerCase().trim()

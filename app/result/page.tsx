@@ -58,6 +58,26 @@ interface SegFields {
   ai_tools?: string | null
   job_level?: string | null
   score?: number | null
+  hours_lost?: number | null
+  hours_would_use_for?: string | null
+}
+
+// Their own answer, quoted back. Nobody argues with a number they chose
+// themselves — this is the whole point of asking. Null for the ~700 rows from
+// before the question existed, so every caller must handle undefined.
+const HOURS_FOR_LABEL: Record<string, string> = {
+  real_work: 'the real work you never get to',
+  grow: 'growing the business',
+  learn_build: 'learning or building something new',
+  log_off: 'finishing on time',
+}
+function costLine(hours?: number | null, useFor?: string | null): string | null {
+  if (!hours || hours <= 0) return null
+  const weeks = Math.round((hours * 48) / 40) // working weeks a year, 48 working weeks
+  const band = hours >= 15 ? 'over 15 hours' : hours >= 8 ? '8 to 15 hours' : hours >= 4 ? '4 to 7 hours' : hours >= 1 ? '1 to 3 hours' : 'under an hour'
+  const spend = useFor && HOURS_FOR_LABEL[useFor] ? HOURS_FOR_LABEL[useFor] : null
+  const base = `You told us ${band} a week go on work AI could already be doing. That is about ${weeks} working weeks a year`
+  return spend ? `${base}, weeks you said you would spend on ${spend}.` : `${base}.`
 }
 
 async function fetchSegmentFields(id: string | undefined): Promise<SegFields | null> {
@@ -69,7 +89,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
     const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
     const { data } = await c
       .from('submissions')
-      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source')
+      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -200,6 +220,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const issued = `${String(now.getMonth() + 1).padStart(2, '0')} / ${now.getFullYear()}`
 
   const topPct = 100 - rt.aheadPct
+  const cost = costLine(segFields?.hours_lost, segFields?.hours_would_use_for)
   // Design lab: ?design=a|b|c|d swaps the hero for a candidate direction so the
   // owner can preview 4 full, real result pages. No param → the normal hero, so
   // real visitors are unaffected. Leverage here is illustrative (derived from the
@@ -387,6 +408,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
               Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
             </p>
+
+            {/* Their own answer, quoted back. Renders only for people who
+                answered the cost question (NULL on pre-launch rows). */}
+            {cost && (
+              <div className="mt-6" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
+                <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
+              </div>
+            )}
 
             <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#000', position: 'relative', paddingBottom: '56.25%', height: 0 }}>
               <iframe

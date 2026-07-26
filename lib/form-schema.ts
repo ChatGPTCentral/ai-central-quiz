@@ -21,6 +21,9 @@ export type V2DbColumn =
   | 'frequency_score' | 'depth_score' | 'breadth_score'
   | 'momentum' | 'friction' | 'intent_30d'
   | 'ai_tools' | 'work_area' | 'job_level'
+  // Cost-of-the-gap answers. Sales signals only — deliberately NOT part of the
+  // score or the stage, so historical rows stay comparable.
+  | 'hours_lost' | 'hours_would_use_for'
 
 export interface V2Question {
   id: string

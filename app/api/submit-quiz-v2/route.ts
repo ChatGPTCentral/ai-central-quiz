@@ -128,6 +128,8 @@ export async function POST(req: NextRequest) {
     momentum: v.momentum ?? null,
     friction: v.friction ?? null,
     intent_30d: v.intent_30d ?? null,
+    hours_lost: v.hours_lost ?? null,
+    hours_would_use_for: v.hours_would_use_for ?? null,
     score,
     utm_source: utmSource,
     utm_ref: utmRef,
