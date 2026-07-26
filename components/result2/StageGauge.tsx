@@ -45,19 +45,38 @@ export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; a
         {/* Track */}
         <path d={arcPath(0, 100, R)} fill="none" stroke="#EDE8DF" strokeWidth={STROKE} strokeLinecap="butt" />
 
-        {/* Proportional stage segments */}
+        {/* Proportional stage segments. The band the person landed in is the
+            hero of this chart: it gets a wider arc, full colour, a dark outline
+            and soft glow, while everything ahead of them stays faded — so "you
+            are HERE, and there is road above you" reads in one glance. */}
+        <defs>
+          <filter id="rungGlow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor={rungs[currentIdx]?.color || '#E48715'} floodOpacity="0.55" />
+          </filter>
+        </defs>
         {BOUNDARIES.map((b, i) => {
           const def = rungs[i]
           const passed = i < currentIdx
           const isCurrent = i === currentIdx
+          const from = b.from + 0.35
+          const to = b.to - 0.35
+          if (isCurrent) {
+            return (
+              <g key={b.key} filter="url(#rungGlow)">
+                {/* dark casing so the live band reads as a raised, selected slice */}
+                <path d={arcPath(from, to, R)} fill="none" stroke="#1A1A1A" strokeWidth={STROKE + 14} strokeLinecap="butt" />
+                <path d={arcPath(from, to, R)} fill="none" stroke={def.color} strokeWidth={STROKE + 8} strokeLinecap="butt" />
+              </g>
+            )
+          }
           return (
             <path
               key={b.key}
-              d={arcPath(b.from + 0.35, b.to - 0.35, R)}
+              d={arcPath(from, to, R)}
               fill="none"
               stroke={def.color}
-              strokeOpacity={passed || isCurrent ? 1 : 0.28}
-              strokeWidth={isCurrent ? STROKE + 6 : STROKE}
+              strokeOpacity={passed ? 0.92 : 0.22}
+              strokeWidth={STROKE}
               strokeLinecap="butt"
             />
           )
@@ -76,7 +95,12 @@ export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; a
               <text
                 x={lp.x} y={lp.y}
                 textAnchor={anchor}
-                style={{ fontSize: 12, fontWeight: 700, fill: stepsAhead > 0 ? '#9C9C9C' : '#333333', letterSpacing: 0.3 }}
+                style={{
+                  fontSize: stepsAhead === 0 ? 13.5 : 12,
+                  fontWeight: stepsAhead === 0 ? 800 : 700,
+                  fill: stepsAhead > 0 ? '#9C9C9C' : '#1A1A1A',
+                  letterSpacing: 0.3,
+                }}
               >
                 {def.label}
               </text>

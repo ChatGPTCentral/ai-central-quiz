@@ -37,6 +37,13 @@ import PayBadges from '@/components/result2/PayBadges.client'
 
 const VIDEO_ID = 'WO6TM6UVfYM' // "Introducing the Ultimate AI Library from AI Central"
 
+// ONE call to action across the whole page. Every button said something
+// different ("start my trial", "unlock weeks 2-4 · $4.99", "Claim offer"),
+// which reads as several competing offers and puts the price on the button
+// where it becomes the last thing you think about before clicking. One promise,
+// repeated: the price lives in the offer stack, the button sells the outcome.
+const CTA_LABEL = 'unlock all tutorials'
+
 interface SegFields {
   email?: string | null
   utm_source?: string | null
@@ -267,7 +274,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">
-          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', 'unlock weeks 2-4 · $4.99')} placement="v2_study_plan" submissionId={rowId} />
+          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', CTA_LABEL)} placement="v2_study_plan" submissionId={rowId} />
           <PayBadges fallbackUrl={checkoutUrl} submissionId={rowId} placement="v2_study_plan_badges" />
           <p style={{ fontSize: 13, color: MUTE, textAlign: 'center', maxWidth: 460 }}>
             Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these four.
@@ -390,12 +397,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 allowFullScreen
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
               />
-              {/* Live trial notifications float over the video as it plays */}
-              <div style={{ position: 'absolute', top: 10, left: 10, right: 10, zIndex: 3, pointerEvents: 'none' }}>
-                <div style={{ pointerEvents: 'auto', maxWidth: 344 }}>
-                  <FomoNotifications overlay checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
-                </div>
-              </div>
             </div>
 
             {/* The offer stack, right where the post-video intent lands. */}
@@ -403,16 +404,25 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               checkoutUrl={checkoutUrl}
               submissionId={rowId}
               rungClassName={rung.className}
-              ctaLabel={ov('offerCard.ctaLabel', 'start my trial')}
+              ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
             />
+
+            {/* Live trial notifications sit UNDER the pay buttons, not over the
+                video: social proof lands hardest at the moment of decision, and
+                it no longer covers the thing we want people to watch. */}
+            <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
           </div>
         </section>
 
-        {/* ── Reviews → your plan → the pass (reward at the very bottom) ── */}
+        {/* ── Reviews → your plan → the pass reward ── */}
         {reviewsSection}
         {studyPlanSection}
 
-        {/* ── SHORT FAQ (objections before the reward) ──────────────── */}
+        {/* ── THE PASS · the reward, before the housekeeping ──────────── */}
+        {passSection}
+
+        {/* ── FAQ last: answers for the undecided, out of the way of
+               everyone else. It should never sit between desire and reward. ── */}
         <section style={{ borderTop: `3px solid ${INK}` }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
             <Eyebrow>Questions</Eyebrow>
@@ -421,12 +431,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             </div>
           </div>
         </section>
-
-        {/* ── THE PASS · at the very bottom, unlocked with LinkedIn ──── */}
-        {passSection}
       </div>
 
-      <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', 'Claim offer ↗')} />
+      <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', `${CTA_LABEL} ↗`)} />
     </CheckoutModalProvider>
   )
 }
