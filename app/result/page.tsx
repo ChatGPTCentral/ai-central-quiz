@@ -327,7 +327,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
         {['a', 'b', 'c', 'd'].includes(design) ? (
-          <LabHero variant={design} firstName={firstName} score={score} topPct={topPct} leverage={leverage} rungClassName={rung.className} checkoutUrl={checkoutUrl} submissionId={rowId} />
+          <LabHero variant={design} firstName={firstName} score={score} topPct={topPct} leverage={leverage} rungClassName={rung.className} stageKey={stageKey} aheadPct={rt.aheadPct} checkoutUrl={checkoutUrl} submissionId={rowId} />
         ) : (
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-10 text-center">
