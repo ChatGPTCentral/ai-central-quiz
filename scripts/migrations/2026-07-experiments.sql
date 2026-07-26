@@ -80,10 +80,13 @@ language sql stable as $$
     from experiment_assignments a where a.experiment_key = exp_key
   ),
   clicks as (
-    select f.variant_key, count(distinct f.anon_id) as clickers
-    from funnel_events f
-    where f.experiment_key = exp_key and f.event = 'checkout_click'
-    group by f.variant_key
+    -- checkout_click events aren't tagged with the experiment, so attribute
+    -- them by anon_id through the assignment (same pattern as conv). A
+    -- high-volume leading indicator instead of waiting on rare paid.
+    select a.variant_key, count(distinct f.anon_id) as clickers
+    from assign a
+    join funnel_events f on f.anon_id = a.anon_id and f.event = 'checkout_click'
+    group by a.variant_key
   ),
   conv as (
     -- net-new paid = the person's FIRST-ever Stripe charge landed AFTER they

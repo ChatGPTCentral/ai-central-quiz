@@ -233,10 +233,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // force-previews a mode for eyeballing WITHOUT recording an exposure. Gated
   // on the publishable key so we never intercept clicks we can't fulfil.
   const checkoutPreview = typeof searchParams.checkout === 'string' ? searchParams.checkout.trim() : ''
-  const embedAssigned = assignments.some(a => a.experimentKey === 'checkout_embed_v1' && a.variantKey === 'embedded')
   const canEmbed = !!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  const checkoutMode: 'link' | 'embedded' =
-    canEmbed && (checkoutPreview === 'embedded' || (checkoutPreview !== 'link' && embedAssigned)) ? 'embedded' : 'link'
+  // Embedded checkout adopted for everyone: the checkout_embed_v1 A/B was even on
+  // the (slow) paid metric, and embedded is the better on-domain experience with a
+  // link fallback. Default embedded when the key is set; ?checkout=link forces the
+  // classic link for previewing. (Experiment concluded; assignment no longer gates this.)
+  const checkoutMode: 'link' | 'embedded' = canEmbed && checkoutPreview !== 'link' ? 'embedded' : 'link'
   // Fixed order (restructure): reviews → plan → pass at the very bottom,
   // gated by LinkedIn. Sections kept as blocks for readability.
   const studyPlanSection = (
