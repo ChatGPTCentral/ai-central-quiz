@@ -20,6 +20,7 @@ import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
+import { LabHero } from '@/components/result2/LabHero'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
@@ -190,6 +191,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const issued = `${String(now.getMonth() + 1).padStart(2, '0')} / ${now.getFullYear()}`
 
   const topPct = 100 - rt.aheadPct
+  // Design lab: ?design=a|b|c|d swaps the hero for a candidate direction so the
+  // owner can preview 4 full, real result pages. No param → the normal hero, so
+  // real visitors are unaffected. Leverage here is illustrative (derived from the
+  // usage score); the real reframe will compute it from building actions.
+  const design = typeof searchParams.design === 'string' ? searchParams.design.trim().toLowerCase() : ''
+  const leverage = Math.min(90, Math.max(8, Math.round(score * 0.33)))
   const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
   // Visitor country from Vercel's IP geo header (absent locally) — used to
   // surface trial notifications from the visitor's own region first.
@@ -318,7 +325,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
 
-        {/* ── 1 · HERO: top-X% verdict + tachometer ─────────────────── */}
+        {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
+        {['a', 'b', 'c', 'd'].includes(design) ? (
+          <LabHero variant={design} firstName={firstName} score={score} topPct={topPct} leverage={leverage} rungClassName={rung.className} checkoutUrl={checkoutUrl} submissionId={rowId} />
+        ) : (
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-10 text-center">
             <Eyebrow>Your quiz results</Eyebrow>
@@ -347,6 +357,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             )}
           </div>
         </section>
+        )}
 
         {/* ── 2 · THE VIDEO + instant offer + live trials ───────────── */}
         <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
