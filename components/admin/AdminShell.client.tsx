@@ -15,7 +15,7 @@ interface Props {
 // admin pages; nothing here is a dead control.
 
 type IconName =
-  | 'dashboard' | 'funnel' | 'experiments' | 'roadmap' | 'people' | 'board' | 'inprogress'
+  | 'dashboard' | 'funnel' | 'experiments' | 'roadmap' | 'people' | 'board' | 'inprogress' | 'simulator'
   | 'enrich' | 'debug' | 'stats' | 'flow' | 'editor' | 'settings'
 
 function Icon({ name, active }: { name: IconName; active?: boolean }) {
@@ -28,6 +28,7 @@ function Icon({ name, active }: { name: IconName; active?: boolean }) {
     case 'funnel': return <svg {...p}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
     case 'experiments': return <svg {...p}><path d="M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.6a1 1 0 0 0 .9 1.4h12.8a1 1 0 0 0 .9-1.4l-5.1-10.2a2 2 0 0 1-.2-.9V2" /><path d="M8.5 2h7" /><path d="M7 16h10" /></svg>
     case 'roadmap': return <svg {...p}><path d="M12 13v8" /><path d="M12 3v3" /><path d="M4 6h13a1 1 0 0 1 .78.37l2.4 3a1 1 0 0 1 0 1.26l-2.4 3a1 1 0 0 1-.78.37H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z" /></svg>
+    case 'simulator': return <svg {...p}><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M8 6h8" /><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8" /></svg>
     case 'people': return <svg {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
     case 'board': return <svg {...p}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 3v18M15 3v18" /></svg>
     case 'inprogress': return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
@@ -45,6 +46,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
+      { href: '/admin/simulator', label: 'Simulator', icon: 'simulator' },
       { href: '/admin/roadmap', label: 'Roadmap', icon: 'roadmap' },
     ],
   },

@@ -222,62 +222,90 @@ function FunnelBars({ stations }: { stations: { label: string; n: number; last?:
   )
 }
 
-/** One stacked funnel-step row: title + headline % on the left, a compact
- *  0-100% sparkline on the right. Granularity comes from the shared toggle. All
- *  rates reconcile because every node is counted one way (see F in the bento). */
-function StepRow({ title, series, num, den, totalNum, totalDen, color, gran, first }: {
-  title: string; series: Series
-  num: (p: SeriesPoint) => number; den: (p: SeriesPoint) => number
-  totalNum: number; totalDen: number; color: string; gran: Gran | 'all'; first: boolean
+/** Volume matrix — the funnel repeated per period as a heat table.
+ *  Rows are stations (counts, not rates); cell tint is the count relative to
+ *  that station's best period, so a column reads as its own little funnel and a
+ *  row reads as that station's trend. Two rate rows close it out: result-page
+ *  CVR (paid ÷ completed — the north star) and full-funnel CVR (paid ÷ landing).
+ *  `all` collapses to the single whole-window column. */
+function VolumeMatrix({ series, gran, F }: {
+  series: Series; gran: Gran | 'all'
+  F: { landing: number; started: number; completed: number; checkout: number; paid: number }
 }) {
-  const allRate = totalDen > 0 ? (totalNum / totalDen) * 100 : 0
-  const rows = gran === 'all' ? [] : series[gran]
-    .map(p => { const d = den(p), n = num(p); return { bucket: p.bucket, partial: p.partial, raw: d > 0 ? (n / d) * 100 : 0, n, d, hasData: d > 0 } })
-    .filter(r => r.hasData && r.raw <= 130) // drop pre-tracking artefacts (>100% from the Jul 5-8 events gap)
-  const last = rows[rows.length - 1]
-  const headRate = gran === 'all' ? allRate : (last ? last.raw : 0)
-  const headSub = gran === 'all'
-    ? `${totalNum.toLocaleString()}/${totalDen.toLocaleString()} · all`
-    : (last ? `${last.n}/${last.d} · ${labelBucket(last.bucket, gran as Gran)}` : 'no data')
-  return (
-    <div className="flex items-center" style={{ gap: 14, padding: '11px 18px', borderTop: first ? 'none' : `1px solid ${ROWHAIR}` }}>
-      <div style={{ width: 176, flexShrink: 0 }}>
-        <div style={{ ...panelTitle, fontSize: 10 }}>{title}</div>
-        <div className="flex items-baseline flex-wrap" style={{ gap: 6, marginTop: 3 }}>
-          <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em', color: INK, ...tnum }}>{headRate.toFixed(headRate < 10 ? 2 : 1)}%</span>
-          <span style={{ fontSize: 8.5, color: MUTE, ...tnum }}>{headSub}</span>
-        </div>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {gran === 'all'
-          ? <div style={{ height: 12, background: TRACK, position: 'relative' }}><div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${Math.min(100, allRate)}%`, background: color }} /></div>
-          : <Spark rows={rows} gran={gran as Gran} color={color} />}
-      </div>
-    </div>
-  )
-}
+  const buckets = gran === 'all' ? [] : series[gran]
+  const fmt = (n: number) => n.toLocaleString()
+  const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+  const pctDisp = (raw: number) => `${raw < 10 ? raw.toFixed(1) : Math.round(raw)}%`
 
-/** Compact 0-100% sparkline: a point's height IS its rate; % at each point;
- *  hover for the exact date + n/d. */
-function Spark({ rows, gran, color }: { rows: { bucket: string; raw: number; n: number; d: number; partial: boolean }[]; gran: Gran; color: string }) {
-  const H = 42
-  if (rows.length === 0) return <div style={{ height: H, display: 'flex', alignItems: 'center', fontSize: 10, color: MUTE }}>no data in this window</div>
-  const xOf = (i: number) => (rows.length > 1 ? (i / (rows.length - 1)) * 100 : 50)
-  const yOf = (raw: number) => Math.min(100, raw)
-  const pts = rows.map((r, i) => `${xOf(i)},${100 - yOf(r.raw)}`).join(' ')
+  const stations = [
+    { label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false },
+    { label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: F.started, warm: false },
+    { label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: F.completed, warm: false },
+    { label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false },
+    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true },
+  ]
+
+  // 132px station label · 104px all-window total · one 1fr per period
+  const grid = `132px 104px${buckets.length ? ` repeat(${buckets.length}, 1fr)` : ''}`
+
+  const rpAll = F.completed > 0 ? (F.paid / F.completed) * 100 : 0
+  const ffAll = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
+  const rateRows = [
+    { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
+    { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
+  ]
+
+  const head: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B' }
+
   return (
-    <div style={{ position: 'relative', height: H, marginTop: 11 }}>
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
-        {rows.length > 1 && <polyline points={pts} fill="none" stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />}
-      </svg>
-      {rows.map((r, i) => (
-        <div key={r.bucket} title={`${labelBucket(r.bucket, gran)}${r.partial ? ' · in progress' : ''}: ${r.raw.toFixed(1)}% (${r.n}/${r.d})`}
-          style={{ position: 'absolute', left: `${xOf(i)}%`, bottom: `${yOf(r.raw)}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <span style={{ fontSize: 8, fontWeight: 700, color: '#4A4A4A', marginBottom: 1.5, whiteSpace: 'nowrap', ...tnum }}>{r.raw < 10 ? r.raw.toFixed(1) : Math.round(r.raw)}%</span>
-          <div style={{ width: i === rows.length - 1 ? 7 : 5, height: i === rows.length - 1 ? 7 : 5, borderRadius: '50%', background: color, border: '1.5px solid #FFFFFF', boxShadow: `0 0 0 1.5px ${color}`, opacity: r.partial ? 0.6 : 1 }} />
+    <div style={{ padding: '4px 20px 18px' }}>
+      {/* header */}
+      <div className="grid" style={{ gridTemplateColumns: grid, borderBottom: '1px solid #333333' }}>
+        <span style={{ ...head, padding: '6px 0' }}>Station</span>
+        <span style={{ ...head, padding: '6px 8px 6px 0', textAlign: 'right' }}>All window</span>
+        {buckets.map(p => (
+          <span key={p.bucket} className="truncate" style={{ ...head, padding: '6px 4px', textAlign: 'center', borderLeft: `1px solid ${ROWHAIR}` }}>
+            {labelBucket(p.bucket, gran as Gran)}
+          </span>
+        ))}
+      </div>
+
+      {/* station rows */}
+      {stations.map(s => {
+        const ns = buckets.map(p => s.pick(p))
+        const max = Math.max(...ns, 1)
+        const base = s.warm ? '98,167,88' : '4,107,177' // asparagus for paid, azul for the rest
+        return (
+          <div key={s.label} className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
+            <span className="flex items-center truncate" style={{ padding: '9px 8px 9px 0', fontSize: 10.5, fontWeight: 700, color: INK }}>{s.label}</span>
+            <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 0', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
+            {ns.map((n, i) => (
+              <span key={buckets[i].bucket} className="flex items-center justify-center"
+                title={`${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`}
+                style={{ padding: '9px 2px', margin: 1, fontSize: 9.5, fontWeight: 700, color: INK, background: `rgba(${base},${(0.05 + (n / max) * 0.42).toFixed(2)})`, ...tnum }}>
+                {compact(n)}
+              </span>
+            ))}
+          </div>
+        )
+      })}
+
+      {/* rate rows */}
+      {rateRows.map(rr => (
+        <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
+          <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>{rr.label}</span>
+          <span style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: '#B26A00', ...tnum }}>{rr.all.toFixed(rr.heavy ? 2 : 1)}%</span>
+          {buckets.map(p => (
+            <span key={p.bucket} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+              {pctDisp(rr.per(p))}
+            </span>
+          ))}
         </div>
       ))}
-      <div style={{ position: 'absolute', inset: 'auto 0 0 0', borderBottom: '1px solid #D8D2C6' }} />
+
+      <div style={{ fontSize: 9.5, color: MUTE, marginTop: 10 }}>
+        cell tint = count relative to that station&apos;s best period · hover a cell for the exact count
+      </div>
     </div>
   )
 }
@@ -372,9 +400,8 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
           ))}
         </div>
 
-        {/* ── Row 2 · funnel (left) + each step over time (right), one shared toggle ── */}
+        {/* ── Row 2a · the static funnel, half width ── */}
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', borderTop: '1px solid #333333' }}>
-          {/* LEFT · the whole static funnel — the unified picture */}
           <div style={{ borderRight: '1px solid #333333' }}>
             <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>The funnel · since Jul 5</span>
@@ -382,30 +409,31 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             </div>
             <FunnelBars stations={stations} />
           </div>
-          {/* RIGHT · each step (+ full-funnel) over time, one shared D/W/M/All */}
-          <div style={{ minWidth: 0 }}>
-            <div className="flex items-center justify-between" style={{ padding: '9px 18px', background: LATTE, borderBottom: `1px solid ${HAIR}`, gap: 8 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Each funnel step over time</span>
-              <div className="inline-flex" style={{ border: '1px solid #333333', flexShrink: 0 }}>
-                {STEP_TABS.map((g, i) => (
-                  <button key={g} onClick={() => setTrendGran(g)} style={{ padding: '3px 9px', fontSize: 11, fontWeight: 800, borderLeft: i ? '1px solid #333333' : 'none', background: trendGran === g ? '#333333' : 'transparent', color: trendGran === g ? '#FFFDFA' : '#6B6B6B', cursor: 'pointer' }}>{STEP_TAB_LABEL[g]}</button>
-                ))}
-              </div>
-            </div>
-            {hasSeries ? (
-              <div>
-                <StepRow first title="Landing → Start" series={series} num={p => p.starts} den={p => p.views} totalNum={F.started} totalDen={F.landing} color="#046BB1" gran={trendGran} />
-                <StepRow first={false} title="Start → Complete" series={series} num={p => p.completed} den={p => p.starts} totalNum={F.completed} totalDen={F.started} color="#3B4C99" gran={trendGran} />
-                <StepRow first={false} title="Complete → Checkout" series={series} num={p => p.checkout} den={p => p.completed} totalNum={F.checkout} totalDen={F.completed} color="#E48715" gran={trendGran} />
-                <StepRow first={false} title="Checkout → Paid" series={series} num={p => p.netNew} den={p => p.checkout} totalNum={F.paid} totalDen={F.checkout} color="#62A758" gran={trendGran} />
-                <div style={{ borderTop: '2px solid #333333' }}>
-                  <StepRow first title="Full-funnel CVR · landing → paid" series={series} num={p => p.netNew} den={p => p.views} totalNum={F.paid} totalDen={F.landing} color="#B26A00" gran={trendGran} />
-                </div>
-              </div>
-            ) : (
-              <p style={{ padding: '16px 18px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>
-            )}
+          <div style={{ padding: '18px 24px', minWidth: 0 }}>
+            <div style={{ ...panelTitle, marginBottom: 10 }}>How to read this</div>
+            <p style={{ fontSize: 11.5, color: '#4A4A4A', lineHeight: 1.5, margin: 0, textWrap: 'pretty' }}>
+              Every node is counted one way, so the step rates and the full-funnel CVR reconcile.
+              Landing, started and checkout are unique actors; completed is the submission count;
+              paid is net-new. The matrix below repeats this same funnel for each period.
+            </p>
           </div>
+        </div>
+
+        {/* ── Row 2b · the same funnel per period, full width ── */}
+        <div style={{ borderTop: '1px solid #333333' }}>
+          <div className="flex items-center justify-between" style={{ padding: '9px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}`, gap: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Funnel per period</span>
+            <div className="inline-flex" style={{ border: '1px solid #333333', flexShrink: 0 }}>
+              {STEP_TABS.map((g, i) => (
+                <button key={g} onClick={() => setTrendGran(g)} style={{ padding: '3px 9px', fontSize: 11, fontWeight: 800, borderLeft: i ? '1px solid #333333' : 'none', background: trendGran === g ? '#333333' : 'transparent', color: trendGran === g ? '#FFFDFA' : '#6B6B6B', cursor: 'pointer' }}>
+                  {STEP_TAB_LABEL[g]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {hasSeries
+            ? <VolumeMatrix series={series} gran={trendGran} F={F} />
+            : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 
         {/* ── Row 3 · Stage × conversions LEFT · ladder bar chart RIGHT ── */}
