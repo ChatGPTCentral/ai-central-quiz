@@ -71,7 +71,45 @@ export async function GET(req: NextRequest) {
     out.domainError = e instanceof Error ? e.message : String(e)
   }
 
-  // 3. The verdict that matters for revenue.
+  // 3. Does a PayPal buyer actually leave a reusable payment method? Answered
+  //    from real charges, not theory: for each recent successful charge, note
+  //    how it was paid, then ask whether that customer has a saved, reusable
+  //    payment method. If PayPal buyers systematically have none while card
+  //    buyers do, PayPal is silently breaking the day-28 renewal.
+  try {
+    const charges = await stripe.charges.list({ limit: 100 })
+    const seen = new Map<string, { method: string; customer: string }>()
+    for (const ch of charges.data) {
+      if (ch.status !== 'succeeded') continue
+      const cust = typeof ch.customer === 'string' ? ch.customer : ch.customer?.id
+      if (!cust || seen.has(cust)) continue
+      seen.set(cust, { method: ch.payment_method_details?.type || 'unknown', customer: cust })
+    }
+    const byMethod: Record<string, { buyers: number; withReusablePm: number }> = {}
+    // Cap the lookups so the route stays fast.
+    const sample = Array.from(seen.values()).slice(0, 40)
+    for (const s of sample) {
+      const bucket = (byMethod[s.method] ||= { buyers: 0, withReusablePm: 0 })
+      bucket.buyers++
+      try {
+        const pms = await stripe.paymentMethods.list({ customer: s.customer, limit: 10 })
+        if (pms.data.length > 0) bucket.withReusablePm++
+      } catch { /* customer may be deleted — counts as no saved method */ }
+    }
+    out.savedMethodByPayType = byMethod
+    const pp = byMethod['paypal']
+    if (pp) {
+      out.paypalBuyersSampled = pp.buyers
+      out.paypalBuyersWithSavedMethod = pp.withReusablePm
+      out.paypalSavesForRenewal = pp.buyers > 0 ? pp.withReusablePm / pp.buyers : null
+    } else {
+      out.paypalBuyersSampled = 0
+    }
+  } catch (e) {
+    out.renewalAuditError = e instanceof Error ? e.message : String(e)
+  }
+
+  // 4. The verdict that matters for revenue.
   const notes: string[] = []
   if (out.domainRegistered !== true) {
     notes.push(`Apple Pay / Google Pay will NOT render on the embedded form: ${host} is not registered under Stripe payment method domains. Fix: Stripe → Settings → Payment methods → Apple Pay → Add domain.`)
@@ -81,7 +119,15 @@ export async function GET(req: NextRequest) {
     notes.push('Apple Pay / Google Pay are live on the embedded form.')
   }
   if (out.paypalEnabled) {
-    notes.push('PayPal IS enabled on the session. WARNING: verify a PayPal purchase still saves a reusable payment method (setup_future_usage: off_session) — the day-28 $59.75 renewal depends on it. If it does not, a PayPal buyer becomes a $4.99 customer instead of a $60/yr one.')
+    const sampled = Number(out.paypalBuyersSampled || 0)
+    const rate = out.paypalSavesForRenewal as number | null | undefined
+    if (sampled === 0) {
+      notes.push('PayPal IS enabled on the embedded checkout, but no PayPal buyer has come through yet, so we cannot prove it saves a reusable payment method. Until proven, every PayPal sale risks being a $4.99 customer instead of a $4.99 + $59.75/yr one. Safest move is to exclude PayPal from the session until verified.')
+    } else if (rate != null && rate < 0.9) {
+      notes.push(`PayPal is BREAKING the renewal: only ${out.paypalBuyersWithSavedMethod}/${sampled} PayPal buyers have a reusable saved payment method. Exclude PayPal from the embedded session.`)
+    } else {
+      notes.push(`PayPal saves a reusable payment method for ${out.paypalBuyersWithSavedMethod}/${sampled} sampled buyers, so the day-28 renewal should fire. Safe to keep.`)
+    }
   }
   out.notes = notes
 
