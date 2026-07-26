@@ -56,6 +56,66 @@ async function resolveEmail(s: Stripe, event: Stripe.Event): Promise<string | nu
   return null
 }
 
+/** The submission this payment belongs to, if the checkout told us.
+ *  Our embedded checkout stamps submission_id on both the session and the
+ *  payment intent, so we know WHO bought even when they pay with a different
+ *  email than the one they used on the quiz (Apple Pay and Link autofill a
+ *  personal address, work email on the quiz — extremely common). Email-only
+ *  matching silently created a second, source='stripe' row and the sale never
+ *  got credited to the quiz. */
+function submissionIdFrom(event: Stripe.Event): string | null {
+  const obj = event.data.object as unknown as Record<string, unknown>
+  const meta = (obj.metadata as Record<string, unknown> | undefined) || {}
+  const direct = typeof meta.submission_id === 'string' ? meta.submission_id : null
+  if (direct && UUID_RE.test(direct)) return direct
+  // charge.succeeded carries the intent's metadata one level down
+  const pi = obj.payment_intent as { metadata?: Record<string, unknown> } | undefined
+  const nested = typeof pi?.metadata?.submission_id === 'string' ? (pi.metadata.submission_id as string) : null
+  return nested && UUID_RE.test(nested) ? nested : null
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Credit the payment to the submission the buyer actually came from, even
+ *  though Stripe knows them by a different email. Copies the Stripe aggregate
+ *  onto that row and archives the duplicate the email-keyed import created. */
+async function linkToSubmission(submissionId: string, payingEmail: string): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return
+  const { createClient } = await import('@supabase/supabase-js')
+  const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+
+  const { data: target } = await c.from('submissions').select('id, email').eq('id', submissionId).maybeSingle()
+  if (!target) return
+  // Same email — the normal email-keyed sync already did the right thing.
+  if (String((target as { email?: string }).email || '').toLowerCase() === payingEmail.toLowerCase()) return
+
+  const { data: dup } = await c
+    .from('submissions')
+    .select('id, stripe_customer_id, stripe_customer_ids, stripe_first_charge_at, stripe_last_charge_at, stripe_products, stripe_subscriptions, lifetime_value_usd')
+    .ilike('email', payingEmail)
+    .eq('source', 'stripe')
+    .maybeSingle()
+  if (!dup) return
+
+  const d = dup as Record<string, unknown>
+  await c.from('submissions').update({
+    stripe_customer_id: d.stripe_customer_id,
+    stripe_customer_ids: d.stripe_customer_ids,
+    stripe_first_charge_at: d.stripe_first_charge_at,
+    stripe_last_charge_at: d.stripe_last_charge_at,
+    stripe_products: d.stripe_products,
+    stripe_subscriptions: d.stripe_subscriptions,
+    lifetime_value_usd: d.lifetime_value_usd,
+    stripe_imported_at: new Date().toISOString(),
+  }).eq('id', submissionId)
+
+  // Soft-delete the duplicate so the person appears once, on their quiz row.
+  await c.from('submissions').update({ archived_at: new Date().toISOString() }).eq('id', d.id as string)
+  console.log(`[stripe-webhook] linked payment by ${payingEmail} to quiz submission ${submissionId} (archived duplicate ${d.id})`)
+}
+
 /** Re-sync one email's Stripe state into its submission row. */
 async function syncEmail(email: string): Promise<void> {
   try {
@@ -111,10 +171,15 @@ export async function POST(req: NextRequest) {
 
   if (RELEVANT.has(event.type)) {
     // Resolve email then sync in the background so Stripe gets its fast 200.
+    const submissionId = submissionIdFrom(event)
     waitUntil(
-      resolveEmail(s, event).then(email => {
-        if (email) return syncEmail(email)
-        console.warn(`[stripe-webhook] ${event.type} had no resolvable email`)
+      resolveEmail(s, event).then(async email => {
+        if (!email) { console.warn(`[stripe-webhook] ${event.type} had no resolvable email`); return }
+        await syncEmail(email)
+        // Then credit the quiz submission the buyer actually came from, if the
+        // checkout told us — this is what stops a different billing email from
+        // silently costing us a counted conversion.
+        if (submissionId) await linkToSubmission(submissionId, email)
       }).catch(err => console.error('[stripe-webhook] handler error:', err)),
     )
   }
