@@ -55,37 +55,61 @@ export function PassGate(props: Props) {
 
   if (unlocked) return <PassStudio {...props} />
 
+  const firstName = (props.name || '').trim().split(/\s+/)[0] || ''
+
   return (
-    <div className="mx-auto" style={{ maxWidth: 480, position: 'relative' }}>
-      {/* Blurred pass teaser underneath */}
-      <div style={{ filter: 'blur(7px)', opacity: 0.55, pointerEvents: 'none', userSelect: 'none' }} aria-hidden>
-        <PassCard
-          name={props.name}
-          personaLabel={props.profileLabel}
-          stageLine={`STAGE: ${props.stageLabel}`}
-          passPct={`Top ${props.topPct}% World`}
-          issued={props.issued}
-          refNo={props.refNo}
-          description={props.description}
-        />
+    <div className="mx-auto" style={{ maxWidth: 480 }}>
+      {/* PEEK: the top of the card is crisp — they see their OWN name on it —
+          and it fades into the gate below. A fully frozen card is a stranger's
+          card; a card with your name on it is already yours, you are just
+          finishing it. Ownership, not curiosity. */}
+      <div style={{ position: 'relative' }}>
+        <div
+          style={{
+            WebkitMaskImage: 'linear-gradient(to bottom, #000 0%, #000 46%, rgba(0,0,0,0.55) 62%, rgba(0,0,0,0.12) 80%, transparent 94%)',
+            maskImage: 'linear-gradient(to bottom, #000 0%, #000 46%, rgba(0,0,0,0.55) 62%, rgba(0,0,0,0.12) 80%, transparent 94%)',
+            pointerEvents: 'none', userSelect: 'none',
+          }}
+          aria-hidden
+        >
+          <PassCard
+            name={props.name}
+            personaLabel={props.profileLabel}
+            stageLine={`STAGE: ${props.stageLabel}`}
+            passPct={`Top ${props.topPct}% World`}
+            issued={props.issued}
+            refNo={props.refNo}
+            description={props.description}
+          />
+        </div>
+        {/* Small seal over the crisp part so it reads as issued-but-unsigned */}
+        <span
+          className="inline-flex items-center"
+          style={{
+            position: 'absolute', top: 12, right: 12, gap: 5,
+            background: 'rgba(26,26,26,0.86)', color: '#E7B02F',
+            fontSize: 9.5, fontWeight: 800, letterSpacing: '0.1em',
+            padding: '4px 8px', textTransform: 'uppercase',
+          }}
+        >
+          🔒 Not signed yet
+        </span>
       </div>
 
-      {/* Gate */}
+      {/* Gate — now BELOW the peek instead of covering it */}
       <div
         style={{
-          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center', gap: 9, textAlign: 'center',
-          padding: '20px 22px', borderRadius: 10,
-          background: 'rgba(254,247,231,0.72)', backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)',
-          border: `2px solid ${INK}`,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 9,
+          textAlign: 'center', padding: '18px 22px 20px', marginTop: -10,
+          background: 'rgba(254,247,231,0.94)', border: `2px solid ${INK}`,
         }}
       >
-        <span style={{ fontSize: 30, lineHeight: 1 }}>🔒</span>
         <p style={{ fontSize: 18, fontWeight: 800, color: RICH, letterSpacing: '-0.02em' }}>
-          Unlock your Top {props.topPct}% pass
+          {firstName ? `${firstName}, your pass is ready` : 'Your pass is ready'}
         </p>
         <p style={{ fontSize: 13, color: BODY, lineHeight: 1.5, maxWidth: 360 }}>
-          Add your LinkedIn to unlock the pass, download it, and share it with your network.
+          It already has your name and your Top {props.topPct}% rank on it. Add your LinkedIn to sign it,
+          then download it and post it.
         </p>
         <input
           type="url"
@@ -105,7 +129,7 @@ export function PassGate(props: Props) {
           className="transition-transform hover:-translate-y-px active:scale-[0.98]"
           style={{ marginTop: 2, backgroundColor: INK, color: '#FEF7E7', fontWeight: 700, fontSize: 15, padding: '12px 26px', border: 'none', cursor: 'pointer', opacity: busy ? 0.6 : 1 }}
         >
-          {busy ? 'Unlocking…' : '🎟 Unlock my pass'}
+          {busy ? 'Signing…' : '🎟 Sign and unlock my pass'}
         </button>
         <p style={{ fontSize: 10.5, color: '#9C9C9C', marginTop: 2 }}>
           We use it to verify your rank and personalize your card. <span style={{ color: FULVOUS }}>No spam.</span>

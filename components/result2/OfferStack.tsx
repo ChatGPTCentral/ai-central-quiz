@@ -1,4 +1,5 @@
 import CheckoutLink from '@/components/CheckoutLink.client'
+import PayBadges from '@/components/result2/PayBadges.client'
 
 // The offer stack. The old card said "get everything, $4.99" — no itemisation,
 // no anchor, no risk reversal, no reason to act today. People do not buy a
@@ -90,9 +91,7 @@ export function OfferStack({
           <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 17, height: 56, padding: '0 26px' }}>{ctaLabel}</span>
           <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 56, height: 56, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 17 }} aria-hidden>↗</span>
         </CheckoutLink>
-        <span style={{ fontSize: 11.5, color: MUTE, textAlign: 'center' }}>
-          Apple Pay, Google Pay or card &middot; takes about 20 seconds
-        </span>
+        <PayBadges fallbackUrl={checkoutUrl} submissionId={submissionId} placement="v2_offer_stack_badges" />
       </div>
     </div>
   )

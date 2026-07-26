@@ -22,6 +22,7 @@ import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
+import PayBadges from '@/components/result2/PayBadges.client'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
@@ -267,6 +268,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">
           <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', 'unlock weeks 2-4 · $4.99')} placement="v2_study_plan" submissionId={rowId} />
+          <PayBadges fallbackUrl={checkoutUrl} submissionId={rowId} placement="v2_study_plan_badges" />
           <p style={{ fontSize: 13, color: MUTE, textAlign: 'center', maxWidth: 460 }}>
             Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these four.
           </p>
@@ -299,7 +301,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </h2>
         <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
           Top {topPct}% of AI users worldwide, verified by the assessment.
-          Add your LinkedIn to unlock it, then post it, your card unfurls automatically.
+          It is already made out to you, add your LinkedIn to sign it, then post it and your card unfurls automatically.
         </p>
         <div className="mt-9">
           <PassGate
