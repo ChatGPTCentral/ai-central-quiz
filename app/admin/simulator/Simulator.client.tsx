@@ -153,9 +153,28 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
         </div>
       </div>
 
-      <div style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
+      <div className="ac-bento" style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
+        {/* Same responsive rules as the dashboard: fold the fixed column counts
+            on a phone and let the wide scenario table scroll inside itself. */}
+        <style>{`
+          @media (max-width: 900px) {
+            .ac-bento .ac-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+            .ac-bento .ac-kpis > div { border-left: none !important; border-top: 1px solid #333333; }
+            .ac-bento .ac-money { grid-template-columns: 1fr !important; }
+            .ac-bento .ac-money > div { border-left: none !important; }
+            .ac-bento .ac-split { grid-template-columns: 1fr !important; }
+            .ac-bento .ac-split > div { border-right: none !important; }
+            .ac-bento .ac-split > div + div { border-top: 1px solid #333333; }
+            .ac-bento .ac-scrollx { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .ac-bento .ac-scrollx > * { min-width: 560px; }
+          }
+          @media (max-width: 560px) {
+            .ac-bento .ac-kpis { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
+
         {/* KPI strip */}
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
           {kpis.map((k, i) => (
             <div key={k.label} style={{ padding: 18, background: k.dark ? '#333333' : 'transparent', borderLeft: i ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
@@ -171,7 +190,7 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
         </div>
 
         {/* Money row */}
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid #333333', background: LATTE }}>
+        <div className="grid ac-money" style={{ gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid #333333', background: LATTE }}>
           {[
             { label: 'Cash collected month 1', v: money(sim.cashMonth1), hint: `${Math.round(sim.trials).toLocaleString()} trials x ${money(m.trial)}` },
             { label: 'Annual run-rate (LTV)', v: money(sim.annual), hint: '12 months of trials x LTV each' },
@@ -186,7 +205,7 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
         </div>
 
         {/* Inputs (left) + resulting funnel (right) */}
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', borderTop: '1px solid #333333' }}>
+        <div className="grid ac-split" style={{ gridTemplateColumns: '1fr 1fr', borderTop: '1px solid #333333' }}>
           <div style={{ padding: '16px 20px 20px', borderRight: '1px solid #333333', minWidth: 0 }}>
             <div style={{ ...panelTitle, marginBottom: 4 }}>The funnel</div>
             <NumField label="Landing views / month" value={m.visitors} onChange={v => set('visitors', v)} step={100} />

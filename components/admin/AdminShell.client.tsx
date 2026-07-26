@@ -73,6 +73,16 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
 export default function AdminShell({ children }: Props) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  // Mobile drawer. Closes on navigation, otherwise tapping a nav item would
+  // leave the drawer covering the page you just asked for.
+  const [mobileOpen, setMobileOpen] = useState(false)
+  useEffect(() => { setMobileOpen(false) }, [pathname])
+  useEffect(() => {
+    if (!mobileOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [mobileOpen])
 
   useEffect(() => {
     if (localStorage.getItem('admin_left_collapsed') === '1') setCollapsed(true)
@@ -113,10 +123,28 @@ export default function AdminShell({ children }: Props) {
     )
   }
 
+  const current = GROUPS.flatMap(g => g.items).find(n => pathname === n.href || pathname.startsWith(n.href + '/'))
+
   return (
-    <div className="min-h-screen flex" style={{ background: '#FFFDFA' }}>
+    <div className="ac-admin min-h-screen flex" style={{ background: '#FFFDFA' }}>
+      {/* Mobile top bar — the sidebar is a 240px fixed column, which on a phone
+          left almost no room for content. Below 900px it becomes a drawer and
+          this bar carries the menu button and the current page name. */}
+      <div className="ac-topbar">
+        <button onClick={() => setMobileOpen(true)} aria-label="Open menu" className="ac-burger">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFDFA" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-light.svg" alt="" style={{ width: 22, height: 22 }} />
+        <span style={{ fontSize: 14, fontWeight: 800, color: '#FFFDFA', letterSpacing: '-0.01em' }}>{current?.label ?? 'Admin'}</span>
+        <button onClick={openPalette} aria-label="Search people" className="ac-topsearch">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9C9C9C" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+        </button>
+      </div>
+      {mobileOpen && <div className="ac-scrim" onClick={() => setMobileOpen(false)} aria-hidden />}
+
       <aside
-        className="sticky top-0 self-start h-screen flex flex-col shrink-0 transition-all duration-200"
+        className={`ac-side sticky top-0 self-start h-screen flex flex-col shrink-0 transition-all duration-200${mobileOpen ? ' ac-side--open' : ''}`}
         style={{ width: W, background: '#333333' }}
       >
         {/* Brand + collapse */}
@@ -192,8 +220,38 @@ export default function AdminShell({ children }: Props) {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0" style={{ background: '#FFFDFA' }}>{children}</main>
+      <main className="ac-main flex-1 min-w-0" style={{ background: '#FFFDFA' }}>{children}</main>
       <CommandPalette />
+
+      <style>{`
+        .ac-topbar, .ac-scrim { display: none; }
+        @media (max-width: 900px) {
+          .ac-topbar {
+            display: flex; align-items: center; gap: 10px;
+            position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+            height: 52px; padding: 0 12px; background: #333333;
+            border-bottom: 1px solid rgba(255,253,250,0.14);
+          }
+          .ac-burger { padding: 6px; margin-left: -2px; line-height: 0; }
+          .ac-topsearch { margin-left: auto; padding: 6px; line-height: 0; }
+          .ac-scrim {
+            display: block; position: fixed; inset: 0; z-index: 70;
+            background: rgba(20,15,5,0.5);
+          }
+          /* Drawer: off-canvas until opened, never squeezing the content column */
+          .ac-side {
+            position: fixed !important; top: 0; left: 0; z-index: 80;
+            width: 262px !important;
+            transform: translateX(-100%);
+            transition: transform .22s ease;
+          }
+          .ac-side--open { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,.4); }
+          .ac-main { padding-top: 52px; }
+          /* Admin pages set their own page padding; keep it tighter on a phone. */
+          .ac-main > * { max-width: 100vw; }
+        }
+        @media (prefers-reduced-motion: reduce) { .ac-side { transition: none; } }
+      `}</style>
     </div>
   )
 }

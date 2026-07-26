@@ -382,9 +382,31 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
         </div>
       )}
 
-      <div style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
+      <div className="ac-bento" style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
+        {/* Responsive: every grid here is a fixed column count, which on a phone
+            crushed each cell to ~70px. Below 900px they fold to two columns,
+            below 560px to one, and the wide tables scroll inside themselves so
+            the page body never scrolls sideways. */}
+        <style>{`
+          @media (max-width: 900px) {
+            .ac-bento .ac-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+            .ac-bento .ac-kpis > div { border-left: none !important; border-top: 1px solid #333333; }
+            .ac-bento .ac-split { grid-template-columns: 1fr !important; }
+            .ac-bento .ac-split > div { border-right: none !important; border-left: none !important; }
+            .ac-bento .ac-split > div + div { border-top: 1px solid #333333; }
+            .ac-bento .ac-thirds { grid-template-columns: 1fr !important; }
+            .ac-bento .ac-thirds > div { border-left: none !important; }
+            .ac-bento .ac-money { grid-template-columns: 1fr !important; }
+            .ac-bento .ac-scrollx { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .ac-bento .ac-scrollx > * { min-width: 660px; }
+          }
+          @media (max-width: 560px) {
+            .ac-bento .ac-kpis { grid-template-columns: 1fr !important; }
+          }
+        `}</style>
+
         {/* ── Row 1 · KPIs · both comprehensive CVRs live here now ── */}
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
           {[
             { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected rung' : 'unique people, one shared cohort', dark: false },
             { label: 'Net-new subscribers', v: netNewPeople.length.toLocaleString(), hint: 'first-ever charge AFTER their quiz', dark: false },
@@ -401,7 +423,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
         </div>
 
         {/* ── Row 2a · the static funnel, half width ── */}
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', borderTop: '1px solid #333333' }}>
+        <div className="grid ac-split" style={{ gridTemplateColumns: '1fr 1fr', borderTop: '1px solid #333333' }}>
           <div style={{ borderRight: '1px solid #333333' }}>
             <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>The funnel · since Jul 5</span>
@@ -432,12 +454,12 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             </div>
           </div>
           {hasSeries
-            ? <VolumeMatrix series={series} gran={trendGran} F={F} />
+            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} /></div>
             : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 
         {/* ── Row 3 · Stage × conversions LEFT · ladder bar chart RIGHT ── */}
-        <div className="grid" style={{ gridTemplateColumns: '1fr 1.4fr', borderTop: '1px solid #333333' }}>
+        <div className="grid ac-split" style={{ gridTemplateColumns: '1fr 1.4fr', borderTop: '1px solid #333333' }}>
           <div style={{ padding: '18px 24px', minWidth: 0 }}>
             <div style={{ ...panelTitle, marginBottom: 12 }}>Stage × quiz conversions</div>
             <div className="grid" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}` }}>
@@ -501,7 +523,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
         </div>
 
         {/* ── Rows 4-6 · breakdowns ── */}
-        <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="grid ac-thirds" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
           <VBarPanel title="Age" data={ageGenData} color="#3B4C99" pct={pct} borderLeft={false} curve note="grouped by generation · dotted line = fitted normal distribution" />
           <VBarPanel title="Sex" data={genderData} color="#E26F8E" pct={pct} borderLeft />
           <HBarPanel title="Geography" rows={geoData} color="#2D8879" pct={pct} borderLeft />
@@ -519,6 +541,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>CTA view → click by placement</span>
             <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>unique viewers vs clickers, since Jul 5</span>
           </div>
+          <div className="ac-scrollx"><div>
           <div className="grid" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
             <span style={{ padding: '8px 0' }}>Shown</span><span style={{ padding: '8px 0' }}>Placement</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Viewers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clickers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>CTR</span>
           </div>
@@ -535,6 +558,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
               <span style={{ textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{p.views > 0 ? `${((p.clicks / p.views) * 100).toFixed(1)}%` : '–'}</span>
             </div>
           ))}
+          </div></div>
         </div>
       </div>
     </div>
