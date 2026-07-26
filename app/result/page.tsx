@@ -21,6 +21,8 @@ import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
+import FreeWinCard, { type TutorialWin } from '@/components/result2/FreeWin.client'
+import { buildFreeWin } from '@/lib/free-win'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
@@ -246,6 +248,35 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // link fallback. Default embedded when the key is set; ?checkout=link forces the
   // classic link for previewing. (Experiment concluded; assignment no longer gates this.)
   const checkoutMode: 'link' | 'embedded' = canEmbed && checkoutPreview !== 'link' ? 'embedded' : 'link'
+
+  // ── Free win (experiment `free_win_v1`) ─────────────────────────────
+  // Give something real BEFORE asking for $4.99. Reciprocity was the biggest
+  // missing piece on this page. Both arms are built from data we already have,
+  // so nothing here depends on a migration or a quiz change.
+  //   'prompt'   — a paste-ready prompt generated from their own answers
+  //   'tutorial' — step 1 of their study plan, actually unlocked
+  // ?freewin=prompt|tutorial|off previews an arm without recording an exposure.
+  const freeWinPreview = typeof searchParams.freewin === 'string' ? searchParams.freewin.trim().toLowerCase() : ''
+  const freeWinAssigned = assignments.find(a => a.experimentKey === 'free_win_v1')?.variantKey
+  // Defaults to 'prompt' when no experiment is running, so the page always gives
+  // something before it asks. ?freewin=off is the only way to see it suppressed.
+  const freeWinVariant: 'prompt' | 'tutorial' | null =
+    freeWinPreview === 'off' ? null
+      : freeWinPreview === 'prompt' || freeWinPreview === 'tutorial' ? freeWinPreview
+      : freeWinAssigned === 'prompt' || freeWinAssigned === 'tutorial' ? freeWinAssigned
+      : 'prompt'
+  const freeWin = buildFreeWin({
+    firstName,
+    friction: segFields?.friction ?? null,
+    intent: segFields?.intent_30d ?? null,
+    aiTools: segFields?.ai_tools ?? null,
+    jobLevel: segFields?.job_level ?? null,
+  })
+  // Step 1 of the study plan, matching StudyPlan's own early/deep banding.
+  const deepBand = stageKey === 'S3_practitioner' || stageKey === 'S4_power_user' || stageKey === 'S5_builder'
+  const freeTutorial: TutorialWin = deepBand
+    ? { qf: 'w_chau288', title: 'Official GPT-5.2 Prompting Guide From OpenAI', desc: 'The reference the top 2% actually prompt from', link: 'https://gptcentral.tradepub.com/c/pubRD.mpl?secure=1&sr=pp&_t=pp:&qf=w_chau288&ch=' }
+    : { qf: 'w_aice27', title: 'Claude Setup Guide: Make Claude 10x Smarter in 5 Steps', desc: 'Set up your daily AI workspace the right way, 15 minutes', link: 'https://gptcentral.tradepub.com/c/pubRD.mpl?secure=1&sr=pp&_t=pp:&qf=w_aice27&ch=' }
   // Fixed order (restructure): reviews → plan → pass at the very bottom,
   // gated by LinkedIn. Sections kept as blocks for readability.
   const studyPlanSection = (
@@ -357,6 +388,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             )}
           </div>
         </section>
+        )}
+
+        {/* ── 1b · THE FREE WIN — give before the ask (reciprocity) ──── */}
+        {freeWinVariant && (
+          <FreeWinCard variant={freeWinVariant} win={freeWin} tutorial={freeTutorial} submissionId={rowId} />
         )}
 
         {/* ── 2 · THE VIDEO + instant offer + live trials ───────────── */}

@@ -34,6 +34,8 @@ const ALLOWED_EVENTS = new Set([
   'share_click', 'pass_view', 'card_download', 'pass_unlock',
   // CTA impressions (view side of the per-placement CTR)
   'placement_view',
+  // free win on the result page (reciprocity before the ask)
+  'free_win_view', 'free_win_copy',
 ])
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
