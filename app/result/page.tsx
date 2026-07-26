@@ -21,8 +21,6 @@ import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
-import FreeWinCard, { type TutorialWin } from '@/components/result2/FreeWin.client'
-import { buildFreeWin } from '@/lib/free-win'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
@@ -249,49 +247,28 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // classic link for previewing. (Experiment concluded; assignment no longer gates this.)
   const checkoutMode: 'link' | 'embedded' = canEmbed && checkoutPreview !== 'link' ? 'embedded' : 'link'
 
-  // ── Free win (experiment `free_win_v1`) ─────────────────────────────
-  // Give something real BEFORE asking for $4.99. Reciprocity was the biggest
-  // missing piece on this page. Both arms are built from data we already have,
-  // so nothing here depends on a migration or a quiz change.
-  //   'prompt'   — a paste-ready prompt generated from their own answers
-  //   'tutorial' — step 1 of their study plan, actually unlocked
-  // ?freewin=prompt|tutorial|off previews an arm without recording an exposure.
-  const freeWinPreview = typeof searchParams.freewin === 'string' ? searchParams.freewin.trim().toLowerCase() : ''
-  const freeWinAssigned = assignments.find(a => a.experimentKey === 'free_win_v1')?.variantKey
-  // Defaults to 'prompt' when no experiment is running, so the page always gives
-  // something before it asks. ?freewin=off is the only way to see it suppressed.
-  const freeWinVariant: 'prompt' | 'tutorial' | null =
-    freeWinPreview === 'off' ? null
-      : freeWinPreview === 'prompt' || freeWinPreview === 'tutorial' ? freeWinPreview
-      : freeWinAssigned === 'prompt' || freeWinAssigned === 'tutorial' ? freeWinAssigned
-      : 'prompt'
-  const freeWin = buildFreeWin({
-    firstName,
-    friction: segFields?.friction ?? null,
-    intent: segFields?.intent_30d ?? null,
-    aiTools: segFields?.ai_tools ?? null,
-    jobLevel: segFields?.job_level ?? null,
-  })
-  // Step 1 of the study plan, matching StudyPlan's own early/deep banding.
-  const deepBand = stageKey === 'S3_practitioner' || stageKey === 'S4_power_user' || stageKey === 'S5_builder'
-  const freeTutorial: TutorialWin = deepBand
-    ? { qf: 'w_chau288', title: 'Official GPT-5.2 Prompting Guide From OpenAI', desc: 'The reference the top 2% actually prompt from', link: 'https://gptcentral.tradepub.com/c/pubRD.mpl?secure=1&sr=pp&_t=pp:&qf=w_chau288&ch=' }
-    : { qf: 'w_aice27', title: 'Claude Setup Guide: Make Claude 10x Smarter in 5 Steps', desc: 'Set up your daily AI workspace the right way, 15 minutes', link: 'https://gptcentral.tradepub.com/c/pubRD.mpl?secure=1&sr=pp&_t=pp:&qf=w_aice27&ch=' }
+  // The free win now lives INSIDE the study-plan stepper (week 1 playable,
+  // weeks 2-5 walled) rather than as a section above the offer — a free thing
+  // at the top gives closure and sends people off-domain before they ever see
+  // the offer. See components/result2/StudyPlan.tsx.
   // Fixed order (restructure): reviews → plan → pass at the very bottom,
   // gated by LinkedIn. Sections kept as blocks for readability.
   const studyPlanSection = (
     <section style={{ borderTop: `3px solid ${INK}` }}>
       <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
-        <Eyebrow>Your recommended study plan</Eyebrow>
+        <Eyebrow>Your 30-day plan · week 1 is free</Eyebrow>
         <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
           The first month, mapped for a {rung.className.toLowerCase()}
         </h2>
         <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
-          {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
+          {p('Five tutorials from the library, sequenced for exactly where you are. Week 1 is unlocked right now, no card, start it tonight in 15 minutes.')}
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
-        <div className="mt-9 flex justify-center">
-          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', 'unlock my study plan')} placement="v2_study_plan" submissionId={rowId} />
+        <div className="mt-9 flex flex-col items-center gap-3">
+          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', 'unlock weeks 2-4 · $4.99')} placement="v2_study_plan" submissionId={rowId} />
+          <p style={{ fontSize: 13, color: MUTE, textAlign: 'center', maxWidth: 460 }}>
+            Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these four.
+          </p>
         </div>
       </div>
     </section>
@@ -388,11 +365,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             )}
           </div>
         </section>
-        )}
-
-        {/* ── 1b · THE FREE WIN — give before the ask (reciprocity) ──── */}
-        {freeWinVariant && (
-          <FreeWinCard variant={freeWinVariant} win={freeWin} tutorial={freeTutorial} submissionId={rowId} />
         )}
 
         {/* ── 2 · THE VIDEO + instant offer + live trials ───────────── */}

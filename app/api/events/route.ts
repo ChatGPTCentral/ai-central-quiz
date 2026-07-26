@@ -36,6 +36,8 @@ const ALLOWED_EVENTS = new Set([
   'placement_view',
   // free win on the result page (reciprocity before the ask)
   'free_win_view', 'free_win_copy',
+  // freemium study plan: week 1 is playable, weeks 2-5 are the wall
+  'free_step_open',
 ])
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
