@@ -1,12 +1,18 @@
 import CheckoutLink from '@/components/CheckoutLink.client'
 
-// "Show, don't tell" — real covers from the library, grouped by category, so
-// people can find THEIR use case rather than reading the number 1,200 and
-// imagining nothing. Explicitly framed as a SAMPLE: claiming this grid is the
-// library would be a lie people discover 30 seconds after paying.
+// "Show, don't tell" — a WALL of real covers, because the job of this section
+// is to make 1,200 feel like 1,200. The first version grouped ten covers into
+// four labelled rows, which had the opposite effect: chopping a small number
+// into groups of three makes the library look tiny. Density is the message.
 //
-// Covers come from the publisher's CDN, keyed by the same qf codes as the study
-// plan and the starter kit, so nothing new has to be hosted.
+// No titles under the tiles. Titles force big tiles (ten per screen, not
+// ninety), and we would be captioning covers we have not individually
+// verified. The covers carry their own titles in the artwork.
+//
+// The wall is clipped and faded at the bottom so it reads as continuing past
+// the frame rather than ending. That is the honest version of "there are more":
+// we never claim the visible tiles are the whole library, and the caption says
+// so in words too.
 
 const INK = '#333333'
 const RICH = '#1A1A1A'
@@ -15,81 +21,36 @@ const MUTE = '#9C9C9C'
 const CREAM = '#FEF7E7'
 const FULVOUS = '#E48715'
 
-interface Doc { qf: string; title: string }
-interface Section { name: string; blurb: string; docs: Doc[] }
-
-const SECTIONS: Section[] = [
-  {
-    name: 'Setup & foundations',
-    blurb: 'Get your workspace right once, benefit every day after',
-    docs: [
-      { qf: 'w_aice27', title: 'Claude Setup Guide: Make Claude 10x Smarter in 5 Steps' },
-      { qf: 'w_chau290', title: 'The Complete ChatGPT Mastery Guide for AI Productivity' },
-      { qf: 'w_aice25', title: '13 Free Courses from Anthropic: Claude & AI Fluency' },
-    ],
-  },
-  {
-    name: 'Prompting that works',
-    blurb: 'Write instructions AI cannot misread',
-    docs: [
-      { qf: 'w_chau288', title: 'Official GPT-5.2 Prompting Guide From OpenAI' },
-      { qf: 'w_chau185', title: 'Copywriting Prompts with ChatGPT: Better Copy, Faster' },
-      { qf: 'w_chau136', title: 'How To Instantly Create Stunning Presentations With AI' },
-    ],
-  },
-  {
-    name: 'Automation & agents',
-    blurb: 'Where AI stops helping and starts doing the work',
-    docs: [
-      { qf: 'w_aice24', title: 'How to Set Up Claude Cowork in 8 Steps: Chaos to Mastery' },
-      { qf: 'w_aice33', title: 'Learn 80% of Any Skill in One Week Using NotebookLM' },
-      { qf: 'w_defa10445', title: 'The Complete Free AI Learning Library' },
-    ],
-  },
-  {
-    name: 'For your job',
-    blurb: 'Client-grade output, by role',
-    docs: [
-      { qf: 'w_chau287', title: '10 ChatGPT Prompts for Consultants Using AI' },
-    ],
-  },
+// The ten covers whose titles we hold in the repo (study plan + starter kit)
+// lead the wall, so the most-scrutinised top-left tiles are the verified ones.
+const VERIFIED = [
+  'w_aice27', 'w_chau290', 'w_aice25', 'w_chau288', 'w_chau185',
+  'w_chau136', 'w_aice24', 'w_aice33', 'w_defa10445', 'w_chau287',
 ]
+
+// The rest of the catalogue under our own publisher slug. Every code here was
+// probed and returns a real, distinct cover (bogus codes 404, so the range is
+// meaningful rather than a CDN placeholder).
+const SERIES = Array.from({ length: 90 }, (_, i) => `w_aice${i + 10}`)
+  .filter(q => !VERIFIED.includes(q))
+
+const COVERS = [...VERIFIED, ...SERIES]
 
 const cover = (qf: string) => `https://img.tradepub.com/free/${qf}/images/${qf}c4.gif`
 
-function DocTile({ d, checkoutUrl, submissionId }: { d: Doc; checkoutUrl: string; submissionId?: string }) {
+function Stat({ n, label }: { n: string; label: string }) {
   return (
-    <CheckoutLink
-      href={checkoutUrl}
-      placement="v2_library_grid"
-      submissionId={submissionId}
-      className="group flex flex-col transition-transform hover:-translate-y-0.5"
-      style={{ textDecoration: 'none', border: `2px solid ${INK}`, backgroundColor: '#FFFFFF' }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={cover(d.qf)}
-        alt=""
-        referrerPolicy="no-referrer"
-        style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderBottom: `2px solid ${INK}`, display: 'block', backgroundColor: CREAM }}
-      />
-      <span
-        className="block"
-        style={{
-          padding: '9px 10px 10px', fontSize: 11.5, fontWeight: 700, lineHeight: 1.3, color: RICH,
-          display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-        }}
-      >
-        {d.title}
-      </span>
-    </CheckoutLink>
+    <div>
+      <div style={{ fontSize: 'clamp(24px, 3.2vw, 34px)', fontWeight: 800, letterSpacing: '-0.04em', color: RICH, lineHeight: 1 }}>{n}</div>
+      <div className="mt-1 font-mono uppercase" style={{ fontSize: 10, letterSpacing: '0.14em', color: MUTE, fontWeight: 700 }}>{label}</div>
+    </div>
   )
 }
 
 export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string; submissionId?: string }) {
   return (
     <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: '#FFFDFA' }} aria-label="Inside the library">
-      <div className="max-w-[960px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
+      <div className="max-w-[1000px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
         <div className="text-center">
           <span className="inline-block font-mono uppercase" style={{ fontSize: 11.5, letterSpacing: '0.22em', color: FULVOUS, fontWeight: 600 }}>
             Inside the library
@@ -97,26 +58,69 @@ export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string
           <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
             Tutorials you won&rsquo;t find anywhere else
           </h2>
-          <p className="mt-3 mx-auto max-w-[600px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
+          <p className="mt-3 mx-auto max-w-[620px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
             Written and tested in-house, not scraped from the internet. Every one is step by step, with a
             screenshot at each stage, for professionals rather than developers.
           </p>
-          <p className="mt-3 font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: MUTE, fontWeight: 700 }}>
-            A sample &middot; the full library holds 1,200+ tutorials and 50+ templates
-          </p>
         </div>
 
-        {SECTIONS.map(s => (
-          <div key={s.name} style={{ marginTop: 30 }}>
-            <div className="flex items-baseline flex-wrap" style={{ gap: 10, borderBottom: `2px solid ${INK}`, paddingBottom: 7 }}>
-              <span style={{ fontSize: 14.5, fontWeight: 800, color: RICH, letterSpacing: '-0.01em' }}>{s.name}</span>
-              <span style={{ fontSize: 12, color: BODY, fontWeight: 300 }}>{s.blurb}</span>
-            </div>
-            <div className="grid mt-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(148px, 1fr))', gap: 14 }}>
-              {s.docs.map(d => <DocTile key={d.qf} d={d} checkoutUrl={checkoutUrl} submissionId={submissionId} />)}
+        {/* The wall. One link, so a click anywhere on it opens checkout. */}
+        <CheckoutLink
+          href={checkoutUrl}
+          placement="v2_library_grid"
+          submissionId={submissionId}
+          className="block mt-8"
+          style={{ textDecoration: 'none', position: 'relative' }}
+        >
+          <div
+            style={{
+              maxHeight: 560,
+              overflow: 'hidden',
+              maskImage: 'linear-gradient(to bottom, #000 68%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, #000 68%, transparent 100%)',
+            }}
+          >
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: 7 }}>
+              {COVERS.map(qf => (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={qf}
+                  src={cover(qf)}
+                  alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  style={{
+                    width: '100%', aspectRatio: '3 / 4', objectFit: 'cover',
+                    border: `1.5px solid ${INK}`, display: 'block', backgroundColor: CREAM,
+                  }}
+                />
+              ))}
             </div>
           </div>
-        ))}
+
+          {/* Sits over the fade, so the wall visibly runs underneath it. */}
+          <div className="text-center" style={{ marginTop: -18, position: 'relative' }}>
+            <span
+              className="inline-block font-mono uppercase"
+              style={{
+                fontSize: 11, letterSpacing: '0.14em', color: RICH, fontWeight: 700,
+                backgroundColor: CREAM, border: `2px solid ${INK}`, padding: '8px 16px',
+              }}
+            >
+              + 1,100 more inside &darr;
+            </span>
+          </div>
+        </CheckoutLink>
+
+        <div className="grid mt-9 text-center" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <Stat n="1,200+" label="tutorials" />
+          <Stat n="50+" label="templates" />
+          <Stat n="Weekly" label="new drops" />
+        </div>
+
+        <p className="mt-6 text-center font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: MUTE, fontWeight: 700 }}>
+          A sample of the covers &middot; the full library holds 1,200+ tutorials and 50+ templates
+        </p>
       </div>
     </section>
   )

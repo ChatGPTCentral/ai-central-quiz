@@ -71,7 +71,7 @@ export function OfferStack({
         <div className="flex" style={{ gap: 10 }}>
           <span aria-hidden style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>You cannot really lose here</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>Covered both ways</div>
             <div className="mt-1" style={{ fontSize: 12.5, color: BODY, fontWeight: 300, lineHeight: 1.5 }}>
               Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account.
               Plus a 30-day money-back guarantee: if it is not useful, one email and you get the $4.99 back.

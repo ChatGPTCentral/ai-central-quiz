@@ -29,12 +29,8 @@ const PROMISES = [
     d: 'If the library is not useful to you, reply to any of our emails inside 30 days and we return the $4.99. No form, no reason needed.',
   },
   {
-    t: 'We warn you before it renews',
-    d: 'An email lands before the trial ends, so the $59.75 renewal is never a surprise on a statement.',
-  },
-  {
-    t: 'We never see your card',
-    d: 'Checkout runs on Stripe, the same processor behind Amazon and Shopify. Your card details never touch our servers.',
+    t: 'Full access from minute one',
+    d: 'Nothing is held back during the trial month. You judge the real library, all 1,200+ tutorials, not a sample of it.',
   },
 ]
 
@@ -81,11 +77,11 @@ export function RiskFree({
             className="mt-3 font-bold"
             style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}
           >
-            The only thing you can lose is $4.99
+            30 days to change your mind
           </h2>
           <p className="mt-3 max-w-[580px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
-            And you do not really lose that either. Here is exactly what happens after you join, in plain words,
-            so nothing about this can catch you out later.
+            Here is exactly what happens after you join, in plain words, so nothing about this
+            can catch you out later.
           </p>
         </div>
 
