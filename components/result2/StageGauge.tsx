@@ -6,13 +6,18 @@ import { STAGES } from '@/lib/segmentation-v2'
 // percentile. Weeks rule: the next rung is always ≈1 wk away, the k-th
 // next rung min(k, 5) wks. Pure SVG, server-renderable.
 
+// Segment widths ARE the real population shares on the v3 leverage ladder
+// (measured on the launch cohort: ~0 / 7 / 38 / 22 / 12 / 21%). They must stay
+// in sync with the aheadPct values in lib/readiness-type, or the needle lands
+// outside the band we highlight — which is exactly what happened when the
+// ladder was rescaled and these were left on the old usage shares.
 const BOUNDARIES: { key: string; from: number; to: number }[] = [
-  { key: 'S0_unaware', from: 0, to: 40 },
-  { key: 'S1_curious', from: 40, to: 62 },
-  { key: 'S2_experimenter', from: 62, to: 76 },
-  { key: 'S3_practitioner', from: 76, to: 86 },
-  { key: 'S4_power_user', from: 86, to: 93 },
-  { key: 'S5_builder', from: 93, to: 100 },
+  { key: 'S0_unaware', from: 0, to: 3 },
+  { key: 'S1_curious', from: 3, to: 8 },
+  { key: 'S2_experimenter', from: 8, to: 45 },
+  { key: 'S3_practitioner', from: 45, to: 67 },
+  { key: 'S4_power_user', from: 67, to: 79 },
+  { key: 'S5_builder', from: 79, to: 100 },
 ]
 
 const CX = 210
@@ -55,34 +60,24 @@ export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; a
             hero of this chart: it gets a wider arc, full colour, a dark outline
             and soft glow, while everything ahead of them stays faded — so "you
             are HERE, and there is road above you" reads in one glance. */}
-        <defs>
-          <filter id="rungGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor={rungs[currentIdx]?.color || '#E48715'} floodOpacity="0.55" />
-          </filter>
-        </defs>
         {BOUNDARIES.map((b, i) => {
           const def = rungs[i]
           const passed = i < currentIdx
           const isCurrent = i === currentIdx
           const from = b.from + 0.35
           const to = b.to - 0.35
-          if (isCurrent) {
-            return (
-              <g key={b.key} filter="url(#rungGlow)">
-                {/* dark casing so the live band reads as a raised, selected slice */}
-                <path d={arcPath(from, to, R)} fill="none" stroke="#1A1A1A" strokeWidth={STROKE + 14} strokeLinecap="butt" />
-                <path d={arcPath(from, to, R)} fill="none" stroke={def.color} strokeWidth={STROKE + 8} strokeLinecap="butt" />
-              </g>
-            )
-          }
+          // The live band is simply thicker and fully saturated, drawn on the
+          // same centre line so it grows both ways. The previous version put a
+          // dark casing behind it, which on a short band rendered as a blunt
+          // rectangle rather than a highlight.
           return (
             <path
               key={b.key}
               d={arcPath(from, to, R)}
               fill="none"
               stroke={def.color}
-              strokeOpacity={passed ? 0.92 : 0.22}
-              strokeWidth={STROKE}
+              strokeOpacity={isCurrent ? 1 : passed ? 0.85 : 0.2}
+              strokeWidth={isCurrent ? STROKE + 10 : STROKE}
               strokeLinecap="butt"
             />
           )

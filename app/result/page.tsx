@@ -22,6 +22,7 @@ import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
+import { LibraryMarquee } from '@/components/result2/LibraryMarquee'
 import PayBadges from '@/components/result2/PayBadges.client'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
@@ -240,9 +241,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   // Next rung up the ladder (for the gauge caption). Weeks rule: the next
   // step is always ~1 week away.
+  // Only claim a "next stop" when we actually know the rung. The old
+  // Math.max(0, -1) fallback made an unknown stage look like rung 0, so the
+  // caption announced the rung the gauge was already pointing at.
   const ladder = STAGES.filter(s => s.key !== 'unknown')
-  const currentLadderIdx = Math.max(0, ladder.findIndex(s => s.key === stageKey))
-  const nextStage = ladder[currentLadderIdx + 1] ?? null
+  const currentLadderIdx = ladder.findIndex(s => s.key === stageKey)
+  const nextStage = currentLadderIdx >= 0 ? (ladder[currentLadderIdx + 1] ?? null) : null
 
   // ── Experiments: sticky-first deterministic assignment (fails open) ──
   // v3_structure tests the day-1 insights: pass section pulled above the
@@ -374,8 +378,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         {['a', 'b', 'c', 'd'].includes(design) ? (
           <LabHero variant={design} firstName={firstName} score={score} topPct={topPct} leverage={leverage} rungClassName={rung.className} stageKey={stageKey} aheadPct={rt.aheadPct} checkoutUrl={checkoutUrl} submissionId={rowId} />
         ) : (
+        // Two columns on desktop (copy left, gauge right) so the library video
+        // clears the fold; stacks and centres on a phone.
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-10 text-center">
+          <div className="max-w-[1040px] mx-auto px-6 sm:px-10 pt-10 sm:pt-14 pb-9 grid grid-cols-1 min-[900px]:grid-cols-[1.05fr_1fr] gap-8 min-[900px]:gap-10 items-center text-center min-[900px]:text-left">
+            <div>
             <Eyebrow>Your quiz results</Eyebrow>
             {/* Two lenses, both true. Lead with the proud ADOPTION number (this
                 is also what goes on the shareable pass), then open the gap: the
@@ -385,27 +392,31 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               {firstName ? `${firstName}, you` : 'You'}&rsquo;re a top{' '}
               <span style={{ color: FULVOUS }}>{badgeTopPct}%</span> AI adopter
             </h1>
-            <p className="mt-4 mx-auto max-w-[580px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
+            <p className="mt-4 mx-auto min-[900px]:mx-0 max-w-[520px]" style={{ fontWeight: 300, fontSize: 17.5, lineHeight: 1.5, color: BODY }}>
               Genuinely ahead of your peers. But adoption is not leverage, and on that ladder
               you&rsquo;re a <strong style={{ fontWeight: 700, color: RICH }}>{rung.className.toLowerCase()}</strong> with{' '}
               {nextStage ? 'room above you' : 'the top in sight'}. Here&rsquo;s the climb.
             </p>
             <div className="mt-5">
-              <span
+              <a
+                href="#pass"
                 className="inline-flex items-center gap-2"
-                style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700 }}
+                style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}
               >
                 🎟 Scroll down to unlock your pass ↓
-              </span>
+              </a>
             </div>
-            <div className="mt-9">
+            </div>
+
+            {/* Right column: the tachometer */}
+            <div className="min-w-0">
               <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
+              {nextStage && (
+                <p className="mt-1 text-center" style={{ fontSize: 14, color: BODY, fontWeight: 300 }}>
+                  Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, ≈1 wk away with the library.
+                </p>
+              )}
             </div>
-            {nextStage && (
-              <p className="mt-2" style={{ fontSize: 14.5, color: BODY, fontWeight: 300 }}>
-                Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, ≈1 wk away with the library.
-              </p>
-            )}
           </div>
         </section>
         )}
@@ -454,6 +465,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
           </div>
         </section>
+
+        {/* Show the goods before the proof: a wall of real covers makes
+            "1,200+ tutorials" concrete in a way the number never can. */}
+        <LibraryMarquee checkoutUrl={checkoutUrl} submissionId={rowId} />
 
         {/* ── Reviews → your plan → the pass reward ── */}
         {reviewsSection}

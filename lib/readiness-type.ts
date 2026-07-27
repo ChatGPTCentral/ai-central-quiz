@@ -32,32 +32,32 @@ const TYPES: Record<StageKey, ReadinessType> = {
   S0_unaware: {
     typeName: 'Unaware',
     tagline: "You're right at the starting line, and that's a great place to be.",
-    aheadPct: 4,
+    aheadPct: 1.5,
   },
   S1_curious: {
     typeName: 'Curious',
     tagline: "You've started looking. The first real workflow is closer than it looks.",
-    aheadPct: 15,
+    aheadPct: 5.5,
   },
   S2_experimenter: {
     typeName: 'Experimenter',
     tagline: "You use AI, but it isn't doing your work yet. That's the gap worth closing.",
-    aheadPct: 27,
+    aheadPct: 26,
   },
   S3_practitioner: {
     typeName: 'Practitioner',
     tagline: "You've made AI do real work once. Now make it routine.",
-    aheadPct: 57,
+    aheadPct: 56,
   },
   S4_power_user: {
     typeName: 'Power User',
     tagline: 'You have AI running real workflows. One rung from building.',
-    aheadPct: 75,
+    aheadPct: 73,
   },
   S5_builder: {
     typeName: 'Builder',
     tagline: 'You ship AI that works while you sleep. Rare company.',
-    aheadPct: 90,
+    aheadPct: 89,
   },
   unknown: {
     typeName: 'Rising Professional',
