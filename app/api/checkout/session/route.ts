@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
+import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,37 @@ function stripe(): Stripe {
 
 const clean = (v: unknown, max = 200): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined)
 
+/**
+ * The buyer's email, from the quiz row they are checking out from.
+ *
+ * They typed it into the quiz sixty seconds ago; making them type it again in
+ * the Stripe form is a keyboard on a phone for data we already hold. Prefilling
+ * also means the Stripe customer lands on the SAME address as the submission,
+ * which is what the webhook matches on — the mismatch that made us hand-merge
+ * four payers by hand last week.
+ *
+ * Best effort only: any failure returns undefined and checkout proceeds exactly
+ * as before. A checkout must never fail because a lookup did.
+ */
+async function emailForSubmission(submissionId?: string): Promise<string | undefined> {
+  if (!submissionId) return undefined
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const key =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_KEY
+    if (!url || !key) return undefined
+    const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+    const { data } = await db.from('submissions').select('email').eq('id', submissionId).maybeSingle()
+    const e = clean(data?.email, 320)
+    return e && e.includes('@') ? e : undefined
+  } catch (err) {
+    console.warn('[checkout/session] email prefill lookup failed, continuing without:', err)
+    return undefined
+  }
+}
+
 export async function POST(req: NextRequest) {
   let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string } = {}
   try { body = await req.json() } catch { /* no body is fine */ }
@@ -38,14 +70,24 @@ export async function POST(req: NextRequest) {
   const utm = clean(body.utmSource, 120); if (utm) metadata.utm_source = utm
   const ref = clean(body.utmRef, 120); if (ref) metadata.utm_ref = ref
 
+  const customerEmail = await emailForSubmission(sub)
+
   try {
     const session = await stripe().checkout.sessions.create({
       ui_mode: 'embedded_page',
       mode: 'payment',
       line_items: [{ price: PRICE_ID, quantity: 1 }],
       customer_creation: 'always',
+      ...(customerEmail ? { customer_email: customerEmail } : {}),
       payment_intent_data: { setup_future_usage: 'off_session', metadata },
-      billing_address_collection: 'required',
+      // 'auto', not 'required'. Required forces the full address form — country,
+      // line 1, city, postal code, state — which on a phone is five fields and a
+      // scroll for a $4.99 impulse buy. 'auto' lets Stripe ask only for what the
+      // card network actually needs, usually just a postal code, and nothing at
+      // all for a wallet payment. Nothing downstream reads the billing address:
+      // the chain needs a customer, a saved off-session card and this price, and
+      // automatic_tax is off so no address is needed to compute tax.
+      billing_address_collection: 'auto',
       automatic_tax: { enabled: false },
       metadata,
       return_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
