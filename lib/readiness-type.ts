@@ -71,6 +71,22 @@ export function readinessType(stage: string | undefined | null): ReadinessType {
   return TYPES[(stage as StageKey)] ?? TYPES.unknown
 }
 
+/**
+ * The PUBLIC number, for the shareable pass. Two different true things about
+ * the same person: they are a fast ADOPTER (high, worth posting) who is getting
+ * little LEVERAGE (low, worth fixing). The leverage percentile above drives the
+ * gauge and the sell; this one drives the badge, so making the diagnostic
+ * honest never costs us the share loop.
+ *
+ * Derived from the usage score (5-95 out of calculateScoreV2), floored so a
+ * badge is always postable and capped so "top 1%" stays rare.
+ */
+export function adopterTopPct(score: number | null | undefined): number {
+  const s = typeof score === 'number' && score > 0 ? score : 50
+  const ahead = Math.max(55, Math.min(97, Math.round(s)))
+  return 100 - ahead
+}
+
 // ── Trait hashtags (Rundown-style #tags under the type name) ──────────
 
 const PERSONA_TRAITS: Record<string, string[]> = {

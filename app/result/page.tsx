@@ -13,7 +13,7 @@ import Confetti from '@/components/result2/Confetti.client'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
 import { personaContent } from '@/lib/persona-content'
-import { readinessType } from '@/lib/readiness-type'
+import { readinessType, adopterTopPct } from '@/lib/readiness-type'
 import { rungConfig, withPersona, withFirstName } from '@/lib/rung-content'
 import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
@@ -219,7 +219,13 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const now = new Date()
   const issued = `${String(now.getMonth() + 1).padStart(2, '0')} / ${now.getFullYear()}`
 
+  // TWO percentiles, deliberately. `topPct` is LEVERAGE — the honest, lower
+  // number that drives the gauge and the sell. `badgeTopPct` is ADOPTION — the
+  // proud number on the shareable pass. Both are true of the same person: a
+  // fast adopter getting little leverage. Keeping them separate means making
+  // the diagnostic honest never costs us the pass_share acquisition loop.
   const topPct = 100 - rt.aheadPct
+  const badgeTopPct = adopterTopPct(segFields?.score ?? score)
   const cost = costLine(segFields?.hours_lost, segFields?.hours_would_use_for)
   // Design lab: ?design=a|b|c|d swaps the hero for a candidate direction so the
   // owner can preview 4 full, real result pages. No param → the normal hero, so
@@ -328,7 +334,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           Here&rsquo;s your member pass
         </h2>
         <p className="mt-4 mx-auto max-w-[520px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
-          Top {topPct}% of AI users worldwide, verified by the assessment.
+          Top {badgeTopPct}% of AI adopters worldwide, verified by the assessment.
           It is already made out to you, add your LinkedIn to sign it, then post it and your card unfurls automatically.
         </p>
         <div className="mt-9">
@@ -336,7 +342,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             name={passName}
             profileLabel={content.label}
             stageLabel={rung.className}
-            topPct={topPct}
+            topPct={badgeTopPct}
             refNo={refNo}
             issued={issued}
             description={content.outlook}
@@ -371,12 +377,18 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
           <div className="max-w-[880px] mx-auto px-6 sm:px-10 pt-12 sm:pt-16 pb-10 text-center">
             <Eyebrow>Your quiz results</Eyebrow>
+            {/* Two lenses, both true. Lead with the proud ADOPTION number (this
+                is also what goes on the shareable pass), then open the gap: the
+                gauge underneath shows the LEVERAGE rung, which is the low one.
+                A fast adopter who is not yet getting AI to do the work. */}
             <h1 className="mt-4 font-bold" style={{ fontSize: 'clamp(34px, 5vw, 58px)', lineHeight: 1.0, letterSpacing: '-0.045em', color: RICH }}>
-              {firstName ? `${firstName}, you` : 'You'}&rsquo;re in the top{' '}
-              <span style={{ color: FULVOUS }}>{topPct}%</span> of people on their AI journey!
+              {firstName ? `${firstName}, you` : 'You'}&rsquo;re a top{' '}
+              <span style={{ color: FULVOUS }}>{badgeTopPct}%</span> AI adopter
             </h1>
-            <p className="mt-4 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
-              Scroll below to get your recommended plan, grab your member pass and share it with your network.
+            <p className="mt-4 mx-auto max-w-[580px]" style={{ fontWeight: 300, fontSize: 18, lineHeight: 1.5, color: BODY }}>
+              Genuinely ahead of your peers. But adoption is not leverage, and on that ladder
+              you&rsquo;re a <strong style={{ fontWeight: 700, color: RICH }}>{rung.className.toLowerCase()}</strong> with{' '}
+              {nextStage ? 'room above you' : 'the top in sight'}. Here&rsquo;s the climb.
             </p>
             <div className="mt-5">
               <span
