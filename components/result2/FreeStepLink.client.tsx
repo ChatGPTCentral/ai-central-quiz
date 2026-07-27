@@ -9,10 +9,14 @@ import { sendEvent } from '@/lib/events-client'
 // checkout_click so the conversion metric stays clean.
 
 export default function FreeStepLink({
-  href, submissionId, qf, children, className, style,
+  href, submissionId, qf, children, className, style, onOpened,
 }: {
   href: string; submissionId?: string; qf: string
   children: React.ReactNode; className?: string; style?: React.CSSProperties
+  /** Fired the moment they take the free level, so the stepper can flip row 1
+   *  to done and light up row 2. The whole point of giving a free level is the
+   *  pull it creates toward the paid one. */
+  onOpened?: () => void
 }) {
   const seen = useRef(false)
   useEffect(() => {
@@ -28,7 +32,10 @@ export default function FreeStepLink({
       rel="noopener noreferrer"
       className={className}
       style={style}
-      onClick={() => sendEvent('free_step_open', { props: { qf }, submissionId })}
+      onClick={() => {
+        sendEvent('free_step_open', { props: { qf }, submissionId })
+        onOpened?.()
+      }}
     >
       {children}
     </a>
