@@ -26,6 +26,45 @@ interface VariantResult {
   expectedLoss: number
 }
 
+// ── The betting loop ────────────────────────────────────────────────────
+// Every experiment declares the funnel step it attacks and the lift we bet on
+// BEFORE it runs, so a result can be scored against the prediction instead of
+// just being "it worked". Over enough experiments this is calibration: you
+// learn whether you systematically over- or under-estimate your own ideas,
+// which is the part that compounds.
+const STEP_LABEL: Record<string, string> = {
+  landing_to_start: 'Landing → Start',
+  start_to_complete: 'Start → Complete',
+  complete_to_checkout: 'Complete → Checkout',
+  checkout_to_paid: 'Checkout → Paid',
+  trial_to_annual: 'Trial → Annual',
+}
+
+/** Actual lift in percentage POINTS on the primary metric, best variant vs
+ *  control, next to the bet that was placed. */
+function betScore(row: ExperimentRow, res?: VariantResult[]):
+  { predicted: number; actual: number | null; verdict: 'beat' | 'met' | 'missed' | 'pending' } | null {
+  const predicted = typeof row.predicted_lift_pts === 'number' ? row.predicted_lift_pts : null
+  if (predicted === null) return null
+  const control = res?.find(r => r.key === 'control')
+  const others = (res || []).filter(r => r.key !== 'control')
+  if (!control || control.exposures === 0 || others.length === 0) {
+    return { predicted, actual: null, verdict: 'pending' }
+  }
+  const best = others.reduce((a, b) => (b.rate > a.rate ? b : a))
+  if (best.exposures === 0) return { predicted, actual: null, verdict: 'pending' }
+  const actual = (best.rate - control.rate) * 100
+  const verdict = actual >= predicted ? 'beat' : actual >= predicted * 0.5 ? 'met' : 'missed'
+  return { predicted, actual, verdict }
+}
+
+const BET_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
+  beat: { bg: '#E8F5E9', fg: '#2D6A26', label: 'beat the bet' },
+  met: { bg: '#FEF7E7', fg: '#B26A00', label: 'partly there' },
+  missed: { bg: '#FDECEA', fg: '#B3261E', label: 'missed the bet' },
+  pending: { bg: '#F5F5F5', fg: '#9C9C9C', label: 'no read yet' },
+}
+
 const STATUS_STYLE: Record<string, { bg: string; fg: string }> = {
   draft: { bg: '#F5F5F5', fg: '#9C9C9C' },
   running: { bg: '#E8F5E9', fg: '#2E7D32' },
@@ -336,6 +375,7 @@ export default function ExperimentsPanel({
       {initialExperiments.map(row => {
         const st = STATUS_STYLE[row.status] || STATUS_STYLE.draft
         const res = initialResults[row.key]
+        const bet = betScore(row, res)
         return (
           <section key={row.key} className="mb-5 rounded-xl border border-[#E8E4DF] bg-white p-6">
             <div className="flex flex-wrap items-center gap-3 mb-1.5">
@@ -343,6 +383,7 @@ export default function ExperimentsPanel({
               <span className="rounded-full px-3 py-0.5 text-[11px] font-bold" style={{ backgroundColor: st.bg, color: st.fg }}>{row.status}</span>
               <span className="font-mono text-[11px] text-[#9C9C9C]">{row.key}</span>
               <span className="text-[11px] text-[#9C9C9C]">metric: {row.primary_metric}</span>
+              {row.target_step && <span className="text-[11px] font-bold text-[#046BB1]">targets: {STEP_LABEL[row.target_step] || row.target_step}</span>}
               {row.bandit_enabled && <span className="text-[11px] font-bold text-[#046BB1]">bandit on</span>}
               <div className="ml-auto flex gap-2">
                 {(row.status === 'draft' || row.status === 'paused') && (
@@ -361,6 +402,24 @@ export default function ExperimentsPanel({
                 )}
               </div>
             </div>
+            {bet && (
+              <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border border-[#E8E4DF] px-4 py-2.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#9C9C9C]">The bet</span>
+                <span className="text-[12.5px] text-[#555]">
+                  predicted <strong className="tabular-nums text-[#333333]">{bet.predicted > 0 ? '+' : ''}{bet.predicted} pts</strong>
+                  {row.target_step && <> on <strong className="text-[#333333]">{STEP_LABEL[row.target_step] || row.target_step}</strong></>}
+                </span>
+                <span className="text-[12.5px] text-[#555]">
+                  actual{' '}
+                  <strong className="tabular-nums" style={{ color: bet.actual === null ? '#9C9C9C' : bet.actual >= 0 ? '#2D6A26' : '#B3261E' }}>
+                    {bet.actual === null ? '—' : `${bet.actual > 0 ? '+' : ''}${bet.actual.toFixed(1)} pts`}
+                  </strong>
+                </span>
+                <span className="rounded-full px-3 py-0.5 text-[11px] font-bold" style={{ backgroundColor: BET_STYLE[bet.verdict].bg, color: BET_STYLE[bet.verdict].fg }}>
+                  {BET_STYLE[bet.verdict].label}
+                </span>
+              </div>
+            )}
             {row.hypothesis && <p className="text-[13px] text-[#555] mb-3">Hypothesis: {row.hypothesis}</p>}
 
             <table className="w-full text-[12.5px]">
