@@ -194,7 +194,13 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const segFields = await fetchSegmentFields(rowId)
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
-  const stageKey = segFields?.stage ?? searchParams.stage ?? null
+  // ONE effective rung drives the copy, the percentile and the gauge. They used
+  // to fall back differently when the stage was unknown — rungConfig defaults to
+  // Curious, the gauge to whichever band the needle landed in — so the headline
+  // could say "you're a curious" while the chart highlighted Practitioner.
+  const rawStage = segFields?.stage ?? searchParams.stage ?? null
+  const LADDER_KEYS = ['S0_unaware', 'S1_curious', 'S2_experimenter', 'S3_practitioner', 'S4_power_user', 'S5_builder']
+  const stageKey = rawStage && LADDER_KEYS.includes(rawStage) ? rawStage : 'S2_experimenter'
   const rt = readinessType(stageKey)
   const rung = rungConfig(stageKey)
   const p = (s: string) => withFirstName(withPersona(s, content.label), firstName)
@@ -381,7 +387,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         // Two columns on desktop (copy left, gauge right) so the library video
         // clears the fold; stacks and centres on a phone.
         <section style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}>
-          <div className="max-w-[1040px] mx-auto px-6 sm:px-10 pt-10 sm:pt-14 pb-9 grid grid-cols-1 min-[900px]:grid-cols-[1.05fr_1fr] gap-8 min-[900px]:gap-10 items-center text-center min-[900px]:text-left">
+          <div className="max-w-[1100px] mx-auto px-6 sm:px-12 pt-10 sm:pt-16 pb-12 grid grid-cols-1 min-[900px]:grid-cols-[1fr_1fr] gap-10 min-[900px]:gap-20 items-center text-center min-[900px]:text-left">
             <div>
             <Eyebrow>Your quiz results</Eyebrow>
             {/* Two lenses, both true. Lead with the proud ADOPTION number (this

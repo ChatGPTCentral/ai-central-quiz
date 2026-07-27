@@ -48,11 +48,13 @@ export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; a
   const byNeedle = BOUNDARIES.findIndex(b => needle >= b.from && needle < b.to)
   const currentIdx = byStage >= 0 ? byStage : byNeedle >= 0 ? byNeedle : BOUNDARIES.length - 1
   const needleTip = pt(needle, R - STROKE / 2 - 8)
-  const needleTag = pt(needle, R + 30)
+  // YOU sits INSIDE the arc. Outside is label territory, and the tag used to
+  // land on top of whichever rung name happened to be near the needle.
+  const needleTag = pt(needle, R - STROKE - 34)
 
   return (
-    <div className="mx-auto" style={{ maxWidth: 560 }}>
-      <svg viewBox="0 0 420 258" role="img" aria-label={`You are ahead of ${aheadPct}% of people`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}>
+    <div className="mx-auto" style={{ maxWidth: 520 }}>
+      <svg viewBox="-24 -14 468 288" role="img" aria-label={`You are ahead of ${aheadPct}% of people`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         {/* Track */}
         <path d={arcPath(0, 100, R)} fill="none" stroke="#EDE8DF" strokeWidth={STROKE} strokeLinecap="butt" />
 
@@ -87,8 +89,13 @@ export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; a
         {BOUNDARIES.map((b, i) => {
           const def = rungs[i]
           const mid = (b.from + b.to) / 2
-          const lp = pt(mid, R + 34)
+          const width = b.to - b.from
           const stepsAhead = i - currentIdx
+          // A 3%-wide band has no room for a name: on the v3 ladder Unaware and
+          // Curious sit almost on top of each other at the far left and their
+          // labels collided. Narrow bands stay unlabelled unless you are in one.
+          if (width < 7 && stepsAhead !== 0) return null
+          const lp = pt(mid, R + 30)
           const weeks = stepsAhead > 0 ? Math.min(stepsAhead, 5) : 0
           const anchor = mid < 38 ? 'end' : mid > 62 ? 'start' : 'middle'
           return (
