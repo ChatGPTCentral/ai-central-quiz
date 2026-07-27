@@ -431,8 +431,10 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 
-        {/* ── Row 3 · ladder (the filter) · stage × conversions · where buyers came from ── */}
-        <div className="grid ac-thirds" style={{ gridTemplateColumns: '1.2fr 1fr 1fr', borderTop: '1px solid #333333' }}>
+        {/* ── Row 3 · ladder (the filter) · stage × conversions · where buyers came from.
+               Equal thirds, so the column dividers line up with the breakdowns
+               grid below and the whole bento reads on one vertical rhythm. ── */}
+        <div className="grid ac-thirds" style={{ gridTemplateColumns: 'repeat(3, 1fr)', borderTop: '1px solid #333333' }}>
           {/* Ladder: clickable vertical bars (whole cohort — it is the selector) */}
           <div style={{ padding: '18px 24px', minWidth: 0 }}>
             <div className="flex items-baseline justify-between" style={{ marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
