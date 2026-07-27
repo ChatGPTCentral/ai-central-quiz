@@ -65,8 +65,8 @@ export const STAGES: StageDef[] = [
     emoji: '🧪',
     color: '#E48715',
     score: 2,
-    description: 'Plays with ChatGPT occasionally. No habit yet.',
-    salesHook: 'Use-case libraries · "how I use AI for X" · habit-forming weekly emails',
+    description: 'Uses AI regularly, but has never made it do work unattended.',
+    salesHook: 'The first automation · "make AI do this for you" · biggest untapped rung',
   },
   {
     key: 'S3_practitioner',
@@ -74,8 +74,8 @@ export const STAGES: StageDef[] = [
     emoji: '⚙️',
     color: '#62A758',
     score: 3,
-    description: 'Uses AI weekly for real work.',
-    salesHook: 'Workflow templates · ROI case studies · standard subscription tier',
+    description: 'Has built one thing: a custom GPT, an integration, or shipped something.',
+    salesHook: 'Workflow templates · second and third automation · standard tier',
   },
   {
     key: 'S4_power_user',
@@ -83,8 +83,8 @@ export const STAGES: StageDef[] = [
     emoji: '🚀',
     color: '#046BB1',
     score: 4,
-    description: 'Daily AI. Multiple tools. Saved prompts.',
-    salesHook: 'Advanced workflow content · premium tier · power-user community',
+    description: 'Two building actions. AI runs real workflows for them.',
+    salesHook: 'Advanced workflow content · agents · premium tier',
   },
   {
     key: 'S5_builder',
@@ -92,7 +92,7 @@ export const STAGES: StageDef[] = [
     emoji: '🏗️',
     color: '#3B4C99',
     score: 5,
-    description: 'Ships AI workflows, automations, custom GPTs.',
+    description: 'Three building actions, or shipped AI-powered work to real users.',
     salesHook: 'API access · agent frameworks · co-build partnerships · enterprise tier',
   },
   {
@@ -233,48 +233,44 @@ export function assignStage(r: StoredSubmission): {
     const builderActs = ['custom_gpt', 'connected', 'shipped'].filter(a => actions.includes(a))
     const shipped = actions.includes('shipped')
 
-    // S5 Builder — deliberately hard to reach (v2.1 thresholds). The old
-    // depth>=4 rule put 65% of the launch cohort on the top rung, which
-    // kills the "climb higher" motivation the offer depends on. A Builder
-    // has SHIPPED something AI-powered, plus at least one more builder
-    // action (custom GPT/Project or a tool integration), plus regular use.
-    // ~20% of the launch cohort qualifies under this rule.
+    // ── v3: the ladder measures LEVERAGE, not usage ────────────────────
+    // v2.1 graded how much someone USES AI, which for an AI-newsletter
+    // audience crushed everyone against the ceiling: 47% landed on Power User,
+    // 20% on Builder, and the bottom three rungs held nobody. That matters
+    // commercially, because intent falls as the rung rises — checkout-click by
+    // rung was 42% / 40% / 29% / 16% from Experimenter up to Builder. Telling
+    // 364 people they are already Power Users removed their reason to buy.
+    //
+    // v3 grades whether AI actually does WORK for you. The top rungs are earned
+    // by building (custom GPT, connected tools, shipped something); using AI a
+    // lot, however heavily, tops out at Experimenter. On the launch cohort this
+    // puts ~47% on rungs 1-2, ~22% Practitioner, ~12% Power User, ~19% Builder.
+    const shippedPlus = shipped && builderActs.length >= 2
+
     if (r.depthActions != null) {
-      if (shipped && builderActs.length >= 2 && frequency >= 2) {
-        return { stage: 'S5_builder', score: 5, reason: `Survey v2.1: shipped + ${builderActs.join('/')} · freq ${frequency}` }
+      if (builderActs.length >= 3 || shippedPlus) {
+        return { stage: 'S5_builder', score: 5, reason: `v3 leverage: ${builderActs.join('/')}${shipped ? ' · shipped' : ''}` }
+      }
+      if (builderActs.length >= 2) {
+        return { stage: 'S4_power_user', score: 4, reason: `v3 leverage: 2 building actions (${builderActs.join('/')})` }
+      }
+      if (builderActs.length >= 1) {
+        return { stage: 'S3_practitioner', score: 3, reason: `v3 leverage: 1 building action (${builderActs.join('/')})` }
       }
     } else if (depth >= 5 && breadth >= 5) {
       // Legacy v2 rows without raw selections: only near-max signals qualify
-      return { stage: 'S5_builder', score: 5, reason: `Survey v2.1 (no actions data): depth ${depth} + breadth ${breadth}` }
+      return { stage: 'S5_builder', score: 5, reason: `v3 (no actions data): depth ${depth} + breadth ${breadth}` }
     }
 
-    // S4 Power User — one builder action, very deep usage, or daily + wide
-    if (builderActs.length >= 1) {
-      return { stage: 'S4_power_user', score: 4, reason: `Survey v2.1: builder action (${builderActs.join('/')})` }
+    // No building actions: graded on how much they use it, capped at rung 2.
+    if (frequency >= 2 || depth >= 2) {
+      return { stage: 'S2_experimenter', score: 2, reason: `v3: uses AI regularly, nothing built yet (freq ${frequency}, depth ${depth})` }
     }
-    if (depth >= 4) {
-      return { stage: 'S4_power_user', score: 4, reason: `Survey v2.1: depth ${depth}/6` }
-    }
-    if (frequency >= 3 && breadth >= 4) {
-      return { stage: 'S4_power_user', score: 4, reason: `Survey v2.1: daily AI · ${breadth} tools` }
-    }
-
-    // S3 Practitioner — regular use OR meaningful depth
-    if (frequency >= 2) {
-      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2.1: most days (freq ${frequency})` }
-    }
-    if (depth >= 2 || (frequency >= 1 && breadth >= 2)) {
-      return { stage: 'S3_practitioner', score: 3, reason: `Survey v2.1: depth ${depth} · breadth ${breadth}` }
-    }
-
-    // S2 Experimenter — occasional use
     if (frequency >= 1 || depth >= 1 || breadth >= 1) {
-      return { stage: 'S2_experimenter', score: 2, reason: `Survey v2.1: light usage (freq ${frequency}, depth ${depth})` }
+      return { stage: 'S1_curious', score: 1, reason: `v3: light usage (freq ${frequency}, depth ${depth}, ${breadth} tools)` }
     }
-
-    // S1 Curious — answered the survey but reports zero usage
     if (frequency === 0 && depth === 0 && breadth === 0) {
-      return { stage: 'S1_curious', score: 1, reason: `Survey v2.1: aware but not using yet` }
+      return { stage: 'S0_unaware', score: 0, reason: `v3: no AI usage reported` }
     }
   }
 

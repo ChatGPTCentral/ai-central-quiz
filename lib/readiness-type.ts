@@ -22,36 +22,42 @@ export interface ReadinessType {
 
 // typeName MUST equal the ladder rung label (from stageDef / the result-page
 // ladder) so the h1 matches the highlighted "You are here" rung exactly.
+// v3: percentiles track the LEVERAGE ladder, and are set from the real
+// distribution of the launch cohort (roughly 7% / 39% / 22% / 12% / 19% from
+// Curious up to Builder), each rung sitting at the midpoint of its band. The
+// old numbers were tuned for the usage ladder and would now overstate everyone:
+// they told a rung-2 user they were ahead of 76% of people, which is exactly
+// the flattery that removed the reason to buy.
 const TYPES: Record<StageKey, ReadinessType> = {
   S0_unaware: {
     typeName: 'Unaware',
     tagline: "You're right at the starting line, and that's a great place to be.",
-    aheadPct: 40,
+    aheadPct: 4,
   },
   S1_curious: {
     typeName: 'Curious',
-    tagline: "You've started looking. Most people haven't even done that.",
-    aheadPct: 62,
+    tagline: "You've started looking. The first real workflow is closer than it looks.",
+    aheadPct: 15,
   },
   S2_experimenter: {
     typeName: 'Experimenter',
-    tagline: "You're already hands-on. Now we turn dabbling into a habit.",
-    aheadPct: 76,
+    tagline: "You use AI, but it isn't doing your work yet. That's the gap worth closing.",
+    aheadPct: 27,
   },
   S3_practitioner: {
     typeName: 'Practitioner',
-    tagline: 'You use AI for real work every week. You are in rare company.',
-    aheadPct: 86,
+    tagline: "You've made AI do real work once. Now make it routine.",
+    aheadPct: 57,
   },
   S4_power_user: {
     typeName: 'Power User',
-    tagline: "AI is woven into your day. You're operating near the frontier.",
-    aheadPct: 93,
+    tagline: 'You have AI running real workflows. One rung from building.',
+    aheadPct: 75,
   },
   S5_builder: {
     typeName: 'Builder',
-    tagline: 'You build with AI. You sit in the top sliver of all professionals.',
-    aheadPct: 98,
+    tagline: 'You ship AI that works while you sleep. Rare company.',
+    aheadPct: 90,
   },
   unknown: {
     typeName: 'Rising Professional',
