@@ -315,6 +315,9 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   const industryData = desc(countBy(slice, r => r.industry))
   const roleData = desc(countBy(slice, r => r.role))
   const paidChannel = desc(countBy(slice, r => (r.ltv > 0 ? (r.utmNewsletter || r.utmQuiz || 'Direct') : null)))
+  // Where the people who ACTUALLY converted came into the quiz — the acquisition
+  // question ("which source produces buyers", not just volume).
+  const netNewSource = desc(countBy(slice.filter(r => r.netNew), r => r.utmQuiz || 'Direct / unknown'))
   const nlData = desc(countBy(slice, r => r.utmNewsletter || 'Direct / unknown'))
   const quizUtmData = desc(countBy(slice, r => r.utmQuiz || 'Direct / unknown'))
 
@@ -371,14 +374,16 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
           }
         `}</style>
 
-        {/* ── Row 1 · KPIs · both comprehensive CVRs live here now ── */}
-        <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+        {/* ── Row 1 · the top line, in the owner's reading order:
+               volume → the two CVRs → the paid count → money → money per head ── */}
+        <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
           {[
             { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected rung' : 'unique people, one shared cohort', dark: false },
-            { label: 'Net-new subscribers', v: netNewPeople.length.toLocaleString(), hint: 'first-ever charge AFTER their quiz', dark: false },
+            { label: 'Full-funnel CVR', v: `${fullFunnelCvr.toFixed(2)}%`, hint: `net-new ÷ ${F.landing.toLocaleString()} landing views`, dark: false },
             { label: 'Result-page CVR', v: `${cvr.toFixed(1)}%`, hint: `net-new ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
-            { label: 'Full-funnel CVR', v: `${fullFunnelCvr.toFixed(2)}%`, hint: `net-new ÷ ${F.landing.toLocaleString()} landing views (whole funnel)`, dark: false },
+            { label: 'Net-new paid', v: netNewPeople.length.toLocaleString(), hint: 'first-ever charge AFTER their quiz', dark: false },
             { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: 'sum of payments from net-new people', dark: false },
+            { label: 'ARPU', v: netNewPeople.length > 0 ? `$${(quizRevenue / netNewPeople.length).toFixed(2)}` : '–', hint: 'quiz revenue ÷ net-new paid', dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: '18px 18px', background: k.dark ? '#333333' : 'transparent', borderLeft: i > 0 ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
@@ -407,39 +412,11 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 
-        {/* ── Row 3 · Stage × conversions LEFT · ladder bar chart RIGHT ── */}
-        <div className="grid ac-split" style={{ gridTemplateColumns: '1fr 1.4fr', borderTop: '1px solid #333333' }}>
-          <div style={{ padding: '18px 24px', minWidth: 0 }}>
-            <div style={{ ...panelTitle, marginBottom: 12 }}>Stage × quiz conversions</div>
-            <div className="grid" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}` }}>
-              <span style={{ padding: '5px 0 5px 6px' }}>Stage</span>
-              <span style={{ padding: '5px 0', textAlign: 'right' }}>N</span>
-              <span style={{ padding: '5px 0', textAlign: 'right' }}>Net</span>
-              <span style={{ padding: '5px 0', textAlign: 'right' }}>CVR</span>
-              <span style={{ padding: '5px 0', textAlign: 'right' }}>Revenue</span>
-            </div>
-            {ladderDefs.map(def => {
-              const sRows = rows.filter(r => r.stage === def.key)
-              const paying = sRows.filter(r => r.netNew)
-              const revenue = paying.reduce((a, b) => a + b.ltv, 0)
-              const conv = sRows.length > 0 ? (paying.length / sRows.length) * 100 : 0
-              return (
-                <div key={def.key} className="grid items-center" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 11.5, borderBottom: `1px solid ${ROWHAIR}`, background: stageFilter === def.key ? LATTE : 'transparent' }}>
-                  <span className="flex items-center" style={{ padding: '6px 0 6px 6px', fontWeight: 700, gap: 7, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-                    <span style={{ width: 7, height: 7, background: def.color, flexShrink: 0 }} />{def.emoji} {def.label}
-                  </span>
-                  <span style={{ padding: '6px 0', textAlign: 'right', ...tnum }}>{sRows.length}</span>
-                  <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, ...tnum }}>{paying.length}</span>
-                  <span style={{ padding: '6px 0', textAlign: 'right', color: '#046BB1', fontWeight: 700, ...tnum }}>{conv.toFixed(1)}%</span>
-                  <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, color: '#62A758', ...tnum }}>${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                </div>
-              )
-            })}
-          </div>
-
+        {/* ── Row 3 · ladder (the filter) · stage × conversions · where buyers came from ── */}
+        <div className="grid ac-thirds" style={{ gridTemplateColumns: '1.2fr 1fr 1fr', borderTop: '1px solid #333333' }}>
           {/* Ladder: clickable vertical bars (whole cohort — it is the selector) */}
-          <div style={{ padding: '18px 24px', borderLeft: '1px solid #333333', minWidth: 0 }}>
-            <div className="flex items-baseline justify-between" style={{ marginBottom: 14 }}>
+          <div style={{ padding: '18px 24px', minWidth: 0 }}>
+            <div className="flex items-baseline justify-between" style={{ marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
               <span style={panelTitle}>AI adoption ladder</span>
               <span style={{ fontSize: 10.5, color: '#B26A00', fontWeight: 700 }}>click a bar to focus every chart</span>
             </div>
@@ -468,6 +445,46 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
                 <span key={def.key} className="truncate" style={{ flex: 1, textAlign: 'center', fontSize: 9.5, color: '#6B6B6B' }} title={def.label}>{def.emoji} {def.label}</span>
               ))}
             </div>
+          </div>
+
+          <div style={{ padding: '18px 24px', minWidth: 0, borderLeft: '1px solid #333333' }}>
+            <div style={{ ...panelTitle, marginBottom: 12 }}>Stage × quiz conversions</div>
+            <div className="grid" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}` }}>
+              <span style={{ padding: '5px 0 5px 6px' }}>Stage</span>
+              <span style={{ padding: '5px 0', textAlign: 'right' }}>N</span>
+              <span style={{ padding: '5px 0', textAlign: 'right' }}>Net</span>
+              <span style={{ padding: '5px 0', textAlign: 'right' }}>CVR</span>
+              <span style={{ padding: '5px 0', textAlign: 'right' }}>Revenue</span>
+            </div>
+            {ladderDefs.map(def => {
+              const sRows = rows.filter(r => r.stage === def.key)
+              const paying = sRows.filter(r => r.netNew)
+              const revenue = paying.reduce((a, b) => a + b.ltv, 0)
+              const conv = sRows.length > 0 ? (paying.length / sRows.length) * 100 : 0
+              return (
+                <div key={def.key} className="grid items-center" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 11.5, borderBottom: `1px solid ${ROWHAIR}`, background: stageFilter === def.key ? LATTE : 'transparent' }}>
+                  <span className="flex items-center" style={{ padding: '6px 0 6px 6px', fontWeight: 700, gap: 7, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                    <span style={{ width: 7, height: 7, background: def.color, flexShrink: 0 }} />{def.emoji} {def.label}
+                  </span>
+                  <span style={{ padding: '6px 0', textAlign: 'right', ...tnum }}>{sRows.length}</span>
+                  <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, ...tnum }}>{paying.length}</span>
+                  <span style={{ padding: '6px 0', textAlign: 'right', color: '#046BB1', fontWeight: 700, ...tnum }}>{conv.toFixed(1)}%</span>
+                  <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, color: '#62A758', ...tnum }}>${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Where the people who actually PAID came into the quiz. Volume by
+              source lives in the breakdowns below; this one is buyers only. */}
+          <div style={{ borderLeft: '1px solid #333333' }}>
+            <HBarPanel
+              title="Where net-new paid came from"
+              rows={netNewSource}
+              color="#62A758"
+              pct={pct}
+              borderLeft={false}
+            />
           </div>
         </div>
 
