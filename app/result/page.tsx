@@ -318,14 +318,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           The first month, mapped for a {rung.className.toLowerCase()}
         </h2>
         <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
-          {p('Five tutorials from the library, sequenced for exactly where you are. The first one is free, no card, and it takes 15 minutes tonight.')}
+          {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">
           <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', CTA_LABEL)} placement="v2_study_plan" submissionId={rowId} />
           <PayBadges fallbackUrl={checkoutUrl} submissionId={rowId} placement="v2_study_plan_badges" />
           <p style={{ fontSize: 13, color: MUTE, textAlign: 'center', maxWidth: 460 }}>
-            Step 1 is on us. Unlocking the other four opens the whole library: 1,200+ tutorials and 50+ templates.
+            Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these five.
           </p>
         </div>
       </div>

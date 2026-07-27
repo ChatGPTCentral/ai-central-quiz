@@ -67,7 +67,9 @@ function Progress({ unlocked, total }: { unlocked: number; total: number }) {
         ))}
       </span>
       <span className="font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.1em', color: RICH, fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {unlocked} of {total} unlocked
+        {/* At zero, name the prize instead of scoring the reader: "0 of 5
+            unlocked" opens the section on a scoreboard reading nil. */}
+        {unlocked > 0 ? `${unlocked} of ${total} unlocked` : `${total} steps waiting`}
       </span>
     </div>
   )
@@ -86,12 +88,22 @@ export function StudyPlan({
   const plan = deep ? DEEP_PLAN : EARLY_PLAN
   const weeks = ['Week 1', 'Week 1', 'Week 2', 'Week 3', 'Week 4']
 
-  // Did they already take the free level? Restored from sessionStorage so the
-  // trip to the new tab and back does not reset the game.
+  // Owner call, second time: the free first level is OFF. The hour it ran, four
+  // of fifteen visitors took the tutorial and the click rate sat at 13% against
+  // a 28% day average. Thin evidence on its own, but it is the owner's money
+  // and the exact cannibalisation they predicted, so it goes.
+  //
+  // Everything else the freemium work bought us stays: numbered steps instead
+  // of five identical padlocks, and a counter that names the prize rather than
+  // reading zero. Flip this to true to bring the playable level back, and the
+  // whole done/next loop below wakes up with it.
+  const FREE_FIRST_STEP = false
+
   const [done, setDone] = useState(false)
   useEffect(() => {
+    if (!FREE_FIRST_STEP) return
     try { if (sessionStorage.getItem('ac_free_step_done') === '1') setDone(true) } catch { /* blocked */ }
-  }, [])
+  }, [FREE_FIRST_STEP])
   const markDone = () => {
     setDone(true)
     try { sessionStorage.setItem('ac_free_step_done', '1') } catch { /* blocked */ }
@@ -99,7 +111,7 @@ export function StudyPlan({
 
   return (
     <div className="mt-8">
-      <Progress unlocked={1} total={plan.length} />
+      <Progress unlocked={FREE_FIRST_STEP ? 1 : 0} total={plan.length} />
 
       {done && (
         <div className="flex" style={{ gap: 10, border: `2px solid ${GREEN}`, backgroundColor: '#F4F8F3', padding: '11px 14px', marginBottom: 18 }}>
@@ -112,8 +124,7 @@ export function StudyPlan({
       )}
 
       {plan.map((t, i) => {
-        const isFree = i === 0
-        const locked = !isFree
+        const isFree = FREE_FIRST_STEP && i === 0
         // Once the free level is taken, row 2 becomes the live one: it gets the
         // colour, the label and the button, so momentum carries into the wall.
         const isNext = done && i === 1
