@@ -3,19 +3,16 @@
 import { useMemo, useState } from 'react'
 import type { Baseline } from './page'
 
-// "What is this funnel worth?" — the live funnel as the baseline, each step rate
-// draggable, and exactly two answers at the top: how many net-new trials, and
-// what pipeline that represents.
+// One table, five knobs, two answers.
 //
-// Deliberately NOT here: annual run-rate, value-per-1000-views, and the
-// scenario ladder. They were three different framings of the same arithmetic,
-// which made the page feel like a report instead of a tool.
+// At default settings this reproduces the dashboard's "Funnel per period · All"
+// column exactly — same window, same counting rule. If the two ever disagree,
+// one of them is wrong, and that is the point of anchoring them together.
 
 const INK = '#1A1A1A'
 const MUTE = '#9C9C9C'
 const HAIR = '#E8E2D4'
 const ROWHAIR = '#F1ECE2'
-const TRACK = '#F1ECE0'
 const LATTE = '#FEF7E7'
 const AZUL = '#046BB1'
 const ASPARAGUS = '#62A758'
@@ -24,110 +21,63 @@ const RED = '#BE3B3B'
 
 const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 const eyebrow: React.CSSProperties = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: MUTE }
-const panelTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: INK }
 
 const money = (n: number) => `$${Math.round(n).toLocaleString()}`
 const pct = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)}%`
 
 interface Model {
-  visitors: number   // landing views per month
-  s1: number         // landing → started
-  s2: number         // started → completed
-  s3: number         // completed → checkout click
-  s4: number         // checkout click → paid trial
-  trialToAnnual: number // % of trials that convert to the annual plan
-  annual: number     // $ per year
+  people: number        // 1. how many people in
+  toStart: number       // 2. landing → quiz started
+  toComplete: number    // 3. started → completed
+  toCheckout: number    // 4. completed → checkout click
+  toPaid: number        // 5. checkout → net-new
+  trialToAnnual: number // what share of trials become annual
+  annual: number        // annual price
 }
 
-function compute(m: Model) {
-  const started = m.visitors * (m.s1 / 100)
-  const completed = started * (m.s2 / 100)
-  const checkout = completed * (m.s3 / 100)
-  const netNew = checkout * (m.s4 / 100)
+function run(m: Model) {
+  const started = m.people * (m.toStart / 100)
+  const completed = started * (m.toComplete / 100)
+  const checkout = completed * (m.toCheckout / 100)
+  const netNew = checkout * (m.toPaid / 100)
   return {
     started, completed, checkout, netNew,
     resultCvr: completed > 0 ? (netNew / completed) * 100 : 0,
-    fullCvr: m.visitors > 0 ? (netNew / m.visitors) * 100 : 0,
+    fullCvr: m.people > 0 ? (netNew / m.people) * 100 : 0,
     pipeline: netNew * m.annual * (m.trialToAnnual / 100),
   }
 }
 
-/** A funnel step: the rate between two stations, as a draggable control. */
-function StepRate({ label, value, onChange, baseline }: {
-  label: string; value: number; onChange: (n: number) => void; baseline: number
-}) {
-  const delta = value - baseline
-  return (
-    <div style={{ padding: '10px 0 12px 26px', borderLeft: `2px dashed ${HAIR}`, marginLeft: 13 }}>
-      <div className="flex items-baseline" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B' }}>{label}</span>
-        <span style={{ fontSize: 15, fontWeight: 800, color: AZUL, ...tnum }}>{pct(value)}</span>
-        {Math.abs(delta) >= 0.5 && (
-          <span style={{ fontSize: 10.5, fontWeight: 800, color: delta > 0 ? ASPARAGUS : RED, ...tnum }}>
-            {delta > 0 ? '+' : ''}{delta.toFixed(delta < 10 && delta > -10 ? 1 : 0)} pts
-          </span>
-        )}
-        <span style={{ fontSize: 10, color: MUTE, ...tnum }}>today {pct(baseline)}</span>
-      </div>
-      <input
-        type="range" min={0} max={100} step={0.5} value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        aria-label={label}
-        style={{ width: '100%', maxWidth: 460, marginTop: 6, accentColor: AZUL }}
-      />
-    </div>
-  )
-}
-
-/** A funnel station: the count, with today's count for reference. */
-function Station({ label, n, was, top, warm }: { label: string; n: number; was: number; top: number; warm?: boolean }) {
-  const w = Math.max((n / Math.max(top, 1)) * 100, 1.5)
-  const d = was > 0 ? ((n - was) / was) * 100 : 0
-  return (
-    <div className="flex items-center" style={{ gap: 12 }}>
-      <span className="flex items-center justify-center shrink-0" style={{ width: 28, height: 28, background: warm ? ASPARAGUS : AZUL, color: '#FFFFFF', fontWeight: 800, fontSize: 11, ...tnum }}>
-        {warm ? '$' : '·'}
-      </span>
-      <span className="flex items-baseline shrink-0" style={{ width: 176, gap: 7 }}>
-        <strong style={{ fontSize: 17, fontWeight: 800, color: warm ? '#2D6A26' : INK, ...tnum }}>{Math.round(n).toLocaleString()}</strong>
-        <span style={{ fontSize: 11.5, color: '#4A4A4A', whiteSpace: 'nowrap' }}>{label}</span>
-      </span>
-      <div style={{ flex: 1, height: 20, background: TRACK, position: 'relative', minWidth: 40 }}>
-        <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${w}%`, background: warm ? ASPARAGUS : `rgba(4,107,177,0.72)` }} />
-      </div>
-      <span className="shrink-0" style={{ width: 62, textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: Math.abs(d) < 0.5 ? MUTE : d > 0 ? ASPARAGUS : RED, ...tnum }}>
-        {Math.abs(d) < 0.5 ? `${Math.round(was).toLocaleString()}` : `${d > 0 ? '+' : ''}${Math.round(d)}%`}
-      </span>
-    </div>
-  )
-}
-
 export default function Simulator({ baseline }: { baseline: Baseline }) {
-  // Observed rates. Clamped to 100 defensively: if a node is ever counted on a
-  // different cohort than the one above it, we show a capped rate rather than
-  // an impossible one.
-  const b = useMemo(() => {
-    const rate = (num: number, den: number) => (den > 0 ? Math.min(100, (num / den) * 100) : 0)
-    return {
-      s1: rate(baseline.started, baseline.landing),
-      s2: rate(baseline.completed, baseline.started),
-      s3: rate(baseline.checkout, baseline.completed),
-      s4: rate(baseline.paid, baseline.checkout),
-      perMonth: Math.round((baseline.landing / Math.max(1, baseline.days)) * 30),
-    }
-  }, [baseline])
+  const rate = (num: number, den: number) => (den > 0 ? Math.min(100, (num / den) * 100) : 0)
 
-  const today: Model = {
-    visitors: b.perMonth, s1: b.s1, s2: b.s2, s3: b.s3, s4: b.s4,
-    trialToAnnual: Math.round(baseline.renewalRate * 100), annual: 59.75,
-  }
+  // Today = literally the live funnel. Change nothing and this page shows the
+  // dashboard's numbers back to you.
+  const today: Model = useMemo(() => ({
+    people: baseline.landing,
+    toStart: rate(baseline.started, baseline.landing),
+    toComplete: rate(baseline.completed, baseline.started),
+    toCheckout: rate(baseline.checkout, baseline.completed),
+    toPaid: rate(baseline.paid, baseline.checkout),
+    trialToAnnual: Math.round(baseline.renewalRate * 100),
+    annual: 59.75,
+  }), [baseline])
+
   const [m, setM] = useState<Model>(today)
   const set = <K extends keyof Model>(k: K, v: Model[K]) => setM(p => ({ ...p, [k]: v }))
-
-  const now = useMemo(() => compute(today), [today]) // eslint-disable-line react-hooks/exhaustive-deps
-  const sim = useMemo(() => compute(m), [m])
+  const now = useMemo(() => run(today), [today])
+  const sim = useMemo(() => run(m), [m])
   const dirty = JSON.stringify(m) !== JSON.stringify(today)
-  const delta = (a: number, bb: number) => (bb > 0 ? ((a - bb) / bb) * 100 : 0)
+  const chg = (a: number, b: number) => (b > 0 ? ((a - b) / b) * 100 : 0)
+
+  // The five funnel knobs, in order. Each row: what it does, the rate, the
+  // people who survive it.
+  const steps: { n: number; label: string; key: keyof Model; out: number; wasOut: number; wasRate: number }[] = [
+    { n: 2, label: 'start the quiz',        key: 'toStart',    out: sim.started,   wasOut: now.started,   wasRate: today.toStart },
+    { n: 3, label: 'complete the quiz',     key: 'toComplete', out: sim.completed, wasOut: now.completed, wasRate: today.toComplete },
+    { n: 4, label: 'click checkout',        key: 'toCheckout', out: sim.checkout,  wasOut: now.checkout,  wasRate: today.toCheckout },
+    { n: 5, label: 'pay · net-new trial',   key: 'toPaid',     out: sim.netNew,    wasOut: now.netNew,    wasRate: today.toPaid },
+  ]
 
   return (
     <div>
@@ -145,28 +95,21 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
 
       <div className="ac-bento" style={{ border: '2px solid #333333', background: '#FFFFFF' }}>
         <style>{`
+          .ac-simrow { display: grid; grid-template-columns: 26px 1fr 210px 110px 64px; align-items: center; gap: 12px; }
           @media (max-width: 900px) {
             .ac-bento .ac-kpis { grid-template-columns: 1fr !important; }
             .ac-bento .ac-kpis > div + div { border-left: none !important; border-top: 1px solid #333333; }
-            .ac-bento .ac-split { grid-template-columns: 1fr !important; }
-            .ac-bento .ac-split > div { border-right: none !important; }
-            .ac-bento .ac-split > div + div { border-top: 1px solid #333333; }
+            .ac-simrow { grid-template-columns: 22px 1fr 92px; row-gap: 6px; }
+            .ac-simrow .ac-simslider { grid-column: 2 / -1; }
+            .ac-simrow .ac-simdelta { display: none; }
           }
         `}</style>
 
-        {/* The two answers. Everything below exists to move these. */}
+        {/* The two answers */}
         <div className="grid ac-kpis" style={{ gridTemplateColumns: '1fr 1fr' }}>
           {[
-            {
-              label: 'Expected net-new trials', v: Math.round(sim.netNew).toLocaleString(),
-              was: Math.round(now.netNew).toLocaleString(), d: delta(sim.netNew, now.netNew),
-              hint: 'per month, at these rates', dark: true,
-            },
-            {
-              label: 'Expected pipeline', v: money(sim.pipeline),
-              was: money(now.pipeline), d: delta(sim.pipeline, now.pipeline),
-              hint: `net-new x ${money(m.annual)} x ${pct(m.trialToAnnual)} trial conversion`, dark: false,
-            },
+            { label: 'Net-new trials', v: Math.round(sim.netNew).toLocaleString(), was: Math.round(now.netNew).toLocaleString(), d: chg(sim.netNew, now.netNew), hint: 'people who take the quiz and pay', dark: true },
+            { label: 'Pipeline', v: money(sim.pipeline), was: money(now.pipeline), d: chg(sim.pipeline, now.pipeline), hint: `net-new x ${money(m.annual)} x ${pct(m.trialToAnnual)} that renew`, dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: 20, background: k.dark ? '#333333' : 'transparent', borderLeft: i ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
@@ -180,105 +123,106 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
           ))}
         </div>
 
-        {/* The funnel, with each step rate draggable in place. */}
+        {/* The five knobs */}
         <div style={{ borderTop: '1px solid #333333' }}>
           <div className="flex items-center justify-between" style={{ padding: '10px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}`, gap: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>The funnel · drag any rate</span>
-            <span style={{ fontSize: 10, color: '#6B6B6B' }}>right column = today&apos;s count, or the change vs today</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Adjust the funnel</span>
+            <span style={{ fontSize: 10, color: '#6B6B6B' }}>defaults = the live funnel since {baseline.windowStart || 'launch'}</span>
           </div>
 
-          <div style={{ padding: '18px 20px 22px' }}>
-            <label className="flex items-center" style={{ gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Landing views / month</span>
-              <span className="inline-flex items-center" style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
+          <div style={{ padding: '14px 20px 18px' }}>
+            {/* 1 · how many people in */}
+            <div className="ac-simrow" style={{ padding: '10px 0', borderBottom: `1px solid ${ROWHAIR}` }}>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: '#FFFFFF', background: INK, width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', ...tnum }}>1</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>People in</span>
+              <span className="ac-simslider inline-flex items-center" style={{ border: '1px solid #333333', background: '#FFFFFF', width: 'fit-content' }}>
                 <input
-                  type="number" min={0} step={100} value={m.visitors}
-                  onChange={e => set('visitors', Math.max(0, Number(e.target.value)))}
-                  style={{ width: 100, padding: '5px 8px', fontSize: 12.5, fontWeight: 800, border: 'none', outline: 'none', background: 'transparent', color: INK, ...tnum }}
+                  type="number" min={0} step={100} value={m.people}
+                  onChange={e => set('people', Math.max(0, Number(e.target.value)))}
+                  style={{ width: 110, padding: '5px 9px', fontSize: 13, fontWeight: 800, border: 'none', outline: 'none', background: 'transparent', color: INK, ...tnum }}
                 />
               </span>
-              <span style={{ fontSize: 10.5, color: MUTE, ...tnum }}>today {today.visitors.toLocaleString()}</span>
-            </label>
+              <span style={{ fontSize: 15, fontWeight: 800, color: INK, textAlign: 'right', ...tnum }}>{Math.round(m.people).toLocaleString()}</span>
+              <span className="ac-simdelta" style={{ fontSize: 10, color: MUTE, textAlign: 'right', ...tnum }}>{today.people.toLocaleString()}</span>
+            </div>
 
-            <Station label="Landing views" n={m.visitors} was={today.visitors} top={m.visitors} />
-            <StepRate label="→ start the quiz" value={m.s1} onChange={v => set('s1', v)} baseline={b.s1} />
-            <Station label="Quiz started" n={sim.started} was={now.started} top={m.visitors} />
-            <StepRate label="→ complete it" value={m.s2} onChange={v => set('s2', v)} baseline={b.s2} />
-            <Station label="Quiz completed" n={sim.completed} was={now.completed} top={m.visitors} />
-            <StepRate label="→ click checkout" value={m.s3} onChange={v => set('s3', v)} baseline={b.s3} />
-            <Station label="Checkout clicked" n={sim.checkout} was={now.checkout} top={m.visitors} />
-            <StepRate label="→ pay the $4.99" value={m.s4} onChange={v => set('s4', v)} baseline={b.s4} />
-            <Station label="Net-new trials" n={sim.netNew} was={now.netNew} top={m.visitors} warm />
+            {/* 2-5 · the four conversion steps */}
+            {steps.map(s => {
+              const v = m[s.key] as number
+              const d = chg(s.out, s.wasOut)
+              return (
+                <div key={s.key} className="ac-simrow" style={{ padding: '10px 0', borderBottom: `1px solid ${ROWHAIR}` }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: '#FFFFFF', background: INK, width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', ...tnum }}>{s.n}</span>
+                  <span style={{ fontSize: 12.5, color: INK }}>
+                    <strong style={{ fontWeight: 700 }}>{pct(v)}</strong> {s.label}
+                    <span style={{ fontSize: 10, color: MUTE, marginLeft: 6, ...tnum }}>today {pct(s.wasRate)}</span>
+                  </span>
+                  <input
+                    className="ac-simslider"
+                    type="range" min={0} max={100} step={0.5} value={v}
+                    onChange={e => set(s.key, Number(e.target.value) as Model[typeof s.key])}
+                    aria-label={s.label}
+                    style={{ width: '100%', accentColor: s.n === 5 ? ASPARAGUS : AZUL }}
+                  />
+                  <span style={{ fontSize: 15, fontWeight: 800, color: s.n === 5 ? '#2D6A26' : INK, textAlign: 'right', ...tnum }}>{Math.round(s.out).toLocaleString()}</span>
+                  <span className="ac-simdelta" style={{ fontSize: 10, fontWeight: 800, textAlign: 'right', color: Math.abs(d) < 0.5 ? MUTE : d > 0 ? ASPARAGUS : RED, ...tnum }}>
+                    {Math.abs(d) < 0.5 ? Math.round(s.wasOut).toLocaleString() : `${d > 0 ? '+' : ''}${Math.round(d)}%`}
+                  </span>
+                </div>
+              )
+            })}
 
-            <div className="flex" style={{ gap: 22, marginTop: 18, paddingTop: 14, borderTop: `1px solid ${ROWHAIR}`, flexWrap: 'wrap' }}>
+            {/* the two economics knobs, same row shape */}
+            <div className="ac-simrow" style={{ padding: '10px 0', borderBottom: `1px solid ${ROWHAIR}` }}>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: '#FFFFFF', background: FULVOUS_DARK, width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>$</span>
+              <span style={{ fontSize: 12.5, color: INK }}>
+                <strong style={{ fontWeight: 700 }}>{pct(m.trialToAnnual)}</strong> of trials renew at {money(m.annual)}
+                <span style={{ fontSize: 10, color: MUTE, marginLeft: 6 }}>observed {pct(baseline.renewalRate * 100)}</span>
+              </span>
+              <input
+                className="ac-simslider"
+                type="range" min={0} max={100} step={1} value={m.trialToAnnual}
+                onChange={e => set('trialToAnnual', Number(e.target.value))}
+                aria-label="Trials that renew"
+                style={{ width: '100%', accentColor: FULVOUS_DARK }}
+              />
+              <span style={{ fontSize: 15, fontWeight: 800, color: FULVOUS_DARK, textAlign: 'right', ...tnum }}>{money(sim.pipeline)}</span>
+              <span className="ac-simdelta" style={{ fontSize: 10, color: MUTE, textAlign: 'right' }}>pipeline</span>
+            </div>
+
+            <div className="flex" style={{ gap: 22, marginTop: 16, flexWrap: 'wrap' }}>
               <div>
                 <div style={eyebrow}>Result-page CVR</div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: INK, marginTop: 3, ...tnum }}>{pct(sim.resultCvr)}<span style={{ fontSize: 10.5, color: MUTE, fontWeight: 600 }}> · today {pct(now.resultCvr)}</span></div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: INK, marginTop: 3, ...tnum }}>
+                  {pct(sim.resultCvr)}<span style={{ fontSize: 10.5, color: MUTE, fontWeight: 600 }}> · today {pct(now.resultCvr)}</span>
+                </div>
               </div>
               <div>
                 <div style={eyebrow}>Full-funnel CVR</div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: INK, marginTop: 3, ...tnum }}>{pct(sim.fullCvr)}<span style={{ fontSize: 10.5, color: MUTE, fontWeight: 600 }}> · today {pct(now.fullCvr)}</span></div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: INK, marginTop: 3, ...tnum }}>
+                  {pct(sim.fullCvr)}<span style={{ fontSize: 10.5, color: MUTE, fontWeight: 600 }}> · today {pct(now.fullCvr)}</span>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* What a trial is worth. */}
-        <div style={{ borderTop: '1px solid #333333' }}>
-          <div style={{ padding: '10px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>What a trial turns into</span>
-          </div>
-          <div className="grid ac-split" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <div style={{ padding: '16px 20px 20px', borderRight: '1px solid #333333' }}>
-              <div className="flex items-baseline" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Trials that convert to the annual plan</span>
-                <span style={{ fontSize: 15, fontWeight: 800, color: AZUL, ...tnum }}>{pct(m.trialToAnnual)}</span>
-              </div>
-              <input
-                type="range" min={0} max={100} step={1} value={m.trialToAnnual}
-                onChange={e => set('trialToAnnual', Number(e.target.value))}
-                aria-label="Trial to annual conversion"
-                style={{ width: '100%', maxWidth: 420, marginTop: 7, accentColor: AZUL }}
-              />
-              <div style={{ fontSize: 10.5, color: MUTE, marginTop: 5 }}>
-                observed so far {pct(baseline.renewalRate * 100)} - - understated, since many trials have not reached day 28 yet
-              </div>
-
-              <label className="flex items-center" style={{ gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Annual price</span>
-                <span className="inline-flex items-center" style={{ border: '1px solid #333333', background: '#FFFFFF' }}>
+              <div>
+                <div style={eyebrow}>Annual price</div>
+                <span className="inline-flex items-center" style={{ border: '1px solid #333333', background: '#FFFFFF', marginTop: 3 }}>
                   <span style={{ fontSize: 11, color: MUTE, paddingLeft: 7 }}>$</span>
                   <input
                     type="number" min={0} step={5} value={m.annual}
                     onChange={e => set('annual', Math.max(0, Number(e.target.value)))}
-                    style={{ width: 84, padding: '5px 8px', fontSize: 12.5, fontWeight: 800, border: 'none', outline: 'none', background: 'transparent', color: INK, ...tnum }}
+                    style={{ width: 78, padding: '4px 8px', fontSize: 12.5, fontWeight: 800, border: 'none', outline: 'none', background: 'transparent', color: INK, ...tnum }}
                   />
                 </span>
-              </label>
-            </div>
-
-            <div style={{ padding: '16px 20px 20px' }}>
-              <div style={{ ...panelTitle, marginBottom: 10 }}>How pipeline is calculated</div>
-              <p style={{ fontSize: 12, color: '#4A4A4A', lineHeight: 1.6, margin: 0, textWrap: 'pretty' }}>
-                <strong style={{ color: INK }}>{Math.round(sim.netNew).toLocaleString()}</strong> net-new trials
-                {' x '}<strong style={{ color: INK }}>{money(m.annual)}</strong>
-                {' x '}<strong style={{ color: INK }}>{pct(m.trialToAnnual)}</strong> that convert
-                {' = '}<strong style={{ color: FULVOUS_DARK }}>{money(sim.pipeline)}</strong> a month.
-              </p>
-              <p style={{ fontSize: 11.5, color: '#4A4A4A', lineHeight: 1.55, margin: '10px 0 0', textWrap: 'pretty' }}>
-                Result-page CVR is only the last two steps multiplied:{' '}
-                <strong style={{ color: INK }}>{pct(m.s3)} x {pct(m.s4)} = {pct(sim.resultCvr)}</strong>.
-                Those two are where the page can move the number - - the first two are traffic and quiz quality.
-              </p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div style={{ borderTop: `1px solid ${HAIR}`, padding: '10px 20px', fontSize: 9.5, color: MUTE }}>
-          baseline from the live funnel since {baseline.windowStart || '—'} ({baseline.days} days):{' '}
-          {baseline.landing.toLocaleString()} landing &rarr; {baseline.started.toLocaleString()} started &rarr;{' '}
-          {baseline.completed.toLocaleString()} completed &rarr; {baseline.checkout.toLocaleString()} checkout &rarr;{' '}
-          {baseline.paid.toLocaleString()} paid. One cohort, one window, so every step rate is ≤ 100%.
+        <div style={{ borderTop: `1px solid ${HAIR}`, padding: '10px 20px', fontSize: 9.5, color: MUTE, ...tnum }}>
+          Live funnel since {baseline.windowStart || '—'} ({baseline.days} days): {baseline.landing.toLocaleString()} in &rarr;{' '}
+          {baseline.started.toLocaleString()} started &rarr; {baseline.completed.toLocaleString()} completed &rarr;{' '}
+          {baseline.checkout.toLocaleString()} checkout &rarr; {baseline.paid.toLocaleString()} paid ({money(baseline.revenue)}).
+          Same window and counting rule as the dashboard, so untouched this page matches its All column.
         </div>
       </div>
     </div>

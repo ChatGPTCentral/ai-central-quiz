@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { LAUNCH_ISO } from '@/lib/dashboard-queries'
 import Simulator from './Simulator.client'
 
 // Revenue simulator — the live funnel as the baseline, then drag each step rate
@@ -17,6 +18,7 @@ export interface Baseline {
   completed: number
   checkout: number
   paid: number
+  revenue: number
   days: number
   windowStart: string
   /** Share of trial buyers who carry a subscription — the trial→annual rate. */
@@ -24,7 +26,7 @@ export interface Baseline {
 }
 
 async function loadBaseline(): Promise<Baseline> {
-  const fallback: Baseline = { landing: 0, started: 0, completed: 0, checkout: 0, paid: 0, days: 30, windowStart: '', renewalRate: 0.25 }
+  const fallback: Baseline = { landing: 0, started: 0, completed: 0, checkout: 0, paid: 0, revenue: 0, days: 30, windowStart: '', renewalRate: 0.25 }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) return fallback
@@ -32,13 +34,10 @@ async function loadBaseline(): Promise<Baseline> {
   try {
     const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
 
-    // The window opens when tracking did — before that we have submissions but
-    // no events, which is exactly what produced the impossible rates.
-    const { data: firstEv } = await c
-      .from('funnel_events').select('ts').eq('event', 'quiz_view')
-      .order('ts', { ascending: true }).limit(1).maybeSingle()
-    const t0 = (firstEv as { ts?: string } | null)?.ts
-    if (!t0) return fallback
+    // Same window as the dashboard (LAUNCH_ISO), so at default settings this
+    // page reproduces the dashboard's "All" column exactly. If the two ever
+    // disagree, one of them is wrong — and that is the whole point.
+    const t0 = `${LAUNCH_ISO}T00:00:00Z`
 
     const uniq = { landing: new Set<string>(), started: new Set<string>(), checkout: new Set<string>() }
     const PAGE = 1000
@@ -61,11 +60,11 @@ async function loadBaseline(): Promise<Baseline> {
     }
 
     // Submissions over the SAME window, real rows only.
-    const subs: { created_at: string | null; stripe_first_charge_at: string | null; stripe_subscriptions: unknown }[] = []
+    const subs: { created_at: string | null; stripe_first_charge_at: string | null; stripe_subscriptions: unknown; lifetime_value_usd: number | null }[] = []
     for (let offset = 0; offset < 80_000; offset += PAGE) {
       const { data, error } = await c
         .from('submissions')
-        .select('created_at, stripe_first_charge_at, stripe_subscriptions')
+        .select('created_at, stripe_first_charge_at, stripe_subscriptions, lifetime_value_usd')
         .eq('source', 'quiz_v2')
         .is('archived_at', null)
         .not('is_test', 'is', true)
@@ -92,6 +91,7 @@ async function loadBaseline(): Promise<Baseline> {
       completed: subs.length,
       checkout: uniq.checkout.size,
       paid: paid.length,
+      revenue: paid.reduce((a, r) => a + (r.lifetime_value_usd || 0), 0),
       days,
       windowStart: t0.slice(0, 10),
       renewalRate: paid.length > 0 ? withSub.length / paid.length : 0.25,

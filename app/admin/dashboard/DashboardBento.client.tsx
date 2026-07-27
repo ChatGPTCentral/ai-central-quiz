@@ -60,8 +60,27 @@ const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 /** CTA placement thumbnail — the actual component shown, screenshotted into
  *  public/admin-placements/<placement>.png. Falls back to a clean "no preview"
  *  tile for placements we haven't captured (or that only render mid-video). */
+/** Plain names for the CTA placements. The raw keys are implementation detail
+ *  ("v2_offer_bar"); this table is read to decide which button to keep. */
+const PLACEMENT_NAME: Record<string, string> = {
+  v2_offer_stack: 'Offer stack',
+  v2_offer_stack_badges: 'Offer stack · pay marks',
+  v2_offer_bar: 'Sticky bottom bar',
+  v2_offer_bar_banner: 'Sticky bottom bar · whole strip',
+  v2_video_cta: 'Under the video',
+  v2_study_plan: 'Study plan',
+  v2_study_plan_badges: 'Study plan · pay marks',
+  v2_social_marquee: 'Reviews marquee',
+  v2_fomo_notification: 'Trial notification',
+  v2_embedded_fallback: 'Checkout modal · classic-checkout link',
+  v2_free_win_prompt: 'Free win · prompt',
+  v2_free_win_tutorial: 'Free win · tutorial',
+  v2_result_pass: 'Member pass',
+}
 function humanizePlacement(p: string): string {
-  return p.replace(/^v2_/, '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()).trim() || p
+  return PLACEMENT_NAME[p]
+    || p.replace(/^v2_/, '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()).trim()
+    || p
 }
 function PlacementThumb({ placement }: { placement: string }) {
   const [failed, setFailed] = useState(false)
@@ -383,7 +402,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             { label: 'Result-page CVR', v: `${cvr.toFixed(1)}%`, hint: `net-new ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
             { label: 'Net-new paid', v: netNewPeople.length.toLocaleString(), hint: 'first-ever charge AFTER their quiz', dark: false },
             { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: 'sum of payments from net-new people', dark: false },
-            { label: 'ARPU', v: netNewPeople.length > 0 ? `$${(quizRevenue / netNewPeople.length).toFixed(2)}` : '–', hint: 'quiz revenue ÷ net-new paid', dark: false },
+            { label: 'ARPU', v: takers > 0 ? `$${(quizRevenue / takers).toFixed(2)}` : '–', hint: `quiz revenue ÷ ${takers.toLocaleString()} quiz takers`, dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: '18px 18px', background: k.dark ? '#333333' : 'transparent', borderLeft: i > 0 ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
@@ -504,19 +523,19 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
         {/* ── Row 7 · CTA placements with the component that was shown ── */}
         <div style={{ borderTop: '1px solid #333333' }}>
           <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>CTA view → click by placement</span>
-            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>unique viewers vs clickers, since Jul 5</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Which CTA gets clicked</span>
+            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>of the people who SAW each button, how many clicked it · since Jul 5</span>
           </div>
           <div className="ac-scrollx"><div>
           <div className="grid" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
-            <span style={{ padding: '8px 0' }}>Shown</span><span style={{ padding: '8px 0' }}>Placement</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Viewers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clickers</span><span style={{ padding: '8px 0', textAlign: 'right' }}>CTR</span>
+            <span style={{ padding: '8px 0' }}>Shown</span><span style={{ padding: '8px 0' }}>Button</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Saw it</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clicked</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Rate</span>
           </div>
           {placements.length === 0 && <p style={{ padding: '10px 20px', fontSize: 12, color: MUTE }}>No placement events yet.</p>}
           {placements.map(p => (
             <div key={p.placement} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '6px 20px' }}>
               <PlacementThumb placement={p.placement} />
-              <span className="flex items-center" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: INK, gap: 8, minWidth: 0 }}>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.placement}</span>
+              <span className="flex items-center" style={{ fontSize: 12, fontWeight: 600, color: INK, gap: 8, minWidth: 0 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.placement}>{humanizePlacement(p.placement)}</span>
                 {bestCtr === p.placement && <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', background: '#E7B02F', color: '#333333', padding: '1px 6px', flexShrink: 0 }}>Best</span>}
               </span>
               <span style={{ textAlign: 'right', ...tnum }}>{p.views > 0 ? p.views.toLocaleString() : '–'}</span>
