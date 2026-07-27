@@ -22,7 +22,8 @@ import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
-import { LibraryMarquee } from '@/components/result2/LibraryMarquee'
+import { LibraryGrid } from '@/components/result2/LibraryGrid'
+import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
@@ -472,13 +473,21 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
 
-        {/* Show the goods before the proof: a wall of real covers makes
-            "1,200+ tutorials" concrete in a way the number never can. */}
-        <LibraryMarquee checkoutUrl={checkoutUrl} submissionId={rowId} />
+        {/* Show the goods before the proof: real covers make "1,200+ tutorials"
+            concrete in a way the number never can. Grouped by category rather
+            than scrolled past as a marquee, so people find THEIR use case
+            instead of watching covers go by. LibraryMarquee stays in the repo
+            as the challenger arm for the next test. */}
+        <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
 
         {/* ── Reviews → your plan → the pass reward ── */}
         {reviewsSection}
         {studyPlanSection}
+
+        {/* Last objection, answered at the last decision point: everyone who
+            reached the bottom of the plan and did not click is holding a
+            "what if I get stuck with a renewal" worry, not a value worry. */}
+        <RiskFree checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA_LABEL)} />
 
         {/* ── THE PASS · the reward, before the housekeeping ──────────── */}
         {passSection}
