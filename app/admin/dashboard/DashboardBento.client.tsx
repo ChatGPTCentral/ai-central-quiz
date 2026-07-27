@@ -196,32 +196,6 @@ function labelBucket(b: string, gran: Gran): string {
 const STEP_TABS: (Gran | 'all')[] = ['day', 'week', 'month', 'all']
 const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', month: 'M', all: 'All' }
 
-/** Horizontal funnel: one bar per station, width ∝ count, the count read out
- *  right before its label ("870 Landing view"). No intermediate rates. */
-function FunnelBars({ stations }: { stations: { label: string; n: number; last?: boolean }[] }) {
-  const top = Math.max(stations[0]?.n || 0, 1)
-  const SHADES = ['#046BB1', 'rgba(4,107,177,0.82)', 'rgba(4,107,177,0.64)', 'rgba(4,107,177,0.46)']
-  return (
-    <div style={{ padding: '18px 24px 22px' }}>
-      {stations.map((s, i) => {
-        const w = Math.max((s.n / top) * 100, 1.5)
-        const fill = s.last ? '#62A758' : SHADES[Math.min(i, SHADES.length - 1)]
-        return (
-          <div key={s.label} className="flex items-center" style={{ gap: 12, marginBottom: i < stations.length - 1 ? 13 : 0 }}>
-            <span className="flex items-baseline" style={{ width: 150, flexShrink: 0, gap: 7 }}>
-              <strong style={{ fontSize: 16, fontWeight: 800, color: s.last ? '#2D6A26' : INK, ...tnum }}>{s.n.toLocaleString()}</strong>
-              <span style={{ fontSize: 11.5, color: '#4A4A4A', whiteSpace: 'nowrap' }}>{s.label}</span>
-            </span>
-            <div style={{ flex: 1, height: 26, background: TRACK, position: 'relative', minWidth: 0 }}>
-              <div style={{ position: 'absolute', inset: '0 auto 0 0', width: `${w}%`, background: fill }} />
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 /** Volume matrix — the funnel repeated per period as a heat table.
  *  Rows are stations (counts, not rates); cell tint is the count relative to
  *  that station's best period, so a column reads as its own little funnel and a
@@ -346,21 +320,13 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
 
   const filtDef = stageFilter ? ladderDefs.find(d => d.key === stageFilter) : null
 
-  // ── Funnel stations: one Jul-5 window; completed + paid come from the SAME
-  //    rows as every KPI above (whole cohort, not the stage slice). ──
+  // ── Canonical funnel node counts: ONE value per node, so every step CVR and
+  //    the full-funnel CVR reconcile (product of steps === paid/landing).
+  //    Landing/started/checkout are unique actors; completed is the submission
+  //    count; paid is net-new. Completed + paid come from the SAME rows as every
+  //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
-  // Canonical funnel node counts — ONE value per node, so every step CVR and the
-  // full-funnel CVR reconcile (product of steps === paid/landing). Landing/
-  // started/checkout are unique actors; completed is the submission count; paid
-  // is net-new. Used by the funnel bars AND the step charts' "All" totals.
   const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew }
-  const stations = [
-    { label: 'Landing view', n: F.landing, last: false },
-    { label: 'Quiz started', n: F.started, last: false },
-    { label: 'Quiz completed', n: F.completed, last: false },
-    { label: 'Checkout clicked', n: F.checkout, last: false },
-    { label: 'Net-new paid', n: F.paid, last: true },
-  ]
   const fullFunnelCvr = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
   const hasSeries = series.week.length > 0 || series.day.length > 0
 
@@ -422,29 +388,12 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
           ))}
         </div>
 
-        {/* ── Row 2a · the static funnel, half width ── */}
-        <div className="grid ac-split" style={{ gridTemplateColumns: '1fr 1fr', borderTop: '1px solid #333333' }}>
-          <div style={{ borderRight: '1px solid #333333' }}>
-            <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>The funnel · since Jul 5</span>
-              <span style={{ fontSize: 10, color: '#6B6B6B' }}>count then stage · unique actors</span>
-            </div>
-            <FunnelBars stations={stations} />
-          </div>
-          <div style={{ padding: '18px 24px', minWidth: 0 }}>
-            <div style={{ ...panelTitle, marginBottom: 10 }}>How to read this</div>
-            <p style={{ fontSize: 11.5, color: '#4A4A4A', lineHeight: 1.5, margin: 0, textWrap: 'pretty' }}>
-              Every node is counted one way, so the step rates and the full-funnel CVR reconcile.
-              Landing, started and checkout are unique actors; completed is the submission count;
-              paid is net-new. The matrix below repeats this same funnel for each period.
-            </p>
-          </div>
-        </div>
-
-        {/* ── Row 2b · the same funnel per period, full width ── */}
+        {/* ── Row 2 · the funnel, per period. The static bar funnel that used to
+               sit above this was redundant: the matrix's "All window" column is
+               the same five numbers, so it stays as the single source. ── */}
         <div style={{ borderTop: '1px solid #333333' }}>
           <div className="flex items-center justify-between" style={{ padding: '9px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}`, gap: 8 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Funnel per period</span>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>Funnel per period · since Jul 5</span>
             <div className="inline-flex" style={{ border: '1px solid #333333', flexShrink: 0 }}>
               {STEP_TABS.map((g, i) => (
                 <button key={g} onClick={() => setTrendGran(g)} style={{ padding: '3px 9px', fontSize: 11, fontWeight: 800, borderLeft: i ? '1px solid #333333' : 'none', background: trendGran === g ? '#333333' : 'transparent', color: trendGran === g ? '#FFFDFA' : '#6B6B6B', cursor: 'pointer' }}>
