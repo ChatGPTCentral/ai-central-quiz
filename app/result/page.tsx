@@ -280,6 +280,16 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // no-op and the page renders exactly as before.
   const ov = (slot: string, current: string) => (overrides[slot] != null ? p(overrides[slot]) : current)
 
+  // ── result_sellfirst_v1 · structural arm ────────────────────────────
+  // One hypothesis in three moves: stop making people watch a video before
+  // they can see what they get and what it costs. The plan (best-converting
+  // CTA) and the offer come first, the video drops to an optional tour.
+  // Structural, so it cannot ride the copy-slot engine — it reads the assigned
+  // variant directly. ?xv=sellfirst previews it without recording an exposure.
+  const sellFirst =
+    previewVar.includes('sellfirst') ||
+    assignments.some(a => a.experimentKey === 'result_sellfirst_v1' && a.variantKey === 'sellfirst')
+
   // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
   // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
   // beehiiv link 1:1); 'link' arm: unchanged, navigates to the beehiiv link.
@@ -318,6 +328,77 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these four.
           </p>
         </div>
+      </div>
+    </section>
+  )
+
+  // ── result_sellfirst_v1 · the sections that move ────────────────────
+  // The video block, factored out so both arms render the SAME embed. Autoplay
+  // is a parameter, not a constant: in the challenger the video sits six
+  // sections down, where autoplaying on load would burn the visitor's data on
+  // a video that finishes before they ever scroll to it.
+  const videoBlock = (autoplay: boolean) => (
+    <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#000', position: 'relative', paddingBottom: '56.25%', height: 0 }}>
+      <iframe
+        src={`https://www.youtube-nocookie.com/embed/${VIDEO_ID}?rel=0&playsinline=1${autoplay ? '&autoplay=1&mute=1' : ''}`}
+        title="Introducing the Ultimate AI Library from AI Central"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allowFullScreen
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+      />
+    </div>
+  )
+
+  // The offer. `withVideo` is the whole experiment in one flag: control puts
+  // the 4-minute video in front of the price, the challenger does not.
+  const offerSection = (withVideo: boolean) => (
+    <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
+      <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
+        <Eyebrow>The unfair advantage</Eyebrow>
+        <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+          Wanna climb to the top 1%? Here&rsquo;s how
+        </h2>
+        <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+          Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
+        </p>
+
+        {/* Their own answer, quoted back. Renders only for people who
+            answered the cost question (NULL on pre-launch rows). */}
+        {cost && (
+          <div className="mt-6" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
+            <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
+          </div>
+        )}
+
+        {withVideo && videoBlock(true)}
+
+        <OfferStack
+          checkoutUrl={checkoutUrl}
+          submissionId={rowId}
+          rungClassName={rung.className}
+          ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+        />
+
+        {/* Live trial notifications sit UNDER the pay buttons, not over the
+            video: social proof lands hardest at the moment of decision. */}
+        <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
+      </div>
+    </section>
+  )
+
+  // Challenger only: the video, demoted to an optional tour after the proof.
+  const videoTourSection = (
+    <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
+      <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
+        <Eyebrow>The full tour</Eyebrow>
+        <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+          Prefer to see it first? Four minutes
+        </h2>
+        <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+          A walk through the library, the templates and how members actually use it day to day.
+        </p>
+        {videoBlock(false)}
       </div>
     </section>
   )
@@ -428,65 +509,35 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </section>
         )}
 
-        {/* ── 2 · THE VIDEO + instant offer + live trials ───────────── */}
-        <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
-          <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
-            <Eyebrow>The unfair advantage</Eyebrow>
-            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              Wanna climb to the top 1%? Here&rsquo;s how
-            </h2>
-            <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
-              Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
-            </p>
-
-            {/* Their own answer, quoted back. Renders only for people who
-                answered the cost question (NULL on pre-launch rows). */}
-            {cost && (
-              <div className="mt-6" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
-                <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
-              </div>
-            )}
-
-            <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#000', position: 'relative', paddingBottom: '56.25%', height: 0 }}>
-              <iframe
-                src={`https://www.youtube-nocookie.com/embed/${VIDEO_ID}?rel=0&autoplay=1&mute=1&playsinline=1`}
-                title="Introducing the Ultimate AI Library from AI Central"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                referrerPolicy="strict-origin-when-cross-origin"
-                allowFullScreen
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
-              />
-            </div>
-
-            {/* The offer stack, right where the post-video intent lands. */}
-            <OfferStack
-              checkoutUrl={checkoutUrl}
-              submissionId={rowId}
-              rungClassName={rung.className}
-              ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
-            />
-
-            {/* Live trial notifications sit UNDER the pay buttons, not over the
-                video: social proof lands hardest at the moment of decision, and
-                it no longer covers the thing we want people to watch. */}
-            <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
-          </div>
-        </section>
-
-        {/* Show the goods before the proof: real covers make "1,200+ tutorials"
-            concrete in a way the number never can. Grouped by category rather
-            than scrolled past as a marquee, so people find THEIR use case
-            instead of watching covers go by. LibraryMarquee stays in the repo
-            as the challenger arm for the next test. */}
-        <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
-
-        {/* ── Reviews → your plan → the pass reward ── */}
-        {reviewsSection}
-        {studyPlanSection}
+        {/* ── 2+ · body order · the result_sellfirst_v1 arms ──────────────
+            control:    video+offer → grid → reviews → plan → guarantee
+            sellfirst:  plan → offer (no video) → grid → reviews → tour →
+                        guarantee
+            Every section is identical between arms, only the order and the
+            video's position change, so a win is attributable to the order. */}
+        {sellFirst ? (
+          <>
+            {studyPlanSection}
+            {offerSection(false)}
+            <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
+            {reviewsSection}
+            {videoTourSection}
+          </>
+        ) : (
+          <>
+            {offerSection(true)}
+            {/* Show the goods before the proof: real covers make "1,200+
+                tutorials" concrete in a way the number never can, grouped by
+                category so people find THEIR use case. */}
+            <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
+            {reviewsSection}
+            {studyPlanSection}
+          </>
+        )}
 
         {/* Last objection, answered at the last decision point: everyone who
-            reached the bottom of the plan and did not click is holding a
-            "what if I get stuck with a renewal" worry, not a value worry. */}
+            reached the bottom and did not click is holding a "what if I get
+            stuck with a renewal" worry, not a value worry. */}
         <RiskFree checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA_LABEL)} />
 
         {/* ── THE PASS · the reward, before the housekeeping ──────────── */}
