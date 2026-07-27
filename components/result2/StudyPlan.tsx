@@ -49,7 +49,13 @@ const DEEP_PLAN: PlanItem[] = [
 
 const cover = (qf: string) => `https://img.tradepub.com/free/${qf}/images/${qf}c4.gif`
 
-/** Progress rail — "1 of 5 unlocked", the game-y bit that makes the wall visible. */
+/** Progress rail — the game-y bit that makes the wall visible.
+ *
+ *  With the free first step off, every row is locked, and the old label read
+ *  "0 OF 5 UNLOCKED": a scoreboard showing zero. That is the wrong frame at
+ *  the top of a plan someone just earned — it scores them rather than showing
+ *  them what is waiting. At zero we name the prize instead. Once anything is
+ *  actually free, the real counter comes back and does its job. */
 function Progress({ unlocked, total }: { unlocked: number; total: number }) {
   return (
     <div className="flex items-center" style={{ gap: 12, marginBottom: 18 }}>
@@ -59,7 +65,7 @@ function Progress({ unlocked, total }: { unlocked: number; total: number }) {
         ))}
       </span>
       <span className="font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.1em', color: RICH, fontWeight: 700, whiteSpace: 'nowrap' }}>
-        {unlocked} of {total} unlocked
+        {unlocked > 0 ? `${unlocked} of ${total} unlocked` : `${total} steps waiting`}
       </span>
     </div>
   )
@@ -101,7 +107,12 @@ export function StudyPlan({
               }}
               aria-hidden
             >
-              {locked ? '🔒' : '1'}
+              {/* The step NUMBER, not a padlock. Five identical locks down the
+                  rail read as five copies of the word "no"; numbers read as a
+                  route with five stops. The locked state is still unmistakable
+                  (grey cover, muted title, the lock on the label line), it just
+                  is not the only thing the rail says. */}
+              {locked ? i + 1 : '1'}
             </span>
             {i < plan.length - 1 && <span className="flex-1 mt-1" style={{ width: 3, backgroundColor: '#E3DED4' }} aria-hidden />}
           </span>
@@ -131,7 +142,7 @@ export function StudyPlan({
             />
             <span className="min-w-0 flex-1">
               <span className="block" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.1em', color: locked ? MUTE : GREEN }}>
-                {weeks[i].toUpperCase()}{locked ? ' · IN THE LIBRARY' : ' · FREE, NO CARD'}
+                {weeks[i].toUpperCase()}{locked ? ' · 🔒 IN THE LIBRARY' : ' · FREE, NO CARD'}
               </span>
               <span className="block mt-1" style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.25, color: locked ? '#6E675A' : RICH }}>{t.title}</span>
               <span className="block mt-1" style={{ fontSize: 12.5, lineHeight: 1.45, color: BODY, fontWeight: 300 }}>{t.desc}</span>
