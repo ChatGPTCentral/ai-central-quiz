@@ -68,28 +68,42 @@ export default function PayBadges({
     if (mode === 'embedded') { e.preventDefault(); open() }
   }
 
+  // Each brand's OWN button, not ours. No ink border, no square corners, no
+  // AI Central styling: the whole value of these is that people recognise them
+  // instantly from a thousand other checkouts, and restyling them throws that
+  // recognition away.
   const btn: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    height: 46, flex: '1 1 150px', minWidth: 140, maxWidth: 230,
-    border: `2px solid ${INK}`, textDecoration: 'none', cursor: 'pointer',
+    height: 46, flex: '1 1 190px', minWidth: 170, maxWidth: 250,
+    textDecoration: 'none', cursor: 'pointer', border: 'none', overflow: 'hidden',
   }
 
   return (
     <div className="flex flex-col items-center w-full" style={{ gap: 8 }}>
-      <div className="flex flex-wrap items-center justify-center w-full" style={{ gap: 8, maxWidth: 470 }}>
+      <div className="flex flex-wrap items-center justify-center w-full" style={{ gap: 10, maxWidth: 500 }}>
         {canApplePay && (
           <a
             href={fallbackUrl}
             onClick={go('apple_pay')}
             aria-label="Pay with Apple Pay"
             className="transition-transform hover:-translate-y-px active:scale-[0.98]"
-            style={{ ...btn, background: '#FFFFFF', border: 'none', overflow: 'hidden' }}
+            // The classic black Apple Pay pill.
+            //
+            // The supplied asset is the MARK, not the button: a white pill with
+            // a black outline and black glyphs. applepay-logo.svg is the same
+            // file with the artboard trimmed inward so the pill outline falls
+            // outside the viewBox, leaving just the glyphs; invert(1) then makes
+            // them white for the black button. Cropping in the viewBox rather
+            // than with a CSS window means no hairline of the old border can
+            // survive at any size.
+            style={{ ...btn, background: '#000000', borderRadius: 8 }}
           >
-            {/* The official mark already IS a bordered pill, so it gets no
-                button chrome of its own — otherwise it renders as a button
-                inside a button. Scaled up to fill the same height as PayPal. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/pay/applepay.svg" alt="Apple Pay" height={46} style={{ display: 'block', height: 46, width: 'auto' }} />
+            <img
+              src="/pay/applepay-logo.svg"
+              alt="Apple Pay"
+              style={{ display: 'block', height: 26, width: 'auto', filter: 'invert(1)' }}
+            />
           </a>
         )}
 
@@ -98,10 +112,11 @@ export default function PayBadges({
           onClick={go('paypal')}
           aria-label="Pay with PayPal"
           className="transition-transform hover:-translate-y-px active:scale-[0.98]"
-          style={{ ...btn, background: PAYPAL_YELLOW }}
+          // PayPal gold, full pill, exactly as their own button ships.
+          style={{ ...btn, background: PAYPAL_YELLOW, borderRadius: 999 }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/pay/paypal.png" alt="PayPal" width={72} height={20} style={{ display: 'block' }} />
+          <img src="/pay/paypal-mark.png" alt="PayPal" width={86} height={24} style={{ display: 'block' }} />
         </a>
       </div>
 
