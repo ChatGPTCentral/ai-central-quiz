@@ -236,34 +236,35 @@ function VolumeMatrix({ series, gran, F }: {
   // arrived than left.
   const step = (n: number, d: number) => (d > 0 ? Math.min(100, (n / d) * 100) : 0)
 
-  // Each station optionally carries the conversion INTO it, rendered as a thin
-  // row directly underneath. Reading top to bottom you get count, rate, count,
-  // rate, so you can see which single step is leaking rather than only the two
-  // end-to-end numbers at the bottom.
+  // Each station carries the conversion OUT of it, rendered as a thin row
+  // directly underneath, so the column multiplies as you read down:
+  //   1,819 → 73% → 1,319 → 72% → 944 → 33% → 312 → …
+  // Every rate sits between the two counts it relates, which is why it hangs
+  // off the SOURCE station rather than the destination.
   const stations: {
     label: string
     pick: (p: SeriesPoint) => number
     tot: number
     warm: boolean
-    into?: { label: string; all: number; per: (p: SeriesPoint) => number }
+    out?: { label: string; all: number; per: (p: SeriesPoint) => number }
   }[] = [
-    { label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false },
+    {
+      label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false,
+      out: { label: 'landing → started', all: step(F.started, F.landing), per: p => step(p.starts, p.views) },
+    },
     {
       label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: F.started, warm: false,
-      into: { label: 'landing → started', all: step(F.started, F.landing), per: p => step(p.starts, p.views) },
+      out: { label: 'started → completed', all: step(F.completed, F.started), per: p => step(p.completed, p.starts) },
     },
     {
       label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: F.completed, warm: false,
-      into: { label: 'started → completed', all: step(F.completed, F.started), per: p => step(p.completed, p.starts) },
+      out: { label: 'completed → clicked', all: step(F.checkout, F.completed), per: p => step(p.checkout, p.completed) },
     },
     {
       label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
-      into: { label: 'completed → clicked', all: step(F.checkout, F.completed), per: p => step(p.checkout, p.completed) },
+      out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
     },
-    {
-      label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true,
-      into: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
-    },
+    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true },
   ]
 
   // 132px station label · 104px all-window total · one 1fr per period
@@ -298,7 +299,7 @@ function VolumeMatrix({ series, gran, F }: {
         const base = s.warm ? '98,167,88' : '4,107,177' // asparagus for paid, azul for the rest
         return (
           <div key={s.label}>
-            <div className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: s.into ? 'none' : `1px solid ${ROWHAIR}` }}>
+            <div className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: s.out ? 'none' : `1px solid ${ROWHAIR}` }}>
               <span className="flex items-center truncate" style={{ padding: '9px 8px 9px 0', fontSize: 10.5, fontWeight: 700, color: INK }}>{s.label}</span>
               <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 0', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
               {ns.map((n, i) => (
@@ -310,20 +311,21 @@ function VolumeMatrix({ series, gran, F }: {
               ))}
             </div>
 
-            {/* The step INTO this station. Deliberately lighter than the two
-                summary rates at the bottom: those are the headline numbers,
-                these are the diagnostic that says which step lost the people. */}
-            {s.into && (
+            {/* The step OUT of this station, sitting between the two counts it
+                relates. Deliberately lighter than the two summary rates at the
+                bottom: those are the headline numbers, these are the diagnostic
+                that says which single step lost the people. */}
+            {s.out && (
               <div className="grid items-center" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
                 <span className="truncate" style={{ padding: '5px 8px 6px 10px', fontSize: 9.5, fontWeight: 700, color: MUTE, letterSpacing: '0.02em' }}>
-                  ↳ {s.into.label}
+                  ↳ {s.out.label}
                 </span>
                 <span style={{ padding: '5px 8px 6px 0', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', ...tnum }}>
-                  {pctDisp(s.into.all)}
+                  {pctDisp(s.out.all)}
                 </span>
                 {buckets.map(p => (
                   <span key={p.bucket} style={{ padding: '5px 4px 6px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#6B6B6B', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                    {pctDisp(s.into!.per(p))}
+                    {pctDisp(s.out!.per(p))}
                   </span>
                 ))}
               </div>
