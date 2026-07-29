@@ -230,12 +230,40 @@ function VolumeMatrix({ series, gran, F }: {
   const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
   const pctDisp = (raw: number) => `${raw < 10 ? raw.toFixed(1) : Math.round(raw)}%`
 
-  const stations = [
+  // Step-to-step rate: the share of the PREVIOUS station that made it here.
+  // Clamped to 100 like the summary rows below — a step rate over 100% means
+  // the two stations are counted over different windows, not that more people
+  // arrived than left.
+  const step = (n: number, d: number) => (d > 0 ? Math.min(100, (n / d) * 100) : 0)
+
+  // Each station optionally carries the conversion INTO it, rendered as a thin
+  // row directly underneath. Reading top to bottom you get count, rate, count,
+  // rate, so you can see which single step is leaking rather than only the two
+  // end-to-end numbers at the bottom.
+  const stations: {
+    label: string
+    pick: (p: SeriesPoint) => number
+    tot: number
+    warm: boolean
+    into?: { label: string; all: number; per: (p: SeriesPoint) => number }
+  }[] = [
     { label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false },
-    { label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: F.started, warm: false },
-    { label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: F.completed, warm: false },
-    { label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false },
-    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true },
+    {
+      label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: F.started, warm: false,
+      into: { label: 'landing → started', all: step(F.started, F.landing), per: p => step(p.starts, p.views) },
+    },
+    {
+      label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: F.completed, warm: false,
+      into: { label: 'started → completed', all: step(F.completed, F.started), per: p => step(p.completed, p.starts) },
+    },
+    {
+      label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
+      into: { label: 'completed → clicked', all: step(F.checkout, F.completed), per: p => step(p.checkout, p.completed) },
+    },
+    {
+      label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true,
+      into: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
+    },
   ]
 
   // 132px station label · 104px all-window total · one 1fr per period
@@ -269,16 +297,37 @@ function VolumeMatrix({ series, gran, F }: {
         const max = Math.max(...ns, 1)
         const base = s.warm ? '98,167,88' : '4,107,177' // asparagus for paid, azul for the rest
         return (
-          <div key={s.label} className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
-            <span className="flex items-center truncate" style={{ padding: '9px 8px 9px 0', fontSize: 10.5, fontWeight: 700, color: INK }}>{s.label}</span>
-            <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 0', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
-            {ns.map((n, i) => (
-              <span key={buckets[i].bucket} className="flex items-center justify-center"
-                title={`${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`}
-                style={{ padding: '9px 2px', margin: 1, fontSize: 9.5, fontWeight: 700, color: INK, background: `rgba(${base},${(0.05 + (n / max) * 0.42).toFixed(2)})`, ...tnum }}>
-                {compact(n)}
-              </span>
-            ))}
+          <div key={s.label}>
+            <div className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: s.into ? 'none' : `1px solid ${ROWHAIR}` }}>
+              <span className="flex items-center truncate" style={{ padding: '9px 8px 9px 0', fontSize: 10.5, fontWeight: 700, color: INK }}>{s.label}</span>
+              <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 0', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
+              {ns.map((n, i) => (
+                <span key={buckets[i].bucket} className="flex items-center justify-center"
+                  title={`${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`}
+                  style={{ padding: '9px 2px', margin: 1, fontSize: 9.5, fontWeight: 700, color: INK, background: `rgba(${base},${(0.05 + (n / max) * 0.42).toFixed(2)})`, ...tnum }}>
+                  {compact(n)}
+                </span>
+              ))}
+            </div>
+
+            {/* The step INTO this station. Deliberately lighter than the two
+                summary rates at the bottom: those are the headline numbers,
+                these are the diagnostic that says which step lost the people. */}
+            {s.into && (
+              <div className="grid items-center" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
+                <span className="truncate" style={{ padding: '5px 8px 6px 10px', fontSize: 9.5, fontWeight: 700, color: MUTE, letterSpacing: '0.02em' }}>
+                  ↳ {s.into.label}
+                </span>
+                <span style={{ padding: '5px 8px 6px 0', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', ...tnum }}>
+                  {pctDisp(s.into.all)}
+                </span>
+                {buckets.map(p => (
+                  <span key={p.bucket} style={{ padding: '5px 4px 6px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#6B6B6B', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                    {pctDisp(s.into!.per(p))}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )
       })}
