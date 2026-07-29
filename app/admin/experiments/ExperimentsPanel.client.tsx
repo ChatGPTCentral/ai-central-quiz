@@ -435,16 +435,26 @@ export default function ExperimentsPanel({
                 </tr>
               </thead>
               <tbody>
-                {(row.variants as Variant[]).map(v => {
-                  const r = res?.find(x => x.key === v.key)
-                  return (
+                {(() => {
+                  // Weight is a RELATIVE number, not a percentage: the engine
+                  // divides by the running total (lib/experiments pickVariant),
+                  // so {50,50} and {0.5,0.5} both mean an even split. The table
+                  // used to print weight * 100, which rendered a stored 50 as
+                  // "5000%" and made a perfectly healthy test look broken.
+                  // Normalising by the total is correct on either scale.
+                  const totalWeight = (row.variants as Variant[])
+                    .reduce((a, v) => a + (v.approved === false ? 0 : v.weight || 0), 0)
+                  return (row.variants as Variant[]).map(v => {
+                    const share = totalWeight > 0 ? ((v.approved === false ? 0 : v.weight || 0) / totalWeight) * 100 : 0
+                    const r = res?.find(x => x.key === v.key)
+                    return (
                     <tr key={v.key} className="border-b border-[#F5F5F5]">
                       <td className="py-1.5">
                         <span className="font-semibold text-[#333333]">{v.name || v.key}</span>
                         <span className="ml-2 font-mono text-[10.5px] text-[#9C9C9C]">{v.key}</span>
                         {v.approved === false && <span className="ml-2 text-[10px] font-bold text-[#E65100]">UNAPPROVED <button onClick={() => act(row.key, 'approve_variant', v.key)} className="underline">approve</button></span>}
                       </td>
-                      <td className="py-1.5 text-right tabular-nums">{Math.round(v.weight * 100)}%</td>
+                      <td className="py-1.5 text-right tabular-nums" title={`raw weight ${v.weight}`}>{Math.round(share)}%</td>
                       <td className="py-1.5 text-right tabular-nums">{r?.exposures ?? '—'}</td>
                       <td className="py-1.5 text-right tabular-nums">{r ? `${(r.clickRate * 100).toFixed(1)}%` : '—'}</td>
                       <td className="py-1.5 text-right tabular-nums">{r?.netNewPaid ?? '—'}</td>
@@ -459,8 +469,9 @@ export default function ExperimentsPanel({
                             : (v.name || 'structural variant') + ' (in code)'}
                       </td>
                     </tr>
-                  )
-                })}
+                    )
+                  })
+                })()}
               </tbody>
             </table>
             {res && <p className="mt-2 text-[11px] text-[#9C9C9C]">Decision rule: call the winner at P(best) ≥ 95%. Weights only shift after every approved variant reaches {row.min_exposures_per_variant} exposures; control never drops below 10%.</p>}
