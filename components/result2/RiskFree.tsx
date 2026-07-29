@@ -114,7 +114,11 @@ export function RiskFree({
             2,500+ members use the library to do their actual work: consultants, marketers, founders,
             operators, teachers. Not developers, and not people who had time to figure this out alone.
           </p>
-          <div className="mt-6 flex flex-col items-center" style={{ gap: 10 }}>
+          {/* w-full matters: inside a centred flex column this wrapper would
+              otherwise shrink to its widest child (the CTA, ~250px), and the
+              wallet row would wrap Apple Pay and PayPal onto separate lines
+              while the same component sits side by side everywhere else. */}
+          <div className="mt-6 flex flex-col items-center w-full" style={{ gap: 10 }}>
             <CheckoutLink
               href={checkoutUrl}
               placement="v2_risk_free"
