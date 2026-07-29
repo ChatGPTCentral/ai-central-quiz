@@ -50,7 +50,13 @@ function Stat({ n, label }: { n: string; label: string }) {
 export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string; submissionId?: string }) {
   return (
     <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: '#FFFDFA' }} aria-label="Inside the library">
-      <div className="max-w-[1000px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
+      {/* Tight vertical padding on purpose. This section sits between the offer
+          and the study plan, which is the best-converting CTA on the page. When
+          it shipped at full height the share of visitors reaching the plan fell
+          from ~73% to ~60% and the click rate fell with it. The wall still has
+          to say "there are a LOT", it just cannot cost a screen and a half to
+          say it. */}
+      <div className="max-w-[1000px] mx-auto px-6 sm:px-10 py-9 sm:py-11">
         <div className="text-center">
           <span className="inline-block font-mono uppercase" style={{ fontSize: 11.5, letterSpacing: '0.22em', color: FULVOUS, fontWeight: 600 }}>
             Inside the library
@@ -69,15 +75,18 @@ export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string
           href={checkoutUrl}
           placement="v2_library_grid"
           submissionId={submissionId}
-          className="block mt-8"
+          className="block mt-6"
           style={{ textDecoration: 'none', position: 'relative' }}
         >
           <div
             style={{
-              maxHeight: 560,
+              // ~3 rows then fade. Density is what sells the number, not height:
+              // three full rows running off the frame reads as "this continues"
+              // just as well as six did, at half the scroll cost.
+              maxHeight: 290,
               overflow: 'hidden',
-              maskImage: 'linear-gradient(to bottom, #000 68%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, #000 68%, transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, #000 58%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, #000 58%, transparent 100%)',
             }}
           >
             <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(76px, 1fr))', gap: 7 }}>
@@ -112,13 +121,13 @@ export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string
           </div>
         </CheckoutLink>
 
-        <div className="grid mt-9 text-center" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div className="grid mt-6 text-center" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           <Stat n="1,200+" label="tutorials" />
           <Stat n="50+" label="templates" />
           <Stat n="Weekly" label="new drops" />
         </div>
 
-        <p className="mt-6 text-center font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: MUTE, fontWeight: 700 }}>
+        <p className="mt-4 text-center font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.12em', color: MUTE, fontWeight: 700 }}>
           A sample of the covers &middot; the full library holds 1,200+ tutorials and 50+ templates
         </p>
       </div>
