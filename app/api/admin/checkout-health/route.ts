@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
       line_items: [{ price: PRICE_ID, quantity: 1 }],
       customer_creation: 'always',
       payment_intent_data: { setup_future_usage: 'off_session' },
-      billing_address_collection: 'required',
+      // Must mirror app/api/checkout/session exactly, or this diagnostic
+      // reports on a form buyers never see.
+      billing_address_collection: 'auto',
       automatic_tax: { enabled: false },
       return_url: `${site}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
     })
