@@ -47,7 +47,15 @@ function Stat({ n, label }: { n: string; label: string }) {
   )
 }
 
-export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string; submissionId?: string }) {
+export function LibraryGrid({
+  checkoutUrl, submissionId, nextStageLabel,
+}: {
+  checkoutUrl: string
+  submissionId?: string
+  /** When set, the wall is framed as what the NEXT rung reads, which turns a
+   *  catalogue into the specific thing standing between them and that rung. */
+  nextStageLabel?: string | null
+}) {
   return (
     <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: '#FFFDFA' }} aria-label="Inside the library">
       {/* Tight vertical padding on purpose. This section sits between the offer
@@ -62,11 +70,14 @@ export function LibraryGrid({ checkoutUrl, submissionId }: { checkoutUrl: string
             Inside the library
           </span>
           <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-            Tutorials you won&rsquo;t find anywhere else
+            {nextStageLabel
+              ? <>What a <span style={{ color: FULVOUS }}>{nextStageLabel}</span> is reading right now</>
+              : <>Tutorials you won&rsquo;t find anywhere else</>}
           </h2>
           <p className="mt-3 mx-auto max-w-[620px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
-            Written and tested in-house, not scraped from the internet. Every one is step by step, with a
-            screenshot at each stage, for professionals rather than developers.
+            {nextStageLabel
+              ? <>The rung above you is not a personality type, it is a reading list. Written and tested in-house, step by step, with a screenshot at every stage.</>
+              : <>Written and tested in-house, not scraped from the internet. Every one is step by step, with a screenshot at each stage, for professionals rather than developers.</>}
           </p>
         </div>
 

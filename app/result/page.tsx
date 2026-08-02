@@ -23,6 +23,7 @@ import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
+import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
 
@@ -290,6 +291,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     previewVar.includes('sellfirst') ||
     assignments.some(a => a.experimentKey === 'result_sellfirst_v1' && a.variantKey === 'sellfirst')
 
+  // ── `aspirational` arm ──────────────────────────────────────────────
+  // Reframes the hero from what someone IS to what they are ABOUT TO BE, and
+  // puts a real buy button above the fold — today the only above-fold action
+  // is a scroll anchor, and two thirds of visitors never reach a real CTA.
+  // Body order follows the same logic: result, then the goods, then the plan.
+  const aspirational =
+    previewVar.includes('aspirational') ||
+    assignments.some(a => a.variantKey === 'aspirational')
+
   // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
   // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
   // beehiiv link 1:1); 'link' arm: unchanged, navigates to the beehiiv link.
@@ -463,7 +473,19 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
 
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
-        {['a', 'b', 'c', 'd'].includes(design) ? (
+        {aspirational ? (
+          <AspirationalHero
+            firstName={firstName}
+            score={segFields?.score ?? score}
+            aheadPct={rt.aheadPct}
+            stageKey={stageKey}
+            rungClassName={rung.className}
+            nextStageLabel={nextStage?.label ?? null}
+            checkoutUrl={checkoutUrl}
+            submissionId={rowId}
+            ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+          />
+        ) : ['a', 'b', 'c', 'd'].includes(design) ? (
           <LabHero variant={design} firstName={firstName} score={score} topPct={topPct} leverage={leverage} rungClassName={rung.className} stageKey={stageKey} aheadPct={rt.aheadPct} checkoutUrl={checkoutUrl} submissionId={rowId} />
         ) : (
         // Two columns on desktop (copy left, gauge right) so the library video
@@ -515,7 +537,18 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                         guarantee
             Every section is identical between arms, only the order and the
             video's position change, so a win is attributable to the order. */}
-        {sellFirst ? (
+        {aspirational ? (
+          // Result → the goods → the plan → the price. The wall is framed as
+          // what the NEXT rung reads, so it is the thing between them and the
+          // headline's promise rather than a catalogue.
+          <>
+            <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} nextStageLabel={nextStage?.label ?? null} />
+            {studyPlanSection}
+            {offerSection(false)}
+            {reviewsSection}
+            {videoTourSection}
+          </>
+        ) : sellFirst ? (
           <>
             {studyPlanSection}
             {offerSection(false)}
