@@ -287,9 +287,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // CTA) and the offer come first, the video drops to an optional tour.
   // Structural, so it cannot ride the copy-slot engine — it reads the assigned
   // variant directly. ?xv=sellfirst previews it without recording an exposure.
-  const sellFirst =
-    previewVar.includes('sellfirst') ||
-    assignments.some(a => a.experimentKey === 'result_sellfirst_v1' && a.variantKey === 'sellfirst')
+  // result_sellfirst_v1 CONCLUDED and sell-first won decisively: 38.1% vs 22.7%
+  // on 197/198 exposures, a 15.4 point gap (z=3.31, p<0.001), ahead on every
+  // one of the six days it ran. That is a 68% relative lift in click rate, so
+  // it is now simply the page rather than an arm.
+  //
+  // The retired video-first order stays reachable at ?xv=videofirst so we can
+  // still eyeball what the comparison was, but no real visitor gets it.
+  const videoFirst = previewVar.includes('videofirst')
 
   // ── `aspirational` arm ──────────────────────────────────────────────
   // Reframes the hero from what someone IS to what they are ABOUT TO BE, and
@@ -298,7 +303,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // Body order follows the same logic: result, then the goods, then the plan.
   const aspirational =
     previewVar.includes('aspirational') ||
-    assignments.some(a => a.variantKey === 'aspirational')
+    assignments.some(a => a.experimentKey === 'result_aspirational_v1' && a.variantKey === 'aspirational')
 
   // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
   // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
@@ -548,7 +553,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             {reviewsSection}
             {videoTourSection}
           </>
-        ) : sellFirst ? (
+        ) : !videoFirst ? (
+          // The winner of result_sellfirst_v1, now the default page.
           <>
             {studyPlanSection}
             {offerSection(false)}
