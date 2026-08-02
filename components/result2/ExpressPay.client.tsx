@@ -68,9 +68,28 @@ export default function ExpressPay({
         if (!clientSecret || dead || !host.current) return
 
         elements = stripe.elements({ clientSecret, appearance: { theme: 'flat' } })
+        // Apple Pay and Google Pay ONLY. Both are CARD wallets: the card lands
+        // on the customer exactly like a typed card, and checkout-health has
+        // already proven that path saves a reusable payment method (10/10 card
+        // buyers, 10/10 Link buyers).
+        //
+        // PayPal is deliberately excluded. It is its own payment method type,
+        // not a card, and no PayPal buyer has ever come through our checkout,
+        // so we have zero evidence it leaves anything chargeable on day 28. A
+        // PayPal sale that does not save would be $4.99 instead of $4.99 +
+        // $59.75/yr — trading a cancel-rate win for a 92% cut in LTV, and we
+        // would not find out for 28 days. It can be switched on later from
+        // real evidence; it is not going on untested.
         const express = elements.create('expressCheckout', {
           buttonHeight: 48,
-          buttonTheme: { applePay: 'black', googlePay: 'black', paypal: 'gold' },
+          buttonTheme: { applePay: 'black', googlePay: 'black' },
+          paymentMethods: {
+            applePay: 'auto',
+            googlePay: 'auto',
+            paypal: 'never',
+            link: 'never',
+            amazonPay: 'never',
+          },
         })
 
         // Fires with the wallets this device can actually use. No wallets means

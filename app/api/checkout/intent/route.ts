@@ -101,11 +101,21 @@ export async function POST(req: NextRequest) {
       ...(email ? { receipt_email: email } : {}),
     })
 
+    // Echo back the two fields the renewal depends on, read off the object
+    // Stripe actually created rather than off our own request. This makes the
+    // config provable without spending $4.99: if setupFutureUsage is not
+    // 'off_session' or customer is null, the day-28 charge cannot happen and
+    // express must stay off.
     return NextResponse.json({
       client_secret: intent.client_secret,
       amount,
       currency,
       customerId,
+      renewalCheck: {
+        setupFutureUsage: intent.setup_future_usage,
+        customer: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id ?? null,
+        ok: intent.setup_future_usage === 'off_session' && !!intent.customer,
+      },
     })
   } catch (e) {
     console.error('[checkout/intent] create failed:', e)
