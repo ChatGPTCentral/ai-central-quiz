@@ -25,6 +25,7 @@ import { OfferStack } from '@/components/result2/OfferStack'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
+import ExpressPay from '@/components/result2/ExpressPay.client'
 import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
 
@@ -297,6 +298,24 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // still eyeball what the comparison was, but no real visitor gets it.
   const videoFirst = previewVar.includes('videofirst')
 
+  // ── One-tap wallets (Express Checkout Element) ───────────────────────
+  // 64% of payment intents are canceled — people open the hosted form and
+  // leave. This skips the form entirely. OFF for real visitors until a live
+  // sale has been proven to save a reusable card for the day-28 renewal;
+  // ?express=1 previews it, NEXT_PUBLIC_EXPRESS_PAY='true' turns it on for all.
+  const expressParam = typeof searchParams.express === 'string' ? searchParams.express.trim() : ''
+  const expressOn =
+    expressParam === '1' ||
+    (process.env.NEXT_PUBLIC_EXPRESS_PAY === 'true' && expressParam !== '0')
+  const expressPayEl = expressOn ? (
+    <ExpressPay
+      submissionId={rowId}
+      anonId={anonId ?? undefined}
+      utmSource={segFields?.utm_source ?? undefined}
+      utmRef={typeof searchParams.utm_ref === 'string' ? searchParams.utm_ref : undefined}
+    />
+  ) : null
+
   // ── `aspirational` arm ──────────────────────────────────────────────
   // Reframes the hero from what someone IS to what they are ABOUT TO BE, and
   // puts a real buy button above the fold — today the only above-fold action
@@ -394,6 +413,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           submissionId={rowId}
           rungClassName={rung.className}
           ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+          expressPay={expressPayEl}
         />
 
         {/* Live trial notifications sit UNDER the pay buttons, not over the

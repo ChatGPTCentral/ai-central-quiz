@@ -22,11 +22,15 @@ export function OfferStack({
   submissionId,
   rungClassName,
   ctaLabel,
+  expressPay,
 }: {
   checkoutUrl: string
   submissionId?: string
   rungClassName: string
   ctaLabel: string
+  /** Optional one-tap wallet element, injected by the page so this stays a
+   *  server component. Null when the flag is off or no wallet is available. */
+  expressPay?: React.ReactNode
 }) {
   const items = [
     { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
@@ -81,6 +85,10 @@ export function OfferStack({
       </div>
 
       <div className="flex flex-col items-center" style={{ padding: '20px 26px 24px', gap: 10 }}>
+        {/* One-tap wallets, above the button. Renders nothing at all unless the
+            device has a wallet AND the flag is on, so the button below is
+            always the guaranteed path. */}
+        {expressPay}
         <CheckoutLink
           href={checkoutUrl}
           placement="v2_offer_stack"
