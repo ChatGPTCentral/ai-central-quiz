@@ -111,7 +111,99 @@ export async function GET(req: NextRequest) {
     out.renewalAuditError = e instanceof Error ? e.message : String(e)
   }
 
-  // 4. The verdict that matters for revenue.
+  // 4. WHERE DO NON-US PAYMENTS DIE?
+  //
+  // Every cohort clicks the CTA at the same rate (32-36%), but click→paid is
+  // 16-20% in the US and 4-9% everywhere else. The UK has had ~26 clicks and
+  // zero sales, Canada ~13 and zero. That is not price sensitivity, something
+  // is failing — and it has been invisible to us because a failed payment never
+  // reaches our database. Only Stripe knows.
+  //
+  // Prime suspect: 3D Secure. The UK and EU mandate strong customer
+  // authentication and the US does not, and we ask for setup_future_usage:
+  // off_session (needed for the day-28 renewal), which is exactly the shape
+  // that triggers a challenge. `requires_action` piling up on non-US cards
+  // would confirm it.
+  //
+  // Card COUNTRY is the issuing country from the charge, which is what we want:
+  // it is the buyer's bank, not their IP or billing form.
+  try {
+    const sinceDays = 30
+    const since = Math.floor(Date.now() / 1000) - sinceDays * 86400
+    type Row = { total: number; succeeded: number; requiresAction: number; failed: number; canceled: number; declineCodes: Record<string, number> }
+    const byCountry: Record<string, Row> = {}
+    const statusTotals: Record<string, number> = {}
+    const declineTotals: Record<string, number> = {}
+    let scanned = 0
+    let noCountry = 0
+
+    let startingAfter: string | undefined
+    for (let page = 0; page < 5; page++) {
+      const pis = await stripe.paymentIntents.list({
+        limit: 100,
+        created: { gte: since },
+        expand: ['data.latest_charge'],
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      })
+      for (const pi of pis.data) {
+        scanned++
+        statusTotals[pi.status] = (statusTotals[pi.status] || 0) + 1
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const charge = pi.latest_charge as any
+        const country: string | undefined =
+          charge?.payment_method_details?.card?.country ||
+          charge?.billing_details?.address?.country ||
+          undefined
+        const code = pi.last_payment_error?.decline_code || pi.last_payment_error?.code
+        if (code) declineTotals[code] = (declineTotals[code] || 0) + 1
+        if (!country) { noCountry++; continue }
+        const r = (byCountry[country] ||= { total: 0, succeeded: 0, requiresAction: 0, failed: 0, canceled: 0, declineCodes: {} })
+        r.total++
+        if (pi.status === 'succeeded') r.succeeded++
+        else if (pi.status === 'requires_action' || pi.status === 'requires_confirmation') r.requiresAction++
+        else if (pi.status === 'canceled') r.canceled++
+        else r.failed++
+        if (code) r.declineCodes[code] = (r.declineCodes[code] || 0) + 1
+      }
+      if (!pis.has_more) break
+      startingAfter = pis.data[pis.data.length - 1]?.id
+      if (!startingAfter) break
+    }
+
+    // Sorted worst-first by completion rate, so the problem countries lead.
+    const rows = Object.entries(byCountry)
+      .map(([country, r]) => ({
+        country, ...r,
+        completionPct: r.total > 0 ? Math.round((r.succeeded / r.total) * 100) : null,
+      }))
+      .sort((a, b) => b.total - a.total)
+
+    out.payments = {
+      windowDays: sinceDays,
+      intentsScanned: scanned,
+      intentsWithoutCountry: noCountry,
+      byStatus: statusTotals,
+      declineCodes: declineTotals,
+      byCountry: rows,
+    }
+
+    // Call out the specific pattern we are hunting.
+    const us = rows.find(r => r.country === 'US')
+    const nonUs = rows.filter(r => r.country !== 'US')
+    const nonUsTotal = nonUs.reduce((a, r) => a + r.total, 0)
+    const nonUsOk = nonUs.reduce((a, r) => a + r.succeeded, 0)
+    const nonUsAction = nonUs.reduce((a, r) => a + r.requiresAction, 0)
+    out.paymentsSummary = {
+      usCompletionPct: us?.completionPct ?? null,
+      nonUsCompletionPct: nonUsTotal > 0 ? Math.round((nonUsOk / nonUsTotal) * 100) : null,
+      nonUsStuckOnAuthentication: nonUsAction,
+      nonUsIntents: nonUsTotal,
+    }
+  } catch (e) {
+    out.paymentsError = e instanceof Error ? e.message : String(e)
+  }
+
+  // 5. The verdict that matters for revenue.
   const notes: string[] = []
   if (out.domainRegistered !== true) {
     notes.push(`Apple Pay / Google Pay will NOT render on the embedded form: ${host} is not registered under Stripe payment method domains. Fix: Stripe → Settings → Payment methods → Apple Pay → Add domain.`)
@@ -131,6 +223,29 @@ export async function GET(req: NextRequest) {
       notes.push(`PayPal saves a reusable payment method for ${out.paypalBuyersWithSavedMethod}/${sampled} sampled buyers, so the day-28 renewal should fire. Safe to keep.`)
     }
   }
+
+  // The geography verdict. Written as a sentence rather than left as numbers,
+  // because the whole point is to answer one question: is non-US money being
+  // lost at the payment step, and if so is authentication the reason?
+  const ps = out.paymentsSummary as
+    | { usCompletionPct: number | null; nonUsCompletionPct: number | null; nonUsStuckOnAuthentication: number; nonUsIntents: number }
+    | undefined
+  if (ps && ps.nonUsIntents > 0 && ps.usCompletionPct != null && ps.nonUsCompletionPct != null) {
+    const gap = ps.usCompletionPct - ps.nonUsCompletionPct
+    if (gap >= 15) {
+      notes.push(
+        `Non-US payments complete at ${ps.nonUsCompletionPct}% against ${ps.usCompletionPct}% in the US, a ${gap}-point gap over ${ps.nonUsIntents} intents. ` +
+        (ps.nonUsStuckOnAuthentication > 0
+          ? `${ps.nonUsStuckOnAuthentication} non-US intents are stuck awaiting authentication, which points at 3D Secure. Check the declineCodes map and Stripe → Payments → filter Incomplete.`
+          : 'Nothing is stuck on authentication, so look at the declineCodes map instead: issuer declines and do_not_honor point at card acceptance, not 3DS.'),
+      )
+    } else {
+      notes.push(`Non-US payments complete at ${ps.nonUsCompletionPct}% vs ${ps.usCompletionPct}% in the US, so the checkout itself is not where the geography gap comes from.`)
+    }
+  } else if (ps && ps.nonUsIntents === 0) {
+    notes.push('No non-US payment intents in the window at all. If non-US visitors are clicking the CTA, they are dropping out BEFORE a payment intent exists, which points at the form itself rather than the card.')
+  }
+
   out.notes = notes
 
   return NextResponse.json(out)
