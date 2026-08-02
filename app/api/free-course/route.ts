@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { subscribeWithStage, addSubscriberTags } from '@/lib/beehiiv'
+import { subscribeWithStage, addSubscriberTags, enrollInAutomation } from '@/lib/beehiiv'
 import { checkRateLimit } from '@/lib/validation'
 
 export const runtime = 'nodejs'
@@ -37,8 +37,14 @@ export async function POST(req: NextRequest) {
   // else is the standard "not yet" downsell. Distinct tag + campaign so the
   // two capture points can be compared in Beehiiv.
   const isExitRescue = body.source === 'exit_rescue'
-  const tags = isExitRescue ? ['free_course', 'exit_rescue'] : ['free_course']
-  const campaign = isExitRescue ? 'exit_rescue' : 'free_course_downsell'
+  // 'ads_rescue' = the paid-traffic popup, which fires only after someone has
+  // read the whole page AND moved to leave. Own tag so paid-lead rescue can be
+  // measured separately from the organic downsell we already had.
+  const isAdsRescue = body.source === 'ads_rescue'
+  const tags = isAdsRescue
+    ? ['free_course', 'ads_rescue', 'ai101']
+    : isExitRescue ? ['free_course', 'exit_rescue'] : ['free_course']
+  const campaign = isAdsRescue ? 'ads_rescue' : isExitRescue ? 'exit_rescue' : 'free_course_downsell'
 
   const hasBeehiiv = !!process.env.BEEHIIV_API_KEY && process.env.BEEHIIV_API_KEY !== 'your_beehiiv_api_key_here'
   if (hasBeehiiv) {
@@ -55,6 +61,18 @@ export async function POST(req: NextRequest) {
       if (!tagged.success) console.error('[free-course] tag existing failed:', tagged.error)
     } else if (!sub.success) {
       console.error('[free-course] beehiiv subscribe failed:', sub.error)
+    }
+
+    // Paid-traffic rescue starts the AI 101 journey immediately rather than
+    // waiting for a tag-triggered workflow: this person asked for the course
+    // while leaving, so the first email needs to exist before they forget why
+    // they gave us the address. Runs after the subscribe above, because an
+    // automation keyed to an address that is not on the list has nothing to
+    // enrol. Non-fatal — the lead is already captured either way.
+    if (isAdsRescue) {
+      const autId = process.env.BEEHIIV_AI101_AUTOMATION_ID || 'aut_c2d8112a-3d7d-4740-9bd1-db2eaa4bda64'
+      const j = await enrollInAutomation({ email, automationId: autId })
+      if (!j.success) console.error('[free-course] ai101 automation enrol failed:', j.error)
     }
   }
 

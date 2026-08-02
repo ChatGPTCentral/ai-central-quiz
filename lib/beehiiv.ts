@@ -337,3 +337,49 @@ export async function addSubscriberTags(input: { email: string; tags: string[] }
   }
   return { success: true, subscriptionId: subId }
 }
+
+/**
+ * Drop a subscriber into a specific Beehiiv automation.
+ *
+ * The tag-based flows above let an automation pick people up on its own
+ * schedule; this starts a named journey immediately, which is what a rescue
+ * popup needs — someone hit "send me the free course" and expects the first
+ * email, not a tag that a workflow might notice later.
+ *
+ * Called AFTER the subscribe/tag step, because an automation keyed to an email
+ * that is not on the list yet has nothing to enrol. Non-fatal by design: the
+ * caller has already captured the lead, so a failure here costs us a course
+ * send, not the address.
+ */
+export async function enrollInAutomation(input: {
+  email: string
+  automationId: string
+}): Promise<StageResult> {
+  const apiKey = process.env.BEEHIIV_API_KEY
+  if (!apiKey || apiKey === 'your_beehiiv_api_key_here') {
+    return { success: false, error: 'BEEHIIV_API_KEY not set' }
+  }
+  const autId = input.automationId.trim()
+  // Beehiiv automation ids look like aut_<uuid>. Refuse anything else rather
+  // than POSTing an arbitrary caller-supplied path segment.
+  if (!/^aut_[a-zA-Z0-9-]{6,}$/.test(autId)) {
+    return { success: false, error: 'invalid automation id' }
+  }
+  try {
+    const res = await fetch(
+      `${BEEHIIV_API_BASE}/publications/${PUBLICATION_ID}/automations/${autId}/journeys`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: input.email.trim().toLowerCase() }),
+      },
+    )
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      return { success: false, error: `beehiiv ${res.status}: ${detail.slice(0, 200)}` }
+    }
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}

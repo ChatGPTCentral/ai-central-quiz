@@ -24,6 +24,7 @@ import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
+import AdsRescue from '@/components/result2/AdsRescue.client'
 import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
 
@@ -593,6 +594,16 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         </section>
       </div>
+
+      {/* Paid traffic only, and only after they have read the whole page AND
+          moved to leave. A downsell must never reach someone who might still
+          buy; by the time both gates pass, this person has already said no. */}
+      <AdsRescue
+        submissionId={rowId}
+        email={segFields?.email ?? null}
+        firstName={firstName || null}
+        utmSource={segFields?.utm_source ?? (typeof searchParams.utm_source === 'string' ? searchParams.utm_source : null)}
+      />
 
       <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', `${CTA_LABEL} ↗`)} />
     </CheckoutModalProvider>
