@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { loadStripe, type Stripe, type StripeEmbeddedCheckout } from '@stripe/stripe-js'
+import { sendEvent } from '@/lib/events-client'
 
 // Stripe Embedded Checkout mounted on our own branded page (no redirect to
 // checkout.stripe.com). Fetches the client_secret from /api/checkout/session,
@@ -17,10 +18,17 @@ export default function EmbeddedCheckout({ submissionId, anonId, utmSource, utmR
   const ref = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Timing telemetry. "They clicked and did not pay" hides at least three very
+  // different stories: the form never loaded, it took so long they gave up, or
+  // it loaded fine and they said no. Only the third is a persuasion problem;
+  // the first two are bugs we would otherwise never see. Recordings would show
+  // this, nobody is going to watch recordings, and Clarity cannot export them —
+  // so it gets measured instead.
   useEffect(() => {
     if (!PK) { setError('missing_key'); return }
     let embedded: StripeEmbeddedCheckout | null = null
     let cancelled = false
+    const t0 = Date.now()
     ;(async () => {
       try {
         const stripe = await getStripe()
@@ -33,13 +41,23 @@ export default function EmbeddedCheckout({ submissionId, anonId, utmSource, utmR
             })
             const d = await res.json()
             if (!res.ok || !d.client_secret) throw new Error(d.error || 'could not start checkout')
+            sendEvent('checkout_form_secret', { props: { ms: Date.now() - t0 }, submissionId })
             return d.client_secret as string
           },
         })
         embedded = ec
         if (cancelled) { ec.destroy(); return }
-        if (ref.current) ec.mount(ref.current)
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)) }
+        if (ref.current) {
+          ec.mount(ref.current)
+          sendEvent('checkout_form_ready', { props: { ms: Date.now() - t0 }, submissionId })
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e)
+          setError(msg)
+          sendEvent('checkout_form_error', { props: { ms: Date.now() - t0, msg: msg.slice(0, 140) }, submissionId })
+        }
+      }
     })()
     return () => { cancelled = true; try { embedded?.destroy() } catch { /* noop */ } }
   }, [submissionId, anonId, utmSource, utmRef])

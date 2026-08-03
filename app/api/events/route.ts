@@ -40,6 +40,10 @@ const ALLOWED_EVENTS = new Set([
   'free_step_open',
   // express checkout (one-tap wallets)
   'express_pay_success', 'express_pay_error',
+  // checkout micro-funnel: answers "what happened between the click and the
+  // payment" without anyone watching a session recording
+  'checkout_modal_open', 'checkout_modal_close',
+  'checkout_form_secret', 'checkout_form_ready', 'checkout_form_error',
 ])
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

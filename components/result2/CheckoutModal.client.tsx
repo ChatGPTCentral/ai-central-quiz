@@ -37,19 +37,55 @@ export default function CheckoutModalProvider({
   const [open, setOpen] = useState(false)
   const closeBtn = useRef<HTMLButtonElement>(null)
 
-  const doOpen = useCallback(() => { if (mode === 'embedded') setOpen(true) }, [mode])
-  const doClose = useCallback(() => setOpen(false), [])
+  // ── Checkout telemetry ───────────────────────────────────────────────
+  // 64% of payment intents are canceled and we have no idea why, because the
+  // moment someone clicks the CTA they disappear into an iframe. Session
+  // recordings would answer it, but nobody is going to watch recordings, and
+  // Clarity has no API to read them anyway.
+  //
+  // So we instrument the modal itself. Every question a recording would answer
+  // — did the form load, how long did they stay, did they leave by X, Escape,
+  // backdrop or the browser — becomes a queryable number instead of a video.
+  const openedAt = useRef<number>(0)
+
+  const doOpen = useCallback(() => {
+    if (mode !== 'embedded') return
+    openedAt.current = Date.now()
+    sendEvent('checkout_modal_open', { submissionId })
+    setOpen(true)
+  }, [mode, submissionId])
+
+  // `how` is the whole point: leaving in 2s by backdrop is a misclick, leaving
+  // at 40s by the X is someone who read the form and said no. Same event today.
+  const closeWith = useCallback((how: string) => {
+    const dwellMs = openedAt.current ? Date.now() - openedAt.current : null
+    sendEvent('checkout_modal_close', { props: { how, dwellMs }, submissionId })
+    setOpen(false)
+  }, [submissionId])
+
+  const doClose = useCallback(() => closeWith('button'), [closeWith])
 
   // Scroll-lock the page, close on Escape, focus the close button on open.
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeWith('escape') }
     document.addEventListener('keydown', onKey)
     closeBtn.current?.focus()
-    return () => { document.body.style.overflow = prev; document.removeEventListener('keydown', onKey) }
-  }, [open])
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') {
+        const dwellMs = openedAt.current ? Date.now() - openedAt.current : null
+        sendEvent('checkout_modal_close', { props: { how: 'left_page', dwellMs }, submissionId })
+      }
+    }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      document.body.style.overflow = prev
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [open, closeWith, submissionId])
 
   return (
     <CheckoutCtx.Provider value={{ mode, open: doOpen }}>
@@ -60,7 +96,7 @@ export default function CheckoutModalProvider({
           role="dialog"
           aria-modal="true"
           aria-label="Start your $4.99 trial"
-          onClick={e => { if (e.target === e.currentTarget) doClose() }}
+          onClick={e => { if (e.target === e.currentTarget) closeWith('backdrop') }}
         >
           <div className="ac-comodal">
             <div className="ac-cohead">
