@@ -101,6 +101,17 @@ export async function POST(req: NextRequest) {
     ? (body as { events: IncomingEvent[] }).events.slice(0, 10)
     : [body as IncomingEvent]
 
+  // Internal traffic (the owner testing) is DROPPED here, not flagged.
+  //
+  // Flagging would mean every reporting query — dashboard, funnel, experiment
+  // results, and every ad-hoc SQL we write — has to remember to exclude it.
+  // Miss one and the numbers are quietly wrong, which is the exact failure this
+  // exists to prevent. Dropping at the door is total and needs no query to
+  // cooperate. Set with ?internal=1, cleared with ?internal=0.
+  if (req.cookies.get('ac_internal')?.value === '1') {
+    return NextResponse.json({ ok: true, suppressed: 'internal' }, { status: 200 })
+  }
+
   const anonRaw = req.cookies.get('ac_aid')?.value
   const anonId = anonRaw && UUID_RE.test(anonRaw) ? anonRaw : null
   const ipHash = createHash('sha256')

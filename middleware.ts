@@ -7,8 +7,16 @@ import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
 const ANON_COOKIE = 'ac_aid'
 const ANON_MAX_AGE = 400 * 24 * 60 * 60 // Chrome's 400-day cookie cap
 
+// Internal-traffic marker. The owner testing the page generates the same
+// checkout_click and exposure events a real visitor does, and at ~40 clicks a
+// day a handful of test taps can move an experiment arm by several points —
+// enough to call a winner that isn't one. `?internal=1` on any page sets this,
+// `?internal=0` clears it, and /api/events drops everything carrying it.
+const INTERNAL_COOKIE = 'ac_internal'
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
+  const internalParam = req.nextUrl.searchParams.get('internal')
 
   if (pathname.startsWith('/admin')) {
     // Login route is public
@@ -34,19 +42,39 @@ export async function middleware(req: NextRequest) {
   // Public pages: mint the anonymous id once. Forward it to THIS request's
   // render via a request header so a visitor whose first-ever hit is /result
   // still gets a deterministic experiment assignment on first paint.
-  if (req.cookies.get(ANON_COOKIE)?.value) return NextResponse.next()
+  const hasAnon = !!req.cookies.get(ANON_COOKIE)?.value
+  if (hasAnon && internalParam == null) return NextResponse.next()
 
-  const aid = crypto.randomUUID()
   const headers = new Headers(req.headers)
-  headers.set('x-anon-id', aid)
+  const aid = hasAnon ? null : crypto.randomUUID()
+  if (aid) headers.set('x-anon-id', aid)
   const res = NextResponse.next({ request: { headers } })
-  res.cookies.set(ANON_COOKIE, aid, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: ANON_MAX_AGE,
-  })
+
+  if (aid) {
+    res.cookies.set(ANON_COOKIE, aid, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: ANON_MAX_AGE,
+    })
+  }
+
+  // Sticky across the whole browser, not just the tab: testing means opening
+  // links from Slack, from a phone, days apart, and a per-session flag would
+  // silently stop protecting the numbers halfway through.
+  if (internalParam === '1') {
+    res.cookies.set(INTERNAL_COOKIE, '1', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: ANON_MAX_AGE,
+    })
+  } else if (internalParam === '0') {
+    res.cookies.set(INTERNAL_COOKIE, '', { path: '/', maxAge: 0 })
+  }
+
   return res
 }
 
