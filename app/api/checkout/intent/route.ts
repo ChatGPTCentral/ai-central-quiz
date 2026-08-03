@@ -52,6 +52,31 @@ async function emailForSubmission(submissionId?: string): Promise<string | undef
   }
 }
 
+/**
+ * GET: the price only. No Customer, no PaymentIntent, nothing written.
+ *
+ * The Express Checkout Element needs an amount to render its wallet sheet, but
+ * creating a PaymentIntent just to draw a button would mint a Stripe Customer
+ * for every single result-page VIEWER — thousands of empty customer records,
+ * and a duplicate-customer mess that would break the very renewal lookup this
+ * route depends on. So the element mounts in deferred mode off this cheap
+ * read, and POST below runs only when someone actually taps to pay.
+ */
+export async function GET() {
+  try {
+    const price = await stripe().prices.retrieve(PRICE_ID)
+    if (!price.unit_amount || !price.currency) {
+      return NextResponse.json({ error: 'price_has_no_amount' }, { status: 500 })
+    }
+    return NextResponse.json(
+      { amount: price.unit_amount, currency: price.currency },
+      { headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' } },
+    )
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'price_failed' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string } = {}
   try { body = await req.json() } catch { /* empty body is fine */ }

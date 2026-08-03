@@ -58,16 +58,25 @@ export default function ExpressPay({
         const stripe = await getStripe()
         if (!stripe || dead || !host.current) return
 
-        const res = await fetch('/api/checkout/intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ submissionId, anonId, utmSource, utmRef }),
-        })
-        if (!res.ok) throw new Error(`intent ${res.status}`)
-        const { client_secret: clientSecret } = await res.json()
-        if (!clientSecret || dead || !host.current) return
+        // DEFERRED INTENT. The element needs an amount to draw the wallet
+        // sheet, but creating a PaymentIntent here would mint a Stripe Customer
+        // for every page VIEWER — thousands of empty customers, and duplicates
+        // that would break the renewal lookup. So we fetch the price (a cached
+        // read that writes nothing) and only create the intent when someone
+        // actually taps to pay.
+        const priceRes = await fetch('/api/checkout/intent')
+        if (!priceRes.ok) throw new Error(`price ${priceRes.status}`)
+        const { amount, currency } = await priceRes.json()
+        if (!amount || dead || !host.current) return
 
-        elements = stripe.elements({ clientSecret, appearance: { theme: 'flat' } })
+        elements = stripe.elements({
+          mode: 'payment',
+          amount,
+          currency,
+          setupFutureUsage: 'off_session',
+          appearance: { theme: 'flat' },
+        })
+
         // Apple Pay and Google Pay ONLY. Both are CARD wallets: the card lands
         // on the customer exactly like a typed card, and checkout-health has
         // already proven that path saves a reusable payment method (10/10 card
@@ -76,10 +85,8 @@ export default function ExpressPay({
         // PayPal is deliberately excluded. It is its own payment method type,
         // not a card, and no PayPal buyer has ever come through our checkout,
         // so we have zero evidence it leaves anything chargeable on day 28. A
-        // PayPal sale that does not save would be $4.99 instead of $4.99 +
-        // $59.75/yr — trading a cancel-rate win for a 92% cut in LTV, and we
-        // would not find out for 28 days. It can be switched on later from
-        // real evidence; it is not going on untested.
+        // PayPal sale that did not save would be $4.99 instead of $4.99 +
+        // $59.75/yr, and we would not find out for four weeks.
         const express = elements.create('expressCheckout', {
           buttonHeight: 48,
           buttonTheme: { applePay: 'black', googlePay: 'black' },
@@ -92,8 +99,6 @@ export default function ExpressPay({
           },
         })
 
-        // Fires with the wallets this device can actually use. No wallets means
-        // we render nothing at all rather than an empty gap.
         express.on('ready', (e: StripeExpressCheckoutElementReadyEvent) => {
           const any = e.availablePaymentMethods && Object.values(e.availablePaymentMethods).some(Boolean)
           if (!any) return
@@ -104,25 +109,47 @@ export default function ExpressPay({
         express.on('click', (e: StripeExpressCheckoutElementClickEvent) => {
           sendEvent('checkout_click', { props: { placement, express: true }, submissionId })
           // No shipping, no phone: this is a digital product and every extra
-          // field is exactly the friction we are removing.
+          // field is exactly the friction being removed.
           e.resolve({ emailRequired: true })
         })
 
         express.on('confirm', async () => {
           if (!elements) return
-          const { error } = await stripe.confirmPayment({
-            elements,
-            clientSecret,
-            confirmParams: { return_url: `${window.location.origin}/checkout/success` },
-            redirect: 'if_required',
-          })
-          if (error) {
-            setErr(error.message || 'Payment could not be completed.')
-            sendEvent('express_pay_error', { props: { placement, code: error.code || 'unknown' }, submissionId })
-            return
+          try {
+            const { error: submitError } = await elements.submit()
+            if (submitError) throw new Error(submitError.message || 'submit failed')
+
+            // NOW create the intent — a real buyer, not a passer-by.
+            const res = await fetch('/api/checkout/intent', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ submissionId, anonId, utmSource, utmRef }),
+            })
+            if (!res.ok) throw new Error(`intent ${res.status}`)
+            const { client_secret: clientSecret, renewalCheck } = await res.json()
+            if (!clientSecret) throw new Error('no client secret')
+
+            // Belt and braces: if the intent that came back cannot support the
+            // day-28 charge, abandon rather than take a $4.99 one-off.
+            if (renewalCheck && renewalCheck.ok === false) {
+              throw new Error('intent would not save a card for renewal')
+            }
+
+            const { error } = await stripe.confirmPayment({
+              elements,
+              clientSecret,
+              confirmParams: { return_url: `${window.location.origin}/checkout/success` },
+              redirect: 'if_required',
+            })
+            if (error) throw new Error(error.message || 'Payment could not be completed.')
+
+            sendEvent('express_pay_success', { props: { placement }, submissionId })
+            window.location.href = '/checkout/success'
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Payment could not be completed.'
+            setErr(msg)
+            sendEvent('express_pay_error', { props: { placement, msg: msg.slice(0, 120) }, submissionId })
           }
-          sendEvent('express_pay_success', { props: { placement }, submissionId })
-          window.location.href = '/checkout/success'
         })
 
         express.mount(host.current)
