@@ -99,6 +99,41 @@ export async function GET(req: NextRequest) {
       } catch { /* customer may be deleted — counts as no saved method */ }
     }
     out.savedMethodByPayType = byMethod
+
+    // WALLET-LEVEL PROOF, for the express checkout decision.
+    //
+    // "Do instant wallets stay chargeable on day 28?" cannot be answered from
+    // payment_method_details.type alone: Apple Pay and Google Pay both report
+    // as type 'card'. The wallet only shows up one level down, in
+    // card.wallet.type — so a 10/10 'card' result could be ten typed cards and
+    // zero wallets, and we would have proven nothing about express.
+    //
+    // This re-walks the same charges keyed on the WALLET, then asks whether
+    // each of those buyers has a reusable saved payment method today. Real
+    // evidence from real money, not the config echo.
+    const byWallet: Record<string, { buyers: number; withReusablePm: number; customers: string[] }> = {}
+    for (const ch of charges.data) {
+      if (ch.status !== 'succeeded') continue
+      const cust = typeof ch.customer === 'string' ? ch.customer : ch.customer?.id
+      if (!cust) continue
+      const card = ch.payment_method_details?.card
+      const wallet = card?.wallet?.type || (card ? 'card_no_wallet' : ch.payment_method_details?.type || 'unknown')
+      const b = (byWallet[wallet] ||= { buyers: 0, withReusablePm: 0, customers: [] })
+      if (b.customers.includes(cust)) continue
+      b.customers.push(cust)
+      b.buyers++
+    }
+    for (const [wallet, b] of Object.entries(byWallet)) {
+      for (const cust of b.customers.slice(0, 15)) {
+        try {
+          const pms = await stripe.paymentMethods.list({ customer: cust, limit: 5 })
+          if (pms.data.length > 0) b.withReusablePm++
+        } catch { /* deleted customer counts as no saved method */ }
+      }
+      // Customer ids are internal plumbing, not something to hand back.
+      ;(b as { customers?: string[] }).customers = undefined
+    }
+    out.savedMethodByWallet = byWallet
     const pp = byMethod['paypal']
     if (pp) {
       out.paypalBuyersSampled = pp.buyers
@@ -244,6 +279,31 @@ export async function GET(req: NextRequest) {
     }
   } else if (ps && ps.nonUsIntents === 0) {
     notes.push('No non-US payment intents in the window at all. If non-US visitors are clicking the CTA, they are dropping out BEFORE a payment intent exists, which points at the form itself rather than the card.')
+  }
+
+  // The express-checkout verdict, stated plainly. This is the one question
+  // that decides whether one-tap wallets can go live: a wallet sale that does
+  // not leave a chargeable card is $4.99 instead of $4.99 + $59.75/yr, and we
+  // would not discover it for 28 days.
+  const wal = out.savedMethodByWallet as Record<string, { buyers: number; withReusablePm: number }> | undefined
+  if (wal) {
+    const ap = wal['apple_pay']
+    const gp = wal['google_pay']
+    const seen = [ap, gp].filter(Boolean) as { buyers: number; withReusablePm: number }[]
+    const totalBuyers = seen.reduce((a, b) => a + b.buyers, 0)
+    const totalSaved = seen.reduce((a, b) => a + b.withReusablePm, 0)
+    if (totalBuyers === 0) {
+      const plain = wal['card_no_wallet']
+      notes.push(
+        'NO Apple Pay or Google Pay sale has come through yet, so wallet reuse is not proven from our own data. ' +
+        (plain ? `Typed cards do save: ${plain.withReusablePm}/${plain.buyers} of those buyers have a reusable payment method. ` : '') +
+        'Apple Pay and Google Pay are card wallets — Stripe stores the resulting card the same way — so the mechanism is the same, but one real wallet purchase would turn that from reasoning into evidence.',
+      )
+    } else if (totalSaved === totalBuyers) {
+      notes.push(`Wallet reuse CONFIRMED from real charges: ${totalSaved}/${totalBuyers} Apple Pay / Google Pay buyers have a reusable saved payment method, so the day-28 renewal will fire. Express checkout is safe to enable.`)
+    } else {
+      notes.push(`WARNING: only ${totalSaved}/${totalBuyers} Apple Pay / Google Pay buyers have a reusable saved payment method. Do NOT enable express checkout until this is 100%.`)
+    }
   }
 
   out.notes = notes
