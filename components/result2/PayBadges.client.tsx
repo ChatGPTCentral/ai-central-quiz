@@ -72,15 +72,28 @@ export default function PayBadges({
   // AI Central styling: the whole value of these is that people recognise them
   // instantly from a thousand other checkouts, and restyling them throws that
   // recognition away.
+  // Identical box for both, guaranteed. Flex with a basis let each button size
+  // to its own content, so the two brand marks — one a narrow glyph pair, one a
+  // wide wordmark — came out different widths and read as misaligned. A grid
+  // with equal columns and width:100% makes the boxes the same by construction;
+  // only the mark inside differs, which is the point.
   const btn: React.CSSProperties = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    height: 46, flex: '1 1 190px', minWidth: 170, maxWidth: 250,
+    height: 48, width: '100%',
     textDecoration: 'none', cursor: 'pointer', border: 'none', overflow: 'hidden',
   }
 
   return (
     <div className="flex flex-col items-center w-full" style={{ gap: 8 }}>
-      <div className="flex flex-wrap items-center justify-center w-full" style={{ gap: 10, maxWidth: 500 }}>
+      <div
+        style={{
+          display: 'grid',
+          // One wallet available means one full-width button, not a half-width
+          // one floating beside a gap.
+          gridTemplateColumns: canApplePay ? '1fr 1fr' : '1fr',
+          gap: 10, width: '100%', maxWidth: 470,
+        }}
+      >
         {canApplePay && (
           <a
             href={fallbackUrl}

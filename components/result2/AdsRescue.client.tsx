@@ -183,14 +183,17 @@ export default function AdsRescue({
               type="button" onClick={submit} disabled={busy}
               style={{
                 marginTop: 14, width: '100%', background: GREEN, color: '#FFFFFF', border: `2px solid ${INK}`,
-                fontWeight: 800, fontSize: 16, height: 50, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1,
+                fontWeight: 800, fontSize: 16, height: 52, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.7 : 1,
               }}
             >
-              {busy ? 'sending…' : 'send me AI 101, free'}
+              {busy ? 'sending…' : 'Yes, send me the AI 101 course'}
             </button>
 
             <p className="mt-3" style={{ fontSize: 11.5, color: MUTE, lineHeight: 1.45 }}>
-              {email ? `Goes to ${email}. ` : ''}Unsubscribe any time. The $4.99 library is still there when you want it.
+              {email
+                ? <>One tap &middot; it goes straight to <strong style={{ color: BODY }}>{email}</strong>, nothing to type. </>
+                : 'Unsubscribe any time. '}
+              The $4.99 library is still there when you want it.
             </p>
           </>
         )}
