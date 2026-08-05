@@ -24,6 +24,10 @@ interface VariantResult {
   rate: number
   probBest: number
   expectedLoss: number
+  paidRate: number
+  clickToPaid: number
+  qualityRatio: number | null
+  guardrail: 'control' | 'pass' | 'blocked' | 'low_data'
 }
 
 // ── The betting loop ────────────────────────────────────────────────────
@@ -429,7 +433,9 @@ export default function ExperimentsPanel({
                   <th className="text-right py-1.5">Weight</th>
                   <th className="text-right py-1.5">Exposures</th>
                   <th className="text-right py-1.5">Click rate</th>
+                  <th className="text-right py-1.5" title="net-new paid divided by clickers — what a click from this arm is actually worth">Click&rarr;paid</th>
                   <th className="text-right py-1.5">Net-new paid</th>
+                  <th className="text-right py-1.5" title="click-to-paid as a fraction of control's; below 60% blocks the ship">Quality</th>
                   <th className="text-right py-1.5">P(best)</th>
                   <th className="text-left py-1.5 pl-4">What&rsquo;s different</th>
                 </tr>
@@ -457,7 +463,26 @@ export default function ExperimentsPanel({
                       <td className="py-1.5 text-right tabular-nums" title={`raw weight ${v.weight}`}>{Math.round(share)}%</td>
                       <td className="py-1.5 text-right tabular-nums">{r?.exposures ?? '—'}</td>
                       <td className="py-1.5 text-right tabular-nums">{r ? `${(r.clickRate * 100).toFixed(1)}%` : '—'}</td>
+                      <td className="py-1.5 text-right tabular-nums">{r && r.clickers > 0 ? `${(r.clickToPaid * 100).toFixed(1)}%` : '—'}</td>
                       <td className="py-1.5 text-right tabular-nums">{r?.netNewPaid ?? '—'}</td>
+                      {/* Click quality. A click winner whose clicks convert far
+                          worse than control's is buying clicks, not sales — that
+                          is exactly how result_sellfirst_v1 shipped while
+                          sitting behind on payers. */}
+                      <td className="py-1.5 text-right tabular-nums font-bold" style={{
+                        color: r?.guardrail === 'blocked' ? '#C0392B'
+                          : r?.guardrail === 'pass' ? '#2E7D32'
+                          : '#9C9C9C',
+                      }} title={
+                        r?.guardrail === 'blocked' ? 'BLOCKED: clicks convert below 60% of control. Do not ship on the click win.'
+                          : r?.guardrail === 'pass' ? 'Click quality holds up against control.'
+                          : r?.guardrail === 'low_data' ? 'Not enough control payers yet to judge quality.'
+                          : 'baseline'
+                      }>
+                        {!r || r.guardrail === 'control' ? '—'
+                          : r.qualityRatio === null ? '—'
+                          : `${(r.qualityRatio * 100).toFixed(0)}%${r.guardrail === 'blocked' ? ' ⚠' : r.guardrail === 'low_data' ? '?' : ''}`}
+                      </td>
                       <td className="py-1.5 text-right tabular-nums font-bold" style={{ color: r && r.probBest >= 0.95 ? '#2E7D32' : '#333333' }}>
                         {r ? `${(r.probBest * 100).toFixed(0)}%` : '—'}
                       </td>

@@ -36,7 +36,39 @@ export interface VariantResult extends VariantStats {
   completions: number
   clickRate: number
   completionRate: number
+  /** net_new_paid / exposures — the north star, always too small to conclude on. */
+  paidRate: number
+  /** net_new_paid / clickers — how much a click from this arm is actually worth. */
+  clickToPaid: number
+  /** This arm's clickToPaid as a fraction of control's. 1 = same quality. */
+  qualityRatio: number | null
+  /** Click-quality guardrail verdict. See CLICK_QUALITY_FLOOR. */
+  guardrail: 'control' | 'pass' | 'blocked' | 'low_data'
 }
+
+/**
+ * A click winner may not be shipped if its clicks convert materially worse
+ * than control's.
+ *
+ * Why this exists: every experiment before Aug 2026 was decided on
+ * checkout_click alone. Re-read on net_new_paid (charge after first exposure),
+ * the arm that won on clicks had the WORSE click-to-paid rate in 3 of 3 real
+ * experiments, and fewer actual payers in 3 of 3. result_sellfirst_v1 shipped
+ * on +14.4pts of click (p=0.002) while sitting 8-to-5 BEHIND on payers, its
+ * click-to-paid having fallen from 16.7% to 6.6%. It bought clicks, not sales.
+ *
+ * Paid can never be the primary metric here: at a ~3% base rate and 200
+ * exposures per arm the MDE is ~4.8 points, so it would have to nearly triple
+ * to register. This guardrail is the workable substitute. It uses the RATIO of
+ * click-to-paid rates rather than their difference, because a ratio stays
+ * meaningful at the tiny payer counts we actually have.
+ *
+ * Applied to history: sellfirst 40% (blocked), aspirational 21% (blocked),
+ * embedded 209% (passes, and it was the one decision paid got right).
+ */
+export const CLICK_QUALITY_FLOOR = 0.6
+/** Below this many control payers the ratio is noise; surface it, do not judge. */
+const MIN_CONTROL_PAID = 5
 
 type Zero = { exposures: number; clickers: number; net_new_paid: number; completions: number }
 const ZERO: Zero = { exposures: 0, clickers: 0, net_new_paid: 0, completions: 0 }
@@ -67,8 +99,21 @@ export async function experimentResults(row: ExperimentRow): Promise<VariantResu
     return { key: v.key, exposures: r.exposures, conversions: conversionsFor(r) }
   })
   const stats = computeStats(counts)
+
+  const ctrl = byKey.get('control')
+  const ctrlClickToPaid = ctrl && ctrl.clickers > 0 ? ctrl.net_new_paid / ctrl.clickers : null
+  const judgeable = !!ctrl && ctrl.net_new_paid >= MIN_CONTROL_PAID && ctrlClickToPaid !== null
+
   return stats.map(s => {
     const r = byKey.get(s.key) || ZERO
+    const clickToPaid = r.clickers > 0 ? r.net_new_paid / r.clickers : 0
+    const qualityRatio =
+      ctrlClickToPaid !== null && ctrlClickToPaid > 0 ? clickToPaid / ctrlClickToPaid : null
+    const guardrail: VariantResult['guardrail'] =
+      s.key === 'control' ? 'control'
+        : !judgeable || qualityRatio === null ? 'low_data'
+        : qualityRatio >= CLICK_QUALITY_FLOOR ? 'pass'
+        : 'blocked'
     return {
       ...s,
       clickers: r.clickers,
@@ -76,6 +121,10 @@ export async function experimentResults(row: ExperimentRow): Promise<VariantResu
       completions: r.completions,
       clickRate: r.exposures > 0 ? r.clickers / r.exposures : 0,
       completionRate: r.exposures > 0 ? r.completions / r.exposures : 0,
+      paidRate: r.exposures > 0 ? r.net_new_paid / r.exposures : 0,
+      clickToPaid,
+      qualityRatio,
+      guardrail,
     }
   })
 }

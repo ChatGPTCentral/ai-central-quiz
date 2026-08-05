@@ -295,9 +295,17 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // one of the six days it ran. That is a 68% relative lift in click rate, so
   // it is now simply the page rather than an arm.
   //
-  // The retired video-first order stays reachable at ?xv=videofirst so we can
-  // still eyeball what the comparison was, but no real visitor gets it.
-  const videoFirst = previewVar.includes('videofirst')
+  // Video-first: the layout sell-first replaced, now BACK as a live arm.
+  //
+  // result_sellfirst_v1 was called on checkout_click, where sellfirst won
+  // +14.4pts at p=0.002. Re-read on net_new_paid it was 8-to-5 BEHIND, with
+  // click-to-paid falling from 16.7% to 6.6% — it bought clicks, not sales.
+  // The paid gap is not significant (p=0.40), so this is not "video-first was
+  // better", it is "we never had evidence sell-first sold more". This re-test
+  // settles it with net_new_paid as the primary metric.
+  const videoFirst =
+    previewVar.includes('videofirst') ||
+    assignments.some(a => a.experimentKey === 'result_sellfirst_v2' && a.variantKey === 'videofirst')
 
   // ── `reveal` arm · the honest unlock wheel ───────────────────────────
   // Theatre without a luck claim: everyone sees the same segments and the copy
