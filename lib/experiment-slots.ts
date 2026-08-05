@@ -17,6 +17,10 @@ export const EXPERIMENT_SLOTS: Record<string, { label: string; hint: string }> =
   'offerCard.ctaLabel': { label: 'Offer card · CTA label', hint: 'start my trial' },
   'offerBar.ctaLabel':  { label: 'Offer bar (bottom) · CTA label', hint: 'Claim offer ↗' },
   'studyPlan.ctaLabel': { label: 'Study plan · CTA label', hint: 'unlock my study plan' },
+  // The guarantee band's CTA was reading ov('riskFree.ctaLabel', …) without a
+  // slot registered, so isSlotKey dropped it and that button silently ignored
+  // every experiment. A CTA test that misses one of four buttons is not a test.
+  'riskFree.ctaLabel':  { label: 'Guarantee band · CTA label', hint: 'unlock all tutorials' },
 }
 
 export type SlotKey = keyof typeof EXPERIMENT_SLOTS
