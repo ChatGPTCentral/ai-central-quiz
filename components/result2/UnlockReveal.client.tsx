@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import PayBadges from '@/components/result2/PayBadges.client'
 import { sendEvent } from '@/lib/events-client'
@@ -22,47 +22,75 @@ import { sendEvent } from '@/lib/events-client'
 //   - It says so on the page. If a mechanic only works when people
 //     misunderstand it, it is the wrong mechanic.
 //
-// Why it should convert anyway: the checkout autopsy found 30 of 38 people
-// close the payment form within 10 seconds, median 5s — they click a button
-// promising ACCESS and are asked for a CARD. This lands on $4.99 BEFORE any
-// click, inside a moment worth having. The rigged version would not have helped
-// that at all: "you won 95% off" still does not warn anyone a card is next.
+// DESIGN NOTE — why this does not look like a carnival wheel.
+// v1 was six saturated colours on a gold rim with studs, which is the stock
+// spin-to-win plugin look. The thing every teardown of good ones says is that
+// a rainbow wheel "looks like a third-party intrusion": the branded ones
+// (PatchPanel black+green, Avery Davis black+yellow) use two or three colours
+// straight from the site. So this one is built from the page's own palette —
+// ink, cream, fulvous, the same grain, the same hard offset shadow, the same
+// mono eyebrow — and the accent wedge is the price. It should read as a piece
+// of the result page, not as a widget dropped on top of it.
+//
+// The ticker is driven off the real rotation (rAF sampling the transform
+// matrix) rather than a canned keyframe, so it slows down exactly as the wheel
+// does. That single detail is most of the difference between "physical object"
+// and "CSS toy".
+//
+// Why it should convert: the checkout autopsy found 30 of 38 people close the
+// payment form within 10 seconds, median 5s — they click a button promising
+// ACCESS and are asked for a CARD. This lands on $4.99 BEFORE any click,
+// inside a moment worth having.
 
 const INK = '#333333'
 const RICH = '#1A1A1A'
 const BODY = '#4A4A4A'
 const MUTE = '#9C9C9C'
 const CREAM = '#FEF7E7'
+const PAPER = '#FBF6EC'
 const FULVOUS = '#E48715'
-const XANTHOUS = '#E7B02F'
+const GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E\")"
 
 const SEEN_KEY = 'ac_unlock_revealed'
 
-const SEGMENTS = [
-  { label: '1,200+ tutorials', color: '#E48715' },
-  { label: '50+ templates', color: '#046BB1' },
-  { label: 'Your 30-day plan', color: '#2D6A26' },
-  { label: 'Prompt packs', color: '#7A4FB5' },
-  { label: 'Weekly drops', color: '#C0392B' },
-  { label: '$4.99 first month', color: '#1A1A1A' },
+/**
+ * Three fills, taken straight off the page: ink, cream, and fulvous for the
+ * wedge that matters. No rainbow, no gold.
+ *
+ * Every label is two lines, headline word over qualifier. A single long string
+ * set radially does not fit between the hub and the rim — it overshoots into
+ * the neighbouring wedge and clips at the edge — and stacking also gives the
+ * numbers the weight they deserve.
+ */
+const SEGMENTS: { main: string; sub: string; fill: string; text: string; size?: number }[] = [
+  { main: '1,200+', sub: 'tutorials', fill: RICH, text: CREAM },
+  { main: '50+', sub: 'templates', fill: CREAM, text: RICH },
+  { main: '30-day', sub: 'plan', fill: RICH, text: CREAM },
+  { main: 'Prompt', sub: 'packs', fill: CREAM, text: RICH },
+  { main: 'Weekly', sub: 'drops', fill: RICH, text: CREAM },
+  { main: '$4.99', sub: 'first month', fill: FULVOUS, text: RICH, size: 22 },
 ]
-/** The segment the pointer settles on. Not secret, not random, not called luck. */
+/** The wedge the ticker settles on. Not secret, not random, not called luck. */
 const LANDS_ON = 5
 
-const CX = 150
-const CY = 150
-const R = 132
+const CX = 160
+const CY = 160
+const R = 126
+const RIM = 139
+
+const PER = 360 / SEGMENTS.length
+/** Six full turns, then round to put LANDS_ON's midpoint under the ticker. */
+const FINAL = 6 * 360 + (360 - (LANDS_ON * PER + PER / 2))
 
 function pt(angleDeg: number, r: number) {
   const a = ((angleDeg - 90) * Math.PI) / 180
   return { x: CX + r * Math.cos(a), y: CY + r * Math.sin(a) }
 }
 
-function sector(i: number, per: number) {
-  const a0 = i * per
-  const a1 = (i + 1) * per
-  const p0 = pt(a0, R)
-  const p1 = pt(a1, R)
+function sector(i: number) {
+  const p0 = pt(i * PER, R)
+  const p1 = pt((i + 1) * PER, R)
   return `M ${CX} ${CY} L ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${R} ${R} 0 0 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} Z`
 }
 
@@ -76,34 +104,72 @@ export function UnlockReveal({
 }) {
   const [phase, setPhase] = useState<'idle' | 'spinning' | 'done'>('idle')
   const [turns, setTurns] = useState(0)
-  const [pop, setPop] = useState(false)
+  const [tx, setTx] = useState('none')
+  const [kick, setKick] = useState(0)
+  const wheelRef = useRef<HTMLDivElement | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const lastPeg = useRef(-1)
   const fired = useRef(false)
-
-  const per = 360 / SEGMENTS.length
-  const finalTurns = 6 * 360 + (360 - (LANDS_ON * per + per / 2))
 
   useEffect(() => {
     try {
-      if (sessionStorage.getItem(SEEN_KEY) === '1') { setPhase('done'); setTurns(finalTurns) }
+      if (sessionStorage.getItem(SEEN_KEY) === '1') { setPhase('done'); setTurns(FINAL) }
     } catch { /* storage blocked — they see it again, no harm */ }
-  }, [finalTurns])
+  }, [])
+
+  // The ticker reads the wheel's ACTUAL angle each frame and kicks once per peg
+  // crossing, so it rattles fast at the start and drags out at the end without
+  // anyone hand-timing keyframes. atan2 loses the turn count, which is fine —
+  // peg detection only needs the angle modulo 360.
+  const tick = useCallback(() => {
+    const el = wheelRef.current
+    if (el) {
+      try {
+        const m = new DOMMatrixReadOnly(getComputedStyle(el).transform)
+        const deg = (((Math.atan2(m.b, m.a) * 180) / Math.PI) % 360 + 360) % 360
+        const peg = Math.floor(deg / PER)
+        if (peg !== lastPeg.current) {
+          lastPeg.current = peg
+          setKick(k => k + 1)
+        }
+      } catch { /* no DOMMatrix — the wheel still spins, just without the rattle */ }
+    }
+    rafRef.current = requestAnimationFrame(tick)
+  }, [])
+
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
 
   const spin = () => {
     if (phase !== 'idle') return
     setPhase('spinning')
     sendEvent('unlock_reveal_spin', { submissionId })
-    setTurns(finalTurns)
+    setTx('transform 4s cubic-bezier(0.12, 0.72, 0.16, 1)')
+    setTurns(FINAL)
+    rafRef.current = requestAnimationFrame(tick)
+
     window.setTimeout(() => {
-      setPhase('done')
-      setPop(true)
-      window.setTimeout(() => setPop(false), 700)
-      try { sessionStorage.setItem(SEEN_KEY, '1') } catch { /* non-fatal */ }
-      if (!fired.current) { fired.current = true; sendEvent('unlock_reveal_done', { submissionId }) }
-    }, 4200)
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+      // Recoil: the ticker catches the last peg and the wheel rocks back into
+      // it. Two short transitions, and it stops feeling like a CSS rotation.
+      setTx('transform .16s ease-out')
+      setTurns(FINAL - 1.7)
+      window.setTimeout(() => {
+        setTx('transform .38s cubic-bezier(.34, 1.56, .64, 1)')
+        setTurns(FINAL)
+        setPhase('done')
+        try { sessionStorage.setItem(SEEN_KEY, '1') } catch { /* non-fatal */ }
+        if (!fired.current) { fired.current = true; sendEvent('unlock_reveal_done', { submissionId }) }
+      }, 170)
+    }, 4050)
   }
 
+  const done = phase === 'done'
+
   return (
-    <section style={{ borderTop: `3px solid ${INK}`, background: `radial-gradient(circle at 50% 22%, #FFF6DF 0%, ${CREAM} 55%)` }} aria-label="What you unlocked">
+    <section
+      style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER, backgroundImage: GRAIN }}
+      aria-label="What you unlocked"
+    >
       <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16 text-center">
         <span className="inline-block font-mono uppercase" style={{ fontSize: 11.5, letterSpacing: '0.22em', color: FULVOUS, fontWeight: 600 }}>
           You finished all 10 questions
@@ -112,87 +178,129 @@ export function UnlockReveal({
           {firstName ? `${firstName}, here's what that opens` : "Here's what that opens"}
         </h2>
         <p className="mt-3 mx-auto max-w-[560px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
-          Every wedge is included with membership. Spin it to see the whole thing.
+          Six things, all included with membership. Give it a spin to see them.
         </p>
 
-        <div className="mx-auto" style={{ position: 'relative', width: 300, height: 320, marginTop: 24 }}>
-          {/* pointer */}
-          <svg width="34" height="30" viewBox="0 0 34 30" aria-hidden
-            style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', zIndex: 3, filter: 'drop-shadow(0 2px 0 rgba(0,0,0,.25))' }}>
-            <path d="M17 29 L3 3 A2 2 0 0 1 6 1 L28 1 A2 2 0 0 1 31 3 Z" fill={XANTHOUS} stroke={RICH} strokeWidth="2.5" strokeLinejoin="round" />
+        <div
+          className="mx-auto"
+          style={{ position: 'relative', width: 'min(400px, 84vw)', aspectRatio: '1', marginTop: 30 }}
+        >
+          {/* Hard offset shadow, same language as every other block on the page.
+              It sits outside the rotating layer so it does not spin with it. */}
+          <svg viewBox="0 0 320 320" width="100%" height="100%" aria-hidden
+            style={{ position: 'absolute', inset: 0, display: 'block' }}>
+            <circle cx={CX + 5} cy={CY + 6} r={RIM} fill={RICH} />
           </svg>
 
           <div
+            ref={wheelRef}
             style={{
-              width: 300, height: 300, position: 'absolute', top: 14, left: 0,
-              transform: `rotate(${turns}deg) scale(${pop ? 1.04 : 1})`,
-              transition: phase === 'spinning'
-                ? 'transform 4s cubic-bezier(0.12, 0.72, 0.16, 1)'
-                : pop ? 'transform .25s ease-out' : 'none',
+              position: 'absolute', inset: 0,
+              transform: `rotate(${turns}deg)`,
+              transition: tx === 'none' ? undefined : tx,
+              willChange: 'transform',
             }}
           >
-            <svg viewBox="0 0 300 300" width="300" height="300" role="img"
-              aria-label="Wheel showing everything included with membership"
-              style={{ display: 'block', filter: 'drop-shadow(0 8px 20px rgba(26,26,26,.22))' }}>
-              <circle cx={CX} cy={CY} r={R + 9} fill={XANTHOUS} stroke={RICH} strokeWidth="4" />
-              {/* rim studs */}
-              {SEGMENTS.map((_, i) => {
-                const p = pt(i * per, R + 9)
-                return <circle key={`s${i}`} cx={p.x} cy={p.y} r="3.6" fill={RICH} />
-              })}
+            <svg viewBox="0 0 320 320" width="100%" height="100%" role="img"
+              aria-label="Wheel showing the six things included with membership"
+              style={{ display: 'block' }}>
+              <circle cx={CX} cy={CY} r={RIM} fill={CREAM} stroke={RICH} strokeWidth="4" />
               {SEGMENTS.map((s, i) => (
-                <path key={s.label} d={sector(i, per)} fill={s.color} stroke={RICH} strokeWidth="2" />
+                <path
+                  key={s.main}
+                  d={sector(i)}
+                  fill={s.fill}
+                  stroke={RICH}
+                  strokeWidth="2"
+                  style={{
+                    opacity: done && i !== LANDS_ON ? 0.22 : 1,
+                    transition: 'opacity .45s ease-out .1s',
+                  }}
+                />
               ))}
+              {/* Pegs sit on the rim at every wedge boundary. These are what the
+                  ticker counts, so they are load-bearing, not decoration. */}
+              {SEGMENTS.map((_, i) => {
+                const p = pt(i * PER, (R + RIM) / 2)
+                return <rect key={`p${i}`} x={p.x - 2} y={p.y - 5} width="4" height="10" rx="2" fill={RICH}
+                  transform={`rotate(${i * PER}, ${p.x}, ${p.y})`} />
+              })}
               {SEGMENTS.map((s, i) => {
-                const mid = i * per + per / 2
-                const p = pt(mid, R * 0.62)
+                const mid = i * PER + PER / 2
+                // Centred in the band between the hub edge and the rim, so both
+                // lines clear the hub and stay inside the wedge.
+                const p = pt(mid, 82)
                 // Radial text past the horizontal reads upside down; flipping it
                 // 180° keeps every wedge legible without moving the layout.
                 const flip = mid > 90 && mid < 270
                 return (
                   <text
-                    key={`t${s.label}`}
-                    x={p.x} y={p.y}
+                    key={`t${s.main}`}
                     transform={`rotate(${flip ? mid + 180 : mid}, ${p.x}, ${p.y})`}
-                    textAnchor="middle" dominantBaseline="middle"
-                    style={{ fontSize: 12.5, fontWeight: 800, fill: '#FFFFFF', letterSpacing: '-0.01em' }}
+                    textAnchor="middle"
+                    style={{
+                      fill: s.text, letterSpacing: '-0.015em',
+                      opacity: done && i !== LANDS_ON ? 0.35 : 1,
+                      transition: 'opacity .45s ease-out .1s',
+                    }}
                   >
-                    {s.label}
+                    <tspan x={p.x} y={p.y - 1} style={{ fontSize: s.size ?? 19, fontWeight: 800 }}>{s.main}</tspan>
+                    <tspan x={p.x} y={p.y + 12.5} style={{ fontSize: 10.5, fontWeight: 700 }}>{s.sub}</tspan>
                   </text>
                 )
               })}
             </svg>
           </div>
 
-          {/* hub */}
+          {/* Ticker. Remounts on every peg crossing so the flick replays. */}
+          <div
+            key={kick}
+            aria-hidden
+            style={{
+              position: 'absolute', top: '-5%', left: '50%', width: '14%',
+              transform: 'translateX(-50%)', transformOrigin: '50% 10%', zIndex: 3,
+              animation: phase === 'spinning' ? 'ac-tick .16s ease-out' : 'none',
+            }}
+          >
+            <svg viewBox="0 0 34 46" width="100%" style={{ display: 'block' }}>
+              <path d="M17 44.5 L3.5 16 L3.5 4 A2.5 2.5 0 0 1 6 1.5 L28 1.5 A2.5 2.5 0 0 1 30.5 4 L30.5 16 Z"
+                fill={FULVOUS} stroke={RICH} strokeWidth="3" strokeLinejoin="round" />
+              <circle cx="17" cy="8.5" r="3" fill={RICH} />
+            </svg>
+          </div>
+
+          {/* Hub */}
           <div aria-hidden
             style={{
-              position: 'absolute', top: 164, left: '50%', transform: 'translate(-50%, -50%)',
-              width: 78, height: 78, borderRadius: '50%', background: CREAM, border: `4px solid ${RICH}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
-              fontSize: 11, fontWeight: 800, color: RICH, letterSpacing: '0.05em', textAlign: 'center', lineHeight: 1.15,
-              boxShadow: '0 3px 10px rgba(26,26,26,.2)',
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+              width: '24%', aspectRatio: '1', borderRadius: '50%', background: CREAM,
+              border: `4px solid ${RICH}`, zIndex: 2,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 10.5, fontWeight: 800, color: RICH, letterSpacing: '0.06em',
+              textAlign: 'center', lineHeight: 1.15,
             }}>
             AI<br />CENTRAL
           </div>
         </div>
 
-        {phase !== 'done' ? (
+        {!done ? (
           <button
             type="button" onClick={spin} disabled={phase === 'spinning'}
-            className="transition-transform hover:-translate-y-px active:scale-[0.98]"
+            className="transition-transform hover:-translate-y-px active:translate-y-0"
             style={{
-              marginTop: 10, background: RICH, color: CREAM, border: `3px solid ${RICH}`,
-              fontWeight: 800, fontSize: 17, height: 54, padding: '0 34px',
-              cursor: phase === 'spinning' ? 'wait' : 'pointer', opacity: phase === 'spinning' ? 0.75 : 1,
-              boxShadow: phase === 'idle' ? `0 0 0 6px rgba(228,135,21,.22)` : 'none',
+              marginTop: 26, background: RICH, color: CREAM, border: `3px solid ${RICH}`,
+              fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em',
+              height: 56, padding: '0 40px',
+              cursor: phase === 'spinning' ? 'wait' : 'pointer',
+              opacity: phase === 'spinning' ? 0.7 : 1,
+              boxShadow: phase === 'idle' ? `5px 6px 0 ${FULVOUS}` : `2px 2px 0 ${FULVOUS}`,
             }}
           >
-            {phase === 'spinning' ? 'spinning…' : '🎡 spin the wheel'}
+            {phase === 'spinning' ? 'spinning…' : 'Spin it'}
           </button>
         ) : (
-          <div className="mt-4" style={{ animation: 'ac-rise .45s ease-out' }}>
-            <div className="mx-auto" style={{ maxWidth: 470, border: `3px solid ${INK}`, background: '#FFFFFF', padding: '22px 24px 24px', boxShadow: '0 10px 30px rgba(26,26,26,.13)' }}>
+          <div className="mt-7" style={{ animation: 'ac-rise .45s ease-out' }}>
+            <div className="mx-auto" style={{ maxWidth: 470, border: `3px solid ${INK}`, background: '#FFFFFF', padding: '22px 24px 24px', boxShadow: `7px 8px 0 ${RICH}` }}>
               <div className="font-mono uppercase" style={{ fontSize: 10.5, letterSpacing: '0.18em', color: FULVOUS, fontWeight: 700 }}>
                 All six, for
               </div>
@@ -230,6 +338,11 @@ export function UnlockReveal({
 
       <style>{`
         @keyframes ac-rise { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+        @keyframes ac-tick {
+          0%   { transform: translateX(-50%) rotate(0deg) }
+          22%  { transform: translateX(-50%) rotate(-15deg) }
+          100% { transform: translateX(-50%) rotate(0deg) }
+        }
         @media (prefers-reduced-motion: reduce) {
           [aria-label="What you unlocked"] * { transition: none !important; animation: none !important; }
         }
