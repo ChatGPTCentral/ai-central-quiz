@@ -330,7 +330,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // puts a real buy button above the fold — today the only above-fold action
   // is a scroll anchor, and two thirds of visitors never reach a real CTA.
   // Body order follows the same logic: result, then the goods, then the plan.
+  // The reveal arm is built ON TOP of the aspirational page, not the old
+  // control: aspirational is currently winning 54.5% vs 43.0%, so testing the
+  // wheel against the losing layout would measure the layout, not the wheel.
   const aspirational =
+    reveal ||
     previewVar.includes('aspirational') ||
     assignments.some(a => a.experimentKey === 'result_aspirational_v1' && a.variantKey === 'aspirational')
 
