@@ -303,8 +303,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // Theatre without a luck claim: everyone sees the same segments and the copy
   // says so on the page. Lands on the $4.99 BEFORE any CTA click, which is the
   // expectation gap the autopsy found (30 of 38 abandon the form in <10s).
+  //
+  // The preview (?xv=reveal) and the live arm are deliberately NOT the same
+  // flag. The preview also forces the aspirational layout so the owner can see
+  // the intended combination in one link; the live arm must not, or the wheel
+  // experiment would drag its own layout along and we would be measuring two
+  // things at once. See the `aspirational` block below.
+  const revealPreview = previewVar.includes('reveal')
   const reveal =
-    previewVar.includes('reveal') ||
+    revealPreview ||
     assignments.some(a => a.experimentKey === 'result_reveal_v1' && a.variantKey === 'reveal')
 
   // ── One-tap wallets (Express Checkout Element) ───────────────────────
@@ -330,11 +337,19 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // puts a real buy button above the fold — today the only above-fold action
   // is a scroll anchor, and two thirds of visitors never reach a real CTA.
   // Body order follows the same logic: result, then the goods, then the plan.
-  // The reveal arm is built ON TOP of the aspirational page, not the old
-  // control: aspirational is currently winning 54.5% vs 43.0%, so testing the
-  // wheel against the losing layout would measure the layout, not the wheel.
+  //
+  // ORTHOGONALITY. This used to read `reveal || …`, which forced everyone in
+  // the wheel arm onto the aspirational layout. That is fine for a preview link
+  // and fatal for a live test: the wheel arm would differ from its control by
+  // BOTH the wheel and the whole page order, so a win would be unattributable.
+  //
+  // Bucketing is fnv1a32(anonId|experimentKey|salt), so two experiments with
+  // different keys randomize independently and the layout is balanced across
+  // the wheel's arms by construction. That makes wheel × layout a proper 2x2
+  // and lets both run at once on full traffic instead of queueing, which
+  // matters a lot at ~21 exposures per arm per day.
   const aspirational =
-    reveal ||
+    revealPreview ||
     previewVar.includes('aspirational') ||
     assignments.some(a => a.experimentKey === 'result_aspirational_v1' && a.variantKey === 'aspirational')
 
