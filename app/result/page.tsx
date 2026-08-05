@@ -25,6 +25,7 @@ import { OfferStack } from '@/components/result2/OfferStack'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
+import { UnlockReveal } from '@/components/result2/UnlockReveal.client'
 import ExpressPay from '@/components/result2/ExpressPay.client'
 import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
@@ -298,6 +299,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // still eyeball what the comparison was, but no real visitor gets it.
   const videoFirst = previewVar.includes('videofirst')
 
+  // ── `reveal` arm · the honest unlock wheel ───────────────────────────
+  // Theatre without a luck claim: everyone sees the same segments and the copy
+  // says so on the page. Lands on the $4.99 BEFORE any CTA click, which is the
+  // expectation gap the autopsy found (30 of 38 abandon the form in <10s).
+  const reveal =
+    previewVar.includes('reveal') ||
+    assignments.some(a => a.experimentKey === 'result_reveal_v1' && a.variantKey === 'reveal')
+
   // ── One-tap wallets (Express Checkout Element) ───────────────────────
   // 64% of payment intents are canceled — people open the hosted form and
   // leave. This skips the form entirely. OFF for real visitors until a live
@@ -563,6 +572,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                         guarantee
             Every section is identical between arms, only the order and the
             video's position change, so a win is attributable to the order. */}
+        {reveal && (
+          <UnlockReveal
+            firstName={firstName || null}
+            checkoutUrl={checkoutUrl}
+            submissionId={rowId}
+            ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+          />
+        )}
+
         {aspirational ? (
           // Result → the goods → the plan → the price. The wall is framed as
           // what the NEXT rung reads, so it is the thing between them and the
