@@ -45,15 +45,15 @@ function nextStageLabel(stage: string): string | null {
 }
 
 /**
- * The whole headline sentence, not just the noun, because "one rung off" is
+ * The whole headline sentence, not just the noun, because "one stage off" is
  * false for the 13% of takers who come out at S5_builder. Merging a bare label
- * into a fixed sentence would tell a Builder they are one rung off "the next
+ * into a fixed sentence would tell a Builder they are one stage off "the next
  * stage", which is nonsense and exactly the kind of thing that makes a
  * personalised email read as automated. One field, always a true sentence.
  */
 function rungLine(stage: string | null): string {
   const next = stage ? nextStageLabel(stage) : null
-  if (next) return `You are one rung off ${next}`
+  if (next) return `You are one stage off ${next}`
   return 'You are at the top of the ladder, the risk now is staying there'
 }
 
