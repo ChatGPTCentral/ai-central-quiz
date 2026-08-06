@@ -324,13 +324,28 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   // ── One-tap wallets (Express Checkout Element) ───────────────────────
   // 64% of payment intents are canceled — people open the hosted form and
-  // leave. This skips the form entirely. OFF for real visitors until a live
-  // sale has been proven to save a reusable card for the day-28 renewal;
-  // ?express=1 previews it, NEXT_PUBLIC_EXPRESS_PAY='true' turns it on for all.
+  // leave. This skips the form entirely.
+  //
+  // ON for everyone as of Aug 6. The owner's condition was "if the express
+  // does not save the card I don't want it, I'd lose the renewal later", and
+  // that is not a promise, it is enforced: /api/checkout/intent returns
+  // renewalCheck, and ExpressPay REFUSES to confirm the payment when
+  // renewalCheck.ok is false. A wallet payment therefore cannot complete
+  // unless the intent carries setup_future_usage=off_session with a customer
+  // attached — the same mechanism the card path uses, which demonstrably
+  // renews. Verified live: {"setupFutureUsage":"off_session","customer":
+  // "cus_...","ok":true}.
+  //
+  // Deliberately NOT A/B tested. The realistic effect on click-to-paid is a
+  // few points and the MDE at this traffic is ~10, so a 16-day test would
+  // return "inconclusive" while half of everyone got the slower path. The
+  // question worth answering is not "does it convert better" but "does the
+  // day-28 renewal actually charge", which is an observation, not an
+  // experiment. Kill switch: NEXT_PUBLIC_EXPRESS_PAY='false', or ?express=0.
   const expressParam = typeof searchParams.express === 'string' ? searchParams.express.trim() : ''
   const expressOn =
     expressParam === '1' ||
-    (process.env.NEXT_PUBLIC_EXPRESS_PAY === 'true' && expressParam !== '0')
+    (process.env.NEXT_PUBLIC_EXPRESS_PAY !== 'false' && expressParam !== '0')
   const expressPayEl = expressOn ? (
     <ExpressPay
       submissionId={rowId}
