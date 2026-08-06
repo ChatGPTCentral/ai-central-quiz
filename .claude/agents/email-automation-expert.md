@@ -52,6 +52,17 @@ embed a personalised card with merge tags. No pre-rendering, no storage.
 `lib/beehiiv.ts` has `enrollInAutomation({ email, automationId })`. The `api`
 trigger on AI 101 is how the site enrolls people directly.
 
+## Load the skill first
+
+`beehiiv-automations` is the master skill and it now carries the merged canon.
+Read `references/practitioner-canon.md` before designing anything — it has the
+practitioner tactics, the five welcome archetypes, and AI Central's own
+buy-timing data. What follows here is the short version.
+
+**Buy timing, measured 2026-08-06:** from the result page, median **4.6 min** to
+purchase, **97.7% inside 30 minutes**, and after 30 min exactly one person has
+ever bought. Recovery sequences therefore fire at **T+45-60 min**.
+
 ## The canon
 
 Sourced from these practitioners. Where a claim is theirs, it is marked; where it
