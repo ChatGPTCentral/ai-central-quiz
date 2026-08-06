@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import Stripe from 'stripe'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
+import { verifyExpressPayment, sendExpressAlert } from '@/lib/express-alert'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -167,6 +168,22 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('[stripe-webhook] signature verification failed:', err)
     return NextResponse.json({ error: 'invalid signature' }, { status: 400 })
+  }
+
+  // One-tap wallet payments get their own alarm, ahead of the normal sync.
+  // The owner needs to know whether the card is reusable BEFORE the day-28
+  // renewal, and a notification that only says "it happened" would make them go
+  // and look. This answers it in the subject line. Only fires for intents this
+  // codebase tagged as express, so ordinary card payments stay quiet.
+  if (event.type === 'payment_intent.succeeded') {
+    const pi = event.data.object as Stripe.PaymentIntent
+    if (pi.metadata?.source === 'quiz_result_express') {
+      waitUntil(
+        verifyExpressPayment(s, pi.id)
+          .then(v => sendExpressAlert(v, process.env.NEXT_PUBLIC_SITE_URL))
+          .catch(err => console.error('[stripe-webhook] express alert failed:', err)),
+      )
+    }
   }
 
   if (RELEVANT.has(event.type)) {
