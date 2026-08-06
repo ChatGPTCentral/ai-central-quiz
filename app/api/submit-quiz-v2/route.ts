@@ -83,12 +83,10 @@ export async function POST(req: NextRequest) {
     )
   }
   if (assess.reasons.length > 0) {
-    // Soft flag: NOT blocking. Kept for observability / manual triage.
-    // TODO(lead-quality): once scripts/migrations/2026-07-lead-quality.sql is
-    // applied, add `suspected_fake: true` (and lead_quality_reasons:
-    // assess.reasons.join(',')) to the insert/update payload below to persist
-    // this. Left out of the payload for now so a missing column can't break
-    // inserts.
+    // Soft flag: NOT blocking, but now PERSISTED. It used to be logged and
+    // dropped, which is why "are we getting a lot of fakes?" could only ever be
+    // answered by impression. Enrichment should skip these rather than burn a
+    // credit resolving a name that was never real.
     console.warn('[submit-quiz-v2] suspected-fake lead (kept):', v.email, assess.reasons.join(','))
   }
 
@@ -153,7 +151,13 @@ export async function POST(req: NextRequest) {
       if (!val) return null
       try { return decodeURIComponent(val) } catch { return val }
     }
+    const leadQuality = {
+      suspected_fake: assess.reasons.length > 0,
+      lead_quality_reasons: assess.reasons.length ? assess.reasons.join(',') : null,
+      lead_quality_score: assess.score,
+    }
     const { error } = await c.from('submissions').insert({
+      ...leadQuality,
       id: rowId,
       ts: Date.now(),
       created_at: new Date().toISOString(),

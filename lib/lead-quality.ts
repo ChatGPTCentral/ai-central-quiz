@@ -139,6 +139,47 @@ function isDisposableDomain(domain: string): boolean {
  * caller can flag-but-keep the lead. Basic email SHAPE (a@b.c) is validated
  * elsewhere; this adds the fake-domain + fake-local layer on top.
  */
+
+/**
+ * Does the name contain at least one token that could be a real name?
+ *
+ * Three letters, not two, because two-letter surnames are real (Ng, Li, Xu, Vo)
+ * but a two-letter FULL name is not — the test is whether ANY token clears the
+ * bar, so "Li Wei" passes on "Wei" and "Amy Ng" passes on "Amy", while "R S"
+ * and "b d" fail. A single token is fine: "Fred" is a name, and plenty of
+ * people give only a first name.
+ *
+ * Letters only, so digits cannot pad a token to length ("3 3", "a1b").
+ * Unicode-aware, so non-Latin scripts are not punished for having no [a-z].
+ */
+/** Compact forms of the multi-word fakes, long enough that a prefix match
+ *  cannot collide with a real name. Built once, not per call. */
+const FAKE_NAME_PREFIXES: string[] = Array.from(FAKE_FULL_NAMES)
+  .map(n => n.replace(/[^a-z0-9]/g, ''))
+  .filter(n => n.length >= 7)
+
+/**
+ * Compact name begins with a known placeholder, i.e. someone appended a
+ * character to evade the exact-match list. Only applied to the multi-word fake
+ * names, whose compact forms are long and distinctive enough that a prefix
+ * match cannot collide with a real name.
+ */
+function startsWithFakeName(nameCompact: string): boolean {
+  if (nameCompact.length < 7) return false
+  return FAKE_NAME_PREFIXES.some(p => nameCompact.startsWith(p))
+}
+
+function hasRealNameToken(name: string): boolean {
+  return name.split(/[\s.]+/).some(tok => {
+    const latin = tok.replace(/[^A-Za-z]/g, '')
+    if (latin.length >= 3) return true
+    // Non-Latin scripts carry more meaning per character: a two-character CJK
+    // name is a complete, real name, so holding them to the Latin threshold
+    // would reject real people. Anything outside ASCII gets the lower bar.
+    return tok.replace(/[\x00-\x7F]/g, '').length >= 2
+  })
+}
+
 export function assessLead(input: LeadInput): LeadAssessment {
   const reasons: string[] = []
   let score = 0
@@ -154,10 +195,25 @@ export function assessLead(input: LeadInput): LeadAssessment {
   if (name) {
     if (FAKE_FULL_NAMES.has(name) || FAKE_SINGLE_NAMES.has(name) || FAKE_SINGLE_NAMES.has(nameCompact)) {
       hard('name:placeholder')
+    } else if (startsWithFakeName(nameCompact)) {
+      // Evasion by suffix. A real submission arrived as "John Doep" — one
+      // letter appended to slip past an exact-match list. Prefix matching costs
+      // nothing here because no real name begins with "johndoe" or "asdfasdf".
+      hard('name:placeholder_variant')
     } else if (isKeyboardWalk(nameCompact)) {
       hard('name:keyboard_walk')
     } else if (isAllSameChar(nameCompact) && nameCompact.length >= 4) {
       hard('name:repeated_char')
+    } else if (!hasRealNameToken(name)) {
+      // Initials-only: "R S", "b d", ". M", "3 3". The dominant real-world fake
+      // and the one an exact-match blocklist can never catch, because there is
+      // nothing to match — it is people typing the minimum to get past the
+      // field.
+      //
+      // Measured before turning this on: 37 of 1,347 quiz takers since Jul 5,
+      // and ZERO of them have ever paid, against a 6.11% baseline. It also
+      // makes enrichment worthless, since there is no real name to resolve.
+      hard('name:no_real_token')
     } else {
       // Softer signals — flag but keep.
       if (isAllSameChar(nameCompact)) soft('name:repeated_char_short')
