@@ -137,6 +137,8 @@ export default function AdsPanel() {
         comparison, the bar only binds on paid ones.
       </p>
 
+      <AdsEmbed url={data.adsAppUrl} />
+
       <div style={{ marginTop: 24, borderTop: `2px solid ${INK}`, paddingTop: 14 }}>
         <h2 style={{ fontSize: 15, fontWeight: 800, color: RICH, marginBottom: 6 }}>Manage campaigns</h2>
         <p style={{ fontSize: 12.5, color: MUTE, lineHeight: 1.6, marginBottom: 10 }}>
@@ -159,6 +161,59 @@ export default function AdsPanel() {
           </a>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The ads app, embedded.
+ *
+ * The constraint that decides this component: every auth cookie in the ads app
+ * is sameSite="lax", and a browser does not send Lax cookies into a CROSS-SITE
+ * iframe. "Site" means the registrable domain, so framing ads.thecentral.ai
+ * from quiz.thecentral.ai works and the LinkedIn session comes with it, while
+ * framing a *.vercel.app URL silently renders a logged-out app whose every call
+ * 401s. That failure looks like a broken integration rather than a cookie rule,
+ * so this checks the host up front and says which case you are in instead of
+ * showing an empty frame.
+ */
+function AdsEmbed({ url }: { url: string | null }) {
+  const [open, setOpen] = useState(false)
+  if (!url) return null
+
+  let sameSite = false
+  let host = ''
+  try {
+    host = new URL(url).hostname
+    const site = (h: string) => h.split('.').slice(-2).join('.')
+    sameSite = typeof window !== 'undefined' && site(host) === site(window.location.hostname)
+  } catch { /* malformed URL falls through to the warning */ }
+
+  return (
+    <div style={{ marginTop: 24, borderTop: `2px solid ${INK}`, paddingTop: 14 }}>
+      <div className="flex items-center gap-3 mb-2">
+        <h2 style={{ fontSize: 15, fontWeight: 800, color: RICH, margin: 0 }}>The ads app, in here</h2>
+        <button onClick={() => setOpen(o => !o)}
+          style={{ border: `2px solid ${INK}`, padding: '3px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: open ? INK : 'transparent', color: open ? '#FFFDFA' : INK }}>
+          {open ? 'hide' : 'show'}
+        </button>
+        <span style={{ fontSize: 11.5, color: MUTE }}>{host}</span>
+      </div>
+
+      {!sameSite && (
+        <p style={{ fontSize: 12.5, lineHeight: 1.55, color: BAD, marginBottom: 8 }}>
+          <strong>{host}</strong> is a different site from this admin, and the ads app authenticates
+          with sameSite=lax cookies, which browsers will not send into a cross-site frame. Embedded
+          here it would render logged out and every LinkedIn call would 401. Put it on a
+          thecentral.ai subdomain and this frame starts working, session and all. Until then use the
+          buttons below, which open it in its own tab where its cookies apply normally.
+        </p>
+      )}
+
+      {open && sameSite && (
+        <iframe src={url} title="LinkedIn ads app"
+          style={{ width: '100%', height: 780, border: `2px solid ${INK}`, background: '#fff' }} />
+      )}
     </div>
   )
 }
