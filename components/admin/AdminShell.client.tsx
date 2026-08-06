@@ -16,7 +16,7 @@ interface Props {
 
 type IconName =
   | 'dashboard' | 'funnel' | 'experiments' | 'roadmap' | 'people' | 'board' | 'inprogress' | 'simulator'
-  | 'enrich' | 'debug' | 'stats' | 'flow' | 'editor' | 'settings'
+  | 'enrich' | 'debug' | 'stats' | 'flow' | 'editor' | 'settings' | 'ads'
 
 function Icon({ name, active }: { name: IconName; active?: boolean }) {
   // On the jet-black sidebar: inactive icons battleship grey, active rich
@@ -37,6 +37,7 @@ function Icon({ name, active }: { name: IconName; active?: boolean }) {
     case 'stats': return <svg {...p}><path d="M21.2 15.9A10 10 0 1 1 8 2.8" /><path d="M22 12A10 10 0 0 0 12 2v10z" /></svg>
     case 'flow': return <svg {...p}><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4v5a4 4 0 0 1-4 4H6" /></svg>
     case 'editor': return <svg {...p}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z" /></svg>
+    case 'ads': return <svg {...p}><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M18.5 5.5a9 9 0 0 1 0 13" /></svg>
     case 'settings': return <svg {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg>
   }
 }
@@ -47,6 +48,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
       { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
       { href: '/admin/pages', label: 'Result pages', icon: 'editor' },
+      { href: '/admin/ads', label: 'Ads', icon: 'ads' },
       { href: '/admin/simulator', label: 'Simulator', icon: 'simulator' },
       { href: '/admin/roadmap', label: 'Roadmap', icon: 'roadmap' },
     ],
