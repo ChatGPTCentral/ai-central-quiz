@@ -399,6 +399,8 @@ export async function setPassRecoveryFields(input: {
   email: string
   resultUrl: string
   nextStage?: string | null
+  /** Full headline sentence — true for top-of-ladder people too. */
+  rungLine?: string | null
   firstName?: string | null
 }): Promise<StageResult> {
   const apiKey = process.env.BEEHIIV_API_KEY
@@ -412,6 +414,7 @@ export async function setPassRecoveryFields(input: {
     { name: 'result_url', value: input.resultUrl },
   ]
   if (input.nextStage) fields.push({ name: 'next_stage', value: input.nextStage })
+  if (input.rungLine) fields.push({ name: 'rung_line', value: input.rungLine })
   if (input.firstName) fields.push({ name: 'first_name', value: input.firstName })
 
   try {

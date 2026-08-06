@@ -34,15 +34,27 @@ import { personResultPath } from '@/lib/result-url'
 import { STAGES } from '@/lib/segmentation-v2'
 
 /**
- * The rung above theirs, as a human label. Returns null at the top of the
- * ladder or for an unrecognised stage, and the email's {{next_stage}} fallback
- * covers that rather than inventing a rung above Builder.
+ * The rung above theirs, as a human label. Null at the top of the ladder or for
+ * an unrecognised stage — we do not invent a rung above Builder.
  */
 function nextStageLabel(stage: string): string | null {
   const ordered = STAGES.filter(s => s.key.startsWith('S'))
   const i = ordered.findIndex(s => s.key === stage)
   if (i < 0 || i >= ordered.length - 1) return null
   return ordered[i + 1].label
+}
+
+/**
+ * The whole headline sentence, not just the noun, because "one rung off" is
+ * false for the 13% of takers who come out at S5_builder. Merging a bare label
+ * into a fixed sentence would tell a Builder they are one rung off "the next
+ * stage", which is nonsense and exactly the kind of thing that makes a
+ * personalised email read as automated. One field, always a true sentence.
+ */
+function rungLine(stage: string | null): string {
+  const next = stage ? nextStageLabel(stage) : null
+  if (next) return `You are one rung off ${next}`
+  return 'You are at the top of the ladder, the risk now is staying there'
 }
 
 export const dynamic = 'force-dynamic'
@@ -114,13 +126,13 @@ export async function GET(req: NextRequest) {
     // and {{first_name}}; a missing field silently falls back and the sequence
     // quietly stops being personal, which is the only reason it is worth
     // sending. Non-fatal on failure: a generic send still beats no send.
-    const next = r.stage ? nextStageLabel(r.stage) : null
     const fieldRes = await setPassRecoveryFields({
       email: r.email,
       resultUrl: site + personResultPath({
         id: r.id, name: r.name, score: r.score, persona: r.persona, stage: r.stage,
       }),
-      nextStage: next,
+      nextStage: r.stage ? nextStageLabel(r.stage) : null,
+      rungLine: rungLine(r.stage),
       firstName: r.name?.trim().split(/\s+/)[0] ?? null,
     })
     if (!fieldRes.success) {
