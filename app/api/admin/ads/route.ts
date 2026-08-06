@@ -72,6 +72,28 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  // Recent ad-driven quiz activity, mirroring the cockpit's own feed
+  // (/api/quiz/recent over there). Same idea, one difference: that route gates
+  // identity behind the LinkedIn operator cookie because it can be hit by an
+  // unauthenticated public alias. This route is already behind the admin
+  // session, so names and CRM links are always present.
+  const { data: recentRows } = await c
+    .from('submissions')
+    .select('id, name, email, score, stage, utm_ref, created_at, stripe_first_charge_at')
+    .in('utm_source', PAID_SOURCES)
+    .order('created_at', { ascending: false })
+    .limit(15)
+
+  const recent = (recentRows || []).map(r => ({
+    id: r.id,
+    name: r.name,
+    score: r.score,
+    stage: r.stage,
+    campaign: r.utm_ref || '(none)',
+    at: r.created_at,
+    buyer: !!(r.stripe_first_charge_at && r.stripe_first_charge_at > r.created_at),
+  }))
+
   // LTV from the OBSERVED trial→annual rate, not from hope. If nobody has
   // renewed yet the rate is null and the UI must say so rather than default to
   // 100% and flatter every channel.
@@ -83,6 +105,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     days,
     rows: rows.sort((a, b) => b.takers - a.takers),
+    recent,
     economics: {
       trialUsd: TRIAL_USD,
       annualUsd: ANNUAL_USD,

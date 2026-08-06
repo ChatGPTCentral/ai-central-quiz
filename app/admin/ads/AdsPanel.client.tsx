@@ -7,9 +7,14 @@ interface SourceRow {
   takers: number; sawResult: number; clicked: number; buyers: number
   clickRate: number; buyRate: number
 }
+interface RecentRow {
+  id: string; name: string | null; score: number | null; stage: string | null
+  campaign: string; at: string; buyer: boolean
+}
 interface Payload {
   days: number
   rows: SourceRow[]
+  recent: RecentRow[]
   economics: { trialUsd: number; annualUsd: number; renewalRate: number | null; ltv: number; ltvIsFloor: boolean; note: string }
   adsAppUrl: string | null
 }
@@ -76,9 +81,10 @@ export default function AdsPanel() {
 
         <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
           {[
+            ['Sales from ads', String(paidBuyers), cac === null ? 'no buyers yet' : `CAC ${usd(cac)}`],
+            ['Quiz-takers', String(paidTakers), `from paid sources, ${days}d`],
+            ['Cost / quiz', usd(costPerTaker), 'spend ÷ quiz-takers'],
             ['LTV per buyer', usd(ltv), data.economics.ltvIsFloor ? 'floor, no renewals yet' : `${pct(data.economics.renewalRate ?? 0)} renew`],
-            ['Cost per quiz taker', usd(costPerTaker), `${paidTakers} paid takers`],
-            ['Actual CAC', cac === null ? 'no buyers' : usd(cac), `${paidBuyers} buyer${paidBuyers === 1 ? '' : 's'}`],
             ['Break-even buy rate', pct(breakEvenRate), 'of takers must buy'],
             ['Actual buy rate', pct(actualRate), actualRate >= breakEvenRate ? 'clears the bar' : 'below the bar'],
           ].map(([label, value, sub]) => (
@@ -135,6 +141,45 @@ export default function AdsPanel() {
         &ldquo;Worth per taker&rdquo; is LTV x buy rate, the most you could pay for one visitor from that
         source and still break even. Sources under 5 takers are hidden. Free sources are shown for
         comparison, the bar only binds on paid ones.
+      </p>
+
+      <h2 style={{ fontSize: 15, fontWeight: 800, color: RICH, marginTop: 24, marginBottom: 8 }}>
+        Recent ad-driven quiz activity
+      </h2>
+      {data.recent.length === 0
+        ? <p style={{ fontSize: 12.5, color: MUTE }}>No paid-source quiz takers yet.</p>
+        : (
+          <table className="w-full" style={{ fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${INK}`, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: MUTE }}>
+                <th className="text-left py-1.5">Who</th>
+                <th className="text-left py-1.5">Campaign</th>
+                <th className="text-right py-1.5">Score</th>
+                <th className="text-left py-1.5 pl-3">Stage</th>
+                <th className="text-right py-1.5">When</th>
+                <th className="text-right py-1.5">Bought</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.recent.map(r => (
+                <tr key={r.id} style={{ borderBottom: '1px solid #EEE' }}>
+                  <td className="py-1.5">
+                    <a href={`/admin/submissions/${r.id}`} style={{ color: INK, fontWeight: 600 }}>{r.name || '(no name)'}</a>
+                  </td>
+                  <td className="py-1.5" style={{ color: MUTE, fontFamily: 'ui-monospace, monospace', fontSize: 11.5 }}>{r.campaign}</td>
+                  <td className="text-right tabular-nums">{r.score ?? '—'}</td>
+                  <td className="py-1.5 pl-3" style={{ color: MUTE }}>{(r.stage || '').replace(/^S\d_/, '')}</td>
+                  <td className="text-right tabular-nums" style={{ color: MUTE }}>{new Date(r.at).toLocaleDateString()}</td>
+                  <td className="text-right" style={{ color: r.buyer ? GOOD : MUTE, fontWeight: r.buyer ? 800 : 400 }}>{r.buyer ? 'yes' : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      <p style={{ fontSize: 11.5, color: MUTE, marginTop: 8, lineHeight: 1.5 }}>
+        The same feed the ads cockpit shows, with one difference: that one hides identity unless you
+        hold the LinkedIn operator cookie, because it can be reached by a public alias. This screen is
+        already behind the admin session, so every row links straight to the CRM record.
       </p>
 
       <AdsEmbed url={data.adsAppUrl} />
