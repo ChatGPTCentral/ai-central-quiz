@@ -29,7 +29,21 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { enrollInAutomation } from '@/lib/beehiiv'
+import { enrollInAutomation, setPassRecoveryFields } from '@/lib/beehiiv'
+import { personResultPath } from '@/lib/result-url'
+import { STAGES } from '@/lib/segmentation-v2'
+
+/**
+ * The rung above theirs, as a human label. Returns null at the top of the
+ * ladder or for an unrecognised stage, and the email's {{next_stage}} fallback
+ * covers that rather than inventing a rung above Builder.
+ */
+function nextStageLabel(stage: string): string | null {
+  const ordered = STAGES.filter(s => s.key.startsWith('S'))
+  const i = ordered.findIndex(s => s.key === stage)
+  if (i < 0 || i >= ordered.length - 1) return null
+  return ordered[i + 1].label
+}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -77,7 +91,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const rows = (data || []) as { id: string; email: string; saw_result: string }[]
+  const rows = (data || []) as {
+    id: string; email: string; saw_result: string
+    name: string | null; score: number | null; persona: string | null; stage: string | null
+  }[]
   if (dry) {
     return NextResponse.json({
       mode: armed ? 'dry-run' : 'DISABLED (set BEEHIIV_PASS_RECOVERY_ENABLED=true to arm)',
@@ -90,7 +107,26 @@ export async function GET(req: NextRequest) {
 
   let enrolled = 0
   const failures: { email: string; error: string }[] = []
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai').replace(/\/$/, '')
+
   for (const r of rows) {
+    // Fields BEFORE enrolment. The emails merge {{result_url}}, {{next_stage}}
+    // and {{first_name}}; a missing field silently falls back and the sequence
+    // quietly stops being personal, which is the only reason it is worth
+    // sending. Non-fatal on failure: a generic send still beats no send.
+    const next = r.stage ? nextStageLabel(r.stage) : null
+    const fieldRes = await setPassRecoveryFields({
+      email: r.email,
+      resultUrl: site + personResultPath({
+        id: r.id, name: r.name, score: r.score, persona: r.persona, stage: r.stage,
+      }),
+      nextStage: next,
+      firstName: r.name?.trim().split(/\s+/)[0] ?? null,
+    })
+    if (!fieldRes.success) {
+      console.warn('[pass-recovery] merge fields not set for', r.id, fieldRes.error)
+    }
+
     const res = await enrollInAutomation({ email: r.email, automationId: AUTOMATION_ID })
     if (!res.success) {
       failures.push({ email: r.email, error: res.error || 'unknown' })

@@ -383,3 +383,53 @@ export async function enrollInAutomation(input: {
     return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
+
+/**
+ * Set the merge-tag fields the Pass Recovery emails read.
+ *
+ * The sequence is only worth sending because it is personal: it hands someone
+ * THEIR pass and names the rung they are one step from. Those are merge tags,
+ * and a merge tag with nothing behind it silently degrades to its fallback, so
+ * the email still sends and quietly stops being the thing we designed.
+ *
+ * Every field is written in one PATCH before enrolment, so by the time the
+ * automation fires there is nothing left to race.
+ */
+export async function setPassRecoveryFields(input: {
+  email: string
+  resultUrl: string
+  nextStage?: string | null
+  firstName?: string | null
+}): Promise<StageResult> {
+  const apiKey = process.env.BEEHIIV_API_KEY
+  if (!apiKey) return { success: false, error: 'BEEHIIV_API_KEY not set' }
+
+  const lookup = await findBeehiivSubscriberByEmail(input.email)
+  const subId = lookup?.subscriptionId
+  if (!subId) return { success: false, error: 'NOT_SUBSCRIBED' }
+
+  const fields: { name: string; value: string }[] = [
+    { name: 'result_url', value: input.resultUrl },
+  ]
+  if (input.nextStage) fields.push({ name: 'next_stage', value: input.nextStage })
+  if (input.firstName) fields.push({ name: 'first_name', value: input.firstName })
+
+  try {
+    const res = await fetch(
+      `${BEEHIIV_API_BASE}/publications/${PUBLICATION_ID}/subscriptions/${subId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ custom_fields: fields }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    )
+    if (!res.ok) {
+      const t = await res.text().catch(() => '')
+      return { success: false, error: `beehiiv ${res.status}: ${t.slice(0, 160)}`, subscriptionId: subId }
+    }
+    return { success: true, subscriptionId: subId }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err), subscriptionId: subId }
+  }
+}
