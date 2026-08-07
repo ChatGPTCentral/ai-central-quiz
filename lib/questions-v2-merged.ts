@@ -210,7 +210,15 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'jobLevel',
     type: 'chips',
-    label: 'What is your current job level?',
+    // The most expensive question in the quiz: 17.5% of everyone who answered
+    // the previous ten quit here (81.6% -> 64.1%). Two things were wrong with
+    // it. It was the ONLY personal question with no sublabel, so unlike name
+    // and email it never said what it was for, and it switched the register
+    // from "you and AI" to "you and your employer", which reads as a lead form
+    // hiding behind a quiz. Reframed to ask who to COMPARE them to, which is
+    // the same data serving the percentile they came for rather than us.
+    label: 'Last one. Who should we compare you to?',
+    sublabel: 'Your percentile only means something next to people with the same constraints',
     required: true,
     dbColumn: 'job_level',
     options: [
@@ -224,22 +232,6 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     ],
   },
 
-  // ── Commitment close ──────────────────────────────────────────
-  {
-    id: 'intent_30d',
-    type: 'chips',
-    label: '30 days from now, what do you want to be true?',
-    required: true,
-    dbColumn: 'intent_30d',
-    scoring: 'enum',
-    options: [
-      { label: 'Learn the basics',                       value: 'learn_basics' },
-      { label: 'Use AI more in my day job',              value: 'use_more' },
-      { label: 'Build my first automation',              value: 'first_automation' },
-      { label: 'Ship something AI-powered to customers', value: 'ship_to_customers' },
-      { label: 'Teach my team or company',               value: 'teach_team' },
-    ],
-  },
 
 ]
 

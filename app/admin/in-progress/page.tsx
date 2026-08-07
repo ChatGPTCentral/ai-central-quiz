@@ -5,7 +5,9 @@ export const dynamic = 'force-dynamic'
 
 // Identity + the email step don't count as "progress" past contact capture —
 // everything else is a real answered question.
-const PROGRESS_KEYS = ['frequency', 'aiTools', 'depth', 'momentum', 'friction', 'workArea', 'jobLevel', 'intent_30d']
+// intent_30d left the quiz (it moved to the result page), so counting it here
+// would cap progress at 7/8 for everyone and make finishers look unfinished.
+const PROGRESS_KEYS = ['frequency', 'aiTools', 'depth', 'momentum', 'friction', 'workArea', 'jobLevel']
 
 function answeredCount(answers: Record<string, unknown> | null): number {
   if (!answers) return 0
