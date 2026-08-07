@@ -98,7 +98,21 @@ export async function GET(req: NextRequest) {
   // in beehiiv, so enrolling would fail anyway, but failing 50 times every 15
   // minutes is noise rather than safety. This way the cron still runs and still
   // reports what it WOULD send, which is the useful part while it is off.
-  const armed = process.env.BEEHIIV_PASS_RECOVERY_ENABLED === 'true'
+  // KILL SWITCH, 2026-08-07 23:52 UTC. Do not remove without reading this.
+  //
+  // The first armed run enrolled 50 people, and 49 of them had NO result_view
+  // inside the 60min-24h window. Their result views go back to 10 July. They
+  // received an email whose first line is "You took the AI quiz about an hour
+  // ago", which is the precise failure the window exists to prevent.
+  //
+  // Only this cron writes pass_recovery_enrolled_at, so this cron did it, and
+  // the candidate RPC as written cannot return those rows. Something is wrong
+  // that I do not yet understand, and an unexplained mass-mail is not something
+  // to leave running while I work it out. Off until the cause is found, proven,
+  // and covered by the belt-and-braces window check below.
+  const KILLED_PENDING_INVESTIGATION = true
+
+  const armed = process.env.BEEHIIV_PASS_RECOVERY_ENABLED === 'true' && !KILLED_PENDING_INVESTIGATION
   const dry = !armed || req.nextUrl.searchParams.get('dry') === '1'
   const c = sb()
 
