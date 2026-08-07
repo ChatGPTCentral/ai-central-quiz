@@ -232,6 +232,14 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     ],
   },
 
+  // An intent_30d question ("30 days from now, what do you want to be true?")
+  // used to sit here as a commitment close. Cut 2026-08-07: it cost 3.6 points
+  // of completion and nothing consumed the answer, which appeared only on admin
+  // screens. The submissions.intent_30d COLUMN and every historical answer are
+  // untouched, so reinstating it loses nothing. The verbatim definition and the
+  // two follow-up edits it needs are on the roadmap board, card "PARKED,
+  // recoverable: intent_30d question", or in `git show f80d784` on this file.
+
 
 ]
 
