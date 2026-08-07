@@ -26,6 +26,16 @@
 // The window is also bounded at both ends: nothing younger than 60 minutes,
 // nothing older than 24 hours, so switching this on cannot backfill weeks of
 // old quiz takers with a surprise blast.
+//
+// TO ARM IT, both steps, in this order:
+//   1. publish the automation in beehiiv (enrolling into a draft is a no-op)
+//   2. set BEEHIIV_PASS_RECOVERY_ENABLED=true in Vercel, Production scope,
+//      AND REDEPLOY
+// Step 2's second half is the one that catches people. Vercel bakes env vars
+// into a deployment when it builds, so saving the variable changes the project
+// config and does nothing at all to the deployment already serving traffic.
+// The cron keeps running, keeps finding candidates, keeps enrolling nobody,
+// and looks identical to being broken. Confirmed the hard way on 2026-08-07.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
