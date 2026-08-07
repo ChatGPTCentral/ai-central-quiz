@@ -49,6 +49,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
       { href: '/admin/pages', label: 'Result pages', icon: 'editor' },
       { href: '/admin/ads', label: 'Ads', icon: 'ads' },
+      { href: '/admin/pass-recovery', label: 'Pass Recovery', icon: 'stats' },
       { href: '/admin/simulator', label: 'Simulator', icon: 'simulator' },
       { href: '/admin/roadmap', label: 'Roadmap', icon: 'roadmap' },
     ],

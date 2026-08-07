@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
 import { setPassRecoveryFields } from '@/lib/beehiiv'
-import { personResultPath } from '@/lib/result-url'
+import { personResultPath, PASS_RECOVERY_UTM } from '@/lib/result-url'
 import { STAGES } from '@/lib/segmentation-v2'
 
 export const dynamic = 'force-dynamic'
@@ -61,9 +61,10 @@ export async function GET(req: NextRequest) {
   if (!row) return NextResponse.json({ error: 'no submission for that email' }, { status: 404 })
 
   const site = (process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai').replace(/\/$/, '')
+  // Same UTMs the cron writes, so the preview shows the real link.
   const resultUrl = site + personResultPath({
     id: row.id, name: row.name, score: row.score, persona: row.persona, stage: row.stage,
-  })
+  }, PASS_RECOVERY_UTM)
   const fields = {
     result_url: resultUrl,
     rung_line: rungLine(row.stage),

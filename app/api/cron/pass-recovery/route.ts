@@ -30,7 +30,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { enrollInAutomation, setPassRecoveryFields } from '@/lib/beehiiv'
-import { personResultPath } from '@/lib/result-url'
+import { personResultPath, PASS_RECOVERY_UTM } from '@/lib/result-url'
 import { STAGES } from '@/lib/segmentation-v2'
 
 /**
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
       email: r.email,
       resultUrl: site + personResultPath({
         id: r.id, name: r.name, score: r.score, persona: r.persona, stage: r.stage,
-      }),
+      }, PASS_RECOVERY_UTM),
       nextStage: r.stage ? nextStageLabel(r.stage) : null,
       rungLine: rungLine(r.stage),
       firstName: r.name?.trim().split(/\s+/)[0] ?? null,
