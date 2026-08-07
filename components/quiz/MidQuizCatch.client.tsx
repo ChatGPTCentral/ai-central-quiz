@@ -55,6 +55,14 @@ export default function MidQuizCatch({
   const stateRef = useRef({ step, totalSteps, done })
   stateRef.current = { step, totalSteps, done }
 
+  // ?catch=1 forces it open for review, bypassing every gate. Without this,
+  // seeing the thing means answering two questions and then performing a
+  // precise mouse gesture, which makes it effectively unreviewable.
+  const forced = useCallback(() => {
+    try { return new URLSearchParams(window.location.search).get('catch') === '1' }
+    catch { return false }
+  }, [])
+
   const eligible = useCallback(() => {
     const s = stateRef.current
     if (s.done || s.step < MIN_STEP || s.step >= s.totalSteps) return false
@@ -72,6 +80,7 @@ export default function MidQuizCatch({
   }, [eligible])
 
   useEffect(() => {
+    if (forced()) { setOpen(true); return }
     const onMouseOut = (e: MouseEvent) => {
       // Only the top edge, and only when the cursor has actually left the
       // document. relatedTarget stays null when it exits the window.
@@ -90,11 +99,24 @@ export default function MidQuizCatch({
       document.removeEventListener('mouseout', onMouseOut)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [show])
+  }, [show, forced])
 
   if (!open) return null
 
   const left = Math.max(1, totalSteps - step)
+  // The headline has to be TRUE at whatever step this fires. "You are nearly
+  // there" with eight questions to go is a lie, and a rescue popup that opens
+  // by overclaiming has spent the trust it needs to work. So it scales: the
+  // urgency line is only used when the urgency is real, and otherwise it falls
+  // back to the thing that is always true, which is that nothing is lost.
+  const halfway = totalSteps / 2
+  const headline =
+    left <= 3 ? 'You are nearly there'
+    : left <= halfway ? 'You are past halfway'
+    : 'Your place is saved'
+  const cta =
+    left <= 3 ? (left === 1 ? 'Finish the last one' : `Finish the last ${left}`)
+    : 'Pick up where I left off'
   const close = (how: string) => {
     sendEvent(how === 'resume' ? 'quiz_exit_catch_resumed' : 'quiz_exit_catch_dismissed', {
       props: { step },
@@ -120,12 +142,12 @@ export default function MidQuizCatch({
         </div>
 
         <h2 className="mt-3 font-bold" style={{ fontSize: 26, lineHeight: 1.05, letterSpacing: '-0.035em', color: RICH }}>
-          You are nearly there
+          {headline}
         </h2>
 
         <p className="mt-3" style={{ fontSize: 15, lineHeight: 1.5, color: '#4A4A4A', fontWeight: 300 }}>
           Your answers are saved, so nothing is lost either way. {left === 1 ? 'One more' : `Another ${left}`} and
-          you get your rung on the ladder, your percentile, and a 30-day plan built from what you just told us.
+          you get your rung on the ladder, your percentile, and a 30-day plan built from your answers.
         </p>
 
         <button
@@ -137,7 +159,7 @@ export default function MidQuizCatch({
             boxShadow: `5px 6px 0 ${FULVOUS}`,
           }}
         >
-          {left === 1 ? 'Finish the last one' : `Finish the last ${left}`}
+          {cta}
         </button>
 
         <button
