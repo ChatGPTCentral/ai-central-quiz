@@ -199,15 +199,22 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     } catch { /* storage full / unavailable — non-fatal */ }
   }, [answers, step, history])
 
-  // Server-side in-progress capture: once we have a name + a valid email
-  // (email is Q2, so this fires early), keep the partial in sync as answers
-  // accumulate. Debounced, and keyed by clientId so every save UPDATES the
-  // same row — a mid-typing email ("…@yahoo.c") gets corrected by the next
-  // save instead of being frozen forever, and progress counts up for real.
+  // Server-side in-progress capture: fires on a VALID EMAIL ALONE, then keeps
+  // the partial in sync as answers accumulate. Debounced, and keyed by
+  // clientId so every save UPDATES the same row — a mid-typing email
+  // ("…@yahoo.c") gets corrected by the next save instead of being frozen
+  // forever, and progress counts up for real.
+  //
+  // It used to require a name too. That made the gate useless the moment email
+  // moved ahead of name: everyone who quit on the name step was thrown away
+  // despite having given us the one field that is worth anything. The server
+  // already accepts email-only (savePartial writes name: null), and
+  // assessLead's name rules all sit inside `if (name)`, so a missing name is
+  // not treated as fake. Partials never enrich and never send, so a nameless
+  // in-progress row costs nothing and can still be converted later.
   useEffect(() => {
-    const name = String(answers.name || '').trim()
     const email = String(answers.email || '').trim().toLowerCase()
-    if (!name || !isValidEmail(email)) return
+    if (!isValidEmail(email)) return
     if (partialTimer.current) clearTimeout(partialTimer.current)
     partialTimer.current = setTimeout(() => {
       const utmSource =

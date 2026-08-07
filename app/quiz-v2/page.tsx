@@ -52,8 +52,18 @@ export default async function QuizV2Page({ searchParams }: { searchParams: { qen
   const preview = typeof searchParams.qentry === 'string' ? searchParams.qentry.trim() : ''
   const questionFirst = preview !== 'control'
   if (questionFirst) {
-    const pii = questions.filter(q => q.id === 'name' || q.id === 'email')
+    // EMAIL BEFORE NAME, deliberately. These are the last two steps and the
+    // only typed ones, and they are where the quiz actually leaks: name 89.1%,
+    // email 93.9%, so 16.3% of people who answered every content question
+    // never reach the end. Email is the field that is worth something on its
+    // own - - it is the whole reason we run the quiz - - so it goes first, and
+    // the partial-lead save fires on a valid email ALONE (see QuizV2Client).
+    // Anyone who quits on the name step is now still a captured lead instead
+    // of ten answered questions we throw away.
+    const email = questions.find(q => q.id === 'email')
+    const name = questions.find(q => q.id === 'name')
     const rest = questions.filter(q => q.id !== 'name' && q.id !== 'email')
+    const pii = [email, name].filter(Boolean) as typeof questions
     if (pii.length > 0 && rest.length > 0) questions = [...rest, ...pii]
   }
 

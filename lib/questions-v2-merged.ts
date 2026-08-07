@@ -215,20 +215,11 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'jobLevel',
     type: 'chips',
-    // CORRECTION 2026-08-07. This was reframed on the belief that it cost
-    // 17.5% of finishers (81.6% -> 64.1%). It does not. That number came from
-    // reading q_answered.n as if the quiz were still PII-first, where jobLevel
-    // sat at step 11. Question-first went to 100% on 2026-07-27 and moved it to
-    // step 9, so step 11 became `name`. Measured on a clean question-first
-    // window, jobLevel retains 99.6% (704 of 707) and the 11% drop belongs to
-    // the name field. The reframe below is kept because asking who to COMPARE
-    // them to serves the percentile they came for, which is better than the
-    // bare employer question, but it fixed nothing that was broken.
-    //
-    // Do not map a step number to a question without checking which order was
-    // live that day. That single mistake is what produced the wrong diagnosis.
-    label: 'Who should we compare you to?',
-    sublabel: 'Your percentile only means something next to people with the same constraints',
+    // Reverted 2026-08-07 to the original wording, at the owner's request.
+    // It was reframed that morning on the belief that it cost 17.5% of
+    // finishers; measured properly it retains 99.6%, so there was nothing to
+    // fix and no reason to keep a change made for a wrong reason.
+    label: 'What is your current job level?',
     required: true,
     dbColumn: 'job_level',
     options: [
