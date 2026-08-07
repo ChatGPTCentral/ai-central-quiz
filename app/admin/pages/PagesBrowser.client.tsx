@@ -25,7 +25,7 @@ const VARIANTS: Variant[] = [
   },
   {
     key: 'aspirational',
-    label: 'Aspirational · almost-a-next-rung',
+    label: 'Aspirational · almost-a-next-stage',
     note: 'Challenger in result_aspirational_v1. Buy button above the fold.',
     params: { xv: 'aspirational' },
     live: true,
@@ -56,7 +56,7 @@ const VARIANTS: Variant[] = [
   },
   { key: 'design-a', label: 'Hero lab A · leverage %', note: 'Hero only.', params: { design: 'a' } },
   { key: 'design-b', label: 'Hero lab B · top % + gap', note: 'Hero only.', params: { design: 'b' } },
-  { key: 'design-c', label: 'Hero lab C · 3 rungs', note: 'Hero only.', params: { design: 'c' } },
+  { key: 'design-c', label: 'Hero lab C · 3 stages', note: 'Hero only.', params: { design: 'c' } },
   { key: 'design-d', label: 'Hero lab D · plan ready', note: 'Hero only.', params: { design: 'd' } },
 ]
 

@@ -15,7 +15,7 @@ export default function PagesPage() {
           Result pages
         </h1>
         <p style={{ fontSize: 13, color: '#6B6B6B', marginTop: 4, maxWidth: 720, lineHeight: 1.5 }}>
-          Every version, previewed live and linkable. Pick a variant, a rung and a device;
+          Every version, previewed live and linkable. Pick a variant, a stage and a device;
           the link updates and copies in one click. Test clicks are excluded by default.
         </p>
       </div>

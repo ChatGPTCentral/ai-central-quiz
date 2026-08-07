@@ -76,7 +76,7 @@ export function LibraryGrid({
           </h2>
           <p className="mt-3 mx-auto max-w-[620px]" style={{ fontWeight: 300, fontSize: 16.5, lineHeight: 1.5, color: BODY }}>
             {nextStageLabel
-              ? <>The rung above you is not a personality type, it is a reading list. Written and tested in-house, step by step, with a screenshot at every stage.</>
+              ? <>The stage above you is not a personality type, it is a reading list. Written and tested in-house, step by step, with a screenshot along the way.</>
               : <>Written and tested in-house, not scraped from the internet. Every one is step by step, with a screenshot at each stage, for professionals rather than developers.</>}
           </p>
         </div>

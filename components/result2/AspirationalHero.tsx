@@ -114,7 +114,7 @@ export function AspirationalHero({
           <StageGauge stageKey={stageKey} aheadPct={aheadPct} />
           {target && (
             <p className="mt-1 text-center" style={{ fontSize: 14, color: BODY, fontWeight: 300 }}>
-              One rung to go: <strong style={{ fontWeight: 700, color: RICH }}>{target}</strong>
+              One stage to go: <strong style={{ fontWeight: 700, color: RICH }}>{target}</strong>
             </p>
           )}
         </div>

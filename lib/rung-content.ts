@@ -14,13 +14,13 @@
 import type { StageKey } from './segmentation-v2'
 
 export interface RungConfig {
-  /** 1..6 position on the ladder (rendered as "RUNG X OF 6"). */
+  /** 1..6 position on the ladder (rendered as "STAGE X OF 6"). */
   rung: number
   /** Ladder class name, uppercase on the pass ("EXPERIMENTER"). */
   className: string
   /** Hero lead paragraph under the h1. */
   heroLead: string
-  /** Member pass class line, e.g. "CLASS: EXPERIMENTER · RUNG 3 OF 6". */
+  /** Member pass class line, e.g. "CLASS: EXPERIMENTER · STAGE 3 OF 6". */
   passClass: string
   /** Member pass percentile field. */
   passPct: string
@@ -48,19 +48,19 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     className: 'UNAWARE',
     heroLead:
       "You haven't used AI yet, which means the fastest wins are still on the table. One 15-minute workflow a week puts you ahead of 84% of the planet by next month",
-    passClass: 'CLASS: UNAWARE · RUNG 1 OF 6',
+    passClass: 'CLASS: UNAWARE · STAGE 1 OF 6',
     passPct: 'Day 0, rising',
     chartTitle: '8.1 billion people. Most never start. You just did',
     chartLead:
-      'Taking this quiz already separates you from the 84% who never look up. From rung 1, every rep is a rung, the crowd thins fast in your favor',
+      'Taking this quiz already separates you from the 84% who never look up. From stage 1, every rep is a step up, the crowd thins fast in your favor',
     radarTitle: 'Blank canvas. Highest ceiling on the ladder',
     radarLead:
-      'Nothing to unlearn: no half-habits, no graveyard of abandoned tools. Members who start at rung 1 move fastest in month 1, because the sequence becomes their first habit.',
+      'Nothing to unlearn: no half-habits, no graveyard of abandoned tools. Members who start at stage 1 move fastest in month 1, because the sequence becomes their first habit.',
     radarNote:
-      'The orange shape is the median rung-1 member after the first sequence, 1 month, 1 workflow a week',
+      'The orange shape is the median stage-1 member after the first sequence, 1 month, 1 workflow a week',
     prescLead:
       'Every tutorial assumes zero experience and ends with something shipped. You get a sequenced path, not a search bar',
-    founderPath: 'it starts at rung 1, built for a {persona}, with nothing assumed',
+    founderPath: 'it starts at stage 1, built for a {persona}, with nothing assumed',
     finalTitle: 'Everyone above you started exactly here',
   },
   S1_curious: {
@@ -68,19 +68,19 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     className: 'CURIOUS',
     heroLead:
       "You've read the threads, now skip them. Hands-on is 15 minutes away, and one workflow a week puts you ahead of 84% of the planet within a month",
-    passClass: 'CLASS: CURIOUS · RUNG 2 OF 6',
+    passClass: 'CLASS: CURIOUS · STAGE 2 OF 6',
     passPct: '62nd, rising fast',
     chartTitle: "8.1 billion people. You're already ahead of 5 billion of them",
     chartLead:
-      "You've done the reading, the only thing between you and rung 3 is a first rep, and it's a 15-minute one. From there the crowd thins to millions, not billions",
+      "You've done the reading, the only thing between you and stage 3 is a first rep, and it's a 15-minute one. From there the crowd thins to millions, not billions",
     radarTitle: 'Prepared mind. Untouched keyboard',
     radarLead:
       'You already know the landscape better than most people using AI daily. Converting that context into reps is the fastest climb on the whole ladder.',
     radarNote:
-      'The orange shape is the median rung-2 member after the first sequence, 1 month, 1 workflow a week',
+      'The orange shape is the median stage-2 member after the first sequence, 1 month, 1 workflow a week',
     prescLead:
       'Every tutorial turns reading into a rep: tested by editors, tied to a business outcome, sequenced for your role',
-    founderPath: 'it starts at rung 2, built for a {persona}, with the research already done',
+    founderPath: 'it starts at stage 2, built for a {persona}, with the research already done',
     finalTitle: 'Curiosity is 15 minutes from a shipped workflow',
   },
   S2_experimenter: {
@@ -88,39 +88,39 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     className: 'EXPERIMENTER',
     heroLead:
       "You're already hands-on, ahead of 76% of everyone on the planet. What's missing isn't effort. It's a sequence, and yours is below",
-    passClass: 'CLASS: EXPERIMENTER · RUNG 3 OF 6',
+    passClass: 'CLASS: EXPERIMENTER · STAGE 3 OF 6',
     passPct: '76th of 8.1B',
     chartTitle: "8.1 billion people. You're ahead of 6.2 billion of them",
     chartLead:
-      "That's the comfortable number, {firstName}. The better one: the rungs above you hold fewer people than a mid-size country, and you're already climbing",
+      "That's the comfortable number, {firstName}. The better one: the stages above you hold fewer people than a mid-size country, and you're already climbing",
     radarTitle: 'Strong instincts. Thin coverage',
     radarLead:
       'Scored from your answers: solid on prompting and tools, near-zero on agents, development, and governance, the 3 areas where {personaPlural} pull ahead this year.',
     radarNote:
-      'The orange shape is the median member at your rung after the first sequence, 1 month, 1 workflow a week',
+      'The orange shape is the median member at your stage after the first sequence, 1 month, 1 workflow a week',
     prescLead:
       'Every tutorial is tested by editors and tied to a real business outcome. You get a sequenced path for {personaPlural}, not a search bar',
-    founderPath: 'it starts at rung 3, built for a {persona}, with the noise already cut',
+    founderPath: 'it starts at stage 3, built for a {persona}, with the noise already cut',
     finalTitle: "AI doesn't have to be complicated",
   },
   S3_practitioner: {
     rung: 4,
     className: 'PRACTITIONER',
     heroLead:
-      "Weekly AI on real work already puts you ahead of 86% of the planet. The next rung isn't more effort. It's saved prompts, sharper tools, and workflows your team copies",
-    passClass: 'CLASS: PRACTITIONER · RUNG 4 OF 6',
+      "Weekly AI on real work already puts you ahead of 86% of the planet. The next stage isn't more effort. It's saved prompts, sharper tools, and workflows your team copies",
+    passClass: 'CLASS: PRACTITIONER · STAGE 4 OF 6',
     passPct: '86th of 8.1B',
     chartTitle: "8.1 billion people. You're ahead of 7 billion of them",
     chartLead:
-      "From rung 4 the game changes: it's no longer about using AI, it's about how much of your week it runs. Rungs 5 and 6 belong to the people compounding daily, that's one sequence away",
+      "From stage 4 the game changes: it's no longer about using AI, it's about how much of your week it runs. Stages 5 and 6 belong to the people compounding daily, that's one sequence away",
     radarTitle: 'The habit works. Multiply it',
     radarLead:
       'Your weekly rep covers prompting and tools. The next gains sit in agents and governance, the 2 skills that turn personal speed into systems your whole team runs on.',
     radarNote:
-      'The orange shape is the median rung-4 member after the advanced sequence: agents, automations, rollout',
+      'The orange shape is the median stage-4 member after the advanced sequence: agents, automations, rollout',
     prescLead:
       'Past the basics, the library goes deep: agents, automations, governance playbooks, all tested and tied to outcomes',
-    founderPath: 'it starts at rung 4, built for a {persona}, aimed at team-wide leverage',
+    founderPath: 'it starts at stage 4, built for a {persona}, aimed at team-wide leverage',
     finalTitle: 'The habit is built. Now make it compound',
   },
   S4_power_user: {
@@ -128,18 +128,18 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     className: 'POWER USER',
     heroLead:
       'Daily AI across multiple tools puts you ahead of 93% of the planet. What is left is turning personal velocity into systems your whole team ships with',
-    passClass: 'CLASS: POWER USER · RUNG 5 OF 6',
+    passClass: 'CLASS: POWER USER · STAGE 5 OF 6',
     passPct: '93rd of 8.1B',
     chartTitle: '8.1 billion people. 6 million keep your pace',
     chartLead:
-      "At rung 5 the ladder stops being about adoption and starts being about output. The last rung belongs to people who ship AI to others, and it's one sequence away",
-    radarTitle: 'Deep almost everywhere. One rung left',
+      "At stage 5 the ladder stops being about adoption and starts being about output. The last stage belongs to people who ship AI to others, and it's one sequence away",
+    radarTitle: 'Deep almost everywhere. One stage left',
     radarLead:
-      'Your profile is what rung-3 members aim for. The remaining gap is builder territory: shipping agents and governed workflows other people rely on.',
+      'Your profile is what stage-3 members aim for. The remaining gap is builder territory: shipping agents and governed workflows other people rely on.',
     radarNote: 'The orange shape is the median builder, where the last sequence lands you',
     prescLead:
       'The advanced shelf: agent architectures, custom GPT ops, governance, the patterns before they are public',
-    founderPath: 'it starts at rung 5, built for a {persona}, pointed at builder territory',
+    founderPath: 'it starts at stage 5, built for a {persona}, pointed at builder territory',
     finalTitle: 'You built the speed. Now build the system',
   },
   S5_builder: {
@@ -147,7 +147,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
     className: 'BUILDER',
     heroLead:
       "You ship AI to customers and team, the 0.04%. Up here the risk isn't falling behind, it's being caught. Weekly editorial drops are the unfair advantage that keeps the gap open",
-    passClass: 'CLASS: BUILDER · RUNG 6 OF 6',
+    passClass: 'CLASS: BUILDER · STAGE 6 OF 6',
     passPct: 'Top 0.04%',
     chartTitle: '8.1 billion people. Roughly 3 million do what you do',
     chartLead:
@@ -159,7 +159,7 @@ const RUNGS: Record<Exclude<StageKey, 'unknown'>, RungConfig> = {
       'The orange line is the frontier as it moves, weekly drops keep your shape pressed against it',
     prescLead:
       'For builders the library is a radar, not a school: 50+ papers and 14,000+ tools filtered weekly into what changes your stack',
-    founderPath: 'it starts at rung 6, built for a {persona}, tuned to keep your edge compounding',
+    founderPath: 'it starts at stage 6, built for a {persona}, tuned to keep your edge compounding',
     finalTitle: "Stay the one they're all chasing",
   },
 }

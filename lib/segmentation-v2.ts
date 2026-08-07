@@ -66,7 +66,7 @@ export const STAGES: StageDef[] = [
     color: '#E48715',
     score: 2,
     description: 'Uses AI regularly, but has never made it do work unattended.',
-    salesHook: 'The first automation · "make AI do this for you" · biggest untapped rung',
+    salesHook: 'The first automation · "make AI do this for you" · biggest untapped stage',
   },
   {
     key: 'S3_practitioner',

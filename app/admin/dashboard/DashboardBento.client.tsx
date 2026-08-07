@@ -448,7 +448,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
                volume → the two CVRs → the paid count → money → money per head ── */}
         <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
           {[
-            { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected rung' : 'unique people, one shared cohort', dark: false },
+            { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected stage' : 'unique people, one shared cohort', dark: false },
             { label: 'Full-funnel CVR', v: `${fullFunnelCvr.toFixed(2)}%`, hint: `net-new ÷ ${F.landing.toLocaleString()} landing views`, dark: false },
             { label: 'Result-page CVR', v: `${cvr.toFixed(1)}%`, hint: `net-new ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
             { label: 'Net-new paid', v: netNewPeople.length.toLocaleString(), hint: 'first-ever charge AFTER their quiz', dark: false },

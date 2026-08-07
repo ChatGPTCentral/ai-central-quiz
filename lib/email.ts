@@ -273,7 +273,7 @@ export function buildOverview(r: SubmissionRow): string {
   // One line tying the enrichment to the quiz result.
   const sd = r.stage ? stageDef(r.stage) : null
   const readiness: string[] = []
-  if (sd && sd.key !== 'unknown') readiness.push(`lands on the ${sd.label} rung`)
+  if (sd && sd.key !== 'unknown') readiness.push(`lands on the ${sd.label} stage`)
   if (present(r.score)) readiness.push(`scores ${r.score}/100`)
   if (readiness.length) sentences.push(`On the quiz, ${name.split(' ')[0]} ${readiness.join(', ')}.`)
 

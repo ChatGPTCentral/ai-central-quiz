@@ -51,7 +51,7 @@ const TYPES: Record<StageKey, ReadinessType> = {
   },
   S4_power_user: {
     typeName: 'Power User',
-    tagline: 'You have AI running real workflows. One rung from building.',
+    tagline: 'You have AI running real workflows. One stage from building.',
     aheadPct: 73,
   },
   S5_builder: {

@@ -123,7 +123,7 @@ export function BandChart({ stage }: { stage?: string | null }) {
 
       {/* Footnotes */}
       <div className="flex flex-col sm:flex-row sm:justify-between gap-1 mt-4" style={{ fontSize: 11.5, color: '#9C9C9C' }}>
-        <span>Each dot ≈ 3.2M people · rungs 3-6 enlarged to stay visible</span>
+        <span>Each dot ≈ 3.2M people · stages 3-6 enlarged to stay visible</span>
         <span>Sources: OpenAI · World Bank &amp; Microsoft AI diffusion · public adoption surveys (2026)</span>
       </div>
 
