@@ -12,6 +12,7 @@ import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
+import { QUESTIONS_V2_MERGED as QUIZ_QUESTIONS } from '@/lib/questions-v2-merged'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType, adopterTopPct } from '@/lib/readiness-type'
 import { rungConfig, withPersona, withFirstName } from '@/lib/rung-content'
@@ -620,6 +621,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             checkoutUrl={checkoutUrl}
             submissionId={rowId}
             ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+            // Imported in a server component, so the question list costs the
+            // client bundle nothing and the claim tracks the real quiz length.
+            questionCount={QUIZ_QUESTIONS.length}
           />
         )}
 

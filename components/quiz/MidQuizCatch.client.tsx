@@ -147,7 +147,7 @@ export default function MidQuizCatch({
 
         <p className="mt-3" style={{ fontSize: 15, lineHeight: 1.5, color: '#4A4A4A', fontWeight: 300 }}>
           Your answers are saved, so nothing is lost either way. {left === 1 ? 'One more' : `Another ${left}`} and
-          you get your rung on the ladder, your percentile, and a 30-day plan built from your answers.
+          you get your stage on the ladder, your percentile, and a 30-day plan built from your answers.
         </p>
 
         <button
@@ -164,7 +164,11 @@ export default function MidQuizCatch({
 
         <button
           type="button" onClick={() => close('dismiss')}
-          style={{ marginTop: 12, background: 'none', border: 'none', color: MUTE, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline' }}
+          // Padding, not margin, so the tap target clears 44px on a phone. As
+          // margin it rendered 19px tall, which on mobile means the dismiss is
+          // easy to miss and easy to hit by accident, and a rescue popup that
+          // is hard to close is the kind that gets the page closed instead.
+          style={{ padding: '14px', background: 'none', border: 'none', color: MUTE, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline' }}
         >
           I will come back later
         </button>

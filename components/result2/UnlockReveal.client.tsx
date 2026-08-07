@@ -17,8 +17,10 @@ import { sendEvent } from '@/lib/events-client'
 //   - Never says won, lucky, chance or congratulations. Every segment is a real
 //     thing included with membership, so the wheel is a TOUR OF THE OFFER
 //     rather than a lottery with losing tickets.
-//   - Framing is EARNED, not won: "you finished all 10 questions, here is what
+//   - Framing is EARNED, not won: "you finished all N questions, here is what
 //     that opens". True, and it flatters the person rather than the machine.
+//     N comes from the real question list via a prop, because it was hardcoded
+//     to 10 and silently became a lie the day intent_30d was cut.
 //   - It says so on the page. If a mechanic only works when people
 //     misunderstand it, it is the wrong mechanic.
 //
@@ -95,12 +97,14 @@ function sector(i: number) {
 }
 
 export function UnlockReveal({
-  firstName, checkoutUrl, submissionId, ctaLabel,
+  firstName, checkoutUrl, submissionId, ctaLabel, questionCount,
 }: {
   firstName?: string | null
   checkoutUrl: string
   submissionId?: string
   ctaLabel: string
+  /** Real length of the quiz, passed from the server so the claim cannot drift. */
+  questionCount: number
 }) {
   const [phase, setPhase] = useState<'idle' | 'spinning' | 'done'>('idle')
   const [turns, setTurns] = useState(0)
@@ -169,10 +173,18 @@ export function UnlockReveal({
     <section
       style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER, backgroundImage: GRAIN }}
       aria-label="What you unlocked"
+      // Styling hook for the reduced-motion rule below. It is a bare data
+      // attribute and NOT the aria-label because a CSS selector matching on
+      // quoted text breaks hydration: React escapes " and ' inside a <style>
+      // child, so the server ships &quot; and the client renders ", the text
+      // does not match, and React throws away the server HTML for the WHOLE
+      // page root (errors #425 then #423). It also means rewording the label
+      // can no longer silently kill the reduced-motion rule.
+      data-ac-reveal=""
     >
       <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16 text-center">
         <span className="inline-block font-mono uppercase" style={{ fontSize: 11.5, letterSpacing: '0.22em', color: FULVOUS, fontWeight: 600 }}>
-          You finished all 10 questions
+          You finished all {questionCount} questions
         </span>
         <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(28px, 3.8vw, 44px)', lineHeight: 1.0, letterSpacing: '-0.04em', color: RICH }}>
           {firstName ? `${firstName}, here's what that opens` : "Here's what that opens"}
@@ -344,7 +356,7 @@ export function UnlockReveal({
           100% { transform: translateX(-50%) rotate(0deg) }
         }
         @media (prefers-reduced-motion: reduce) {
-          [aria-label="What you unlocked"] * { transition: none !important; animation: none !important; }
+          [data-ac-reveal] * { transition: none !important; animation: none !important; }
         }
       `}</style>
     </section>
