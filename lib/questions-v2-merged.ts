@@ -23,7 +23,12 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'name',
     type: 'split-text',
-    label: "First, what's your name?",
+    // "First," was true under the old PII-first order and became a lie when
+    // question-first shipped: this is step 10 of 11, and the eyebrow above it
+    // says so. This is also where the real leak is (89.1% retention, the
+    // worst step in the quiz), so the wording here deserves a proper A/B
+    // rather than another guess - - see the board card.
+    label: "What's your name?",
     sublabel: 'It goes on your member pass, spelled exactly like this',
     required: true,
     dbColumn: 'name',
@@ -210,14 +215,19 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   {
     id: 'jobLevel',
     type: 'chips',
-    // The most expensive question in the quiz: 17.5% of everyone who answered
-    // the previous ten quit here (81.6% -> 64.1%). Two things were wrong with
-    // it. It was the ONLY personal question with no sublabel, so unlike name
-    // and email it never said what it was for, and it switched the register
-    // from "you and AI" to "you and your employer", which reads as a lead form
-    // hiding behind a quiz. Reframed to ask who to COMPARE them to, which is
-    // the same data serving the percentile they came for rather than us.
-    label: 'Last one. Who should we compare you to?',
+    // CORRECTION 2026-08-07. This was reframed on the belief that it cost
+    // 17.5% of finishers (81.6% -> 64.1%). It does not. That number came from
+    // reading q_answered.n as if the quiz were still PII-first, where jobLevel
+    // sat at step 11. Question-first went to 100% on 2026-07-27 and moved it to
+    // step 9, so step 11 became `name`. Measured on a clean question-first
+    // window, jobLevel retains 99.6% (704 of 707) and the 11% drop belongs to
+    // the name field. The reframe below is kept because asking who to COMPARE
+    // them to serves the percentile they came for, which is better than the
+    // bare employer question, but it fixed nothing that was broken.
+    //
+    // Do not map a step number to a question without checking which order was
+    // live that day. That single mistake is what produced the wrong diagnosis.
+    label: 'Who should we compare you to?',
     sublabel: 'Your percentile only means something next to people with the same constraints',
     required: true,
     dbColumn: 'job_level',
