@@ -281,9 +281,18 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return true
   }
 
+  // `qid` matters more than `n`. The position is only meaningful next to the
+  // order that was live that day, and reading an old `n` against a new order
+  // is exactly how jobLevel got blamed for the name field's drop. The id is
+  // stable across every reorder, so retention-by-question stops needing
+  // archaeology. `n` stays for continuity with the events already recorded.
   const trackAnswered = useCallback(() => {
-    track('q_answered', { n: step, ms_on_screen: Date.now() - stepShownAt.current })
-  }, [step])
+    track('q_answered', {
+      n: step,
+      qid: QUESTIONS[step - 1]?.id ?? null,
+      ms_on_screen: Date.now() - stepShownAt.current,
+    })
+  }, [step, QUESTIONS])
 
   const goForward = useCallback((targetStep: number) => {
     setDirection('fwd')
