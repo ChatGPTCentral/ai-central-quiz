@@ -13,6 +13,7 @@ import { resolveNextStep, type V2Question } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { track } from '@/lib/track'
 import { isEgregiousFake } from '@/lib/lead-quality'
+import MidQuizCatch from '@/components/quiz/MidQuizCatch.client'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
 
 type Answers = Record<string, string | string[]>
@@ -121,6 +122,9 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [animKey, setAnimKey] = useState(0)
   const advanceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const emailPrefilled = useRef(false)
+  // Set the moment the submit succeeds, so the mid-quiz catch cannot fire
+  // during the navigation to /calculating.
+  const [submitted, setSubmitted] = useState(false)
   const partialTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startTracked = useRef(false)
   const stepShownAt = useRef(Date.now())
@@ -355,6 +359,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         return
       }
       trackAnswered()
+      setSubmitted(true)
       track('email_submitted')
       // Submitted successfully — clear the in-progress draft.
       try { localStorage.removeItem(DRAFT_KEY) } catch { /* non-fatal */ }
@@ -486,6 +491,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
 
   return (
     <div className={`${isEmbed ? 'min-h-0' : 'min-h-[100dvh] h-[100dvh]'} flex flex-col overflow-hidden`} style={{ backgroundColor: PAPER }}>
+      {/* Catches the biggest leak in the funnel: 1,358 of 1,871 recorded
+          sessions exit on /quiz. Never shown in the embed, where a modal would
+          be trapped inside someone else's iframe. */}
+      {!isEmbed && <MidQuizCatch step={step} totalSteps={TOTAL_STEPS} done={submitted || submitting} />}
       {/* Progress: 10 segments, full-bleed top */}
       <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 z-50 flex`} style={{ gap: 2, height: 4 }}>
         {QUESTIONS.map((_, i) => (

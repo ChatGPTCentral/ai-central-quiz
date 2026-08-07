@@ -44,6 +44,8 @@ const ALLOWED_EVENTS = new Set([
   // payment" without anyone watching a session recording
   'checkout_modal_open', 'checkout_modal_close',
   'checkout_form_secret', 'checkout_form_ready', 'checkout_form_error',
+  // mid-quiz exit catch: the /quiz exit is the single biggest volume leak
+  'quiz_exit_catch_shown', 'quiz_exit_catch_resumed', 'quiz_exit_catch_dismissed',
   // unlock reveal (the honest wheel)
   'unlock_reveal_spin', 'unlock_reveal_done',
 ])
