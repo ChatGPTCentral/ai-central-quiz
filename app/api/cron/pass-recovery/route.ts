@@ -98,21 +98,7 @@ export async function GET(req: NextRequest) {
   // in beehiiv, so enrolling would fail anyway, but failing 50 times every 15
   // minutes is noise rather than safety. This way the cron still runs and still
   // reports what it WOULD send, which is the useful part while it is off.
-  // KILL SWITCH, 2026-08-07 23:52 UTC. Do not remove without reading this.
-  //
-  // The first armed run enrolled 50 people, and 49 of them had NO result_view
-  // inside the 60min-24h window. Their result views go back to 10 July. They
-  // received an email whose first line is "You took the AI quiz about an hour
-  // ago", which is the precise failure the window exists to prevent.
-  //
-  // Only this cron writes pass_recovery_enrolled_at, so this cron did it, and
-  // the candidate RPC as written cannot return those rows. Something is wrong
-  // that I do not yet understand, and an unexplained mass-mail is not something
-  // to leave running while I work it out. Off until the cause is found, proven,
-  // and covered by the belt-and-braces window check below.
-  const KILLED_PENDING_INVESTIGATION = true
-
-  const armed = process.env.BEEHIIV_PASS_RECOVERY_ENABLED === 'true' && !KILLED_PENDING_INVESTIGATION
+  const armed = process.env.BEEHIIV_PASS_RECOVERY_ENABLED === 'true'
   const dry = !armed || req.nextUrl.searchParams.get('dry') === '1'
   const c = sb()
 
@@ -143,9 +129,39 @@ export async function GET(req: NextRequest) {
 
   let enrolled = 0
   const failures: { email: string; error: string }[] = []
+  const skipped: { id: string; ageHours: number }[] = []
   const site = (process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai').replace(/\/$/, '')
 
-  for (const r of rows) {
+  // INDEPENDENT WINDOW CHECK. 2026-08-07: the first armed run enrolled 50
+  // people, 49 of whom had no result_view anywhere inside the 60min-24h window
+  // - - their result views went back to 10 July. They got an email whose first
+  // line is "You took the AI quiz about an hour ago". The candidate RPC, called
+  // directly with the same arguments, does not return those rows, and no
+  // migration touched it that day, so the cause is still open.
+  //
+  // The lesson does not depend on the cause. A job that sends mail must not
+  // delegate its safety to a query it cannot see the execution of. It now
+  // re-derives every candidate's age from saw_result and refuses anything
+  // outside the window, so a wrong result set becomes a logged no-op instead of
+  // an apology to 50 people. Belt and braces, and the braces are the ones here.
+  const inWindow = (sawResult: string | null | undefined): { ok: boolean; ageHours: number } => {
+    if (!sawResult) return { ok: false, ageHours: -1 }
+    const ms = Date.now() - Date.parse(sawResult)
+    if (!Number.isFinite(ms)) return { ok: false, ageHours: -1 }
+    const ageHours = ms / 3_600_000
+    return { ok: ageHours >= MIN_AGE_MIN / 60 && ageHours <= MAX_AGE_H, ageHours }
+  }
+
+  for (const r of rows.slice(0, BATCH)) {
+    const w = inWindow(r.saw_result)
+    if (!w.ok) {
+      skipped.push({ id: r.id, ageHours: Math.round(w.ageHours * 10) / 10 })
+      console.error(
+        `[pass-recovery] REFUSED out-of-window candidate ${r.id}, saw result ${w.ageHours.toFixed(1)}h ago, ` +
+        `window is ${MIN_AGE_MIN / 60}-${MAX_AGE_H}h. The candidate query returned someone it should not have.`,
+      )
+      continue
+    }
     // Fields BEFORE enrolment. The emails merge {{result_url}}, {{next_stage}}
     // and {{first_name}}; a missing field silently falls back and the sequence
     // quietly stops being personal, which is the only reason it is worth
@@ -184,6 +200,10 @@ export async function GET(req: NextRequest) {
     automationId: AUTOMATION_ID,
     candidates: rows.length,
     enrolled,
+    // Non-zero means the candidate query is still handing back people it should
+    // not. Enrolment is safe either way, but it wants investigating, not muting.
+    refusedOutOfWindow: skipped.length,
+    refusedSample: skipped.slice(0, 5),
     failed: failures.length,
     failures: failures.slice(0, 5),
   })
