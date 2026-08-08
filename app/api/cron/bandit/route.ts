@@ -26,7 +26,18 @@ function sb() {
     process.env.SUPABASE_SECRET_KEY ||
     process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) throw new Error('Supabase env vars missing')
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // A cron reads current state, so its reads must never be served from cache.
+    // On 2026-08-08 the pass-recovery cron spent 14 hours acting on a snapshot
+    // frozen at 13:15: it mailed the wrong people, then silently mailed nobody,
+    // and looked healthy throughout because a cached answer is a confident one.
+    // Same client, same risk. See app/api/cron/pass-recovery/route.ts.
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: 'no-store' }),
+    },
+  })
 }
 
 async function sendAlert(subject: string, text: string): Promise<void> {
