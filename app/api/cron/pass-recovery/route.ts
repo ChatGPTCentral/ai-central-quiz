@@ -85,7 +85,30 @@ function sb() {
     process.env.SUPABASE_SECRET_KEY ||
     process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) throw new Error('Supabase env vars missing')
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // ROOT CAUSE of the 2026-08-07/08 misfires. supabase-js talks over fetch,
+    // and inside Next this route's fetches were being served from cache, so the
+    // candidate list was a FROZEN SNAPSHOT rather than a query.
+    //
+    // The proof is in the logs of four consecutive runs: identical 69 rows at
+    // 13:31, 13:45, 14:00 and 14:15, containing people already enrolled and
+    // missing the 24 who had genuinely become eligible since. The only thing
+    // that moved was the refused count, 20 -> 21, because THIS code ages each
+    // row against the real clock while the rows themselves stood still.
+    //
+    // It explains all three failures from one cause. The first armed run mailed
+    // people from 10 July because it was handed a response cached during the
+    // dry-run period. Later runs enrolled nobody because the snapshot no longer
+    // contained anyone enrollable. And it looked healthy throughout, because a
+    // cached answer is a fast, well-formed, confident answer.
+    //
+    // A cron that reads current state must never be cached. no-store, always.
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+        fetch(input, { ...init, cache: 'no-store' }),
+    },
+  })
 }
 
 export async function GET(req: NextRequest) {
