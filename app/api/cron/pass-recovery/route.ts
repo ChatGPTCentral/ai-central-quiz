@@ -104,10 +104,27 @@ export async function GET(req: NextRequest) {
 
   // Candidates: saw their result between 60 minutes and 24 hours ago, gave us an
   // email, have not paid since seeing it, and have not been enrolled already.
+  // Fetch WIDE, filter here, then cap. Not the same as asking for BATCH rows.
+  //
+  // Confirmed 2026-08-08 00:15: through supabase-js the candidate query returns
+  // rows outside the window it was asked for (that run: 50 people between 42
+  // and 62 hours old, when the window is 1 to 24). Called directly in SQL with
+  // identical arguments it returns only in-window rows. So the fault is in the
+  // client -> PostgREST path, not the function.
+  //
+  // Asking for exactly BATCH rows was therefore fatal in a quieter way than the
+  // original misfire: the query hands back BATCH out-of-window people, the
+  // check below refuses all of them, and the genuinely waiting people are never
+  // reached. Every run enrols nobody and reports success. That is a worse
+  // failure than sending the wrong email, because nothing looks broken.
+  //
+  // The query sorts oldest-first and the people we want are the newest, so a
+  // wide fetch is what guarantees they are in the page at all.
+  const FETCH_LIMIT = 1000
   const { data, error } = await c.rpc('pass_recovery_candidates', {
     p_min_age_minutes: MIN_AGE_MIN,
     p_max_age_hours: MAX_AGE_H,
-    p_limit: BATCH,
+    p_limit: FETCH_LIMIT,
   })
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -152,16 +169,23 @@ export async function GET(req: NextRequest) {
     return { ok: ageHours >= MIN_AGE_MIN / 60 && ageHours <= MAX_AGE_H, ageHours }
   }
 
-  for (const r of rows.slice(0, BATCH)) {
+  // Filter first, cap second, so refusals cannot eat the batch.
+  const eligible = rows.filter(r => {
     const w = inWindow(r.saw_result)
-    if (!w.ok) {
-      skipped.push({ id: r.id, ageHours: Math.round(w.ageHours * 10) / 10 })
-      console.error(
-        `[pass-recovery] REFUSED out-of-window candidate ${r.id}, saw result ${w.ageHours.toFixed(1)}h ago, ` +
-        `window is ${MIN_AGE_MIN / 60}-${MAX_AGE_H}h. The candidate query returned someone it should not have.`,
-      )
-      continue
-    }
+    if (w.ok) return true
+    skipped.push({ id: r.id, ageHours: Math.round(w.ageHours * 10) / 10 })
+    return false
+  })
+  if (skipped.length > 0) {
+    console.error(
+      `[pass-recovery] query returned ${rows.length} rows, ${skipped.length} outside the ` +
+      `${MIN_AGE_MIN / 60}-${MAX_AGE_H}h window and refused. Oldest refused ` +
+      `${Math.max(...skipped.map(s => s.ageHours)).toFixed(1)}h. Enrolling ${Math.min(eligible.length, BATCH)} of ` +
+      `${eligible.length} genuine candidates. The client-side window check is load-bearing, do not remove it.`,
+    )
+  }
+
+  for (const r of eligible.slice(0, BATCH)) {
     // Fields BEFORE enrolment. The emails merge {{result_url}}, {{next_stage}}
     // and {{first_name}}; a missing field silently falls back and the sequence
     // quietly stops being personal, which is the only reason it is worth
