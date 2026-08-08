@@ -185,7 +185,42 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  for (const r of eligible.slice(0, BATCH)) {
+  // RE-VERIFY AGAINST THE TABLE. 2026-08-08 14:00: the fault is wider than the
+  // window. The candidate query's `pass_recovery_enrolled_at is null` clause is
+  // not surviving the client path either - - direct SQL said 23 eligible while
+  // the cron was handed 48, the extra ones being people already enrolled. It
+  // tried them every 15 minutes, beehiiv rejected each as a duplicate, nothing
+  // was ever stamped, and the retries crowded genuine candidates out of the
+  // batch. A stuck loop that reports success, which is the third shape this
+  // same bug has taken.
+  //
+  // So nothing from that query is trusted as a fact any more. It is a list of
+  // SUGGESTIONS, and every one is checked against the table before we mail
+  // anybody. One extra round trip per run, and it makes the whole job
+  // independent of whatever the RPC path is doing.
+  let verified = eligible
+  if (eligible.length > 0) {
+    const { data: fresh, error: vErr } = await c
+      .from('submissions')
+      .select('id')
+      .in('id', eligible.map(r => r.id))
+      .is('pass_recovery_enrolled_at', null)
+      .is('pass_recovery_misfire_at', null)
+    if (vErr) {
+      return NextResponse.json({ error: `verification failed, enrolled nobody: ${vErr.message}` }, { status: 500 })
+    }
+    const okIds = new Set((fresh ?? []).map(r => (r as { id: string }).id))
+    const before = verified.length
+    verified = eligible.filter(r => okIds.has(r.id))
+    if (verified.length !== before) {
+      console.error(
+        `[pass-recovery] verification dropped ${before - verified.length} of ${before} candidates that the ` +
+        `query claimed were un-enrolled. The RPC's WHERE clause is not reaching this code path.`,
+      )
+    }
+  }
+
+  for (const r of verified.slice(0, BATCH)) {
     // Fields BEFORE enrolment. The emails merge {{result_url}}, {{next_stage}}
     // and {{first_name}}; a missing field silently falls back and the sequence
     // quietly stops being personal, which is the only reason it is worth
@@ -228,6 +263,10 @@ export async function GET(req: NextRequest) {
     // not. Enrolment is safe either way, but it wants investigating, not muting.
     refusedOutOfWindow: skipped.length,
     refusedSample: skipped.slice(0, 5),
+    // Both of these being non-zero means the candidate query is unreliable in
+    // two separate ways. Enrolment is safe regardless: nothing is mailed that
+    // has not been re-checked against the table first.
+    verifiedAgainstTable: true,
     failed: failures.length,
     failures: failures.slice(0, 5),
   })
