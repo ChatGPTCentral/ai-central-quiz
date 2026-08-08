@@ -14,6 +14,7 @@ import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { track } from '@/lib/track'
 import { isEgregiousFake } from '@/lib/lead-quality'
 import MidQuizCatch from '@/components/quiz/MidQuizCatch.client'
+import { trackQuizStep } from '@/components/PostHogProvider.client'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
 
 type Answers = Record<string, string | string[]>
@@ -294,11 +295,16 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   // stable across every reorder, so retention-by-question stops needing
   // archaeology. `n` stays for continuity with the events already recorded.
   const trackAnswered = useCallback(() => {
+    const qid = QUESTIONS[step - 1]?.id ?? null
     track('q_answered', {
       n: step,
-      qid: QUESTIONS[step - 1]?.id ?? null,
+      qid,
       ms_on_screen: Date.now() - stepShownAt.current,
     })
+    // Mirrored into PostHog so a drop-off can be turned straight into "watch
+    // the people who did this". Our own funnel_events stay the source of truth
+    // for the numbers; this exists to find the SESSIONS behind them.
+    trackQuizStep(step, qid)
   }, [step, QUESTIONS])
 
   const goForward = useCallback((targetStep: number) => {

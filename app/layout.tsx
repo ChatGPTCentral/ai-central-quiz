@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
+import PostHogProvider from '@/components/PostHogProvider.client'
 import '../styles/globals.css'
 
 const inter = Inter({ subsets: ['latin'], weight: ['300', '400', '500', '600', '700', '800', '900'] })
@@ -29,6 +30,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${inter.className} bg-baby-powder min-h-screen`}>
         {children}
+        {/* PostHog: session replay with an API, so recordings are readable
+            programmatically instead of only by a human sitting in a dashboard.
+            Runs ALONGSIDE Clarity on purpose - - nothing is removed until this
+            has proved it is better. No-op until NEXT_PUBLIC_POSTHOG_KEY is set.
+            Inputs are masked and /admin is never recorded, see the component. */}
+        <PostHogProvider />
         {/* Microsoft Clarity: heatmaps + session recordings + rage-click
             detection. No-op until NEXT_PUBLIC_CLARITY_PROJECT_ID is set. */}
         {clarityId && (
