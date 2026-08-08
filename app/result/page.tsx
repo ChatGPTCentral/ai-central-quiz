@@ -93,7 +93,12 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
     if (!url || !key) return null
-    const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+    const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Never serve a cached read. See lib/supabase-admin.ts for the 2026-08-08
+    // incident this prevents: 14 hours acting on a snapshot frozen at 13:15.
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
     const { data } = await c
       .from('submissions')
       .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for')

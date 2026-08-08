@@ -75,6 +75,10 @@ function client(): SupabaseClient {
   }
   _client = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Never serve a cached read. See lib/supabase-admin.ts for the 2026-08-08
+    // incident this prevents. This client is memoised, which makes a stale
+    // response stickier still.
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
   })
   return _client
 }

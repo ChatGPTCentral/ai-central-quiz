@@ -35,7 +35,12 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
   const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], eventBuckets: emptyBuckets }
   if (!url || !key) return empty
-  const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Never serve a cached read. See lib/supabase-admin.ts for the 2026-08-08
+    // incident this prevents: 14 hours acting on a snapshot frozen at 13:15.
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
   const uniq = { landing: new Set<string>(), started: new Set<string>(), checkout: new Set<string>() }
   const pl = new Map<string, { views: Set<string>; clicks: Set<string> }>()
   // Per-granularity unique-actor sets: gran → bucket → {views,starts,checkout}.

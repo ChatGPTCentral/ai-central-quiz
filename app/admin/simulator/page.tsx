@@ -32,7 +32,12 @@ async function loadBaseline(): Promise<Baseline> {
   if (!url || !key) return fallback
 
   try {
-    const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+    const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Never serve a cached read. See lib/supabase-admin.ts for the 2026-08-08
+    // incident this prevents: 14 hours acting on a snapshot frozen at 13:15.
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
 
     // Same window as the dashboard (LAUNCH_ISO), so at default settings this
     // page reproduces the dashboard's "All" column exactly. If the two ever

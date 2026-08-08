@@ -46,7 +46,12 @@ function client(): SupabaseClient {
     process.env.SUPABASE_SECRET_KEY ||
     process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) throw new Error('Supabase env vars missing')
-  _client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  _client = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    // Never serve a cached read. See lib/supabase-admin.ts for the 2026-08-08
+    // incident this prevents: 14 hours acting on a snapshot frozen at 13:15.
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
   return _client
 }
 
