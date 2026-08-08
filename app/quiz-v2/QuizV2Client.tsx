@@ -472,7 +472,15 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   }, [step, singleAnswer, isSingle]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const meta = UI_META[q.id] || {}
-  const eyebrow = `QUESTION ${step} OF ${TOTAL_STEPS}${meta.axis ? ` · ${meta.axis.toUpperCase()}` : ''}${meta.secs ? ` · ${meta.secs.toUpperCase()}` : ''}`
+  // NO COUNT. The eyebrow used to open "QUESTION 1 OF 11", which made the
+  // length of the quiz the first and largest thing anyone read. 40% of people
+  // who reach this page never answer a single question, and an eleven-item
+  // promise on the first screen is the most likely reason.
+  //
+  // The axis label and the time estimate stay. "~40 SEC" is the honest version
+  // of the same information: it tells you the cost without inviting anyone to
+  // count what is left. The progress bar shows movement, so nobody is lost.
+  const eyebrow = `${meta.axis ? meta.axis.toUpperCase() : ''}${meta.axis && meta.secs ? ' · ' : ''}${meta.secs ? meta.secs.toUpperCase() : ''}`
 
   const multiCount = multiAnswer.length
 
@@ -512,14 +520,24 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
           be trapped inside someone else's iframe. */}
       {!isEmbed && <MidQuizCatch step={step} totalSteps={TOTAL_STEPS} done={submitted || submitting} />}
       {/* Progress: 10 segments, full-bleed top */}
-      <div className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 z-50 flex`} style={{ gap: 2, height: 4 }}>
-        {QUESTIONS.map((_, i) => (
-          <div
-            key={i}
-            className="flex-1 transition-colors duration-300"
-            style={{ backgroundColor: i < step - 1 ? INK : i === step - 1 ? FULVOUS : HAIRLINE }}
-          />
-        ))}
+      {/* Continuous, not segmented. Eleven separate ticks are a countable total
+          - - removing the "1 OF 11" text while leaving eleven boxes on screen
+          would just move the same information somewhere less honest. A single
+          filling bar shows movement, which is the part that helps, without
+          showing how far away the end is. */}
+      <div
+        className={`${isEmbed ? 'sticky' : 'fixed'} top-0 left-0 right-0 z-50`}
+        style={{ height: 4, backgroundColor: HAIRLINE }}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round((step / TOTAL_STEPS) * 100)}
+        aria-label="Quiz progress"
+      >
+        <div
+          className="h-full transition-all duration-300"
+          style={{ width: `${(step / TOTAL_STEPS) * 100}%`, backgroundColor: FULVOUS }}
+        />
       </div>
 
       {/* Header: back · wordmark · counter */}
@@ -539,9 +557,10 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
           </button>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-full-light-bg.png" alt="AI Central" style={{ height: 13, width: 'auto' }} />
-          <span className="font-mono text-right" style={{ width: 44, fontSize: 11, color: MUTE, paddingRight: 6 }}>
-            Q{step}/{TOTAL_STEPS}
-          </span>
+          {/* The Q1/11 counter lived here. Removed for the same reason as the
+              eyebrow: it is a running total of how much is left. The spacer
+              keeps the wordmark centred. */}
+          <span style={{ width: 44 }} aria-hidden="true" />
         </header>
       )}
 

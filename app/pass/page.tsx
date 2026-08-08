@@ -94,7 +94,11 @@ export default function PassSharePage({ searchParams }: { searchParams: Search }
             )}
           </h1>
           <p className="mt-3" style={{ fontSize: 15.5, fontWeight: 300, lineHeight: 1.5, color: '#4A4A4A' }}>
-            10 questions, 40 seconds. Get your AI Readiness Type, your member pass, and your place
+            {/* Was "10 questions, 40 seconds". The count is gone everywhere,
+                and it was wrong anyway: the quiz is 11 steps. Time is the
+                honest version of the same promise, and it sells better than a
+                number of things to get through. */}
+            40 seconds. Get your AI Readiness Type, your member pass, and your place
             among 8.1 billion people
           </p>
           <a href={quizHref} className="mt-7 inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]" style={{ textDecoration: 'none' }}>

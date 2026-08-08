@@ -137,8 +137,12 @@ export default function MidQuizCatch({
         background: CREAM, border: `3px solid ${INK}`, boxShadow: `8px 9px 0 ${RICH}`,
         maxWidth: 420, width: '100%', padding: '26px 24px 24px', textAlign: 'center',
       }}>
+        {/* Only name a number when the number is an argument to stay. "3
+            questions left" pulls someone back; "10 questions left" tells them
+            they were right to leave, and it reintroduces the count we just
+            took off the quiz itself. */}
         <div className="font-mono uppercase" style={{ fontSize: 11, letterSpacing: '.2em', color: FULVOUS, fontWeight: 700 }}>
-          {left === 1 ? 'One question left' : `${left} questions left`}
+          {left === 1 ? 'One question left' : left <= 3 ? `${left} questions left` : 'Your answers are saved'}
         </div>
 
         <h2 className="mt-3 font-bold" style={{ fontSize: 26, lineHeight: 1.05, letterSpacing: '-0.035em', color: RICH }}>
@@ -146,7 +150,8 @@ export default function MidQuizCatch({
         </h2>
 
         <p className="mt-3" style={{ fontSize: 15, lineHeight: 1.5, color: '#4A4A4A', fontWeight: 300 }}>
-          Your answers are saved, so nothing is lost either way. {left === 1 ? 'One more' : `Another ${left}`} and
+          Your answers are saved, so nothing is lost either way.{' '}
+          {left <= 3 ? (left === 1 ? 'One more' : `Another ${left}`) : 'Finish'} and
           you get your stage on the ladder, your percentile, and a 30-day plan built from your answers.
         </p>
 
