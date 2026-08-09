@@ -17,11 +17,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
+import { readLtvModel } from '@/lib/ltv-settings'
+import { ltvFrom } from '@/lib/ltv-model'
 
 export const dynamic = 'force-dynamic'
 
-const TRIAL_USD = 4.99
-const ANNUAL_USD = 59.75
+// Prices live in the owner's LTV model (app_settings, set on /admin/simulator),
+// not as constants here. A constant is how the same business fact ends up
+// written down in two places with two values.
 
 /** utm_source values that cost money. 'linkedin' is organic posts and must not count.
  *  Not exported: a Next route file may only export route handlers and config. */
@@ -46,6 +49,8 @@ interface SourceRow {
   source: string
   paid: boolean
   takers: number
+  /** Landing views from this source: our proxy for the click we paid for. */
+  landing: number
   sawResult: number
   clicked: number
   buyers: number
@@ -57,11 +62,38 @@ export async function GET(req: NextRequest) {
   const ok = await verifySessionCookie(req.cookies.get(ADMIN_COOKIE_NAME)?.value)
   if (!ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get('days')) || 30, 1), 365)
+  // Cap raised so the UI can ask for all time. This screen answers "does paid
+  // pay for itself", which is a standing question, not a weekly trend.
+  const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get('days')) || 3650, 1), 3650)
   const c = sb()
 
   const { data, error } = await c.rpc('paid_source_funnel', { p_days: days })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Landing views per source. The RPC starts at "completed the quiz", so the
+  // click we actually paid for is missing from it entirely, and cost-per-click
+  // could not be computed at all. quiz_view fires on the landing page, which is
+  // the closest thing we own to a click.
+  const sinceIso = new Date(Date.now() - days * 864e5).toISOString()
+  const landingBySource = new Map<string, Set<string>>()
+  for (let offset = 0; offset < 200_000; offset += 1000) {
+    const { data: ev } = await c
+      .from('funnel_events')
+      .select('anon_id, session_id, utm_source')
+      .eq('event', 'quiz_view')
+      .gte('ts', sinceIso)
+      .range(offset, offset + 999)
+    if (!ev || ev.length === 0) break
+    for (const e of ev as { anon_id: string | null; session_id: string | null; utm_source: string | null }[]) {
+      const who = e.anon_id || e.session_id
+      const src = (e.utm_source || '').trim()
+      if (!who || !src) continue
+      const set = landingBySource.get(src) || new Set<string>()
+      set.add(who)
+      landingBySource.set(src, set)
+    }
+    if (ev.length < 1000) break
+  }
 
   const rows: SourceRow[] = (data || []).map((r: Record<string, unknown>) => {
     const takers = Number(r.takers)
@@ -72,6 +104,7 @@ export async function GET(req: NextRequest) {
       source: String(r.src),
       paid: PAID_SOURCES.includes(String(r.src)),
       takers, sawResult, clicked, buyers,
+      landing: landingBySource.get(String(r.src))?.size ?? 0,
       clickRate: sawResult > 0 ? clicked / sawResult : 0,
       buyRate: takers > 0 ? buyers / takers : 0,
     }
@@ -99,14 +132,21 @@ export async function GET(req: NextRequest) {
     buyer: !!(r.stripe_first_charge_at && r.stripe_first_charge_at > r.created_at),
   }))
 
-  // LTV from the OBSERVED trial→annual rate, not from hope. If nobody has
-  // renewed yet the rate is null and the UI must say so rather than default to
-  // 100% and flatter every channel.
+  // LTV comes from the OWNER'S saved model on /admin/simulator, so this page
+  // and that one can never disagree about what a customer is worth. The model
+  // is trial + year-1 renewal x annual + year-2 renewal x annual.
+  //
+  // The MEASURED trial→annual rate is still fetched, but only to show the
+  // assumption next to the evidence. It is not silently substituted: this page
+  // decides advertising spend, and quietly swapping the number under the owner
+  // would be worse than showing both and letting them choose.
+  const ltvModel = await readLtvModel()
+  const ltv = ltvFrom(ltvModel)
+
   const { data: rr } = await c.rpc('trial_to_annual_rate')
   const renewalRate: number | null =
     rr && rr.length && rr[0].rate != null ? Number(rr[0].rate) : null
   const renewalDue: number = rr && rr.length ? Number(rr[0].due) || 0 : 0
-  const ltv = TRIAL_USD + (renewalRate ?? 0) * ANNUAL_USD
 
   // The QUIZ-ERA rate, alongside the all-time one rather than instead of it.
   //
@@ -135,20 +175,22 @@ export async function GET(req: NextRequest) {
     rows: rows.sort((a, b) => b.takers - a.takers),
     recent,
     economics: {
-      trialUsd: TRIAL_USD,
-      annualUsd: ANNUAL_USD,
+      trialUsd: ltvModel.trialUsd,
+      annualUsd: ltvModel.annualUsd,
+      year1Pct: ltvModel.year1Pct,
+      year2Pct: ltvModel.year2Pct,
       renewalRate,
       renewalDue,
       cohortRate,
       cohortDue: qzRows.length,
       ltv,
-      ltvIsFloor: renewalRate === null,
+      ltvIsFloor: false,
       note: renewalRate === null
         ? 'No renewals observed yet, so LTV is the trial alone. Treat it as a floor.'
-        : `LTV = $${TRIAL_USD} trial + ${(renewalRate * 100).toFixed(0)}% renewing at $${ANNUAL_USD}`
-          + ` · all-time, ${renewalDue} due`
+        : `Your model: $${ltvModel.trialUsd} + ${(ltvModel.year1Pct * 100).toFixed(0)}% yr1 + ${(ltvModel.year2Pct * 100).toFixed(0)}% yr2 at $${ltvModel.annualUsd}`
+          + ` · measured yr1 ${(renewalRate * 100).toFixed(0)}% on ${renewalDue} due`
           + (cohortRate !== null && qzRows.length > 0
-              ? ` · quiz-era cohort ${(cohortRate * 100).toFixed(0)}% on ${qzRows.length} due`
+              ? ` · quiz-era ${(cohortRate * 100).toFixed(0)}% on ${qzRows.length}`
               : ''),
     },
     adsAppUrl: process.env.NEXT_PUBLIC_ADS_APP_URL || null,

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 interface SourceRow {
   source: string; paid: boolean
-  takers: number; sawResult: number; clicked: number; buyers: number
+  takers: number; landing: number; sawResult: number; clicked: number; buyers: number
   clickRate: number; buyRate: number
 }
 interface RecentRow {
@@ -15,7 +15,7 @@ interface Payload {
   days: number
   rows: SourceRow[]
   recent: RecentRow[]
-  economics: { trialUsd: number; annualUsd: number; renewalRate: number | null; ltv: number; ltvIsFloor: boolean; note: string }
+  economics: { trialUsd: number; annualUsd: number; year1Pct: number; year2Pct: number; renewalRate: number | null; renewalDue: number; cohortRate: number | null; cohortDue: number; ltv: number; ltvIsFloor: boolean; note: string }
   adsAppUrl: string | null
 }
 
@@ -31,7 +31,7 @@ const usd = (n: number) => `$${n.toFixed(2)}`
 
 export default function AdsPanel() {
   const [data, setData] = useState<Payload | null>(null)
-  const [days, setDays] = useState(30)
+  const days = 3650   // all time; this screen answers "does paid pay", not "what changed this week"
   const [err, setErr] = useState<string | null>(null)
   // Spend is not in our database — LinkedIn owns it, and the token that could
   // read it is a per-browser cookie in the ads app. So it is entered here, and
@@ -50,6 +50,9 @@ export default function AdsPanel() {
   const paidRows = useMemo(() => (data?.rows ?? []).filter(r => r.paid && r.takers > 0), [data])
   const spendNum = Number(spend) || 0
   const paidTakers = paidRows.reduce((a, r) => a + r.takers, 0)
+  // Landing views from paid sources. LinkedIn owns the true click count, this
+  // is our side of it, so it is labelled as ours rather than as LinkedIn's.
+  const paidClicks = paidRows.reduce((a, r) => a + (r.landing || 0), 0)
   const paidBuyers = paidRows.reduce((a, r) => a + r.buyers, 0)
   const costPerTaker = paidTakers > 0 ? spendNum / paidTakers : 0
   const cac = paidBuyers > 0 ? spendNum / paidBuyers : null
@@ -62,16 +65,12 @@ export default function AdsPanel() {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-5">
-        {[7, 30, 90].map(d => (
-          <button key={d} onClick={() => setDays(d)}
-            style={{
-              padding: '5px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-              border: `2px solid ${INK}`, background: days === d ? INK : 'transparent',
-              color: days === d ? '#FFFDFA' : INK,
-            }}>{d}d</button>
-        ))}
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: MUTE }}>{data.economics.note}</span>
+      <div className="flex items-baseline flex-wrap gap-3 mb-5">
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, border: `2px solid ${INK}`, padding: '5px 12px' }}>All time</span>
+        <span style={{ fontSize: 12, color: MUTE }}>{data.economics.note}</span>
+        <a href="/admin/simulator" style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#046BB1' }}>
+          change the LTV model ↗
+        </a>
       </div>
 
       {/* ── The bar ─────────────────────────────────────────────────────── */}
@@ -85,14 +84,17 @@ export default function AdsPanel() {
           </label>
         </div>
 
-        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {[
-            ['Sales from ads', String(paidBuyers), cac === null ? 'no buyers yet' : `CAC ${usd(cac)}`],
-            ['Quiz-takers', String(paidTakers), `from paid sources, ${days}d`],
+            ['Ad spend', usd(spendNum), 'entered above, all time'],
+            ['Clicks', paidClicks > 0 ? String(paidClicks) : '–', 'landing views from paid'],
+            ['Quiz-takers', String(paidTakers), 'completed the quiz'],
+            ['Sales', String(paidBuyers), 'net-new trials'],
             ['Cost / quiz', usd(costPerTaker), 'spend ÷ quiz-takers'],
-            ['LTV per buyer', usd(ltv), data.economics.ltvIsFloor ? 'floor, no renewals yet' : `${pct(data.economics.renewalRate ?? 0)} renew`],
-            ['Break-even buy rate', pct(breakEvenRate), 'of takers must buy'],
+            ['Cost / trial', cac === null ? '–' : usd(cac), cac === null ? 'no buyers yet' : 'spend ÷ sales'],
             ['Actual buy rate', pct(actualRate), actualRate >= breakEvenRate ? 'clears the bar' : 'below the bar'],
+            ['Break-even', pct(breakEvenRate), 'of takers must buy'],
+            ['LTV', usd(ltv), `${pct(data.economics.year1Pct)} yr1 · ${pct(data.economics.year2Pct)} yr2`],
           ].map(([label, value, sub]) => (
             <div key={label as string}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.08em', color: MUTE, fontWeight: 700 }}>{label}</div>

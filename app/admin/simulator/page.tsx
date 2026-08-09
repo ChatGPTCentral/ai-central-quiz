@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { LAUNCH_ISO } from '@/lib/dashboard-queries'
 import Simulator from './Simulator.client'
+import LtvModelPanel from '@/components/admin/LtvModelPanel.client'
 
 // Revenue simulator — the live funnel as the baseline, then drag each step rate
 // to see what it is worth.
@@ -117,5 +118,50 @@ async function loadBaseline(): Promise<Baseline> {
 }
 
 export default async function SimulatorPage() {
-  return <Simulator baseline={await loadBaseline()} />
+  const baseline = await loadBaseline()
+
+  // Recent trial run rate for the cashflow projection. Uses the baseline's own
+  // window so the chart and the simulator below it cannot disagree about how
+  // fast we are selling.
+  const trialsPerMonth = baseline.days > 0
+    ? Math.round((baseline.paid / baseline.days) * 30)
+    : 0
+
+  // The measured year-1 rate, so the assumption can be judged against the only
+  // evidence we have rather than set in the dark.
+  let measuredYear1: number | null = null
+  let measuredDue = 0
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+    if (url && key) {
+      const c = createClient(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+      })
+      const { data } = await c.rpc('trial_to_annual_rate')
+      if (data && data.length) {
+        measuredYear1 = data[0].rate != null ? Number(data[0].rate) : null
+        measuredDue = Number(data[0].due) || 0
+      }
+    }
+  } catch { /* the panel handles nulls and says so */ }
+
+  return (
+    <div className="p-8 max-w-[1400px]">
+      <div className="mb-6">
+        <h1 className="text-2xl font-black text-[#333333] mb-1">Simulator</h1>
+        <p className="text-sm text-[#9C9C9C]">
+          What a customer is worth, and what the funnel pays out over a year. The LTV model set
+          here is the same one the Ads page prices paid traffic against.
+        </p>
+      </div>
+      <LtvModelPanel
+        measuredYear1={measuredYear1}
+        measuredDue={measuredDue}
+        trialsPerMonth={trialsPerMonth}
+      />
+      <Simulator baseline={baseline} />
+    </div>
+  )
 }
