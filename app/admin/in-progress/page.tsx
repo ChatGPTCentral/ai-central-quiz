@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import { listPartials, type PartialRow } from '@/lib/partials'
 import DeletePartial from './DeletePartial.client'
 
@@ -28,6 +29,42 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
+/**
+ * Did the exit popup actually earn any emails?
+ *
+ * Shipped 2026-08-09. Question-first moved the email to step 10 of 11, so
+ * anyone quitting at question 4 left NO trace: only 2 partials arrived in the
+ * 7 days before this, against 201 all-time. The popup now offers to save their
+ * progress, and this is the scoreboard for whether that was worth doing.
+ *
+ * `quiz_exit_catch_email` fires only AFTER the partial POST returns, so
+ * "captured" means emails we hold, not boxes typed in.
+ */
+async function popupStats(): Promise<{ shown: number; captured: number; resumed: number } | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return null
+  try {
+    const c = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+    })
+    const { data } = await c
+      .from('funnel_events')
+      .select('event, anon_id, session_id')
+      .in('event', ['quiz_exit_catch_shown', 'quiz_exit_catch_email', 'quiz_exit_catch_resumed'])
+    const seen = { shown: new Set<string>(), captured: new Set<string>(), resumed: new Set<string>() }
+    for (const r of (data || []) as { event: string; anon_id: string | null; session_id: string | null }[]) {
+      const who = r.anon_id || r.session_id
+      if (!who) continue
+      if (r.event === 'quiz_exit_catch_shown') seen.shown.add(who)
+      else if (r.event === 'quiz_exit_catch_email') seen.captured.add(who)
+      else seen.resumed.add(who)
+    }
+    return { shown: seen.shown.size, captured: seen.captured.size, resumed: seen.resumed.size }
+  } catch { return null }
+}
+
 export default async function InProgressPage() {
   let rows: PartialRow[] = []
   let error: string | null = null
@@ -36,6 +73,7 @@ export default async function InProgressPage() {
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
   }
+  const popup = await popupStats()
 
   return (
     <div>
@@ -55,6 +93,29 @@ export default async function InProgressPage() {
         <div className="mb-6 px-4 py-3 rounded-md border border-amber-200 bg-amber-50 text-xs text-amber-900">
           <div className="font-semibold mb-1">Couldn&apos;t load in-progress captures.</div>
           <div className="font-mono text-[10px] text-amber-700 break-all">{error}</div>
+        </div>
+      )}
+
+      {/* Exit-popup scoreboard. Sits here because this page IS the list the
+          popup feeds, so the capture rate and the rows it produced are read
+          together rather than on separate screens. */}
+      {popup && (
+        <div className="mb-5 flex flex-wrap items-baseline" style={{ gap: 18, padding: '12px 16px', background: '#FEF7E7', border: '1px solid #333333' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#1A1A1A' }}>Exit popup</span>
+          <span style={{ fontSize: 12.5, color: '#4A4A4A' }}>
+            shown to <strong style={{ color: '#1A1A1A' }}>{popup.shown.toLocaleString()}</strong>
+          </span>
+          <span style={{ fontSize: 12.5, color: '#4A4A4A' }}>
+            emails saved <strong style={{ color: '#2E7D32' }}>{popup.captured.toLocaleString()}</strong>
+            {popup.shown > 0 && <span style={{ color: '#6B6B6B' }}> · {((popup.captured / popup.shown) * 100).toFixed(1)}%</span>}
+          </span>
+          <span style={{ fontSize: 12.5, color: '#4A4A4A' }}>
+            resumed instead <strong style={{ color: '#1A1A1A' }}>{popup.resumed.toLocaleString()}</strong>
+            {popup.shown > 0 && <span style={{ color: '#6B6B6B' }}> · {((popup.resumed / popup.shown) * 100).toFixed(1)}%</span>}
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6B6B6B' }}>
+            an email saved is a person we can follow up; a resume is better still
+          </span>
         </div>
       )}
 

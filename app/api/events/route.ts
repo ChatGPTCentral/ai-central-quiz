@@ -55,6 +55,11 @@ const ALLOWED_EVENTS = new Set([
   'checkout_form_secret', 'checkout_form_ready', 'checkout_form_error',
   // mid-quiz exit catch: the /quiz exit is the single biggest volume leak
   'quiz_exit_catch_shown', 'quiz_exit_catch_resumed', 'quiz_exit_catch_dismissed',
+  // Email saved FROM the exit popup. Question-first moved the email to step 10
+  // of 11, so somebody who quits at question 4 used to leave no trace at all.
+  // Fired only after the partial POST returns, so the count means "emails we
+  // actually hold", not "times somebody typed in the box".
+  'quiz_exit_catch_email',
   // unlock reveal (the honest wheel)
   'unlock_reveal_spin', 'unlock_reveal_done',
 ])

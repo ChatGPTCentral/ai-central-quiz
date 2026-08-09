@@ -572,7 +572,11 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       {/* Catches the biggest leak in the funnel: 1,358 of 1,871 recorded
           sessions exit on /quiz. Never shown in the embed, where a modal would
           be trapped inside someone else's iframe. */}
-      {!isEmbed && <MidQuizCatch step={step} totalSteps={TOTAL_STEPS} done={submitted || submitting} />}
+      {!isEmbed && <MidQuizCatch step={step} totalSteps={TOTAL_STEPS} done={submitted || submitting}
+        answers={answers}
+        utmSource={searchParams.get('utm_source') || searchParams.get('utmSource') || searchParams.get('source')}
+        utmRef={searchParams.get('utm_ref') || searchParams.get('utmRef') || searchParams.get('ref')}
+        clientId={clientId.current || null} />}
       {/* Progress: 10 segments, full-bleed top */}
       {/* Continuous, not segmented. Eleven separate ticks are a countable total
           - - removing the "1 OF 11" text while leaving eleven boxes on screen
