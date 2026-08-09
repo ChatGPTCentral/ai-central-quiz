@@ -74,6 +74,8 @@ const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 const GRID_STAGE = 'minmax(96px,1.2fr) 38px 38px 46px 58px 56px'
 /** CTA placements column template, shared by its header and rows. */
 const GRID_CTA = '158px 1fr 70px 66px 56px 56px 68px'
+/** Source economics columns, shared by its header and rows. */
+const GRID_SRC = 'minmax(150px,1fr) 74px 62px 74px 84px 74px'
 
 /** CTA placement thumbnail — the actual component shown, screenshotted into
  *  public/admin-placements/<placement>.png. Falls back to a clean "no preview"
@@ -476,6 +478,35 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
     const bp = placements.find(x => x.placement === best)
     return !bp || !bp.views || ctr > bp.clicks / bp.views ? p.placement : best
   }, null)
+  // Source economics, moved here from /admin/ads at the owner's request.
+  //
+  // It belongs on the dashboard because it answers "where do buyers come from
+  // and what is one taker from there worth", which is a dashboard question, not
+  // an advertising one. The ads page keeps it too, priced against spend; here
+  // it is unpriced, so a free source and a paid source can be compared on the
+  // only thing they share, what a taker is worth.
+  const sourceEconomics = useMemo(() => {
+    const m = new Map<string, { takers: number; paid: number; revenue: number }>()
+    for (const r of rows) {
+      const k = r.utmQuiz || '(direct)'
+      const e = m.get(k) || { takers: 0, paid: 0, revenue: 0 }
+      e.takers++
+      if (r.netNew) { e.paid++; e.revenue += r.ltv }
+      m.set(k, e)
+    }
+    return Array.from(m.entries())
+      .map(([source, v]) => ({
+        source,
+        ...v,
+        buyRate: v.takers > 0 ? (v.paid / v.takers) * 100 : 0,
+        // ARPU over EVERY taker, not just buyers: this is what one more visitor
+        // from that source is worth, which is the number you would bid with.
+        arpu: v.takers > 0 ? v.revenue / v.takers : 0,
+      }))
+      .filter(r => r.takers >= 5)
+      .sort((a, b) => b.arpu - a.arpu || b.takers - a.takers)
+  }, [rows])
+
   // The button that SELLS, which is not always the button that gets clicked.
   // Badging the top click rate as "Best" was quietly wrong: the click-quality
   // guardrail already caught an arm winning on clicks while selling less.
@@ -648,6 +679,35 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
           <HBarPanel title="What's the source of subscribers?" rows={nlData} color="#3B4C99" pct={pct} borderLeft={false} />
           <HBarPanel title="What's the source of quiz takers?" rows={quizUtmData} color="#E48715" pct={pct} borderLeft />
           <HBarPanel title="What's the source of paid subs?" rows={paidChannel} color="#BE3B3B" pct={pct} borderLeft />
+        </div>
+
+        {/* ── Source economics · what one taker from each source is worth ── */}
+        <div style={{ borderTop: '1px solid #333333' }}>
+          <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}`, gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>What a taker is worth, by source</span>
+            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>ARPU is revenue ÷ ALL takers, so it is what one more visitor is worth · sources under 5 takers hidden</span>
+          </div>
+          <div className="ac-scrollx"><div>
+            <div className="grid" style={{ gridTemplateColumns: GRID_SRC, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
+              <span style={{ padding: '8px 0' }}>Source</span>
+              <span style={{ padding: '8px 0', textAlign: 'right' }}>Takers</span>
+              <span style={{ padding: '8px 0', textAlign: 'right' }}>Paid</span>
+              <span style={{ padding: '8px 0', textAlign: 'right' }}>Buy rate</span>
+              <span style={{ padding: '8px 0', textAlign: 'right' }}>Revenue</span>
+              <span style={{ padding: '8px 0', textAlign: 'right' }}>ARPU</span>
+            </div>
+            {sourceEconomics.length === 0 && <p style={{ padding: '10px 20px', fontSize: 12, color: MUTE }}>No source data in this window.</p>}
+            {sourceEconomics.map(r => (
+              <div key={r.source} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: GRID_SRC, fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '6px 20px' }}>
+                <span style={{ fontWeight: 700, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.source}>{r.source}</span>
+                <span style={{ textAlign: 'right', ...tnum }}>{r.takers.toLocaleString()}</span>
+                <span style={{ textAlign: 'right', fontWeight: 700, ...tnum }}>{r.paid.toLocaleString()}</span>
+                <span style={{ textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{r.buyRate.toFixed(1)}%</span>
+                <span style={{ textAlign: 'right', ...tnum }}>${r.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span style={{ textAlign: 'right', fontWeight: 800, color: r.arpu > 0 ? '#62A758' : MUTE, ...tnum }}>${r.arpu.toFixed(2)}</span>
+              </div>
+            ))}
+          </div></div>
         </div>
 
         {/* ── Row 7 · CTA placements with the component that was shown ── */}

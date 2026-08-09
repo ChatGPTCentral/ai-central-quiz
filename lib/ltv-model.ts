@@ -20,6 +20,8 @@
 // not been on this price for two years.
 
 export const LTV_SETTINGS_KEY = 'ltv_model'
+/** Ad spend, entered by hand because LinkedIn owns the real figure. */
+export const ADS_SPEND_KEY = 'ads_spend'
 
 export interface LtvModel {
   /** The $4.99 trial. */

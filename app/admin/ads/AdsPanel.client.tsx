@@ -33,10 +33,31 @@ export default function AdsPanel() {
   const [data, setData] = useState<Payload | null>(null)
   const days = 3650   // all time; this screen answers "does paid pay", not "what changed this week"
   const [err, setErr] = useState<string | null>(null)
-  // Spend is not in our database — LinkedIn owns it, and the token that could
-  // read it is a per-browser cookie in the ads app. So it is entered here, and
-  // everything downstream is computed honestly from it.
-  const [spend, setSpend] = useState<string>('666.74')
+  // Spend is not in our database. LinkedIn owns it, the ads app is a separate
+  // deployment, and the finance DB holds no 2026 LinkedIn invoice, so it is
+  // entered here. It is now SAVED rather than defaulted: as a hardcoded 666.74
+  // every page load silently reset it and the whole page priced itself against
+  // a number nobody had typed.
+  const [spend, setSpend] = useState<string>('')
+  const [spendSaved, setSpendSaved] = useState(false)
+  useEffect(() => {
+    fetch('/api/admin/ads-spend')
+      .then(r => r.json())
+      .then(d => { if (typeof d?.usd === 'number') setSpend(String(d.usd)) })
+      .catch(() => { /* leave blank, which reads as "unset" rather than as data */ })
+  }, [])
+  const saveSpend = async () => {
+    const usd = Number(spend)
+    if (!Number.isFinite(usd) || usd < 0) return
+    try {
+      await fetch('/api/admin/ads-spend', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usd }),
+      })
+      setSpendSaved(true)
+      setTimeout(() => setSpendSaved(false), 2000)
+    } catch { /* non-fatal */ }
+  }
 
   useEffect(() => {
     setData(null)
@@ -79,8 +100,12 @@ export default function AdsPanel() {
           <h2 style={{ fontSize: 17, fontWeight: 800, color: RICH, margin: 0 }}>Does paid wash its face?</h2>
           <label style={{ marginLeft: 'auto', fontSize: 12.5, color: MUTE }}>
             spend over {days}d&nbsp;
-            <input value={spend} onChange={e => setSpend(e.target.value)} inputMode="decimal"
+            <input value={spend} onChange={e => setSpend(e.target.value)} inputMode="decimal" placeholder="not set"
               style={{ width: 92, border: `2px solid ${INK}`, padding: '3px 7px', fontSize: 13, fontWeight: 700 }} />
+            <button type="button" onClick={saveSpend}
+              style={{ marginLeft: 6, border: `2px solid ${INK}`, background: spendSaved ? GOOD : INK, color: '#FFFDFA', padding: '3px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {spendSaved ? 'saved' : 'save'}
+            </button>
           </label>
         </div>
 
