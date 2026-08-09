@@ -409,10 +409,11 @@ function VolumeMatrix({ series, gran, F }: {
   )
 }
 
-export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, otherRevenue }: {
+export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid }: {
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; series: Series; pct: boolean
-  /** First-ever Stripe charges since launch the quiz cannot claim. */
-  otherPaid: number; otherRevenue: number
+  /** First-ever Stripe charges since launch the quiz cannot claim. Feeds the
+   *  "Not from the quiz" station in the volume matrix. */
+  otherPaid: number
 }) {
   const [stageFilter, setStageFilter] = useState<string | null>(null)
   const [trendGran, setTrendGran] = useState<Gran | 'all'>('week') // shared across all step rows
@@ -535,31 +536,6 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
               <div style={{ fontSize: 10.5, color: k.dark ? 'rgba(255,253,250,0.65)' : MUTE, marginTop: 8 }}>{k.hint}</div>
             </div>
           ))}
-
-        {/* RECONCILIATION, owner ask. Net-new paid above is what the QUIZ
-            earned. This is every other first-ever charge since launch, so the
-            two together account for all new money in Stripe and the north star
-            can never quietly absorb a sale it did not make. Two kinds land
-            here: buyers the Stripe sync created because we had never seen their
-            email, and existing customers whose charge predates their quiz. */}
-        <div
-          className="flex items-baseline flex-wrap"
-          style={{ gap: 10, padding: '11px 18px', borderTop: '1px solid #333333', background: LATTE }}
-        >
-          <span style={{ ...eyebrow, color: '#6B6B6B' }}>Not from the quiz</span>
-          <span style={{ fontSize: 17, fontWeight: 800, color: INK, ...tnum }}>{otherPaid.toLocaleString()}</span>
-          <span style={{ fontSize: 12, color: '#6B6B6B' }}>
-            other first-ever charges since launch, worth{' '}
-            <strong style={{ color: INK, fontWeight: 700 }}>
-              ${otherRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </strong>
-          </span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#6B6B6B' }}>
-            {netNewPeople.length + otherPaid > 0
-              ? `the quiz earned ${Math.round((netNewPeople.length / (netNewPeople.length + otherPaid)) * 100)}% of all new buyers`
-              : 'no new buyers in this window'}
-          </span>
-        </div>
         </div>
 
         {/* ── Row 2 · the funnel, per period. The static bar funnel that used to

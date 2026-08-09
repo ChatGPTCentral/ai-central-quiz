@@ -308,7 +308,6 @@ export default async function DashboardPage({
       funnelEvents={events.funnel}
       placements={placements}
       otherPaid={other.count}
-      otherRevenue={other.revenue}
       series={series}
       exportHref={exportHref}
       launchLabel={LAUNCH_LABEL}
