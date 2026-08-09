@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { LTV_DEFAULTS, ltvFrom, type LtvModel } from '@/lib/ltv-model'
+import CashflowChart, { type CashflowPoint } from '@/components/admin/CashflowChart.client'
 
 const INK = '#333333'
 const RICH = '#1A1A1A'
@@ -69,25 +70,20 @@ export default function LtvModelPanel({
     finally { setSaving(false) }
   }
 
-  // 12 months of cashflow from today's run rate. Month 0 is trials only; the
-  // first annual lands a month after each cohort's trial, so the curve steps up
-  // from month 1 as each month's cohort matures.
-  const months = useMemo(() => {
-    const out: { m: number; trial: number; annual: number; total: number; cum: number }[] = []
-    let cum = 0
+  // 12 months of cash at today's trial run rate. Each month's cohort pays its
+  // trial that month, then its annual a month later, which is why the curve
+  // steps up from month 2 rather than starting flat.
+  const months: CashflowPoint[] = useMemo(() => {
+    const out: CashflowPoint[] = []
     for (let m = 0; m < 12; m++) {
-      const trial = trialsPerMonth * model.trialUsd
-      // Cohort from month m-1 bills its annual now.
-      const annual = m >= 1 ? trialsPerMonth * model.year1Pct * model.annualUsd : 0
-      const total = trial + annual
-      cum += total
-      out.push({ m, trial, annual, total, cum })
+      out.push({
+        m,
+        trial: trialsPerMonth * model.trialUsd,
+        annual: m >= 1 ? trialsPerMonth * model.year1Pct * model.annualUsd : 0,
+      })
     }
     return out
   }, [trialsPerMonth, model])
-
-  const maxTotal = Math.max(...months.map(x => x.total), 1)
-  const year1Total = months[months.length - 1]?.cum ?? 0
 
   const field = (label: string, value: number, onChange: (n: number) => void, suffix: string, hint: string) => (
     <label style={{ display: 'block' }}>
@@ -151,37 +147,13 @@ export default function LtvModelPanel({
           {' '}Year 2 has <strong style={{ color: RICH }}>no data at all</strong>, because the product has not been on this price for two years.
         </p>
 
-        {/* 12-month cashflow. Trials at today's run rate, plus each cohort's
-            annual landing a month later. */}
-        <div style={{ borderTop: `1px solid #E8E2D4`, paddingTop: 14 }}>
-          <div className="flex items-baseline justify-between" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', color: INK }}>
-              12-month cashflow
-            </span>
-            <span style={{ fontSize: 11, color: MUTE }}>
-              at {trialsPerMonth.toLocaleString()} trials a month · year 1 total <strong style={{ color: GOOD }}>{usd(year1Total)}</strong>
-            </span>
-          </div>
-          <div className="flex items-end" style={{ gap: 5, height: 128, borderBottom: `1px solid ${INK}` }}>
-            {months.map(x => (
-              <div key={x.m} className="flex flex-col justify-end items-center" style={{ flex: 1, height: '100%' }} title={`Month ${x.m + 1}: ${usd(x.total)} (trials ${usd(x.trial)}, annuals ${usd(x.annual)}) · cumulative ${usd(x.cum)}`}>
-                {/* Annual on top of trial, so the shape shows WHEN the money
-                    actually arrives rather than a single flat bar. */}
-                <div style={{ width: '78%', height: `${(x.annual / maxTotal) * 100}%`, background: GOOD }} />
-                <div style={{ width: '78%', height: `${(x.trial / maxTotal) * 100}%`, background: FULVOUS }} />
-              </div>
-            ))}
-          </div>
-          <div className="flex" style={{ marginTop: 5 }}>
-            {months.map(x => (
-              <span key={x.m} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: '#6B6B6B' }}>{x.m + 1}</span>
-            ))}
-          </div>
-          <div className="flex items-center" style={{ gap: 14, marginTop: 8, fontSize: 10.5, color: '#6B6B6B' }}>
-            <span className="inline-flex items-center" style={{ gap: 5 }}><span style={{ width: 9, height: 9, background: FULVOUS }} /> trials</span>
-            <span className="inline-flex items-center" style={{ gap: 5 }}><span style={{ width: 9, height: 9, background: GOOD }} /> annual renewals</span>
-            <span style={{ marginLeft: 'auto' }}>month 2 onward is where the annuals start landing</span>
-          </div>
+        <div style={{ borderTop: `1px solid #E8E2D4`, paddingTop: 16 }}>
+          <CashflowChart points={months} />
+          <p style={{ fontSize: 11, color: MUTE, marginTop: 8, lineHeight: 1.5 }}>
+            Assumes {trialsPerMonth.toLocaleString()} trials a month, today&apos;s run rate, held flat.
+            Renewals use the year-1 rate above; the year-2 renewal falls outside this window and shows
+            up in LTV rather than in the chart.
+          </p>
         </div>
       </div>
     </div>
