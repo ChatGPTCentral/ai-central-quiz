@@ -10,6 +10,7 @@ import { FomoNotifications } from '@/components/result2/FomoNotifications.client
 import { StageGauge } from '@/components/result2/StageGauge'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
+import ExpenseEmail from '@/components/result2/ExpenseEmail.client'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
 import { QUESTIONS_V2_MERGED as QUIZ_QUESTIONS } from '@/lib/questions-v2-merged'
@@ -472,6 +473,17 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
           expressPay={expressPayEl}
         />
+
+        {/* Directly under the price, because that is the exact moment the
+            objection lands. Theory under test: the blocker is not $59.75, it
+            is whose money it is. See the component for the kill number. */}
+        <div style={{ maxWidth: 640 }}>
+          <ExpenseEmail
+            stageLabel={rung.className}
+            hoursLost={segFields?.hours_lost ?? null}
+            submissionId={rowId}
+          />
+        </div>
 
         {/* Live trial notifications sit UNDER the pay buttons, not over the
             video: social proof lands hardest at the moment of decision. */}

@@ -40,6 +40,11 @@ const ALLOWED_EVENTS = new Set([
   'placement_view',
   // free win on the result page (reciprocity before the ask)
   'free_win_view', 'free_win_copy',
+  // expense-it-to-L&D block. Theory under test: the blocker is not the price,
+  // it is whose money it is. Both events carry the submission id so opens and
+  // copies can be split by job_level, which is what makes the theory killable:
+  // if seniors do not over-index, it is a novelty button and it comes out.
+  'expense_email_open', 'expense_email_copy',
   // freemium study plan: week 1 is playable, weeks 2-5 are the wall
   'free_step_open',
   // express checkout (one-tap wallets)
