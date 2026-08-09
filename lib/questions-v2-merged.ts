@@ -37,11 +37,21 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     secondFieldLabel: 'Last name',
     secondFieldPlaceholder: 'Doe',
   },
+  // REWORDED 2026-08-09, owner's wording. This step loses 13.3%, three times
+  // the next worst, and the loss is almost entirely cold paid traffic: li_ads
+  // drops 34.2% here while thecentral.ai drops 0%, because newsletter links
+  // carry ?email= and skip the step outright.
+  //
+  // "What's your email address?" is a request for their data. "Where should we
+  // send it?" is a delivery question about something they have already earned,
+  // and it names the two things they are owed - - the pass and the result -
+  // instead of a vague "personalized AI plan". Same field, same column, same
+  // validation. Nothing stored changes.
   {
     id: 'email',
     type: 'email',
-    label: "What's your email address?",
-    sublabel: 'We use this to send you your personalized AI plan',
+    label: 'Where should we send your pass and your result?',
+    sublabel: 'Both land in your inbox in about a minute',
     required: true,
     placeholder: 'name@example.com',
     dbColumn: 'email',
