@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
+import { hogql, posthogProjectId } from '@/lib/posthog-read'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -114,12 +115,6 @@ function sb() {
   })
 }
 
-/** PostHog's own host for READS is the api host, not the assets host. */
-function posthogApiBase(): string {
-  const h = (process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com').replace(/\/$/, '')
-  return h
-}
-
 /**
  * Which PostHog-ish variables this deployment can actually see, by NAME ONLY.
  *
@@ -133,84 +128,18 @@ function posthogEnvNames(): string[] {
   return Object.keys(process.env).filter(k => /posthog/i.test(k)).sort()
 }
 
-/**
- * The project id, discovered rather than demanded.
- *
- * POSTHOG_PROJECT_ID is honoured when set, but a personal API key can already
- * list the projects it has access to, so making a human go and find a number
- * that the credential can tell us is a step that exists only to be forgotten.
- * It was, on 2026-08-09.
- *
- * Cached per process: it never changes, and the sync runs four queries.
- */
-let _projectId: string | null = null
-async function resolveProjectId(key: string): Promise<{ id?: string; error?: string }> {
-  const configured = process.env.POSTHOG_PROJECT_ID
-  if (configured) return { id: configured }
-  if (_projectId) return { id: _projectId }
-
-  try {
-    const res = await fetch(`${posthogApiBase()}/api/projects/`, {
-      headers: { Authorization: `Bearer ${key}` },
-      cache: 'no-store',
-    })
-    const text = await res.text()
-    if (!res.ok) {
-      return {
-        error: `could not list projects (HTTP ${res.status}). The personal API key probably lacks the ` +
-          `project:read scope, so either add that scope or set POSTHOG_PROJECT_ID. ${text.slice(0, 200)}`,
-      }
-    }
-    const json = JSON.parse(text) as { results?: { id: number | string; name?: string }[] }
-    const list = json.results ?? []
-    if (list.length === 0) return { error: 'the personal API key can see no projects' }
-    // More than one is ambiguous, and guessing which analytics project to read
-    // is exactly the kind of silent wrong answer this session has had enough of.
-    if (list.length > 1) {
-      return {
-        error: `the key can see ${list.length} projects (${list.map(p => `${p.id}:${p.name ?? '?'}`).join(', ')}). ` +
-          `Set POSTHOG_PROJECT_ID to pick one.`,
-      }
-    }
-    _projectId = String(list[0].id)
-    return { id: _projectId }
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) }
-  }
-}
-
-async function runHogql(hogql: string): Promise<{ rows: unknown[]; error?: string }> {
-  const key = process.env.POSTHOG_PERSONAL_API_KEY
-  if (!key) {
+/** Run one standing question. Plumbing lives in lib/posthog-read.ts so this
+ *  route and the buyer backfill cannot disagree about how to reach PostHog. */
+async function runHogql(query: string): Promise<{ rows: unknown[]; error?: string }> {
+  const { rows, columns, error } = await hogql(query)
+  if (error) {
     const seen = posthogEnvNames()
-    return {
-      rows: [],
-      error: `POSTHOG_PERSONAL_API_KEY missing. PostHog variable NAMES visible here: ${seen.length ? seen.join(', ') : 'NONE'}.`,
-    }
+    return { rows: [], error: `${error} · PostHog variable NAMES visible here: ${seen.length ? seen.join(', ') : 'NONE'}.` }
   }
-  const resolved = await resolveProjectId(key)
-  if (!resolved.id) return { rows: [], error: `project id unresolved: ${resolved.error}` }
-  const project = resolved.id
-
-  try {
-    const res = await fetch(`${posthogApiBase()}/api/projects/${project}/query/`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: { kind: 'HogQLQuery', query: hogql } }),
-      cache: 'no-store',
-    })
-    const text = await res.text()
-    if (!res.ok) return { rows: [], error: `HTTP ${res.status}: ${text.slice(0, 300)}` }
-    const json = JSON.parse(text) as { results?: unknown[]; columns?: string[] }
-    // PostHog returns positional arrays plus a column list. Zip them, because
-    // a bare array of arrays is unreadable six weeks later.
-    const cols = json.columns ?? []
-    const rows = (json.results ?? []).map(r =>
-      Array.isArray(r) ? Object.fromEntries(cols.map((c, i) => [c, (r as unknown[])[i]])) : r,
-    )
-    return { rows }
-  } catch (e) {
-    return { rows: [], error: e instanceof Error ? e.message : String(e) }
+  // PostHog returns positional arrays plus a column list. Zip them, because a
+  // bare array of arrays is unreadable six weeks later.
+  return {
+    rows: rows.map(r => (Array.isArray(r) ? Object.fromEntries(columns.map((c, i) => [c, r[i]])) : r)),
   }
 }
 
@@ -222,6 +151,9 @@ export async function GET(req: NextRequest) {
   if (!viaCron && !viaAdmin) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const c = sb()
+  // Resolved once and reported, so "it returned nothing" can be told apart from
+  // "it could not find the project" without reading a log.
+  const resolvedProject = await posthogProjectId()
   const summary: { key: string; rows: number; error?: string }[] = []
 
   for (const q of QUERIES) {
@@ -245,8 +177,9 @@ export async function GET(req: NextRequest) {
     deploymentSees: {
       personalApiKey: !!process.env.POSTHOG_PERSONAL_API_KEY,
       projectIdConfigured: !!process.env.POSTHOG_PROJECT_ID,
-      projectIdUsed: _projectId ?? process.env.POSTHOG_PROJECT_ID ?? null,
-      projectIdSource: process.env.POSTHOG_PROJECT_ID ? 'env' : _projectId ? 'discovered from the API key' : 'unresolved',
+      projectIdUsed: resolvedProject.id ?? null,
+      projectIdSource: process.env.POSTHOG_PROJECT_ID ? 'env' : resolvedProject.id ? 'discovered from the API key' : 'unresolved',
+      projectIdError: resolvedProject.error ?? null,
       publicKey: !!process.env.NEXT_PUBLIC_POSTHOG_KEY,
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '(default us)',
     },

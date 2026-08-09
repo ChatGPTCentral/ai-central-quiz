@@ -19,36 +19,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
 import { posthogCapture } from '@/lib/posthog-server'
+import { hogql } from '@/lib/posthog-read'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-
-function posthogHost(): string {
-  return (process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com').replace(/\/$/, '')
-}
-
-async function hogql(query: string): Promise<{ rows: unknown[][]; error?: string }> {
-  const key = process.env.POSTHOG_PERSONAL_API_KEY
-  const project = process.env.POSTHOG_PROJECT_ID
-  if (!key) return { rows: [], error: 'POSTHOG_PERSONAL_API_KEY not set' }
-  if (!project) return { rows: [], error: 'POSTHOG_PROJECT_ID not set' }
-  try {
-    const res = await fetch(`${posthogHost()}/api/projects/${project}/query/`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: { kind: 'HogQLQuery', query } }),
-      cache: 'no-store',
-    })
-    const text = await res.text()
-    if (!res.ok) return { rows: [], error: `HTTP ${res.status}: ${text.slice(0, 300)}` }
-    const json = JSON.parse(text) as { results?: unknown[][] }
-    return { rows: json.results ?? [] }
-  } catch (e) {
-    return { rows: [], error: e instanceof Error ? e.message : String(e) }
-  }
-}
 
 export async function GET(req: NextRequest) {
   if (!(await verifySessionCookie(req.cookies.get(ADMIN_COOKIE_NAME)?.value))) {
