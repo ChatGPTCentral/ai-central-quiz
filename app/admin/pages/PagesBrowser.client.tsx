@@ -13,52 +13,9 @@ import { useMemo, useState } from 'react'
 
 const SITE = 'https://quiz.thecentral.ai'
 
-type Variant = { key: string; label: string; note: string; params: Record<string, string>; live?: boolean }
+import { RESULT_VARIANTS, type VariantMeta, type VariantResult } from '@/lib/result-variants'
 
-const VARIANTS: Variant[] = [
-  {
-    key: 'control',
-    label: 'Control · sell-first',
-    note: 'Winner of result_sellfirst_v1 (38.1% vs 22.7%). Control arm of the live test.',
-    params: {},
-    live: true,
-  },
-  {
-    key: 'aspirational',
-    label: 'Aspirational · almost-a-next-stage',
-    note: 'Challenger in result_aspirational_v1. Buy button above the fold.',
-    params: { xv: 'aspirational' },
-    live: true,
-  },
-  {
-    key: 'express',
-    label: 'One-tap wallets',
-    note: 'Express Checkout Element. Apple Pay only renders on a device that has it.',
-    params: { express: '1' },
-  },
-  {
-    key: 'aspirational-express',
-    label: 'Aspirational + wallets',
-    note: 'Both of the above together.',
-    params: { xv: 'aspirational', express: '1' },
-  },
-  {
-    key: 'adsrescue',
-    label: 'Paid traffic (AI 101 rescue)',
-    note: 'Scroll to the bottom, then move the cursor off the top of the window.',
-    params: { utm_source: 'li_ads' },
-  },
-  {
-    key: 'videofirst',
-    label: 'Video-first (retired)',
-    note: 'The order sell-first beat. Kept for reference only.',
-    params: { xv: 'videofirst' },
-  },
-  { key: 'design-a', label: 'Hero lab A · leverage %', note: 'Hero only.', params: { design: 'a' } },
-  { key: 'design-b', label: 'Hero lab B · top % + gap', note: 'Hero only.', params: { design: 'b' } },
-  { key: 'design-c', label: 'Hero lab C · 3 stages', note: 'Hero only.', params: { design: 'c' } },
-  { key: 'design-d', label: 'Hero lab D · plan ready', note: 'Hero only.', params: { design: 'd' } },
-]
+type Variant = VariantMeta
 
 const STAGES = [
   { key: 'S1_curious', label: 'Curious' },
@@ -76,8 +33,23 @@ const LINE = '#E8E4DF'
 const LATTE = '#FEF7E7'
 const FULVOUS = '#E48715'
 
-export default function PagesBrowser() {
-  const [variant, setVariant] = useState(VARIANTS[0])
+const STATUS_STYLE: Record<string, { bg: string; fg: string; label: string; title: string }> = {
+  live:    { bg: '#2D6A26', fg: '#FFF',    label: 'LIVE',    title: 'A real visitor can be served this today' },
+  retired: { bg: '#BE3B3B', fg: '#FFF',    label: 'RETIRED', title: 'It ran, it lost, kept only for reference' },
+  preview: { bg: '#E8E4DF', fg: '#4A4A4A', label: 'PREVIEW', title: 'A toggle for looking at something. Never served on its own, so it has no conversion number' },
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const st = STATUS_STYLE[status] || STATUS_STYLE.preview
+  return (
+    <span title={st.title} style={{ fontSize: 9, fontWeight: 800, background: st.bg, color: st.fg, padding: '1px 5px', letterSpacing: '0.06em' }}>
+      {st.label}
+    </span>
+  )
+}
+
+export default function PagesBrowser({ results }: { results: Record<string, VariantResult[]> }) {
+  const [variant, setVariant] = useState<Variant>(RESULT_VARIANTS[0])
   const [stage, setStage] = useState('S2_experimenter')
   const [persona, setPersona] = useState('decision_maker')
   const [name, setName] = useState('Marco')
@@ -121,7 +93,7 @@ export default function PagesBrowser() {
           Version
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-          {VARIANTS.map(v => (
+          {RESULT_VARIANTS.map(v => (
             <button
               key={v.key}
               onClick={() => setVariant(v)}
@@ -131,15 +103,24 @@ export default function PagesBrowser() {
                 background: variant.key === v.key ? LATTE : '#FFF',
               }}
             >
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 {v.label}
-                {v.live && (
-                  <span style={{ fontSize: 9, fontWeight: 800, background: '#2D6A26', color: '#FFF', padding: '1px 5px', letterSpacing: '0.06em' }}>
-                    LIVE
-                  </span>
-                )}
+                <StatusBadge status={v.status} />
               </div>
               <div style={{ fontSize: 11, color: MUTE, marginTop: 2, lineHeight: 1.35 }}>{v.note}</div>
+              {/* What it actually DID. A preview has no arm, so it correctly
+                  shows nothing rather than a misleading zero. */}
+              {(results[v.key] || []).map(r => (
+                <div key={r.experiment} style={{ marginTop: 5, fontSize: 10.5, color: '#4A4A4A', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                  <span style={{ fontFamily: 'ui-monospace, monospace', color: MUTE }}>{r.experiment}</span>
+                  <span>{r.exposures.toLocaleString()} saw</span>
+                  <span>{r.clickPct.toFixed(1)}% clicked</span>
+                  <span style={{ fontWeight: 800, color: r.paidPct >= 5 ? '#2D6A26' : r.paidPct > 0 ? '#B26A00' : '#BE3B3B' }}>
+                    {r.paidPct.toFixed(2)}% paid
+                  </span>
+                  {r.won && <span style={{ fontSize: 9, fontWeight: 800, background: '#E7B02F', color: '#333', padding: '0 4px' }}>WON</span>}
+                </div>
+              ))}
             </button>
           ))}
         </div>
