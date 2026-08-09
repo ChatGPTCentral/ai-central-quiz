@@ -235,7 +235,33 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   } catch (err) {
     console.warn('[result-v2] failed to load editor endScreens, using defaults:', err)
   }
-  const checkoutUrl = endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
+  // Stamp the submission onto the payment link, so a sale can be credited back
+  // to the quiz even when the buyer pays with a different email.
+  //
+  // WHY. The embedded checkout puts submission_id in Stripe metadata, but the
+  // STATIC link cannot carry metadata at all, and people reach it constantly:
+  // the link arm of checkout_embed_v1, anyone who closes the modal and comes
+  // back, every CTA when the modal fails. On 2026-08-09 a li_ads visitor did
+  // exactly that, paid with a personal Gmail that Stripe Link autofilled
+  // instead of the work email she used on the quiz, and the sale landed on a
+  // second row with no utm_source. LinkedIn was never credited for a sale it
+  // had made.
+  //
+  // Payment Links forward ?client_reference_id onto the checkout session, which
+  // is the one identifier the static link CAN carry, so the webhook now reads
+  // it. Only applied to buy.stripe.com URLs: a custom ctaUrl from the editor
+  // may be anything, and appending a Stripe param to it would be nonsense.
+  const rawCheckoutUrl = endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
+  const checkoutUrl = (() => {
+    if (!rowId || !/(^|\/\/)(buy\.stripe\.com)/.test(rawCheckoutUrl)) return rawCheckoutUrl
+    try {
+      const u = new URL(rawCheckoutUrl)
+      u.searchParams.set('client_reference_id', rowId)
+      return u.toString()
+    } catch {
+      return rawCheckoutUrl
+    }
+  })()
 
   const passName = (name || 'AI Professional').trim()
   const refNo = 'AC-' + (rowId ? rowId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() : '0723')

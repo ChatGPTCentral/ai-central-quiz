@@ -72,7 +72,21 @@ function submissionIdFrom(event: Stripe.Event): string | null {
   // charge.succeeded carries the intent's metadata one level down
   const pi = obj.payment_intent as { metadata?: Record<string, unknown> } | undefined
   const nested = typeof pi?.metadata?.submission_id === 'string' ? (pi.metadata.submission_id as string) : null
-  return nested && UUID_RE.test(nested) ? nested : null
+  if (nested && UUID_RE.test(nested)) return nested
+
+  // The STATIC payment link cannot carry metadata, which is the hole this
+  // closes. On 2026-08-09 a li_ads visitor took the quiz on her work email,
+  // opened the embedded checkout, closed it, then paid six minutes later
+  // through the plain buy.stripe.com link using a personal Gmail that Stripe
+  // Link autofilled. Her payment intent had metadata {} and the emails did not
+  // match, so there was nothing to join on: the sale landed on a second row
+  // with no utm_source and LinkedIn never got credited for a sale it made.
+  //
+  // Payment Links DO forward ?client_reference_id onto the checkout session,
+  // so that is the one identifier the static link can carry. Read it here and
+  // the link arm attributes exactly like the embedded arm.
+  const ref = obj.client_reference_id
+  return typeof ref === 'string' && UUID_RE.test(ref) ? ref : null
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
