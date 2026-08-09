@@ -17,11 +17,23 @@
 
 import { useEffect } from 'react'
 import posthog from 'posthog-js'
+import { isAnalyticsOptedOut } from '@/lib/analytics-optout'
 
 export default function PostHogProvider() {
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
     if (!key) return
+
+    // Our own testing is excluded per device, see lib/analytics-optout.ts. At
+    // current volume this is not a rounding error: the day replay went live it
+    // captured three sessions, at least one of which was us. Checked before
+    // init so an opted-out device never loads the SDK at all, which means no
+    // recording is ever made, not merely one we agree to ignore later.
+    if (isAnalyticsOptedOut()) {
+      try { posthog.opt_out_capturing() } catch { /* not loaded, nothing to opt out of */ }
+      return
+    }
+
     // Guard against double-init across client navigations.
     if ((posthog as unknown as { __loaded?: boolean }).__loaded) return
 
@@ -87,6 +99,7 @@ export function identifyPerson(input: {
 }): void {
   if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return
   if (!input.submissionId) return
+  if (isAnalyticsOptedOut()) return
   try {
     posthog.identify(input.submissionId, {
       email: input.email ?? undefined,
@@ -99,6 +112,7 @@ export function identifyPerson(input: {
 /** Mark the quiz step someone reached, so drop-off is queryable by question. */
 export function trackQuizStep(step: number, questionId: string | null): void {
   if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return
+  if (isAnalyticsOptedOut()) return
   try {
     posthog.capture('quiz_step_viewed', { step, question_id: questionId })
   } catch { /* never break the funnel */ }
