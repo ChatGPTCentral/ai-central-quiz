@@ -6,16 +6,25 @@ import AdsPanel from './AdsPanel.client'
 // two halves of the funnel were never really separate — they just had no single
 // screen. This is that screen: LinkedIn owns spend, we own what happened after
 // the click, and the only question worth asking is whether the two reconcile.
+//
+// LAYOUT NOTE. The admin shell deliberately gives `.ac-main` no padding, so
+// every page supplies its own. This one supplied none, which is why it sat
+// flush against the sidebar while its siblings breathed. It now uses the same
+// `p-8` wrapper and the same header shape as /admin/experiments, so the two
+// screens read as one product rather than two.
 
 export const dynamic = 'force-dynamic'
 
 export default function AdsPage() {
   return (
-    <div className="max-w-[1400px]">
-      <h1 style={{ fontSize: 23, fontWeight: 800, color: '#1A1A1A', letterSpacing: '-0.02em' }}>Ads</h1>
-      <p style={{ fontSize: 13.5, color: '#4A4A4A', marginTop: 4, marginBottom: 20, lineHeight: 1.5 }}>
-        What paid traffic does after it lands, and whether it pays for itself
-      </p>
+    <div className="p-8 max-w-[1400px]">
+      <div className="mb-6">
+        <h1 className="text-2xl font-black text-[#333333] mb-1">Ads</h1>
+        <p className="text-sm text-[#9C9C9C]">
+          What paid traffic does after it lands, and whether it pays for itself. LinkedIn owns the
+          spend, this screen owns everything that happened after the click.
+        </p>
+      </div>
       <AdsPanel />
     </div>
   )
