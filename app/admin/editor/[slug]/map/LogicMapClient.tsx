@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { V2Question } from '@/lib/form-schema'
+import type { V2Question, BranchingRule } from '@/lib/form-schema'
 
 interface Props {
   slug: string
@@ -204,11 +204,20 @@ export default function LogicMapClient({ slug, questions, liveVersion, draftVers
   )
 }
 
-function summarizeRule(rule: { when: { questionId: string; op: string; value: string | string[] }[]; goto: string }, qs: V2Question[]): string {
+/** Human labels for context conditions, which read the person and not an answer. */
+const CONTEXT_LABEL: Record<string, string> = {
+  source: 'came from',
+  device: 'device is',
+  score: 'score so far',
+  known: 'we know them',
+}
+
+function summarizeRule(rule: BranchingRule, qs: V2Question[]): string {
   const c = rule.when[0]
   if (!c) return ''
-  const refQ = qs.find(x => x.id === c.questionId)
-  const refLabel = refQ?.label.slice(0, 18) || c.questionId
+  const refLabel = c.context
+    ? CONTEXT_LABEL[c.context] ?? c.context
+    : (qs.find(x => x.id === c.questionId)?.label.slice(0, 18) || c.questionId || '?')
   const opTxt = c.op === 'eq' ? '=' : c.op === 'neq' ? '≠' : c.op
   const valTxt = Array.isArray(c.value) ? c.value.join(',') : c.value
   const more = rule.when.length > 1 ? ` (+${rule.when.length - 1})` : ''

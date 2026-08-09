@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { resolveNextStep, type V2Question } from '@/lib/form-schema'
+import { resolveNextStep, runningScore, type V2Question, type BranchingContext } from '@/lib/form-schema'
 import { QuestionRenderer } from '@/components/quiz/QuestionRenderer'
 import { track } from '@/lib/track'
 import { isEgregiousFake } from '@/lib/lead-quality'
@@ -248,7 +248,21 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const singleAnswer = (answers[q.id] as string) || ''
   const multiAnswer = (answers[q.id] as string[]) || []
 
-  const nextResolved = resolveNextStep(step - 1, QUESTIONS, answers)
+  // Who this person is, so a branching rule can adapt to them and not only to
+  // what they have typed. Recomputed each render because the running score
+  // changes with every answer, which is the whole point: the rule that asks a
+  // harder question of somebody already at the ceiling has to fire mid-quiz.
+  //
+  // `device` uses the same 900px line the layout already breaks on, so "we
+  // treat you as desktop" and "you see the desktop layout" can never disagree.
+  const branchCtx: BranchingContext = {
+    source: searchParams.get('utm_source'),
+    device: typeof window === 'undefined' ? null : window.innerWidth >= 900 ? 'desktop' : 'mobile',
+    score: runningScore(QUESTIONS, answers),
+    known: emailPrefilled.current,
+  }
+
+  const nextResolved = resolveNextStep(step - 1, QUESTIONS, answers, branchCtx)
   const isLastStep = nextResolved === 'end'
   const isWelcome = q.type === 'welcome'
   const isText = q.type === 'text' || q.type === 'email'
@@ -378,7 +392,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         (targetQ.id === 'email' || targetQ.type === 'email') &&
         urlEmail && isValidEmail(urlEmail)
       ) {
-        const afterEmail = resolveNextStep(target - 1, QUESTIONS, answers)
+        const afterEmail = resolveNextStep(target - 1, QUESTIONS, answers, branchCtx)
         goForward(afterEmail === 'end' ? target : afterEmail + 1)
         return
       }
@@ -463,7 +477,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     setInputError('')
     if (isAutoAdvance) {
       if (advanceTimeout.current) clearTimeout(advanceTimeout.current)
-      const nr = resolveNextStep(step - 1, QUESTIONS, newAnswers)
+      const nr = resolveNextStep(step - 1, QUESTIONS, newAnswers, branchCtx)
       if (nr === 'end') return
       // 250ms select-paint beat, then auto-advance.
       advanceTimeout.current = setTimeout(() => {

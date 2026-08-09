@@ -53,6 +53,19 @@ function validateQuestions(qs: unknown): string | null {
       }
       for (let c = 0; c < rule.when.length; c++) {
         const cond = rule.when[c]
+        // A condition reads EITHER a previous answer or a fact about the
+        // person (source / device / score / known). Context conditions have no
+        // question to point at, so the upstream check does not apply to them:
+        // they are true or false from the moment the quiz loads.
+        if (cond.context) {
+          if (cond.questionId) {
+            return `question[${q.id}] rule ${r} cond ${c}: set questionId OR context, not both`
+          }
+          continue
+        }
+        if (!cond.questionId) {
+          return `question[${q.id}] rule ${r} cond ${c}: needs either questionId or context`
+        }
         const refIdx = idIndex.get(cond.questionId)
         if (refIdx === undefined) return `question[${q.id}] rule ${r} cond ${c}: refers to unknown question '${cond.questionId}'`
         if (refIdx >= i) return `question[${q.id}] rule ${r} cond ${c}: must reference an upstream question`

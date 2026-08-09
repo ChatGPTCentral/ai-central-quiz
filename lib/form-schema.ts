@@ -59,8 +59,41 @@ export interface V2Question {
 
 export type BranchingOp = 'eq' | 'neq' | 'in' | 'gt' | 'lt' | 'contains'
 
+/**
+ * Facts about the PERSON and their context, as opposed to their answers.
+ *
+ * WHY THIS EXISTS. Until 2026-08-09 a branching condition could only read the
+ * answers map, which meant the engine could ask "did they say they use AI
+ * daily?" but never "is this a stranger we paid for?", "are they on a phone?",
+ * or "are they already scoring at the ceiling?". Every adaptive idea worth
+ * having needs the second kind, so none of them were expressible and the
+ * engine sat unused with zero live rules.
+ *
+ *  - `source`  utm_source, e.g. li_ads, thecentral.ai, carousel
+ *  - `device`  desktop | mobile. Some asks are only practical with a keyboard,
+ *              pasting a LinkedIn URL being the obvious one.
+ *  - `score`   the RUNNING score from answers so far, not the final one. This
+ *              is the axis that matters: 22% of takers finish tied at the
+ *              ceiling, so the only way to separate the top without making the
+ *              quiz longer for everyone is to ask the harder question of the
+ *              people who have already earned it.
+ *  - `known`   'yes' when we arrived already holding a valid email, i.e. a
+ *              subscriber clicking a newsletter link. 'no' for a stranger.
+ */
+export type BranchingContextKey = 'source' | 'device' | 'score' | 'known'
+
+export interface BranchingContext {
+  source?: string | null
+  device?: 'desktop' | 'mobile' | null
+  score?: number | null
+  known?: boolean | null
+}
+
 export interface BranchingCondition {
-  questionId: string
+  /** Read a previous answer. Mutually exclusive with `context`. */
+  questionId?: string
+  /** Read a fact about the person instead of an answer. */
+  context?: BranchingContextKey
   op: BranchingOp
   value: string | string[]
 }
@@ -72,13 +105,79 @@ export interface BranchingRule {
   goto: string | 'end'
 }
 
+/**
+ * The columns that actually feed the score and the stage.
+ *
+ * Kept explicit rather than "sum every option score", because that would fold
+ * in hours_lost, which carries big numbers (up to 18) and is deliberately a
+ * sales signal only, never part of the ladder. Mirrors the inputs
+ * segmentation-v2 really reads: frequency, depth, breadth, momentum.
+ */
+const SCORE_COLUMNS: V2DbColumn[] = ['frequency_score', 'depth_score', 'breadth_score', 'momentum']
+
+/**
+ * Score from the answers given SO FAR, for mid-quiz branching.
+ *
+ * Not the final score and not a substitute for it: the classifier still owns
+ * the real number at submit time. This exists so a rule can say "this person is
+ * already running hot, ask them the hard question" while they are still in the
+ * quiz.
+ */
+export function runningScore(
+  questions: V2Question[],
+  answers: Record<string, string | string[]>,
+): number {
+  let total = 0
+  for (const q of questions) {
+    if (!q.dbColumn) continue
+    // ai_tools writes a CSV but its contribution to the ladder is breadth,
+    // i.e. how many they picked, so it counts even though the column differs.
+    const countsForScore =
+      SCORE_COLUMNS.includes(q.dbColumn) || q.dbColumn === 'ai_tools'
+    if (!countsForScore) continue
+
+    const raw = answers[q.id]
+    if (raw === undefined) continue
+
+    if (Array.isArray(raw)) {
+      total += raw.length
+    } else if (q.options) {
+      const opt = q.options.find(o => o.value === raw)
+      if (opt?.score != null) total += opt.score
+    }
+  }
+  return total
+}
+
+/** Resolve what a condition is reading: an answer, or a fact about the person. */
+function readOperand(
+  c: BranchingCondition,
+  answers: Record<string, string | string[]>,
+  ctx?: BranchingContext,
+): string | string[] | undefined {
+  if (c.context) {
+    if (!ctx) return undefined
+    switch (c.context) {
+      case 'source': return ctx.source ?? undefined
+      case 'device': return ctx.device ?? undefined
+      // Numbers are compared as strings by eq/in and coerced back by gt/lt,
+      // matching how answer values already behave.
+      case 'score': return ctx.score == null ? undefined : String(ctx.score)
+      case 'known': return ctx.known == null ? undefined : ctx.known ? 'yes' : 'no'
+    }
+  }
+  if (!c.questionId) return undefined
+  return answers[c.questionId]
+}
+
 export function evalConditions(
   conditions: BranchingCondition[],
   answers: Record<string, string | string[]>,
+  ctx?: BranchingContext,
 ): boolean {
   if (conditions.length === 0) return false
   for (const c of conditions) {
-    const raw = answers[c.questionId]
+    const raw = readOperand(c, answers, ctx)
     if (raw === undefined) return false
     switch (c.op) {
       case 'eq':
@@ -129,11 +228,12 @@ export function resolveNextStep(
   currentIdx: number,
   questions: V2Question[],
   answers: Record<string, string | string[]>,
+  ctx?: BranchingContext,
 ): NextStep {
   const cur = questions[currentIdx]
   if (cur?.branching && cur.branching.length > 0) {
     for (const rule of cur.branching) {
-      if (evalConditions(rule.when, answers)) {
+      if (evalConditions(rule.when, answers, ctx)) {
         if (rule.goto === 'end') return 'end'
         const targetIdx = questions.findIndex(q => q.id === rule.goto)
         if (targetIdx === -1 || targetIdx <= currentIdx) continue
