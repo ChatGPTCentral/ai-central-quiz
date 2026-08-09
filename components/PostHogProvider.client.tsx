@@ -31,6 +31,17 @@ export default function PostHogProvider() {
       capture_pageview: true,
       capture_pageleave: true,
 
+      // Unhandled errors, with a stack trace. Enabled in the PostHog project
+      // too, but stated here as well so the behaviour is visible in the code
+      // rather than only in a settings page nobody reads.
+      //
+      // This is the check we did not have. Both of 2026-08-07's bugs were
+      // unhandled client exceptions - - the wheel arm's hydration failure and
+      // the "Application error" screens - - and both were found by accident,
+      // one of them fourteen hours late. Clarity could only ever say "12 script
+      // errors on /result", which is a number you cannot act on.
+      capture_exceptions: true,
+
       session_recording: {
         // NON-NEGOTIABLE. The quiz collects a name and an email, and the
         // checkout collects card details. Replay records the DOM, so without
