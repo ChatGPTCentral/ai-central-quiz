@@ -65,17 +65,27 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
-/** Two-piece block button (label cell + arrow cell). */
+/** Two-piece block button (label cell + arrow cell).
+ *
+ * `muted` dims the button to signal "not ready yet" WITHOUT disabling it. That
+ * distinction is the whole point. On 2026-08-09 PostHog recorded 84 dead clicks
+ * on this button from 31 of the day's 35 quiz takers, an average of 2.7 each:
+ * the button was disabled, so the click did nothing, said nothing, and left
+ * people tapping a control that looked like a control. The replay scanner
+ * independently caught one person leaving over it on the tools question. A
+ * button that cannot act should still be able to explain itself, so the click
+ * now reaches `advance`, which answers with an inline reason.
+ */
 function BlockNext({
-  label, onClick, disabled = false, gold = false, fullWidth = false, submitting = false,
-}: { label: string; onClick: () => void; disabled?: boolean; gold?: boolean; fullWidth?: boolean; submitting?: boolean }) {
+  label, onClick, muted = false, gold = false, fullWidth = false, submitting = false,
+}: { label: string; onClick: () => void; muted?: boolean; gold?: boolean; fullWidth?: boolean; submitting?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled || submitting}
+      disabled={submitting}
       className={`${fullWidth ? 'flex w-full' : 'inline-flex'} transition-transform active:scale-[0.98] disabled:active:scale-100`}
-      style={{ opacity: disabled ? 0.35 : 1 }}
+      style={{ opacity: muted ? 0.55 : 1, transition: 'opacity 150ms' }}
     >
       <span
         className="flex-1 inline-flex items-center justify-center"
@@ -113,6 +123,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   const [history, setHistory] = useState<number[]>([1])
   const [answers, setAnswers] = useState<Answers>({})
   const [inputError, setInputError] = useState('')
+  // Why "next" could not advance. Empty until someone actually tries.
+  const [blockedHint, setBlockedHint] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   // Embed mode only: set (to the result-flow URL) once the submission
@@ -249,9 +261,11 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   // Reset the on-screen timer whenever the step changes; fire email_view.
   useEffect(() => {
     stepShownAt.current = Date.now()
+    setBlockedHint('')
     if (isEmailStep) track('email_view')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
+
 
   const canProceed = useCallback((): boolean => {
     if (isWelcome) return true
@@ -263,6 +277,12 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     }
     return singleAnswer.trim().length > 0
   }, [isWelcome, isMulti, q.required, q.type, multiAnswer, singleAnswer])
+
+  // The moment they answer, the complaint is stale. Clearing it here rather
+  // than inside each input handler keeps every question type honest for free.
+  useEffect(() => {
+    if (blockedHint && canProceed()) setBlockedHint('')
+  }, [singleAnswer, multiAnswer, blockedHint, canProceed])
 
   const validateStep = (): boolean => {
     // Light inline nudge for the EGREGIOUS fakes only (placeholder names,
@@ -327,7 +347,21 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   }, [history])
 
   const advance = useCallback(async () => {
-    if (!canProceed() || !validateStep()) return
+    // Say WHY rather than doing nothing. This branch used to be unreachable
+    // because the button was disabled, which is exactly how 31 of 35 people in
+    // a single day ended up clicking a control that gave them no answer.
+    if (!canProceed()) {
+      setBlockedHint(
+        isMulti ? 'Pick at least one to continue'
+          : q.type === 'split-text' ? 'Enter your first and last name'
+          : q.type === 'email' ? 'Enter your email to continue'
+          : 'Answer this to continue',
+      )
+      track('q_blocked', { n: step, qid: q.id })
+      return
+    }
+    setBlockedHint('')
+    if (!validateStep()) return
 
     if (!isLastStep) {
       trackAnswered()
@@ -421,7 +455,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
       setSubmitError('Network error. Please check your connection and try again.')
       setSubmitting(false)
     }
-  }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent, isLastStep, nextResolved, trackAnswered]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent, isLastStep, nextResolved, trackAnswered, isMulti, q.type, q.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSingleSelect = (value: string) => {
     const newAnswers = { ...answers, [q.id]: value }
@@ -594,6 +628,15 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
               onEnterKey={advance}
             />
 
+            {/* Shown only once someone has actually pressed next and been
+                stopped. Lives here, above every button variant, so it works
+                for multi-selects too - - inputError only reaches text inputs. */}
+            {blockedHint && (
+              <p role="status" className="mt-4" style={{ fontSize: 13, fontWeight: 600, color: FULVOUS }}>
+                {blockedHint}
+              </p>
+            )}
+
             {submitError && (
               <div className="mt-4 p-3" style={{ border: '2px solid #BE3B3B', backgroundColor: '#FFF5F5' }}>
                 <p style={{ fontSize: 13, color: '#BE3B3B' }}>{submitError}</p>
@@ -606,7 +649,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
                 <BlockNext
                   label={isLastStep ? 'get my result' : 'next'}
                   onClick={advance}
-                  disabled={!canProceed()}
+                  muted={!canProceed()}
                   submitting={submitting}
                   fullWidth
                 />
@@ -619,7 +662,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
                 <BlockNext
                   label="get my result"
                   onClick={advance}
-                  disabled={!canProceed()}
+                  muted={!canProceed()}
                   submitting={submitting}
                   fullWidth
                 />
@@ -637,7 +680,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
                 <BlockNext
                   label={isLastStep ? 'get my result' : 'next'}
                   onClick={advance}
-                  disabled={!canProceed()}
+                  muted={!canProceed()}
                   submitting={submitting}
                   fullWidth
                 />

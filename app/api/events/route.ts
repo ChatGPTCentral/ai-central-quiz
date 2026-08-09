@@ -21,6 +21,10 @@ export const runtime = 'nodejs'
 const ALLOWED_EVENTS = new Set([
   // funnel
   'quiz_view', 'quiz_start', 'email_view', 'q_answered', 'email_submitted',
+  // Fired when someone presses next and the question would not let them
+  // through. Its whole job is to go to zero: it is the counter that tells us
+  // whether the inline reason replaced the dead click, or merely hid it.
+  'q_blocked',
   'assembling_view', 'result_view',
   // conversion
   'checkout_click',
