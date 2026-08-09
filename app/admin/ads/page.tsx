@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 export default function AdsPage() {
   return (
-    <div className="max-w-[1100px]">
+    <div className="max-w-[1400px]">
       <h1 style={{ fontSize: 23, fontWeight: 800, color: '#1A1A1A', letterSpacing: '-0.02em' }}>Ads</h1>
       <p style={{ fontSize: 13.5, color: '#4A4A4A', marginTop: 4, marginBottom: 20, lineHeight: 1.5 }}>
         What paid traffic does after it lands, and whether it pays for itself

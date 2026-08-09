@@ -19,7 +19,13 @@ interface Payload {
   adsAppUrl: string | null
 }
 
-const INK = '#333333', RICH = '#1A1A1A', MUTE = '#9C9C9C', GOOD = '#2E7D32', BAD = '#C0392B'
+// Shared admin tokens. This screen was built standalone and invented its own
+// palette and hairlines, so "good" was a different green here than on the
+// dashboard and the row rules were #EEE against the bento's warm hairline.
+const INK = '#333333', RICH = '#1A1A1A', MUTE = '#9C9C9C'
+const GOOD = '#62A758', BAD = '#BE3B3B'
+const HAIR = '#E8E2D4', ROWHAIR = '#F1ECE2', LATTE = '#FEF7E7'
+const panelTitle: React.CSSProperties = { fontSize: 12.5, fontWeight: 800, color: INK }
 const pct = (n: number) => `${(n * 100).toFixed(n < 0.01 && n > 0 ? 2 : 1)}%`
 const usd = (n: number) => `$${n.toFixed(2)}`
 
@@ -79,7 +85,7 @@ export default function AdsPanel() {
           </label>
         </div>
 
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
           {[
             ['Sales from ads', String(paidBuyers), cac === null ? 'no buyers yet' : `CAC ${usd(cac)}`],
             ['Quiz-takers', String(paidTakers), `from paid sources, ${days}d`],
@@ -106,8 +112,13 @@ export default function AdsPanel() {
       </div>
 
       {/* ── Every source against that same bar ──────────────────────────── */}
-      <h2 style={{ fontSize: 15, fontWeight: 800, color: RICH, marginBottom: 8 }}>Every source, same bar</h2>
-      <table className="w-full" style={{ fontSize: 12.5, borderCollapse: 'collapse' }}>
+      <div style={{ border: `1px solid ${INK}`, background: '#FFFDFA', marginBottom: 24 }}>
+      <div className="flex items-baseline justify-between" style={{ padding: '12px 16px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
+        <span style={panelTitle}>Every source, same bar</span>
+        <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>the bar only binds on paid sources</span>
+      </div>
+      <div className="ac-scrollx" style={{ padding: '0 16px' }}>
+      <table className="w-full" style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 720 }}>
         <thead>
           <tr style={{ borderBottom: `2px solid ${INK}`, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: MUTE }}>
             <th className="text-left py-1.5">Source</th>
@@ -122,7 +133,7 @@ export default function AdsPanel() {
         </thead>
         <tbody>
           {data.rows.filter(r => r.takers >= 5).map(r => (
-            <tr key={r.source} style={{ borderBottom: '1px solid #EEE' }}>
+            <tr key={r.source} style={{ borderBottom: `1px solid ${ROWHAIR}` }}>
               <td className="py-1.5" style={{ fontWeight: r.paid ? 800 : 500 }}>
                 {r.source}{r.paid && <span style={{ marginLeft: 6, fontSize: 9.5, background: INK, color: '#FFFDFA', padding: '1px 5px', fontWeight: 700 }}>PAID</span>}
               </td>
@@ -137,19 +148,23 @@ export default function AdsPanel() {
           ))}
         </tbody>
       </table>
-      <p style={{ fontSize: 11.5, color: MUTE, marginTop: 8, lineHeight: 1.5 }}>
+      </div>
+      <p style={{ fontSize: 11.5, color: MUTE, padding: '10px 16px 14px', margin: 0, lineHeight: 1.5, borderTop: `1px solid ${ROWHAIR}` }}>
         &ldquo;Worth per taker&rdquo; is LTV x buy rate, the most you could pay for one visitor from that
         source and still break even. Sources under 5 takers are hidden. Free sources are shown for
         comparison, the bar only binds on paid ones.
       </p>
+      </div>
 
-      <h2 style={{ fontSize: 15, fontWeight: 800, color: RICH, marginTop: 24, marginBottom: 8 }}>
-        Recent ad-driven quiz activity
-      </h2>
+      <div style={{ border: `1px solid ${INK}`, background: '#FFFDFA' }}>
+      <div className="flex items-baseline justify-between" style={{ padding: '12px 16px', background: LATTE, borderBottom: `1px solid ${HAIR}` }}>
+        <span style={panelTitle}>Recent ad-driven quiz activity</span>
+      </div>
+      <div className="ac-scrollx" style={{ padding: '0 16px' }}>
       {data.recent.length === 0
-        ? <p style={{ fontSize: 12.5, color: MUTE }}>No paid-source quiz takers yet.</p>
+        ? <p style={{ fontSize: 12.5, color: MUTE, padding: '12px 0' }}>No paid-source quiz takers yet.</p>
         : (
-          <table className="w-full" style={{ fontSize: 12.5, borderCollapse: 'collapse' }}>
+          <table className="w-full" style={{ fontSize: 12.5, borderCollapse: 'collapse', minWidth: 640 }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${INK}`, fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: MUTE }}>
                 <th className="text-left py-1.5">Who</th>
@@ -162,7 +177,7 @@ export default function AdsPanel() {
             </thead>
             <tbody>
               {data.recent.map(r => (
-                <tr key={r.id} style={{ borderBottom: '1px solid #EEE' }}>
+                <tr key={r.id} style={{ borderBottom: `1px solid ${ROWHAIR}` }}>
                   <td className="py-1.5">
                     <a href={`/admin/submissions/${r.id}`} style={{ color: INK, fontWeight: 600 }}>{r.name || '(no name)'}</a>
                   </td>
@@ -176,11 +191,13 @@ export default function AdsPanel() {
             </tbody>
           </table>
         )}
-      <p style={{ fontSize: 11.5, color: MUTE, marginTop: 8, lineHeight: 1.5 }}>
+      </div>
+      <p style={{ fontSize: 11.5, color: MUTE, padding: '10px 16px 14px', margin: 0, lineHeight: 1.5, borderTop: `1px solid ${ROWHAIR}` }}>
         The same feed the ads cockpit shows, with one difference: that one hides identity unless you
         hold the LinkedIn operator cookie, because it can be reached by a public alias. This screen is
         already behind the admin session, so every row links straight to the CRM record.
       </p>
+      </div>
 
       <AdsEmbed url={data.adsAppUrl} />
 
