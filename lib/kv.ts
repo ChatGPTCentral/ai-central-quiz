@@ -68,9 +68,17 @@ export interface StoredSubmission {
   persona?: string              // decision_maker | operator | maker | learner | unknown
   personaReason?: string
   stagedAt?: string             // ISO timestamp of last v2 classification
-  createdAt?: string            // immutable insert time — the attribution
-                                // anchor (staged_at gets re-stamped by
-                                // enrichment). Read-only: toRow omits it.
+  createdAt?: string            // when the PERSON first entered the CRM, by
+                                // ANY route. NOT the quiz moment: the quiz
+                                // only sets it on insert, so an existing
+                                // subscriber or Stripe customer who takes the
+                                // quiz keeps their old date. Read-only here.
+  quizCompletedAt?: string      // when the quiz was COMPLETED. Write-once,
+                                // enforced by a database trigger. This is the
+                                // anchor every quiz metric keys on: created_at
+                                // is rewritable by imports and staged_at is
+                                // re-stamped by enrichment and reassignment.
+                                // Read-only here: toRow omits it.
   enrichmentVerifiedAt?: string // stamped when the owner confirmed this
                                 // profile in the enrich-game. Read-only
                                 // here: toRow omits it.
@@ -213,6 +221,7 @@ export interface DbRow {
   stripe_customer_id: string | null
   lifetime_value_usd: number | string | null   // numeric(10,2) — Supabase returns as string
   created_at?: string
+  quiz_completed_at?: string | null
   // Optional: stamped by the enrich-game verify route; toRow omits it so
   // admin/enrichment saves can never stomp the verification.
   enrichment_verified_at?: string | null
@@ -359,6 +368,7 @@ export function fromRow(r: DbRow): StoredSubmission {
     personaReason: r.persona_reason ?? undefined,
     stagedAt: r.staged_at ?? undefined,
     createdAt: r.created_at ?? undefined,
+    quizCompletedAt: r.quiz_completed_at ?? undefined,
     enrichmentVerifiedAt: r.enrichment_verified_at ?? undefined,
     frequencyScore: r.frequency_score ?? undefined,
     depthScore: r.depth_score ?? undefined,

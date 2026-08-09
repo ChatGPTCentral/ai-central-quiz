@@ -66,7 +66,12 @@ export interface DetailedReferrer extends TopReferrer {
 
 /** Referrer leaderboard with faces + the actual people each one brought in
  *  (photo, linkedin, score per person), for the standalone Referrers page.
- *  Timing uses immutable created_at, because enrichment re-stamps staged_at. */
+ *  NOTE on timing: the ordering lives in the top_referrers_detailed RPC and
+ *  still keys on created_at. That is acceptable HERE, because this page ranks
+ *  who referred whom rather than when a quiz happened, but created_at is NOT
+ *  the quiz moment and must never be used as one. It means "first seen in the
+ *  CRM by any route" and the quiz only sets it on INSERT. Use
+ *  quiz_completed_at, which is write-once and trigger-enforced. */
 export async function topReferrersDetailed(): Promise<DetailedReferrer[]> {
   try {
     const { data, error } = await sb().rpc('top_referrers_detailed')

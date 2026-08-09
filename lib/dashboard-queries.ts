@@ -11,7 +11,7 @@ import { applyFilterSpec, decodeSpec, type FilterSpec } from './advanced-filter'
 // ────────────────────────────────────────────────────────────────
 const LIST_COLUMNS = [
   // identity
-  'id', 'email', 'name', 'ts', 'created_at', 'ip', 'user_agent', 'archived_at',
+  'id', 'email', 'name', 'ts', 'created_at', 'quiz_completed_at', 'ip', 'user_agent', 'archived_at',
   // quiz
   'ai_level', 'work_area', 'learning_style', 'time_commitment', 'main_goal', 'ai_tools', 'job_level',
   'score',
@@ -194,12 +194,21 @@ function applyFilters(q: any, f: DashboardFilters): any {
   if (typeof f.scoreMin === 'number') r = r.gte('score', f.scoreMin)
   if (typeof f.scoreMax === 'number') r = r.lte('score', f.scoreMax)
   if (f.workArea)                  r = r.ilike('work_area', `%${f.workArea}%`)
-  // Launch scope: the new quiz funnel, submitted since launch. Keyed on
-  // staged_at (not ts/created_at, which the Stripe import overwrites).
-  // Launch sample anchors on IMMUTABLE created_at (enrichment re-stamps
-  // staged_at, which used to shuffle the cohort between pages). Legacy rows
-  // without created_at fall back to staged_at.
-  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2').or(`created_at.gte.${LAUNCH_ISO},and(created_at.is.null,staged_at.gte.${LAUNCH_ISO})`)
+  // Launch scope: the new quiz funnel, submitted since launch.
+  //
+  // Anchored on quiz_completed_at, which is write-once and enforced by a
+  // database trigger. The two comments that used to sit here contradicted each
+  // other, one saying created_at gets overwritten by the Stripe import and the
+  // other calling it immutable, and the second one was wrong. created_at means
+  // "first seen in the CRM by any route": the quiz only sets it on INSERT, so
+  // an existing subscriber or Stripe customer who takes the quiz keeps their
+  // old date. That hid 97 real post-launch takers from this cohort and let 4
+  // pre-existing customers count as net-new.
+  //
+  // No fallback chain any more. Every quiz row has quiz_completed_at,
+  // backfilled from stage_history at 100% coverage, so a row without one is
+  // not a quiz row and does not belong in the launch sample.
+  if (f.sample === 'launch')       r = r.eq('source', 'quiz_v2').gte('quiz_completed_at', LAUNCH_ISO)
   if (f.search) {
     r = r.or(`name.ilike.%${f.search}%,email.ilike.%${f.search}%,company_name.ilike.%${f.search}%`)
   }

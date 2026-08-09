@@ -124,9 +124,16 @@ export default async function DashboardPage({
   const isUncertain = (v?: string | null) => !v || v.toLowerCase() === 'uncertain'
   const cleanUtm = (s?: string) => (s || '').trim() || null
 
-  // One projection per person. Net-new keys on immutable created_at.
+  // One projection per person.
+  //
+  // Net-new keys on quiz_completed_at, which is write-once and trigger-
+  // enforced. It used to key on created_at, which means "first seen in the CRM
+  // by any route" and is only set by the quiz on INSERT. So a reader who was
+  // already a Stripe customer kept their old date, and paying 15 months BEFORE
+  // taking the quiz still read as net-new because the charge was one second
+  // after the stale created_at. Four such rows were inflating this number.
   const rows: BentoRow[] = allRows.map(r => {
-    const quizAt = r.createdAt || r.stagedAt
+    const quizAt = r.quizCompletedAt
     const netNew = !!(r.stripeFirstChargeAt && quizAt &&
       new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime())
     const sexRaw = r.sexAiEstimate
@@ -166,16 +173,19 @@ export default async function DashboardPage({
   })
 
   // ── Weekly/daily/monthly progression series (since launch) ──
-  // Completions + net-new bucket on the same immutable created_at as the KPIs;
-  // event counts come from the one events read. Built for all three
-  // granularities so each chart can toggle day / week / month.
+  // Completions + net-new bucket on the same quiz_completed_at as the KPIs, so
+  // a person lands in the week they actually took the quiz rather than the week
+  // they first appeared in the CRM. Event counts come from the one events read.
+  // Built for all three granularities so each chart can toggle day/week/month.
   const nowIso = new Date().toISOString()
   const buildSeries = (gran: Gran): SeriesPoint[] => {
     const launchBucket = bucketKey(`${LAUNCH_ISO}T00:00:00Z`, gran)
     const nowBucket = bucketKey(nowIso, gran)
     const subs = new Map<string, { completed: number; netNew: number }>()
     for (const r of allRows) {
-      const quizAt = r.createdAt || r.stagedAt
+      // Same anchor as the KPIs above, so a person lands in the week they took
+      // the quiz and the charts cannot disagree with the numbers beside them.
+      const quizAt = r.quizCompletedAt
       if (!quizAt) continue
       const b = bucketKey(quizAt, gran)
       if (!b || b < launchBucket) continue
@@ -194,7 +204,7 @@ export default async function DashboardPage({
       starts: evb[bucket]?.starts || 0,
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
       checkout: evb[bucket]?.checkout || 0,
-      netNew: subs.get(bucket)?.netNew || 0,       // paid: CRM cohort (created_at)
+      netNew: subs.get(bucket)?.netNew || 0,       // paid, bucketed on quiz_completed_at
       partial: bucket === nowBucket,
     }))
   }
