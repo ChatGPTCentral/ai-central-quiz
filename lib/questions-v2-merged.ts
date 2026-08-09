@@ -68,11 +68,28 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
   // their own number, what the status quo costs them. The result page quotes
   // this straight back ("you said 4-7 hours a week"), and nobody argues with
   // their own answer. Sales signal only: NOT scored, NOT part of the stage.
+  //
+  // REWORDED 2026-08-09 on PostHog timing data. This question was taking a
+  // median of 13.1 seconds against 6.0 for question 1, and losing 4.7% of
+  // takers, five times any other content question. Length was NOT the cause:
+  // workArea takes the longest of all at 21.3 seconds and loses only 1.7%.
+  // The cause was the KIND of thinking. Scanning a list of options and tapping
+  // what applies is recognition and it is cheap. "How many hours go on work AI
+  // could already be doing" asks you to first model what AI is capable of, then
+  // estimate a quantity about yourself you have never counted, then admit it is
+  // wasted. Three hard steps, at question 2, before anyone is invested.
+  //
+  // So the main line is now short and instantly recognisable, and the modelling
+  // moved into the smaller supporting line where it costs less. The option
+  // VALUES and scores are untouched on purpose: costLine() on the result page
+  // derives its band from the number, never the label, so this changes how the
+  // question reads without changing a single stored answer or breaking any
+  // comparison with historical data.
   {
     id: 'hoursLost',
     type: 'chips',
-    label: 'Roughly how many hours a week go on work AI could already be doing?',
-    sublabel: 'Your honest guess is fine',
+    label: 'How many hours a week do you lose to busywork?',
+    sublabel: 'Work a good AI could already do for you. A rough guess is fine.',
     required: true,
     dbColumn: 'hours_lost',
     scoring: 'value',
