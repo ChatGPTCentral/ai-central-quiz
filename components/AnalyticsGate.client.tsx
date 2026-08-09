@@ -30,17 +30,30 @@ declare global {
 
 function loadClarity(id: string) {
   if (document.getElementById('ms-clarity')) return
+
+  // The queue MUST be created before the tag, and the queue array MUST hang off
+  // the function as `.q`.
+  //
+  // My first version kept the queue in a closure and appended the script first.
+  // Both were wrong. Clarity's real script drains `window.clarity.q` when it
+  // loads, so a closure queue is invisible to it: every call made before the
+  // tag arrived was silently discarded, including the clarity('identify', …)
+  // that tags a recording with its submission id. Recordings have been
+  // untagged since 2026-08-09 15:26 because of this.
+  //
+  // Shape copied from Clarity's official snippet rather than re-derived, since
+  // the contract is theirs, not ours.
+  if (!window.clarity) {
+    const fn = ((...args: unknown[]) => { (fn as { q: unknown[] }).q.push(args) }) as Window['clarity'] & { q: unknown[] }
+    fn.q = []
+    window.clarity = fn
+  }
+
   const s = document.createElement('script')
   s.id = 'ms-clarity'
   s.async = true
   s.src = `https://www.clarity.ms/tag/${id}`
   document.head.appendChild(s)
-  // Clarity's own snippet defines this queue before the tag lands. Without it
-  // any clarity(...) call made in the gap throws.
-  if (!window.clarity) {
-    const q: unknown[] = []
-    window.clarity = ((...args: unknown[]) => { q.push(args) }) as Window['clarity']
-  }
 }
 
 function loadLinkedIn(partnerId: string) {
