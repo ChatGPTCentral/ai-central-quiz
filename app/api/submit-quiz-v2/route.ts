@@ -144,6 +144,24 @@ export async function POST(req: NextRequest) {
     rowId = existing.id
     const { error } = await c.from('submissions').update(dbUpdate).eq('id', rowId)
     if (error) console.error('v2 update failed:', error.message)
+    // Stamp WHEN THE QUIZ HAPPENED, which this branch never did.
+    //
+    // This is the whole timestamp bug. created_at is only set on INSERT, and
+    // it means "when this person first entered the CRM", so a reader who was
+    // already a Stripe customer or a beehiiv subscriber keeps their old date
+    // while `source` flips to 'quiz_v2'. That is how a quiz row ended up dated
+    // 2025-04-08, fifteen months before the quiz existed, and how 98 real
+    // post-launch takers fell out of the launch cohort entirely.
+    //
+    // Guarded on IS NULL rather than written unconditionally: quiz_completed_at
+    // is write-once at the database level, so re-stamping it on a retake would
+    // raise and fail the whole submission.
+    const { error: qcErr } = await c
+      .from('submissions')
+      .update({ quiz_completed_at: new Date().toISOString() })
+      .eq('id', rowId)
+      .is('quiz_completed_at', null)
+    if (qcErr) console.error('v2 quiz_completed_at stamp failed:', qcErr.message)
   } else {
     rowId = randomUUID()
     // Vercel injects x-vercel-ip-* geo headers (country ISO code, URI-encoded
@@ -166,6 +184,11 @@ export async function POST(req: NextRequest) {
       id: rowId,
       ts: Date.now(),
       created_at: new Date().toISOString(),
+      // For a brand-new person these are the same instant, but they mean
+      // different things and only one of them stays true: created_at is "first
+      // seen in the CRM" and can be rewritten by an import, quiz_completed_at
+      // is write-once and is what every quiz metric should key on.
+      quiz_completed_at: new Date().toISOString(),
       ip,
       ip_country: ipCountry,
       ip_city: geo('x-vercel-ip-city'),
