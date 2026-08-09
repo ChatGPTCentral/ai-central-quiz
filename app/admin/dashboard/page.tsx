@@ -232,17 +232,35 @@ export default async function DashboardPage({
   const buildSeries = (gran: Gran): SeriesPoint[] => {
     const launchBucket = bucketKey(`${LAUNCH_ISO}T00:00:00Z`, gran)
     const nowBucket = bucketKey(nowIso, gran)
-    const subs = new Map<string, { completed: number; netNew: number }>()
+    // A trial bills the annual one month later, so a trial younger than that
+    // has not FAILED to convert, it simply is not due. Counting it against the
+    // rate would drag every recent period to zero and make the number useless.
+    const DUE_AFTER_MS = 32 * 24 * 60 * 60 * 1000
+    const nowMs = Date.now()
+
+    const subs = new Map<string, { completed: number; netNew: number; revenue: number; mature: number; billedAnnual: number }>()
     for (const r of allRows) {
       // Same anchor as the KPIs above, so a person lands in the week they took
       // the quiz and the charts cannot disagree with the numbers beside them.
+      // This is also why a LATE converter restates history rather than landing
+      // in the week they happened to pay: the cohort owns the sale.
       const quizAt = r.quizCompletedAt
       if (!quizAt) continue
       const b = bucketKey(quizAt, gran)
       if (!b || b < launchBucket) continue
-      const e = subs.get(b) || { completed: 0, netNew: 0 }
+      const e = subs.get(b) || { completed: 0, netNew: 0, revenue: 0, mature: 0, billedAnnual: 0 }
       e.completed++
-      if (r.stripeFirstChargeAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) e.netNew++
+      const chargeMs = r.stripeFirstChargeAt ? new Date(r.stripeFirstChargeAt).getTime() : null
+      if (chargeMs !== null && chargeMs > new Date(quizAt).getTime()) {
+        e.netNew++
+        const ltv = r.lifetimeValueUsd || 0
+        e.revenue += ltv
+        // Anything above the $4.99 trial means the annual actually billed.
+        if (nowMs - chargeMs >= DUE_AFTER_MS) {
+          e.mature++
+          if (ltv > 20) e.billedAnnual++
+        }
+      }
       subs.set(b, e)
     }
     // Owner ask: the charges the quiz cannot claim, in the same buckets as
@@ -267,6 +285,9 @@ export default async function DashboardPage({
       checkout: evb[bucket]?.checkout || 0,
       netNew: subs.get(bucket)?.netNew || 0,       // paid, bucketed on quiz_completed_at
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
+      revenue: subs.get(bucket)?.revenue || 0,
+      matureTrials: subs.get(bucket)?.mature || 0,
+      billedAnnual: subs.get(bucket)?.billedAnnual || 0,
       partial: bucket === nowBucket,
     }))
   }

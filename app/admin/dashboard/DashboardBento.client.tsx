@@ -31,7 +31,19 @@ export interface BentoRow {
 }
 export interface FunnelEventCounts { landing: number; started: number; checkout: number }
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
-export interface SeriesPoint { bucket: string; views: number; starts: number; checkout: number; completed: number; netNew: number; otherPaid: number; partial: boolean }
+export interface SeriesPoint {
+  bucket: string; views: number; starts: number; checkout: number; completed: number
+  netNew: number
+  /** First charges the quiz cannot claim, bucketed on CHARGE date. */
+  otherPaid: number
+  /** Money from this cohort's net-new buyers, bucketed on QUIZ date. */
+  revenue: number
+  /** Net-new buyers whose annual bill date has actually passed. */
+  matureTrials: number
+  /** Of those, how many were really billed the annual. */
+  billedAnnual: number
+  partial: boolean
+}
 export type Gran = 'day' | 'week' | 'month'
 export type Series = Record<Gran, SeriesPoint[]>
 
@@ -252,6 +264,7 @@ function VolumeMatrix({ series, gran, F }: {
     pick: (p: SeriesPoint) => number
     tot: number
     warm: boolean
+    note?: string
     out?: { label: string; all: number; per: (p: SeriesPoint) => number }
   }[] = [
     {
@@ -270,11 +283,11 @@ function VolumeMatrix({ series, gran, F }: {
       label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
       out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
     },
-    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true },
+    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true, note: 'by QUIZ date, so a late converter restates the week they took it' },
     // Not a funnel station: it never passes through the quiz. Kept adjacent
     // anyway, because the only way to know whether a good week was the QUIZ or
     // just a good week in Stripe is to see the two side by side.
-    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false },
+    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'by CHARGE date, since these people have no quiz date' },
   ]
 
   // 132px station label · 104px all-window total · one 1fr per period
@@ -282,9 +295,27 @@ function VolumeMatrix({ series, gran, F }: {
 
   const rpAll = F.completed > 0 ? (F.paid / F.completed) * 100 : 0
   const ffAll = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
+  // Trial to annual, counted ONLY on trials whose bill date has passed. A trial
+  // from last week has not failed to convert, it is not due, and counting it
+  // would drag every recent column to zero and make the row worthless.
+  const matureAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.matureTrials, 0)
+  const billedAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.billedAnnual, 0)
   const rateRows = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
+    {
+      label: 'Revenue',
+      all: buckets.reduce((a: number, p: SeriesPoint) => a + p.revenue, 0),
+      per: (p: SeriesPoint) => p.revenue,
+      heavy: false,
+      money: true,
+    },
+    {
+      label: 'Trial → annual',
+      all: matureAll > 0 ? (billedAll / matureAll) * 100 : 0,
+      per: (p: SeriesPoint) => (p.matureTrials > 0 ? Math.min(100, (p.billedAnnual / p.matureTrials) * 100) : 0),
+      heavy: false,
+    },
   ]
 
   const head: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B' }
@@ -344,18 +375,32 @@ function VolumeMatrix({ series, gran, F }: {
         )
       })}
 
-      {/* rate rows */}
-      {rateRows.map(rr => (
-        <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
-          <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>{rr.label}</span>
-          <span style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: '#B26A00', ...tnum }}>{rr.all.toFixed(rr.heavy ? 2 : 1)}%</span>
-          {buckets.map(p => (
-            <span key={p.bucket} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-              {pctDisp(rr.per(p))}
+      {/* rate rows. `money` renders dollars instead of a percentage, and
+          `Trial → annual` counts ONLY trials whose bill date has passed. */}
+      {rateRows.map(rr => {
+        const money = 'money' in rr && rr.money === true
+        const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        return (
+          <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
+            <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
+              {rr.label}
+              {rr.label === 'Trial → annual' && (
+                <span title={`Only counts the ${matureAll} trials whose annual bill date has already passed. A trial from last week is not due yet, so counting it would drag the column to zero.`} style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0 }}>
+                  · {matureAll} due
+                </span>
+              )}
             </span>
-          ))}
-        </div>
-      ))}
+            <span style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
+              {money ? usd(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
+            </span>
+            {buckets.map(p => (
+              <span key={p.bucket} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                {money ? usd(rr.per(p)) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(rr.per(p)))}
+              </span>
+            ))}
+          </div>
+        )
+      })}
 
       <div style={{ fontSize: 9.5, color: MUTE, marginTop: 10 }}>
         cell tint = count relative to that station&apos;s best period · hover a cell for the exact count
