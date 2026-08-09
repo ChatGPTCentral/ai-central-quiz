@@ -90,18 +90,64 @@ function posthogEnvNames(): string[] {
   return Object.keys(process.env).filter(k => /posthog/i.test(k)).sort()
 }
 
+/**
+ * The project id, discovered rather than demanded.
+ *
+ * POSTHOG_PROJECT_ID is honoured when set, but a personal API key can already
+ * list the projects it has access to, so making a human go and find a number
+ * that the credential can tell us is a step that exists only to be forgotten.
+ * It was, on 2026-08-09.
+ *
+ * Cached per process: it never changes, and the sync runs four queries.
+ */
+let _projectId: string | null = null
+async function resolveProjectId(key: string): Promise<{ id?: string; error?: string }> {
+  const configured = process.env.POSTHOG_PROJECT_ID
+  if (configured) return { id: configured }
+  if (_projectId) return { id: _projectId }
+
+  try {
+    const res = await fetch(`${posthogApiBase()}/api/projects/`, {
+      headers: { Authorization: `Bearer ${key}` },
+      cache: 'no-store',
+    })
+    const text = await res.text()
+    if (!res.ok) {
+      return {
+        error: `could not list projects (HTTP ${res.status}). The personal API key probably lacks the ` +
+          `project:read scope, so either add that scope or set POSTHOG_PROJECT_ID. ${text.slice(0, 200)}`,
+      }
+    }
+    const json = JSON.parse(text) as { results?: { id: number | string; name?: string }[] }
+    const list = json.results ?? []
+    if (list.length === 0) return { error: 'the personal API key can see no projects' }
+    // More than one is ambiguous, and guessing which analytics project to read
+    // is exactly the kind of silent wrong answer this session has had enough of.
+    if (list.length > 1) {
+      return {
+        error: `the key can see ${list.length} projects (${list.map(p => `${p.id}:${p.name ?? '?'}`).join(', ')}). ` +
+          `Set POSTHOG_PROJECT_ID to pick one.`,
+      }
+    }
+    _projectId = String(list[0].id)
+    return { id: _projectId }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 async function runHogql(hogql: string): Promise<{ rows: unknown[]; error?: string }> {
   const key = process.env.POSTHOG_PERSONAL_API_KEY
-  const project = process.env.POSTHOG_PROJECT_ID
-  if (!key || !project) {
+  if (!key) {
     const seen = posthogEnvNames()
     return {
       rows: [],
-      error:
-        `POSTHOG_PERSONAL_API_KEY${key ? '' : ' (missing)'} / POSTHOG_PROJECT_ID${project ? '' : ' (missing)'}. ` +
-        `PostHog-related variable NAMES visible to this deployment: ${seen.length ? seen.join(', ') : 'NONE'}.`,
+      error: `POSTHOG_PERSONAL_API_KEY missing. PostHog variable NAMES visible here: ${seen.length ? seen.join(', ') : 'NONE'}.`,
     }
   }
+  const resolved = await resolveProjectId(key)
+  if (!resolved.id) return { rows: [], error: `project id unresolved: ${resolved.error}` }
+  const project = resolved.id
 
   try {
     const res = await fetch(`${posthogApiBase()}/api/projects/${project}/query/`, {
@@ -155,7 +201,9 @@ export async function GET(req: NextRequest) {
     posthogEnvVarsVisible: posthogEnvNames(),
     deploymentSees: {
       personalApiKey: !!process.env.POSTHOG_PERSONAL_API_KEY,
-      projectId: !!process.env.POSTHOG_PROJECT_ID,
+      projectIdConfigured: !!process.env.POSTHOG_PROJECT_ID,
+      projectIdUsed: _projectId ?? process.env.POSTHOG_PROJECT_ID ?? null,
+      projectIdSource: process.env.POSTHOG_PROJECT_ID ? 'env' : _projectId ? 'discovered from the API key' : 'unresolved',
       publicKey: !!process.env.NEXT_PUBLIC_POSTHOG_KEY,
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '(default us)',
     },
