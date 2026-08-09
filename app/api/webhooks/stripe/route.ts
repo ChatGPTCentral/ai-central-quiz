@@ -21,6 +21,7 @@ import { waitUntil } from '@vercel/functions'
 import Stripe from 'stripe'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
 import { verifyExpressPayment, sendExpressAlert } from '@/lib/express-alert'
+import { posthogCapture } from '@/lib/posthog-server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -208,6 +209,28 @@ export async function POST(req: NextRequest) {
   if (RELEVANT.has(event.type)) {
     // Resolve email then sync in the background so Stripe gets its fast 200.
     const submissionId = submissionIdFrom(event)
+
+    // Tell PostHog who bought.
+    //
+    // Until now PostHog knew each person's submission id, stage and score but
+    // never whether they PAID, because the payment is confirmed here and the
+    // browser never sees it. That made "what do buyers do differently" — the
+    // only question worth asking of session data — unanswerable.
+    //
+    // $set marks the PERSON, not just this event, so every session they had
+    // BEFORE buying becomes queryable against a buyer cohort. Fired from the
+    // webhook rather than a success page because wallet payments routinely
+    // never return to one.
+    if (submissionId && (event.type === 'checkout.session.completed' || event.type === 'payment_intent.succeeded')) {
+      const obj = event.data.object as unknown as Record<string, unknown>
+      const amount = Number(obj.amount_total ?? obj.amount ?? 0) / 100
+      waitUntil(posthogCapture({
+        distinctId: submissionId,
+        event: 'purchase',
+        properties: { amount_usd: amount, stripe_event: event.type },
+        personSet: { is_buyer: true, first_purchase_at: new Date().toISOString() },
+      }))
+    }
     waitUntil(
       resolveEmail(s, event).then(async email => {
         if (!email) { console.warn(`[stripe-webhook] ${event.type} had no resolvable email`); return }

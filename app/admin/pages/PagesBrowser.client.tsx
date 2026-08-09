@@ -57,6 +57,7 @@ export default function PagesBrowser({ results }: { results: Record<string, Vari
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [internal, setInternal] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
 
   const url = useMemo(() => {
     const p = new URLSearchParams()
@@ -92,8 +93,12 @@ export default function PagesBrowser({ results }: { results: Record<string, Vari
         <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.14em', color: FULVOUS, textTransform: 'uppercase' }}>
           Version
         </div>
+        {/* Grouped, and retired ones collapsed. Owner's call: archive rather
+            than delete, because a variant that lost still carries the evidence
+            for WHY we stopped, and deleting it means re-running the argument in
+            three months. Kept out of the way, not out of reach. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-          {RESULT_VARIANTS.map(v => (
+          {RESULT_VARIANTS.filter(v => v.status !== 'retired').map(v => (
             <button
               key={v.key}
               onClick={() => setVariant(v)}
@@ -124,6 +129,49 @@ export default function PagesBrowser({ results }: { results: Record<string, Vari
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowArchived(v => !v)}
+          style={{
+            marginTop: 10, width: '100%', textAlign: 'left', cursor: 'pointer',
+            background: 'none', border: 'none', padding: '6px 0',
+            fontSize: 10.5, fontWeight: 800, letterSpacing: '0.14em', color: MUTE, textTransform: 'uppercase',
+          }}
+        >
+          {showArchived ? '▾' : '▸'} Archived · {RESULT_VARIANTS.filter(v => v.status === 'retired').length} that lost
+        </button>
+        {showArchived && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {RESULT_VARIANTS.filter(v => v.status === 'retired').map(v => (
+              <button
+                key={v.key}
+                onClick={() => setVariant(v)}
+                style={{
+                  textAlign: 'left', padding: '8px 10px', cursor: 'pointer', opacity: 0.85,
+                  border: `2px solid ${variant.key === v.key ? INK : LINE}`,
+                  background: variant.key === v.key ? LATTE : '#FBFAF7',
+                }}
+              >
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {v.label}
+                  <StatusBadge status={v.status} />
+                </div>
+                <div style={{ fontSize: 11, color: MUTE, marginTop: 2, lineHeight: 1.35 }}>{v.note}</div>
+                {(results[v.key] || []).map(r => (
+                  <div key={r.experiment} style={{ marginTop: 5, fontSize: 10.5, color: '#4A4A4A', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: 'ui-monospace, monospace', color: MUTE }}>{r.experiment}</span>
+                    <span>{r.exposures.toLocaleString()} saw</span>
+                    <span>{r.clickPct.toFixed(1)}% clicked</span>
+                    <span style={{ fontWeight: 800, color: r.paidPct >= 5 ? '#2D6A26' : r.paidPct > 0 ? '#B26A00' : '#BE3B3B' }}>
+                      {r.paidPct.toFixed(2)}% paid
+                    </span>
+                  </div>
+                ))}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div style={{ marginTop: 16, fontSize: 10.5, fontWeight: 800, letterSpacing: '0.14em', color: FULVOUS, textTransform: 'uppercase' }}>
           Who sees it

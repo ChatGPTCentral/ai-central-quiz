@@ -48,6 +48,49 @@ const QUERIES: { key: string; hogql: string }[] = [
             WHERE event = '$pageleave' AND timestamp > now() - INTERVAL 7 DAY
             GROUP BY url ORDER BY n DESC LIMIT 30`,
   },
+  // ── The buyer cohort ────────────────────────────────────────────────
+  // The whole point of putting purchases into PostHog. Everything above says
+  // what people do; these say what BUYERS do differently, which is the only
+  // version of the question that can change what we build.
+  {
+    key: 'buyers_vs_rest_30d',
+    hogql: `SELECT
+              if(person.properties.is_buyer, 'buyer', 'rest') AS who,
+              uniq(person_id) AS people,
+              count() AS events,
+              round(count() / uniq(person_id), 1) AS events_per_person
+            FROM events
+            WHERE timestamp > now() - INTERVAL 30 DAY
+            GROUP BY who`,
+  },
+  {
+    // Do buyers see MORE of the page, or fewer things but the right ones?
+    key: 'buyer_events_30d',
+    hogql: `SELECT event,
+                   uniq(person_id) FILTER (WHERE person.properties.is_buyer) AS buyers,
+                   uniq(person_id) FILTER (WHERE NOT person.properties.is_buyer) AS others
+            FROM events
+            WHERE timestamp > now() - INTERVAL 30 DAY
+            GROUP BY event ORDER BY buyers DESC LIMIT 30`,
+  },
+  {
+    // Do buyers come back before paying, or buy on the first visit? This is
+    // the single biggest lever on whether nurture is worth building.
+    key: 'buyer_sessions_before_purchase_30d',
+    hogql: `SELECT person_id, uniq($session_id) AS sessions
+            FROM events
+            WHERE timestamp > now() - INTERVAL 30 DAY AND person.properties.is_buyer
+            GROUP BY person_id ORDER BY sessions DESC LIMIT 100`,
+  },
+  {
+    // Where buyers came from, from PostHog's own attribution rather than ours,
+    // so the two can be checked against each other.
+    key: 'buyer_sources_30d',
+    hogql: `SELECT properties.$initial_utm_source AS source, uniq(person_id) AS buyers
+            FROM events
+            WHERE timestamp > now() - INTERVAL 30 DAY AND person.properties.is_buyer
+            GROUP BY source ORDER BY buyers DESC LIMIT 20`,
+  },
   {
     // Breakage, with a real message rather than Clarity's bare count.
     key: 'exceptions_7d',
