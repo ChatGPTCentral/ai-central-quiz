@@ -81,12 +81,21 @@ async function loadBaseline(): Promise<Baseline> {
     }
 
     const paid = subs.filter(r => r.stripe_first_charge_at && r.created_at && new Date(r.stripe_first_charge_at) > new Date(r.created_at))
-    const withSub = paid.filter(r => {
-      const s = r.stripe_subscriptions
-      if (!s) return false
-      const t = typeof s === 'string' ? s : JSON.stringify(s)
-      return t !== '' && t !== '[]' && t !== 'null' && t !== '{}'
-    })
+
+    // Trial to annual, from the SAME maturity-aware source /admin/ads uses.
+    //
+    // This used to be `withSub / paid`: the share of payers holding a
+    // subscription, with no maturity filter at all. A trial bills the annual a
+    // month later, so every trial younger than that counted as a FAILURE and
+    // the rate was pushed toward zero by our own recent growth. The faster we
+    // sold, the worse this looked. It read 25% while the maturity-aware
+    // measure read 37%.
+    //
+    // Two pages disagreeing about the same business fact is the exact class of
+    // bug that cost most of 2026-08-09, so it now reads one shared function.
+    const { data: rr } = await c.rpc('trial_to_annual_rate')
+    const measuredRenewal: number | null =
+      rr && rr.length && rr[0].rate != null ? Number(rr[0].rate) : null
 
     const days = Math.max(1, Math.round((Date.now() - new Date(t0).getTime()) / 86_400_000))
 
@@ -99,7 +108,7 @@ async function loadBaseline(): Promise<Baseline> {
       revenue: paid.reduce((a, r) => a + (r.lifetime_value_usd || 0), 0),
       days,
       windowStart: t0.slice(0, 10),
-      renewalRate: paid.length > 0 ? withSub.length / paid.length : 0.25,
+      renewalRate: measuredRenewal ?? 0.25,
     }
   } catch (err) {
     console.error('[simulator] baseline load failed:', err)

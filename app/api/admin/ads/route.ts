@@ -105,7 +105,30 @@ export async function GET(req: NextRequest) {
   const { data: rr } = await c.rpc('trial_to_annual_rate')
   const renewalRate: number | null =
     rr && rr.length && rr[0].rate != null ? Number(rr[0].rate) : null
+  const renewalDue: number = rr && rr.length ? Number(rr[0].due) || 0 : 0
   const ltv = TRIAL_USD + (renewalRate ?? 0) * ANNUAL_USD
+
+  // The QUIZ-ERA rate, alongside the all-time one rather than instead of it.
+  //
+  // All-time rests on ~1,679 customers going back to 2023, across prices and
+  // offers we no longer sell, so it is robust but not necessarily OUR number.
+  // The quiz cohort is the right population and currently reads much higher,
+  // but on a handful of mature trials. Showing both, each with its sample
+  // size, is the only honest option: swapping to the small number would
+  // flatter every channel on this page, and ignoring it would hide the fact
+  // that our own cohort may be behaving differently.
+  const { data: qz } = await c
+    .from('submissions')
+    .select('stripe_first_charge_at, stripe_last_charge_at')
+    .gte('stripe_first_charge_at', '2026-07-05')
+    .lt('stripe_first_charge_at', new Date(Date.now() - 32 * 864e5).toISOString())
+    .is('archived_at', null)
+    .or('is_test.is.null,is_test.eq.false')
+  const qzRows = (qz || []) as { stripe_first_charge_at: string; stripe_last_charge_at: string | null }[]
+  const qzRenewed = qzRows.filter(r =>
+    r.stripe_last_charge_at &&
+    new Date(r.stripe_last_charge_at).getTime() > new Date(r.stripe_first_charge_at).getTime() + 20 * 864e5).length
+  const cohortRate: number | null = qzRows.length > 0 ? qzRenewed / qzRows.length : null
 
   return NextResponse.json({
     days,
@@ -115,11 +138,18 @@ export async function GET(req: NextRequest) {
       trialUsd: TRIAL_USD,
       annualUsd: ANNUAL_USD,
       renewalRate,
+      renewalDue,
+      cohortRate,
+      cohortDue: qzRows.length,
       ltv,
       ltvIsFloor: renewalRate === null,
       note: renewalRate === null
         ? 'No renewals observed yet, so LTV is the trial alone. Treat it as a floor.'
-        : `LTV = $${TRIAL_USD} trial + ${(renewalRate * 100).toFixed(0)}% renewing at $${ANNUAL_USD}`,
+        : `LTV = $${TRIAL_USD} trial + ${(renewalRate * 100).toFixed(0)}% renewing at $${ANNUAL_USD}`
+          + ` · all-time, ${renewalDue} due`
+          + (cohortRate !== null && qzRows.length > 0
+              ? ` · quiz-era cohort ${(cohortRate * 100).toFixed(0)}% on ${qzRows.length} due`
+              : ''),
     },
     adsAppUrl: process.env.NEXT_PUBLIC_ADS_APP_URL || null,
   })
