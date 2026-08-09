@@ -11,6 +11,7 @@ import { StageGauge } from '@/components/result2/StageGauge'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
 import ExpenseEmail from '@/components/result2/ExpenseEmail.client'
+import { NextStageGap } from '@/components/result2/NextStageGap'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
 import { QUESTIONS_V2_MERGED as QUIZ_QUESTIONS } from '@/lib/questions-v2-merged'
@@ -68,6 +69,9 @@ interface SegFields {
   score?: number | null
   hours_lost?: number | null
   hours_would_use_for?: string | null
+  /** Raw depth picks, CSV. The ladder's top rungs are earned by three of
+   *  these, so this is what makes the gap to the next stage computable. */
+  depth_actions?: string | null
 }
 
 // Their own answer, quoted back. Nobody argues with a number they chose
@@ -102,7 +106,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
   })
     const { data } = await c
       .from('submissions')
-      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for')
+      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for, depth_actions')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -463,6 +467,18 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
           </div>
         )}
+
+        {/* The gap, before the offer, because it is the REASON for the offer.
+            What it costs them (above) → what is missing (here) → what it costs
+            to fix (below). Renders nothing for people at the top of the ladder
+            or for rows from before depth_actions existed. */}
+        <NextStageGap
+          depthActions={segFields?.depth_actions ?? null}
+          nextStageLabel={nextStage?.label ?? null}
+          checkoutUrl={checkoutUrl}
+          submissionId={rowId}
+          ctaLabel={CTA_LABEL}
+        />
 
         {withVideo && videoBlock(true)}
 
