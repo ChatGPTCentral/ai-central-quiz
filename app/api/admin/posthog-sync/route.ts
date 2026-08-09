@@ -77,10 +77,31 @@ function posthogApiBase(): string {
   return h
 }
 
+/**
+ * Which PostHog-ish variables this deployment can actually see, by NAME ONLY.
+ *
+ * "Not set" is a useless error message: it cannot distinguish "you forgot" from
+ * "you called it something else" from "you scoped it to Preview". Listing the
+ * names present turns a guessing game into a diff. Values are never returned,
+ * and never will be - - a personal API key can read every session recording we
+ * hold, so it must not be echoed by a route that only needs to prove it exists.
+ */
+function posthogEnvNames(): string[] {
+  return Object.keys(process.env).filter(k => /posthog/i.test(k)).sort()
+}
+
 async function runHogql(hogql: string): Promise<{ rows: unknown[]; error?: string }> {
   const key = process.env.POSTHOG_PERSONAL_API_KEY
   const project = process.env.POSTHOG_PROJECT_ID
-  if (!key || !project) return { rows: [], error: 'POSTHOG_PERSONAL_API_KEY or POSTHOG_PROJECT_ID not set' }
+  if (!key || !project) {
+    const seen = posthogEnvNames()
+    return {
+      rows: [],
+      error:
+        `POSTHOG_PERSONAL_API_KEY${key ? '' : ' (missing)'} / POSTHOG_PROJECT_ID${project ? '' : ' (missing)'}. ` +
+        `PostHog-related variable NAMES visible to this deployment: ${seen.length ? seen.join(', ') : 'NONE'}.`,
+    }
+  }
 
   try {
     const res = await fetch(`${posthogApiBase()}/api/projects/${project}/query/`, {
@@ -129,6 +150,15 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: summary.every(s => !s.error),
     ranAt: new Date().toISOString(),
+    // Names only. Enough to spot a typo or a wrong environment scope without
+    // ever putting a credential in an HTTP response.
+    posthogEnvVarsVisible: posthogEnvNames(),
+    deploymentSees: {
+      personalApiKey: !!process.env.POSTHOG_PERSONAL_API_KEY,
+      projectId: !!process.env.POSTHOG_PROJECT_ID,
+      publicKey: !!process.env.NEXT_PUBLIC_POSTHOG_KEY,
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '(default us)',
+    },
     queries: summary,
     note: 'Answers written to the posthog_snapshots table.',
   })
