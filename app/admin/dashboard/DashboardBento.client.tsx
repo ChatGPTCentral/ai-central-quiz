@@ -30,7 +30,7 @@ export interface BentoRow {
   netNew: boolean
 }
 export interface FunnelEventCounts { landing: number; started: number; checkout: number }
-export interface PlacementStat { placement: string; views: number; clicks: number }
+export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
 export interface SeriesPoint { bucket: string; views: number; starts: number; checkout: number; completed: number; netNew: number; partial: boolean }
 export type Gran = 'day' | 'week' | 'month'
 export type Series = Record<Gran, SeriesPoint[]>
@@ -56,6 +56,12 @@ function generationOf(bracket: string): string | null {
 const eyebrow: React.CSSProperties = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: MUTE }
 const panelTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: INK }
 const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
+
+/** Stage x quiz conversions column template. One constant so the header and
+ *  the rows can never drift apart, which they did when ARPU was added. */
+const GRID_STAGE = 'minmax(96px,1.2fr) 38px 38px 46px 58px 56px'
+/** CTA placements column template, shared by its header and rows. */
+const GRID_CTA = '158px 1fr 70px 66px 56px 56px 68px'
 
 /** CTA placement thumbnail — the actual component shown, screenshotted into
  *  public/admin-placements/<placement>.png. Falls back to a clean "no preview"
@@ -360,7 +366,16 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   const [stageFilter, setStageFilter] = useState<string | null>(null)
   const [trendGran, setTrendGran] = useState<Gran | 'all'>('week') // shared across all step rows
 
-  const ladderDefs = useMemo(() => [STAGES.find(s => s.key === 'unknown')!, ...STAGES.filter(s => s.key !== 'unknown')], [])
+  // Owner call, twice. 'unknown' and 'S0_unaware' are structurally empty, not
+  // just rare: ZERO rows across every classified submission, verified again
+  // 2026-08-09. You cannot be unaware of AI while voluntarily taking an AI
+  // quiz, and 'unknown' only exists for CRM rows that never took one. Two
+  // permanently blank columns on the ladder made the chart harder to read and
+  // two permanently blank rows in the table below it read as missing data.
+  const ladderDefs = useMemo(
+    () => STAGES.filter(s => s.key !== 'unknown' && s.key !== 'S0_unaware'),
+    [],
+  )
   const ladderCounts = useMemo(() => {
     const m = new Map<string, number>()
     for (const r of rows) m.set(r.stage, (m.get(r.stage) || 0) + 1)
@@ -408,6 +423,14 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
     const ctr = p.clicks / p.views
     const bp = placements.find(x => x.placement === best)
     return !bp || !bp.views || ctr > bp.clicks / bp.views ? p.placement : best
+  }, null)
+  // The button that SELLS, which is not always the button that gets clicked.
+  // Badging the top click rate as "Best" was quietly wrong: the click-quality
+  // guardrail already caught an arm winning on clicks while selling less.
+  const bestSeller = placements.reduce<string | null>((best, p) => {
+    if (!p.sales) return best
+    const bp = placements.find(x => x.placement === best)
+    return !bp || p.sales > bp.sales ? p.placement : best
   }, null)
 
   return (
@@ -521,12 +544,13 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
 
           <div style={{ padding: '18px 24px', minWidth: 0, borderLeft: '1px solid #333333' }}>
             <div style={{ ...panelTitle, marginBottom: 12 }}>Stage × quiz conversions</div>
-            <div className="grid" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}` }}>
+            <div className="grid" style={{ gridTemplateColumns: GRID_STAGE, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}` }}>
               <span style={{ padding: '5px 0 5px 6px' }}>Stage</span>
               <span style={{ padding: '5px 0', textAlign: 'right' }}>N</span>
               <span style={{ padding: '5px 0', textAlign: 'right' }}>Net</span>
               <span style={{ padding: '5px 0', textAlign: 'right' }}>CVR</span>
               <span style={{ padding: '5px 0', textAlign: 'right' }}>Revenue</span>
+              <span style={{ padding: '5px 0', textAlign: 'right' }} title="Revenue divided by every taker at this stage, not just the buyers. What one more taker of this stage is worth.">ARPU</span>
             </div>
             {ladderDefs.map(def => {
               const sRows = rows.filter(r => r.stage === def.key)
@@ -534,7 +558,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
               const revenue = paying.reduce((a, b) => a + b.ltv, 0)
               const conv = sRows.length > 0 ? (paying.length / sRows.length) * 100 : 0
               return (
-                <div key={def.key} className="grid items-center" style={{ gridTemplateColumns: 'minmax(104px,1.3fr) 44px 44px 52px 64px', fontSize: 11.5, borderBottom: `1px solid ${ROWHAIR}`, background: stageFilter === def.key ? LATTE : 'transparent' }}>
+                <div key={def.key} className="grid items-center" style={{ gridTemplateColumns: GRID_STAGE, fontSize: 11.5, borderBottom: `1px solid ${ROWHAIR}`, background: stageFilter === def.key ? LATTE : 'transparent' }}>
                   <span className="flex items-center" style={{ padding: '6px 0 6px 6px', fontWeight: 700, gap: 7, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                     <span style={{ width: 7, height: 7, background: def.color, flexShrink: 0 }} />{def.emoji} {def.label}
                   </span>
@@ -542,6 +566,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
                   <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, ...tnum }}>{paying.length}</span>
                   <span style={{ padding: '6px 0', textAlign: 'right', color: '#046BB1', fontWeight: 700, ...tnum }}>{conv.toFixed(1)}%</span>
                   <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, color: '#62A758', ...tnum }}>${revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  <span style={{ padding: '6px 0', textAlign: 'right', fontWeight: 700, color: '#B26A00', ...tnum }}>{sRows.length > 0 ? `$${(revenue / sRows.length).toFixed(2)}` : '-'}</span>
                 </div>
               )
             })}
@@ -580,20 +605,23 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>of the people who SAW each button, how many clicked it · since Jul 5</span>
           </div>
           <div className="ac-scrollx"><div>
-          <div className="grid" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
-            <span style={{ padding: '8px 0' }}>Shown</span><span style={{ padding: '8px 0' }}>Button</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Saw it</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clicked</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Rate</span>
+          <div className="grid" style={{ gridTemplateColumns: GRID_CTA, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>
+            <span style={{ padding: '8px 0' }}>Shown</span><span style={{ padding: '8px 0' }}>Button</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Saw it</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Clicked</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Rate</span><span style={{ padding: '8px 0', textAlign: 'right' }} title="Net-new paid among the people who clicked THIS button">Sold</span><span style={{ padding: '8px 0', textAlign: 'right' }} title="Revenue from the people who clicked this button">Revenue</span>
           </div>
           {placements.length === 0 && <p style={{ padding: '10px 20px', fontSize: 12, color: MUTE }}>No placement events yet.</p>}
           {placements.map(p => (
-            <div key={p.placement} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: '158px 1fr 80px 76px 62px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '6px 20px' }}>
+            <div key={p.placement} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: GRID_CTA, fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '6px 20px' }}>
               <PlacementThumb placement={p.placement} />
               <span className="flex items-center" style={{ fontSize: 12, fontWeight: 600, color: INK, gap: 8, minWidth: 0 }}>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.placement}>{humanizePlacement(p.placement)}</span>
-                {bestCtr === p.placement && <span style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', background: '#E7B02F', color: '#333333', padding: '1px 6px', flexShrink: 0 }}>Best</span>}
+                {bestSeller === p.placement && <span title="Most net-new sales, not most clicks" style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', background: '#62A758', color: '#FFFFFF', padding: '1px 6px', flexShrink: 0 }}>Sells</span>}
+                {bestCtr === p.placement && <span title="Highest click rate. Clicks are not sales, see the Sold column." style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', background: '#E7B02F', color: '#333333', padding: '1px 6px', flexShrink: 0 }}>Clicks</span>}
               </span>
               <span style={{ textAlign: 'right', ...tnum }}>{p.views > 0 ? p.views.toLocaleString() : '–'}</span>
               <span style={{ textAlign: 'right', fontWeight: 700, ...tnum }}>{p.clicks.toLocaleString()}</span>
               <span style={{ textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{p.views > 0 ? `${((p.clicks / p.views) * 100).toFixed(1)}%` : '–'}</span>
+              <span style={{ textAlign: 'right', fontWeight: 700, color: p.sales > 0 ? '#62A758' : MUTE, ...tnum }}>{p.sales > 0 ? p.sales.toLocaleString() : '–'}</span>
+              <span style={{ textAlign: 'right', fontWeight: 700, color: p.revenue > 0 ? '#62A758' : MUTE, ...tnum }}>{p.revenue > 0 ? `$${p.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '–'}</span>
             </div>
           ))}
           </div></div>

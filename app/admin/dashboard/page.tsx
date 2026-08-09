@@ -27,13 +27,18 @@ function bucketKey(iso: string, gran: Gran): string {
 
 type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; checkout: number }>>
 
+/** Placement counts as they come off the events read, before the sales join.
+ *  `clickerIds` are the submissions that clicked this button, which is what
+ *  turns "gets clicked" into "gets paid" once the CRM rows are in hand. */
+type RawPlacement = { placement: string; views: number; clicks: number; clickerIds: string[] }
+
 // Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
 // by day / week / month so the progression charts can toggle granularity.
-async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: PlacementStat[]; eventBuckets: EventBuckets }> {
+async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
-  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], eventBuckets: emptyBuckets }
+  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -42,7 +47,7 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
   })
   const uniq = { landing: new Set<string>(), started: new Set<string>(), checkout: new Set<string>() }
-  const pl = new Map<string, { views: Set<string>; clicks: Set<string> }>()
+  const pl = new Map<string, { views: Set<string>; clicks: Set<string>; buyers: Set<string> }>()
   // Per-granularity unique-actor sets: gran → bucket → {views,starts,checkout}.
   const ev: Record<Gran, Map<string, { views: Set<string>; starts: Set<string>; checkout: Set<string> }>> = { day: new Map(), week: new Map(), month: new Map() }
   const bump = (gran: Gran, bucket: string, kind: 'views' | 'starts' | 'checkout', who: string) => {
@@ -55,12 +60,12 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
   for (let offset = 0; offset < 50_000; offset += PAGE) {
     const { data, error } = await c
       .from('funnel_events')
-      .select('event, anon_id, session_id, props, ts')
+      .select('event, anon_id, session_id, submission_id, props, ts')
       .gte('ts', `${LAUNCH_ISO}T00:00:00Z`)
       .order('ts', { ascending: true })
       .range(offset, offset + PAGE - 1)
     if (error || !data) break
-    for (const r of data as { event: string; anon_id: string | null; session_id: string | null; props: Record<string, unknown> | null; ts: string }[]) {
+    for (const r of data as { event: string; anon_id: string | null; session_id: string | null; submission_id: string | null; props: Record<string, unknown> | null; ts: string }[]) {
       // Unique ACTORS (matches count(distinct coalesce(anon_id,session_id))).
       // Skip rows with no identifier so counts aren't inflated to row totals.
       const who = r.anon_id || r.session_id
@@ -72,11 +77,15 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
       else if (r.event === 'checkout_click') {
         uniq.checkout.add(who)
         const p = typeof r.props?.placement === 'string' ? (r.props.placement as string) : '(unknown)'
-        const e = pl.get(p) || { views: new Set<string>(), clicks: new Set<string>() }
-        e.clicks.add(who); pl.set(p, e)
+        const e = pl.get(p) || { views: new Set<string>(), clicks: new Set<string>(), buyers: new Set<string>() }
+        e.clicks.add(who)
+        // Keep WHO clicked, so "which button gets clicked" can become "which
+        // button gets PAID". 96% of checkout_click rows carry a submission id.
+        if (r.submission_id) e.buyers.add(r.submission_id)
+        pl.set(p, e)
       } else if (r.event === 'placement_view') {
         const p = typeof r.props?.placement === 'string' ? (r.props.placement as string) : '(unknown)'
-        const e = pl.get(p) || { views: new Set<string>(), clicks: new Set<string>() }
+        const e = pl.get(p) || { views: new Set<string>(), clicks: new Set<string>(), buyers: new Set<string>() }
         e.views.add(who); pl.set(p, e)
       }
     }
@@ -87,7 +96,7 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
   return {
     funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size },
     placements: Array.from(pl.entries())
-      .map(([placement, s]) => ({ placement, views: s.views.size, clicks: s.clicks.size }))
+      .map(([placement, s]) => ({ placement, views: s.views.size, clicks: s.clicks.size, clickerIds: Array.from(s.buyers) }))
       .sort((a, b) => b.views - a.views || b.clicks - a.clicks),
     eventBuckets,
   }
@@ -105,7 +114,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as PlacementStat[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets }
+  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -134,6 +143,26 @@ export default async function DashboardPage({
       ltv: r.lifetimeValueUsd || 0,
       netNew,
     }
+  })
+
+  // "Which CTA gets clicked" becomes "which CTA gets PAID".
+  // A click rate on its own has already misled us once: the click-quality
+  // guardrail found the arm with MORE clicks selling LESS. So the placement
+  // table now carries the only number that settles it, how many of the people
+  // who clicked that button went on to pay, and what they were worth.
+  const paidById = new Map<string, { netNew: boolean; ltv: number }>()
+  for (let i = 0; i < allRows.length; i++) {
+    const id = allRows[i]?.id
+    if (id) paidById.set(String(id), { netNew: rows[i].netNew, ltv: rows[i].ltv })
+  }
+  const placements: PlacementStat[] = events.placements.map(p => {
+    let sales = 0
+    let revenue = 0
+    for (const id of p.clickerIds ?? []) {
+      const hit = paidById.get(id)
+      if (hit?.netNew) { sales++; revenue += hit.ltv }
+    }
+    return { placement: p.placement, views: p.views, clicks: p.clicks, sales, revenue }
   })
 
   // ── Weekly/daily/monthly progression series (since launch) ──
@@ -184,7 +213,7 @@ export default async function DashboardPage({
       rows={rows}
       sample={sample}
       funnelEvents={events.funnel}
-      placements={events.placements}
+      placements={placements}
       series={series}
       exportHref={exportHref}
       launchLabel={LAUNCH_LABEL}
