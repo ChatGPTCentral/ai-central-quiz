@@ -56,8 +56,15 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     const e = m.get(bucket) || { views: new Set<string>(), starts: new Set<string>(), checkout: new Set<string>() }
     e[kind].add(who); m.set(bucket, e)
   }
+  // Hard ceiling raised and made honest. It was 50,000 while the launch window
+  // already held 47,459 events on 2026-08-09, so within days this would have
+  // started silently DROPPING the newest data: the read is ordered ascending,
+  // so a truncated page loses the most recent events, and every funnel count
+  // would have quietly frozen. It logs now instead of failing in silence.
+  const MAX_EVENTS = 400_000
   const PAGE = 1000
-  for (let offset = 0; offset < 50_000; offset += PAGE) {
+  let truncated = true
+  for (let offset = 0; offset < MAX_EVENTS; offset += PAGE) {
     const { data, error } = await c
       .from('funnel_events')
       .select('event, anon_id, session_id, submission_id, props, ts')
@@ -89,8 +96,9 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
         e.views.add(who); pl.set(p, e)
       }
     }
-    if (data.length < PAGE) break
+    if (data.length < PAGE) { truncated = false; break }
   }
+  if (truncated) console.warn(`[dashboard] event read hit the ${MAX_EVENTS} ceiling — funnel counts are UNDERSTATED and the newest events are missing`)
   const eventBuckets: EventBuckets = { day: {}, week: {}, month: {} }
   for (const g of GRANS) for (const [bucket, s] of Array.from(ev[g])) eventBuckets[g][bucket] = { views: s.views.size, starts: s.starts.size, checkout: s.checkout.size }
   return {
@@ -100,6 +108,34 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
       .sort((a, b) => b.views - a.views || b.clicks - a.clicks),
     eventBuckets,
   }
+}
+
+/** First-ever charges since launch that the quiz cannot claim. */
+async function nonQuizCharges(): Promise<{ count: number; revenue: number }> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return { count: 0, revenue: 0 }
+  const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
+  const { data } = await c
+    .from('submissions')
+    .select('quiz_completed_at, stripe_first_charge_at, lifetime_value_usd')
+    .gte('stripe_first_charge_at', `${LAUNCH_ISO}T00:00:00Z`)
+    .is('archived_at', null)
+    .or('is_test.is.null,is_test.eq.false')
+  let count = 0
+  let revenue = 0
+  for (const r of (data || []) as { quiz_completed_at: string | null; stripe_first_charge_at: string | null; lifetime_value_usd: number | string | null }[]) {
+    const charge = r.stripe_first_charge_at ? new Date(r.stripe_first_charge_at).getTime() : null
+    if (!charge) continue
+    const quizAt = r.quiz_completed_at ? new Date(r.quiz_completed_at).getTime() : null
+    if (quizAt !== null && charge > quizAt) continue   // the quiz earned this one
+    count++
+    revenue += Number(r.lifetime_value_usd) || 0
+  }
+  return { count, revenue }
 }
 
 export default async function DashboardPage({
@@ -151,6 +187,18 @@ export default async function DashboardPage({
       netNew,
     }
   })
+
+  // RECONCILIATION: every other first-ever charge since launch that the quiz
+  // cannot claim. Owner asked for this as a row under Net-new paid, and it is
+  // the honest counterweight to the north star: it says how much of the money
+  // arriving in Stripe the quiz had nothing to do with. Two kinds land here,
+  // people the Stripe sync created because we had never seen their email, and
+  // people whose charge PREDATES their quiz, i.e. existing customers.
+  //
+  // Queried separately on purpose. allRows is the LAUNCH sample, which is now
+  // scoped to source='quiz_v2', so by construction it can never contain the
+  // Stripe-created rows this row exists to count.
+  const other = await nonQuizCharges()
 
   // "Which CTA gets clicked" becomes "which CTA gets PAID".
   // A click rate on its own has already misled us once: the click-quality
@@ -224,6 +272,8 @@ export default async function DashboardPage({
       sample={sample}
       funnelEvents={events.funnel}
       placements={placements}
+      otherPaid={other.count}
+      otherRevenue={other.revenue}
       series={series}
       exportHref={exportHref}
       launchLabel={LAUNCH_LABEL}
