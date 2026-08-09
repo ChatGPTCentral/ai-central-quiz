@@ -21,6 +21,20 @@ export const EXPERIMENT_SLOTS: Record<string, { label: string; hint: string }> =
   // slot registered, so isSlotKey dropped it and that button silently ignored
   // every experiment. A CTA test that misses one of four buttons is not a test.
   'riskFree.ctaLabel':  { label: 'Guarantee band · CTA label', hint: 'unlock all tutorials' },
+
+  // ── LANDING PAGE ────────────────────────────────────────────────────
+  // The first slot outside /result, because the biggest leak in the funnel is
+  // not on /result. Over 14 days about 640 people from the top three sources
+  // saw the landing page and never answered question 1, against 26 lost at the
+  // email step. Desktop converts 45.8% to a quiz start, mobile 60.5%, on twice
+  // the traffic.
+  //
+  // A MODE slot, not a copy slot: the value selects a rendering, the way
+  // result_sellfirst_v2 selects a section order. 'share' is today's page.
+  'landing.secondaryCta': {
+    label: 'Landing (desktop) · button under the pass card',
+    hint: "share | quiz  ('share' = today's LinkedIn button, 'quiz' = a second quiz CTA)",
+  },
 }
 
 export type SlotKey = keyof typeof EXPERIMENT_SLOTS

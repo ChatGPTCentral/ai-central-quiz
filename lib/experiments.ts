@@ -43,7 +43,10 @@ export interface Experiment {
   page: string
   targeting: ExperimentTargeting
   variants: ExperimentVariant[]
-  primaryMetric: 'checkout_click' | 'net_new_paid'
+  // `quiz_completed` was already honoured by experiment-queries.ts but missing
+  // here, so getActiveExperiments silently rewrote it to checkout_click and the
+  // two layers disagreed about what an experiment was even measuring.
+  primaryMetric: 'checkout_click' | 'net_new_paid' | 'quiz_completed'
   salt: string
   banditEnabled: boolean
   minExposuresPerVariant: number
@@ -108,7 +111,10 @@ function rowToExperiment(r: any): Experiment | null {
       page: String(r.page || 'result'),
       targeting: (r.targeting && typeof r.targeting === 'object' ? r.targeting : {}) as ExperimentTargeting,
       variants,
-      primaryMetric: r.primary_metric === 'net_new_paid' ? 'net_new_paid' : 'checkout_click',
+      primaryMetric:
+        r.primary_metric === 'net_new_paid' ? 'net_new_paid'
+          : r.primary_metric === 'quiz_completed' ? 'quiz_completed'
+          : 'checkout_click',
       salt: String(r.salt || ''),
       banditEnabled: !!r.bandit_enabled,
       minExposuresPerVariant: typeof r.min_exposures_per_variant === 'number' ? r.min_exposures_per_variant : 200,

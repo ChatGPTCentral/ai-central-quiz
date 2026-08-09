@@ -1,7 +1,10 @@
 import Link from 'next/link'
+import { cookies, headers } from 'next/headers'
 import AICentralLogo from '@/components/AICentralLogo'
 import FomoMarquee from '@/components/FomoMarquee.client'
 import TrackView from '@/components/TrackView'
+import ExperimentTracker from '@/components/ExperimentTracker.client'
+import { resolveExperiments, getVariantOverrides } from '@/lib/experiments'
 import { PassCard } from '@/components/result/PassCard'
 
 export const metadata = {
@@ -22,7 +25,7 @@ const MUTE = '#666666'
 const GRAIN =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='240' height='240' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E\")"
 
-export default function HomePage({
+export default async function HomePage({
   searchParams,
 }: { searchParams: Record<string, string | string[] | undefined> }) {
   // Forward every incoming query param verbatim onto the "Start the quiz"
@@ -35,12 +38,35 @@ export default function HomePage({
   const qs = params.toString()
   const quizHref = qs ? `/quiz-v2?${qs}` : '/quiz-v2'
 
+  // ── Experiments on the landing page ──────────────────────────────────
+  // Same engine and the same admin kill switch as /result, just page:'landing'.
+  // Fails open: any error serves the page exactly as it is today.
+  const cookieStore = cookies()
+  const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
+  const previewVar = typeof searchParams.xv === 'string' ? searchParams.xv.trim() : ''
+  const { assignments, overrides } = previewVar
+    ? { assignments: [] as { experimentKey: string; variantKey: string }[], overrides: await getVariantOverrides('landing', previewVar) }
+    : await resolveExperiments({
+        anonId,
+        cookieVariant: k => cookieStore.get(`ac_exp_${k}`)?.value,
+        utmSource: typeof searchParams.utm_source === 'string' ? searchParams.utm_source : null,
+        page: 'landing',
+      })
+
+  // The desktop button under the pass card. Today it says "Share on LinkedIn"
+  // on a page where the visitor has nothing to share yet, and it is the most
+  // saturated element in the left column. Desktop converts 45.8% to a quiz
+  // start against mobile's 60.5%, on twice the traffic, and mobile is the
+  // layout that does NOT have this button.
+  const secondaryCta = overrides['landing.secondaryCta'] === 'quiz' ? 'quiz' : 'share'
+
   return (
     <div
       className="relative min-h-[100dvh] lg:h-[100dvh] lg:overflow-hidden flex flex-col"
       style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}
     >
       <TrackView event="quiz_view" />
+      <ExperimentTracker assignments={assignments} />
 
       {/* Top bar — logo only (prod layout). */}
       <nav className="px-5 sm:px-8 py-4 sm:py-5">
@@ -111,18 +137,45 @@ export default function HomePage({
               description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
             />
 
-            {/* Result-page LinkedIn share button, reused here as a quiz-start CTA. */}
-            <Link
-              href={quizHref}
-              className="mt-6 inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
-              style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600, textDecoration: 'none' }}
-              aria-label="Share on LinkedIn"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
-                <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
-              </svg>
-              Share on LinkedIn
-            </Link>
+            {/* landing_cta_v1 · the button under the pass card.
+                control  'share' — today's page, verbatim.
+                variant  'quiz'  — the same slot, saying something a first-time
+                                   visitor can actually act on, and tied to the
+                                   blank pass directly above it. */}
+            {secondaryCta === 'share' ? (
+              <Link
+                href={quizHref}
+                className="mt-6 inline-flex items-center justify-center gap-2.5 rounded-full bg-[#0A66C2] hover:bg-[#004182] transition-colors"
+                style={{ color: '#FFFFFF', padding: '12px 28px', fontSize: 15, fontWeight: 600, textDecoration: 'none' }}
+                aria-label="Share on LinkedIn"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ display: 'block' }} aria-hidden>
+                  <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z" />
+                </svg>
+                Share on LinkedIn
+              </Link>
+            ) : (
+              <Link
+                href={quizHref}
+                className="mt-6 flex transition-transform hover:-translate-y-px active:scale-[0.98]"
+                style={{ textDecoration: 'none' }}
+                aria-label="mint my member pass"
+              >
+                <span
+                  className="inline-flex items-center justify-center"
+                  style={{ backgroundColor: INK, color: CREAM, fontWeight: 600, fontSize: 15, height: 48, padding: '0 24px' }}
+                >
+                  mint my member pass
+                </span>
+                <span
+                  className="inline-flex items-center justify-center"
+                  style={{ backgroundColor: FULVOUS, color: RICH, width: 48, height: 48, borderLeft: `2px solid ${RICH}`, fontWeight: 600, fontSize: 15 }}
+                  aria-hidden
+                >
+                  ↗
+                </span>
+              </Link>
+            )}
           </div>
 
           {/* Right column — the hero copy + CTA. */}
