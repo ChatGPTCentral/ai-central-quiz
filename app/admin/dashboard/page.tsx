@@ -111,10 +111,10 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
 }
 
 /** First-ever charges since launch that the quiz cannot claim. */
-async function nonQuizCharges(): Promise<{ count: number; revenue: number }> {
+async function nonQuizCharges(): Promise<{ count: number; revenue: number; charges: { at: string; value: number }[] }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { count: 0, revenue: 0 }
+  if (!url || !key) return { count: 0, revenue: 0, charges: [] }
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
@@ -127,15 +127,18 @@ async function nonQuizCharges(): Promise<{ count: number; revenue: number }> {
     .or('is_test.is.null,is_test.eq.false')
   let count = 0
   let revenue = 0
+  const charges: { at: string; value: number }[] = []
   for (const r of (data || []) as { quiz_completed_at: string | null; stripe_first_charge_at: string | null; lifetime_value_usd: number | string | null }[]) {
     const charge = r.stripe_first_charge_at ? new Date(r.stripe_first_charge_at).getTime() : null
     if (!charge) continue
     const quizAt = r.quiz_completed_at ? new Date(r.quiz_completed_at).getTime() : null
     if (quizAt !== null && charge > quizAt) continue   // the quiz earned this one
     count++
-    revenue += Number(r.lifetime_value_usd) || 0
+    const value = Number(r.lifetime_value_usd) || 0
+    revenue += value
+    charges.push({ at: r.stripe_first_charge_at as string, value })
   }
-  return { count, revenue }
+  return { count, revenue, charges }
 }
 
 export default async function DashboardPage({
@@ -242,8 +245,18 @@ export default async function DashboardPage({
       if (r.stripeFirstChargeAt && new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime()) e.netNew++
       subs.set(b, e)
     }
+    // Owner ask: the charges the quiz cannot claim, in the same buckets as
+    // everything else, so a good week for the quiz can be told apart from a
+    // good week for Stripe.
+    const otherByBucket = new Map<string, number>()
+    for (const ch of other.charges) {
+      const b = bucketKey(ch.at, gran)
+      if (!b || b < launchBucket) continue
+      otherByBucket.set(b, (otherByBucket.get(b) || 0) + 1)
+    }
+
     const evb = events.eventBuckets[gran]
-    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb)]))
+    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Array.from(otherByBucket.keys())]))
       .filter(k => k >= launchBucket).sort()
     const cap = gran === 'day' ? 21 : gran === 'week' ? 12 : 12
     return keys.slice(-cap).map(bucket => ({
@@ -253,6 +266,7 @@ export default async function DashboardPage({
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
       checkout: evb[bucket]?.checkout || 0,
       netNew: subs.get(bucket)?.netNew || 0,       // paid, bucketed on quiz_completed_at
+      otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
       partial: bucket === nowBucket,
     }))
   }

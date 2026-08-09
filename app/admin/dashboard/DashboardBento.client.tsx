@@ -31,7 +31,7 @@ export interface BentoRow {
 }
 export interface FunnelEventCounts { landing: number; started: number; checkout: number }
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
-export interface SeriesPoint { bucket: string; views: number; starts: number; checkout: number; completed: number; netNew: number; partial: boolean }
+export interface SeriesPoint { bucket: string; views: number; starts: number; checkout: number; completed: number; netNew: number; otherPaid: number; partial: boolean }
 export type Gran = 'day' | 'week' | 'month'
 export type Series = Record<Gran, SeriesPoint[]>
 
@@ -229,7 +229,7 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  `all` collapses to the single whole-window column. */
 function VolumeMatrix({ series, gran, F }: {
   series: Series; gran: Gran | 'all'
-  F: { landing: number; started: number; completed: number; checkout: number; paid: number }
+  F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number }
 }) {
   const buckets = gran === 'all' ? [] : series[gran]
   const fmt = (n: number) => n.toLocaleString()
@@ -271,6 +271,10 @@ function VolumeMatrix({ series, gran, F }: {
       out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
     },
     { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true },
+    // Not a funnel station: it never passes through the quiz. Kept adjacent
+    // anyway, because the only way to know whether a good week was the QUIZ or
+    // just a good week in Stripe is to see the two side by side.
+    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false },
   ]
 
   // 132px station label · 104px all-window total · one 1fr per period
@@ -416,7 +420,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   //    count; paid is net-new. Completed + paid come from the SAME rows as every
   //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
-  const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew }
+  const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew, otherPaid }
   const fullFunnelCvr = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
   const hasSeries = series.week.length > 0 || series.day.length > 0
 
