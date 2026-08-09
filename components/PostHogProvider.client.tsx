@@ -16,10 +16,34 @@
 // this ships dark and switches on with an env var.
 
 import { useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import posthog from 'posthog-js'
 import { isAnalyticsOptedOut } from '@/lib/analytics-optout'
 
+/** The admin area is the CRM. It must never be recorded. */
+function isAdminPath(path: string | null): boolean {
+  return !!path && path.startsWith('/admin')
+}
+
 export default function PostHogProvider() {
+  const pathname = usePathname()
+
+  // Session replay is a SEPARATE pipeline from event capture, which is the
+  // hole this closes. `before_send` below drops admin EVENTS, and the comment
+  // there claimed the admin area was protected, but it never touched the
+  // recorder: on 2026-08-09 a replay was captured starting at
+  // /admin/submissions, meaning every customer name, email, job title and
+  // company on screen went to a third party. Recording is now stopped
+  // explicitly whenever the path is under /admin, and never started there.
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return
+    if (!(posthog as unknown as { __loaded?: boolean }).__loaded) return
+    try {
+      if (isAdminPath(pathname)) posthog.stopSessionRecording()
+      else if (!isAnalyticsOptedOut()) posthog.startSessionRecording()
+    } catch { /* analytics must never break the app */ }
+  }, [pathname])
+
   useEffect(() => {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
     if (!key) return
@@ -42,6 +66,11 @@ export default function PostHogProvider() {
       person_profiles: 'identified_only',
       capture_pageview: true,
       capture_pageleave: true,
+
+      // Never START the recorder on an admin page. The effect above handles
+      // the client-side navigation case; this handles a direct load of
+      // /admin, which would otherwise be recording before any effect runs.
+      disable_session_recording: isAdminPath(window.location.pathname),
 
       // Unhandled errors, with a stack trace. Enabled in the PostHog project
       // too, but stated here as well so the behaviour is visible in the code
