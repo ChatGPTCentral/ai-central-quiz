@@ -177,6 +177,8 @@ async function revenueCharges(): Promise<{
       .from('stripe_charges')
       .select('amount_cents, currency, charged_at, customer_id, email, refunded')
       .gte('charged_at', `${LAUNCH_ISO}T00:00:00Z`)
+      // Chronological, so "the person's FIRST $4.99" below is deterministic.
+      .order('charged_at', { ascending: true })
       .range(offset, offset + 999)
     if (error || !data) break
     charges.push(...(data as typeof charges))
@@ -218,6 +220,8 @@ async function revenueCharges(): Promise<{
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
   let lifetimeSplits = 0
+  /** People whose first trial charge has been filed; later $4.99s are repeats. */
+  const seenTrial = new Set<P>()
   // Per-person outcome, for the people-vs-charges reconciliation note. Keyed
   // by the shared P object, which both lookup maps hold per submission row.
   const outcome = new Map<P, { n499: number; other: number }>()
@@ -234,24 +238,29 @@ async function revenueCharges(): Promise<{
     }
     const usd = ch.amount_cents / 100
     const isUsd = ch.currency === 'usd'
-    if (isUsd && ch.amount_cents === 5474) {
-      // Owner's pricing history, stated 2026-08-10: $54.74 is ONE payment for
-      // TWO things — the $4.99 paid trial plus the $49.75 LIFETIME option (an
-      // upsell offered instead of the $59.75/year renewal). So the charge is
-      // split: the trial component goes to the trials row for that person
-      // (quiz clock if the quiz earned them), the lifetime component is Other
-      // Revenue. The split preserves the total to the cent.
-      lifetimeSplits++
-      if (person?.netNew && person.quizAt) {
+    if (isUsd && (ch.amount_cents === 499 || ch.amount_cents === 5474)) {
+      // $54.74 is ONE payment for TWO things — owner's pricing history, stated
+      // 2026-08-10: the $4.99 paid trial plus the $49.75 LIFETIME option (an
+      // upsell offered instead of the $59.75/year renewal). Split accordingly;
+      // the split preserves the total to the cent.
+      if (ch.amount_cents === 5474) {
+        lifetimeSplits++
+        entries.push({ at: ch.charged_at, kind: 'other', usd: 49.75 })
+      }
+      // ONE trial per person. Week Jul 20 taught this: 14 net-new people, 16
+      // trial charges, because two people subscribed twice minutes apart under
+      // two Stripe customers each. The extra $4.99s are real money but they
+      // are double-subscriptions, not second trials — they go to Other so the
+      // trials rows always reconcile with the people counts above them.
+      const repeat = person !== null && seenTrial.has(person)
+      if (person) seenTrial.add(person)
+      if (repeat) {
+        entries.push({ at: ch.charged_at, kind: 'other', usd: 4.99 })
+      } else if (person?.netNew && person.quizAt) {
         entries.push({ at: person.quizAt, kind: 'net', usd: 4.99 })
       } else {
         entries.push({ at: ch.charged_at, kind: 'notQuiz', usd: 4.99 })
       }
-      entries.push({ at: ch.charged_at, kind: 'other', usd: 49.75 })
-    } else if (isUsd && ch.amount_cents === 499 && person?.netNew && person.quizAt) {
-      entries.push({ at: person.quizAt, kind: 'net', usd })
-    } else if (isUsd && ch.amount_cents === 499) {
-      entries.push({ at: ch.charged_at, kind: 'notQuiz', usd })
     } else if (isUsd && ch.amount_cents === 5975) {
       entries.push({ at: ch.charged_at, kind: 'annual', usd })
     } else {

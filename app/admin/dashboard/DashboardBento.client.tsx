@@ -325,12 +325,12 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
       label: 'Quiz New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: '$4.99 trials bought from the quiz (net-new people), by QUIZ date. Includes the $4.99 inside $54.74 lifetime bundles.',
+      sub: 'ONE $4.99 trial per net-new person (their first), by QUIZ date. Includes the $4.99 inside $54.74 lifetime bundles; repeat $4.99s from the same person sit in Other Revenue.',
       all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
     },
     {
       label: 'Other New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: '$4.99 trials the quiz cannot claim, by CHARGE date. Includes the $4.99 inside $54.74 lifetime bundles.',
+      sub: 'ONE $4.99 trial per person the quiz cannot claim, by CHARGE date. Includes the $4.99 inside $54.74 lifetime bundles; repeats sit in Other Revenue.',
       all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
     },
     {
@@ -341,7 +341,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
     {
       // heavy = the break line the owner asked for between row 4 and All revenue.
       label: 'Other Revenue', money: true, heavy: true,
-      sub: '$49.75 lifetime options (from $54.74 bundles), legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD, by CHARGE date',
+      sub: '$49.75 lifetime options (from $54.74 bundles), repeat $4.99s (double-subscriptions), legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD, by CHARGE date',
       all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther,
     },
     {
@@ -464,7 +464,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
             + $49.75 lifetime option instead of the $59.75/year renewal) {lifetimeSplits === 1 ? 'is' : 'are'} split
             accordingly — the $4.99 sits in the trials row, the $49.75 in Other Revenue.</>
           )}
-          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person' : 'people'} bought the $4.99 more than once, so charge sums can exceed people counts.</>}
+          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person' : 'people'} subscribed twice — only their FIRST $4.99 counts as a trial here, the extras sit in Other Revenue, so trials revenue always equals people × $4.99.</>}
           {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic.
         </div>
       )}
