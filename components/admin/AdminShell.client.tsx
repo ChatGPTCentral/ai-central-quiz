@@ -46,6 +46,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
   {
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { href: '/admin/revenue', label: 'Revenue', icon: 'stats' },
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
       { href: '/admin/pages', label: 'Result pages', icon: 'editor' },
       { href: '/admin/ads', label: 'Ads', icon: 'ads' },
