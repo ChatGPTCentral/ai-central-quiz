@@ -2,26 +2,36 @@
 
 ## THE north-star metric (maximize this above everything)
 
-The one success metric for the whole project is the **quiz → paid-trial
-conversion rate**:
+The one success metric for the whole project is **new trials attributable to
+the quiz** (owner's definition, restated 2026-08-10):
 
-- **Numerator** = people who (a) had **no Stripe payment ever** before the
-  quiz (i.e. genuinely free subscribers, not part of the 3-year existing
-  client backlog), AND (b) completed the quiz through the result, AND
-  (c) bought the **$4.99 trial AFTER** the moment they took the quiz.
+- **Numerator** = people who completed the quiz and then bought a **$4.99
+  trial after taking it**. Two kinds count, and both are the quiz working:
+  - **net-new** — never had any Stripe charge before the quiz. The quiz
+    convinced a free reader to pay.
+  - **existing customer** — had paid us before, took the quiz, then bought
+    another trial. The quiz convinced an existing reader to pay again.
 - **Denominator** = everyone who completed the quiz.
 
-This is the rate at which the quiz converts **free readers into paid trials**.
-Each such trial bills **$59.75/year one month later** when the trial ends, so
-maximizing this maximizes new paid customers and their LTV. That is the point
-of the quiz: turn free readers into paid ones via the $4.99 trial.
+Each trial bills **$59.75/year one month later**, so maximizing this maximizes
+paid customers and their LTV.
 
-NOT this metric: existing customers who happen to take the quiz; renewals;
-trials people entered BEFORE the quiz existed (the $4.99 offer was promoted
-before Jul 5). "First Stripe charge after `created_at`" is only a rough proxy
-— the true signal is "was free before the quiz, then bought the trial after,"
-and the owner keeps a manual spreadsheet of $4.99 trials sold as the source of
-truth to reconcile against.
+**NOT** this metric: people who paid without ever taking the quiz, or who took
+it only after paying. Renewals are not trials. Every trial therefore falls in
+exactly one of three buckets, and the dashboard shows all three:
+
+| Bucket | Meaning | Clock |
+|---|---|---|
+| Net-new | no charge ever, took quiz, then paid | quiz date |
+| Quiz, existing customer | had paid before, took quiz, then paid again | quiz date |
+| Not from the quiz | never took it, or took it after paying | charge date |
+
+**Attribution is decided at CHARGE level, never from a person's aggregate.**
+A real $4.99 (or the $4.99 inside a $54.74 lifetime bundle) must land after
+their quiz. "They have a later charge" is not enough — a monthly renewal
+would fake it. `stripe_charges` is the mirror of record, synced daily 06:20
+UTC, refunds excluded; the owner's trials spreadsheet is the reconciliation
+source of truth.
 
 ## The roadmap board is the source of truth
 
