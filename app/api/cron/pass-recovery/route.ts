@@ -229,6 +229,10 @@ export async function GET(req: NextRequest) {
       .in('id', eligible.map(r => r.id))
       .is('pass_recovery_enrolled_at', null)
       .is('pass_recovery_misfire_at', null)
+      // Checkout Recovery got them first — the specific sequence outranks this
+      // generic one, and nobody ever receives both. Same clause lives in the
+      // RPC; repeated here because the RPC path has lied three times.
+      .is('checkout_recovery_enrolled_at', null)
     if (vErr) {
       return NextResponse.json({ error: `verification failed, enrolled nobody: ${vErr.message}` }, { status: 500 })
     }

@@ -1,22 +1,22 @@
-// Pass Recovery — did the sequence actually add value?
+// Checkout Recovery — did the payment-moment email actually add value?
 //
-// This page exists because "people got the email and then some of them bought"
-// is not evidence. Normally you would need a holdout to separate the sequence
-// from the people who were going to buy anyway.
+// Same evidentiary setup as Pass Recovery, one page over: of every quiz
+// completer who did not buy within the hour, ZERO ever bought later on their
+// own. Checkout clickers are a subset of that population, so an enrolled
+// clicker who pays after the email is net new by construction. The baseline is
+// recomputed live below; the day it stops being zero this page says so.
 //
-// Here you do not, and that is the whole point of this readout. Measured over
-// the 33 days before the sequence existed: of 1,017 people who completed the
-// quiz and did NOT buy within 60 minutes, ZERO ever bought afterwards. Every
-// paying quiz-taker on record charged inside the 60-minute window - - not one
-// before, not one after. So the counterfactual for this exact population is
-// empirically zero, and any sale from an enrolled abandoner is net new by
-// construction rather than by assumption.
+// The two sequences are mutually exclusive by design (first enrolment stamp
+// wins), so a convert here was NOT also inside Pass Recovery — the attribution
+// is clean per person, not shared.
 //
-// The baseline is recomputed live on every load rather than hardcoded, because
-// the day it stops being zero is the day this page stops being valid, and that
-// should be visible here rather than remembered by me.
+// THE KILL NUMBER, written before launch: if fewer than 2% of enrolled have
+// paid once 100 people are enrolled, the sequence comes out. Prediction was
+// 3-5% (about +4-6 paid a week).
 
 import { createClient } from '@supabase/supabase-js'
+import { readLtvModel } from '@/lib/ltv-settings'
+import { ltvFrom } from '@/lib/ltv-model'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,11 +24,6 @@ const INK = '#1A1A1A'
 const CREAM = '#FEF7E7'
 const FULVOUS = '#E48715'
 const MUTE = '#7A7A7A'
-
-/** Observed trial → annual rate, used only to project. Re-measure before trusting. */
-const TRIAL_TO_ANNUAL = 0.368
-const TRIAL_PRICE = 4.99
-const ANNUAL_PRICE = 59.75
 
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -50,7 +45,7 @@ interface Enrolled {
   email: string | null
   name: string | null
   stage: string | null
-  pass_recovery_enrolled_at: string
+  checkout_recovery_enrolled_at: string
   stripe_first_charge_at: string | null
 }
 
@@ -59,29 +54,29 @@ async function load() {
 
   const { data: enrRows, error: enrErr } = await c
     .from('submissions')
-    .select('id, email, name, stage, pass_recovery_enrolled_at, stripe_first_charge_at')
-    .not('pass_recovery_enrolled_at', 'is', null)
-    .order('pass_recovery_enrolled_at', { ascending: false })
+    .select('id, email, name, stage, checkout_recovery_enrolled_at, stripe_first_charge_at')
+    .not('checkout_recovery_enrolled_at', 'is', null)
+    .order('checkout_recovery_enrolled_at', { ascending: false })
     .limit(5000)
   if (enrErr) throw new Error(enrErr.message)
   const enrolled = (enrRows ?? []) as Enrolled[]
 
-  // The money number. A charge STRICTLY AFTER enrolment, on a population whose
-  // historical late-purchase rate is zero.
+  // The money number. Candidates enter with NO charge on record, so any charge
+  // at all after enrolment is a recovery.
   const converted = enrolled.filter(
-    r => r.stripe_first_charge_at && r.stripe_first_charge_at > r.pass_recovery_enrolled_at,
+    r => r.stripe_first_charge_at && r.stripe_first_charge_at > r.checkout_recovery_enrolled_at,
   )
 
   const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString()
-  const enrolled7d = enrolled.filter(r => r.pass_recovery_enrolled_at > weekAgo).length
+  const enrolled7d = enrolled.filter(r => r.checkout_recovery_enrolled_at > weekAgo).length
 
-  // Return traffic, tagged by PASS_RECOVERY_UTM on the result_url merge field.
+  // Return traffic, tagged by CHECKOUT_RECOVERY_UTM on the result_url merge field.
   const uniq = { visits: new Set<string>(), clicks: new Set<string>() }
   for (let offset = 0; offset < 50_000; offset += 1000) {
     const { data, error } = await c
       .from('funnel_events')
       .select('event, anon_id, session_id')
-      .eq('utm_source', 'passrec')
+      .eq('utm_source', 'checkrec')
       .range(offset, offset + 999)
     if (error) break
     if (!data || data.length === 0) break
@@ -94,9 +89,9 @@ async function load() {
     if (data.length < 1000) break
   }
 
-  // Baseline, recomputed live: quiz completers older than 7 days who did not buy
-  // inside 60 minutes, and how many of them ever bought. If this stops being 0,
-  // the "net new by construction" claim above is void.
+  // Baseline, recomputed live: completers older than 7 days, never enrolled in
+  // EITHER recovery sequence, who did not buy inside 60 minutes — how many ever
+  // bought at all. If this stops being 0, "net new by construction" is void.
   const { data: baseRows } = await c
     .from('submissions')
     .select('created_at, stripe_first_charge_at, pass_recovery_enrolled_at, checkout_recovery_enrolled_at')
@@ -107,8 +102,6 @@ async function load() {
     created_at: string; stripe_first_charge_at: string | null
     pass_recovery_enrolled_at: string | null; checkout_recovery_enrolled_at: string | null
   }[]
-  // Never-enrolled in EITHER sequence, so no recovery email's converts can
-  // pollute the no-email baseline.
   const baseAbandoners = base.filter(r => {
     if (r.pass_recovery_enrolled_at || r.checkout_recovery_enrolled_at) return false
     if (!r.stripe_first_charge_at) return true
@@ -116,10 +109,13 @@ async function load() {
   })
   const baseLate = baseAbandoners.filter(r => r.stripe_first_charge_at).length
 
+  const ltv = await readLtvModel()
+
   return {
     enrolled, enrolled7d, converted,
     visits: uniq.visits.size, clicks: uniq.clicks.size,
     baseAbandoners: baseAbandoners.length, baseLate,
+    ltv,
   }
 }
 
@@ -140,47 +136,72 @@ function Stat({ label, value, sub, accent }: { label: string; value: string; sub
   )
 }
 
-export default async function PassRecoveryPage() {
+export default async function CheckoutRecoveryPage() {
   let d: Awaited<ReturnType<typeof load>> | null = null
   let err: string | null = null
   try { d = await load() } catch (e) { err = e instanceof Error ? e.message : String(e) }
 
   if (err || !d) {
-    return <div style={{ padding: 24 }}><h1 style={{ fontWeight: 800 }}>Pass Recovery</h1><p style={{ color: '#B00' }}>{err}</p></div>
+    return <div style={{ padding: 24 }}><h1 style={{ fontWeight: 800 }}>Checkout Recovery</h1><p style={{ color: '#B00' }}>{err}</p></div>
   }
 
-  const revenueNow = d.converted.length * TRIAL_PRICE
-  const revenueProjected = d.converted.length * (TRIAL_PRICE + TRIAL_TO_ANNUAL * ANNUAL_PRICE)
+  const revenueNow = d.converted.length * d.ltv.trialUsd
+  const revenueProjected = d.converted.length * ltvFrom(d.ltv)
   const baselineHolds = d.baseLate === 0
   const pct = (n: number, of: number) => (of > 0 ? `${((100 * n) / of).toFixed(1)}%` : '—')
 
+  // The pre-registered kill test, judged live.
+  const rate = d.enrolled.length > 0 ? d.converted.length / d.enrolled.length : null
+  const killReadable = d.enrolled.length >= 100
+  const killMet = killReadable && rate !== null && rate < 0.02
+
   return (
     <div style={{ padding: '22px 24px 60px', maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Pass Recovery</h1>
+      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Checkout Recovery</h1>
       <p style={{ fontSize: 14, color: MUTE, marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
-        Did the sequence add value? Every conversion below is net new, because nobody in this
-        population has ever bought late without it. That claim is checked live, not assumed.
+        The payment-moment email, for people who clicked the buy button and walked at the form.
+        Mutually exclusive with Pass Recovery, so every conversion below belongs to this sequence alone.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 16, marginTop: 22 }}>
         <Stat label="Enrolled" value={d.enrolled.length.toLocaleString()} sub={`${d.enrolled7d} in the last 7 days`} />
-        <Stat label="Came back" value={d.visits.toLocaleString()} sub={`${pct(d.visits, d.enrolled.length)} of enrolled, via utm_source=passrec`} />
-        <Stat label="Clicked checkout" value={d.clicks.toLocaleString()} sub={`${pct(d.clicks, d.visits)} of returners`} />
+        <Stat label="Came back" value={d.visits.toLocaleString()} sub={`${pct(d.visits, d.enrolled.length)} of enrolled, via utm_source=checkrec`} />
+        <Stat label="Clicked checkout again" value={d.clicks.toLocaleString()} sub={`${pct(d.clicks, d.visits)} of returners`} />
         <Stat accent label="Paid — net new" value={d.converted.length.toLocaleString()} sub={`${pct(d.converted.length, d.enrolled.length)} of enrolled`} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginTop: 16 }}>
-        <Stat label="Revenue booked" value={`$${revenueNow.toFixed(2)}`} sub={`${d.converted.length} x $${TRIAL_PRICE} trial`} />
+        <Stat label="Revenue booked" value={`$${revenueNow.toFixed(2)}`} sub={`${d.converted.length} x $${d.ltv.trialUsd.toFixed(2)} trial`} />
         <Stat
           label="Projected LTV"
           value={`$${revenueProjected.toFixed(2)}`}
-          sub={`at the observed ${(TRIAL_TO_ANNUAL * 100).toFixed(1)}% trial-to-annual. Re-measure before trusting.`}
+          sub={`at the saved LTV model ($${ltvFrom(d.ltv).toFixed(2)}/trial). Edit it on the Simulator page.`}
         />
+      </div>
+
+      {/* The pre-registered prediction and kill number, judged in public. */}
+      <div style={{
+        marginTop: 22, border: `3px solid ${killMet ? '#B00' : INK}`,
+        background: killMet ? '#FFF0F0' : CREAM, padding: '14px 16px', maxWidth: 820,
+      }}>
+        <div className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: '.16em', color: killMet ? '#B00' : MUTE, fontWeight: 700 }}>
+          The prediction — written before launch
+        </div>
+        <p style={{ fontSize: 13.5, lineHeight: 1.55, marginTop: 7, color: INK }}>
+          3-5% of enrolled buy within 7 days. <strong>Kill rule:</strong> under 2% once 100 are enrolled.{' '}
+          {!killReadable ? (
+            <>Not readable yet — {d.enrolled.length} of the 100 enrolled it takes to judge.</>
+          ) : killMet ? (
+            <><strong>The kill condition is met</strong> ({pct(d.converted.length, d.enrolled.length)} of {d.enrolled.length}). Take the sequence out.</>
+          ) : (
+            <>Currently {pct(d.converted.length, d.enrolled.length)} of {d.enrolled.length} — the sequence stays.</>
+          )}
+        </p>
       </div>
 
       {/* The validity check. If this ever goes non-zero the headline claim is void. */}
       <div style={{
-        marginTop: 22, border: `3px solid ${baselineHolds ? INK : '#B00'}`,
+        marginTop: 16, border: `3px solid ${baselineHolds ? INK : '#B00'}`,
         background: baselineHolds ? CREAM : '#FFF0F0', padding: '14px 16px', maxWidth: 820,
       }}>
         <div className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: '.16em', color: baselineHolds ? MUTE : '#B00', fontWeight: 700 }}>
@@ -189,16 +210,15 @@ export default async function PassRecoveryPage() {
         <p style={{ fontSize: 13.5, lineHeight: 1.55, marginTop: 7, color: INK }}>
           {baselineHolds ? (
             <>
-              Of <strong>{d.baseAbandoners.toLocaleString()}</strong> quiz completers who never entered this
-              sequence and did not buy within 60 minutes, <strong>{d.baseLate}</strong> ever bought later.
-              The counterfactual is zero, so the &ldquo;net new&rdquo; number above is a count, not an estimate.
+              Of <strong>{d.baseAbandoners.toLocaleString()}</strong> completers never enrolled in any recovery
+              sequence who did not buy within 60 minutes, <strong>{d.baseLate}</strong> ever bought later.
+              The counterfactual is zero, so &ldquo;net new&rdquo; above is a count, not an estimate.
             </>
           ) : (
             <>
               <strong>The baseline is no longer zero.</strong> {d.baseLate} of {d.baseAbandoners.toLocaleString()} never-enrolled
-              abandoners bought late on their own ({pct(d.baseLate, d.baseAbandoners)}). Late buying now happens
-              without the sequence, so the headline number above overstates the gain by roughly that rate and
-              this page needs a holdout to stay honest.
+              abandoners bought late on their own ({pct(d.baseLate, d.baseAbandoners)}). The headline number above
+              overstates the gain by roughly that rate and this page needs a holdout to stay honest.
             </>
           )}
         </p>
@@ -217,12 +237,12 @@ export default async function PassRecoveryPage() {
             </thead>
             <tbody>
               {d.converted.map(r => {
-                const gapH = (new Date(r.stripe_first_charge_at!).getTime() - new Date(r.pass_recovery_enrolled_at).getTime()) / 3600_000
+                const gapH = (new Date(r.stripe_first_charge_at!).getTime() - new Date(r.checkout_recovery_enrolled_at).getTime()) / 3600_000
                 return (
                   <tr key={r.id} style={{ borderBottom: '1px solid #E4E0D8' }}>
                     <td style={{ padding: '7px 8px' }}>{r.name || r.email || r.id.slice(0, 8)}</td>
                     <td style={{ padding: '7px 8px', color: MUTE }}>{r.stage ?? '—'}</td>
-                    <td style={{ padding: '7px 8px', color: MUTE }}>{r.pass_recovery_enrolled_at.slice(0, 16).replace('T', ' ')}</td>
+                    <td style={{ padding: '7px 8px', color: MUTE }}>{r.checkout_recovery_enrolled_at.slice(0, 16).replace('T', ' ')}</td>
                     <td style={{ padding: '7px 8px', color: MUTE }}>{r.stripe_first_charge_at!.slice(0, 16).replace('T', ' ')}</td>
                     <td style={{ padding: '7px 8px', fontWeight: 700 }}>{gapH < 48 ? `${gapH.toFixed(1)}h` : `${(gapH / 24).toFixed(1)}d`}</td>
                   </tr>
@@ -236,8 +256,9 @@ export default async function PassRecoveryPage() {
       {d.enrolled.length === 0 && (
         <p style={{ marginTop: 26, fontSize: 13.5, color: MUTE, maxWidth: 720, lineHeight: 1.55 }}>
           Nobody enrolled yet. The automation is a draft in beehiiv and the cron is inert until
-          <code style={{ background: '#EFEAE0', padding: '1px 5px' }}>BEEHIIV_PASS_RECOVERY_ENABLED=true</code>.
-          Publish the automation, set the variable, and this fills in on its own.
+          <code style={{ background: '#EFEAE0', padding: '1px 5px' }}>BEEHIIV_CHECKOUT_RECOVERY_ENABLED=true</code> is
+          set in Vercel AND the project is redeployed. Publish the automation, set the variable, redeploy,
+          and this fills in on its own.
         </p>
       )}
     </div>

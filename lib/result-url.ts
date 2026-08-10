@@ -11,6 +11,11 @@
  *  malformed link on exactly the sends where personalisation already failed. */
 export const PASS_RECOVERY_UTM = { utm_source: 'passrec', utm_medium: 'email' } as const
 
+/** Same idea for Checkout Recovery, the sequence for people who clicked the buy
+ *  button and walked at the payment form. A distinct source, so each sequence's
+ *  return traffic reads separately on its own admin page. */
+export const CHECKOUT_RECOVERY_UTM = { utm_source: 'checkrec', utm_medium: 'email' } as const
+
 export function personResultPath(r: {
   id?: string | null
   name?: string | null
