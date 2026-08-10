@@ -23,6 +23,17 @@
 //     a conversion rate
 
 import { createClient } from '@supabase/supabase-js'
+import TrialState from '@/components/admin/TrialState.client'
+
+/** The Stripe account these dashboard links point at. Not a secret: it is the
+ *  account id that appears in every dashboard URL the owner already uses. */
+const STRIPE_ACCT = 'acct_1O98fMBLsgHOvWxy'
+const stripeCustomer = (cus: string) => `https://dashboard.stripe.com/${STRIPE_ACCT}/customers/${cus}`
+/** Opens the customer with Stripe's "create subscription" panel already open
+ *  and the customer pre-selected — the link shape the owner uses to put someone
+ *  onto a yearly plan by hand. */
+const stripeNewSub = (cus: string) =>
+  `${stripeCustomer(cus)}?create=subscription&subscription_default_customer=${cus}`
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -37,7 +48,7 @@ const RED = '#B00020'
 
 interface Era { era: number; name: string; starts_on: string; ends_on: string | null; notes: string | null }
 interface Row {
-  charge_id: string; person_key: string; name: string | null; stage: string | null
+  charge_id: string; person_key: string; customer_id: string | null; name: string | null; stage: string | null
   trial_at: string; trial_cents: number; era: number; attribution: string
   converted: boolean; due: boolean; converted_at: string | null; converted_cents: number | null
   gross_cents: number; lifetime_bundle: boolean; trial_refunded: boolean
@@ -79,16 +90,17 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, sheet] = await Promise.all([
+  const [eras, charges, sheet, overrides] = await Promise.all([
     c.from('payment_eras').select('era, name, starts_on, ends_on, notes').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
+    c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
   ])
   const ledger: Row[] = []
   for (let o = 0; o < 20_000; o += 1000) {
     const { data, error } = await c
       .from('trial_ledger')
-      .select('charge_id, person_key, name, stage, trial_at, trial_cents, era, attribution, converted, due, converted_at, converted_cents, gross_cents, lifetime_bundle, trial_refunded, submission_id')
+      .select('charge_id, person_key, customer_id, name, stage, trial_at, trial_cents, era, attribution, converted, due, converted_at, converted_cents, gross_cents, lifetime_bundle, trial_refunded, submission_id')
       .order('trial_at', { ascending: false })
       .range(o, o + 999)
     if (error || !data) break
@@ -102,9 +114,14 @@ async function load() {
     const m = r.trial_date.slice(0, 7)
     sheetByMonth.set(m, (sheetByMonth.get(m) || 0) + 1)
   }
+  const overrideBy = new Map<string, string>()
+  for (const o of (overrides.data ?? []) as { charge_id: string; state: string }[]) {
+    overrideBy.set(o.charge_id, o.state)
+  }
   return {
     eras: (eras.data ?? []) as Era[],
     ledger,
+    overrideBy,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
@@ -357,6 +374,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
             <th style={th}>Paid</th>
             <th style={{ ...th, textAlign: 'left' }}>Source</th>
             <th style={{ ...th, textAlign: 'left' }}>State</th>
+            <th style={{ ...th, textAlign: 'left' }}>Stripe</th>
             <th style={{ ...th, textAlign: 'left' }}>Converted on</th>
             <th style={th}>Then paid</th>
             <th style={th}>Total</th>
@@ -382,7 +400,28 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
                 <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: r.attribution === 'not_quiz' ? MUTE : GREEN, fontWeight: r.attribution === 'not_quiz' ? 400 : 700 }}>
                   {ATTR_LABEL[r.attribution] ?? r.attribution}
                 </td>
-                <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: STATE_COLOR[st] }}>{STATE_LABEL[st]}</td>
+                <td style={{ ...td, textAlign: 'left' }}>
+                  <TrialState
+                    chargeId={r.charge_id}
+                    derived={st}
+                    derivedLabel={STATE_LABEL[st]}
+                    derivedColor={STATE_COLOR[st]}
+                    initial={d!.overrideBy.get(r.charge_id) ?? null}
+                  />
+                </td>
+                <td style={{ ...td, textAlign: 'left', whiteSpace: 'nowrap' }}>
+                  {r.customer_id ? (
+                    <>
+                      <a href={stripeCustomer(r.customer_id)} target="_blank" rel="noopener noreferrer"
+                         title={`Open ${r.customer_id} in Stripe`}
+                         style={{ fontSize: 11.5, fontWeight: 700, color: INK, textDecoration: 'underline' }}>profile</a>
+                      <span style={{ color: HAIR, margin: '0 5px' }}>|</span>
+                      <a href={stripeNewSub(r.customer_id)} target="_blank" rel="noopener noreferrer"
+                         title="Open Stripe with the create-subscription panel, this customer preselected"
+                         style={{ fontSize: 11.5, fontWeight: 700, color: GREEN, textDecoration: 'underline' }}>+ sub</a>
+                    </>
+                  ) : <span style={{ color: MUTE, fontSize: 11 }}>–</span>}
+                </td>
                 <td style={{ ...td, textAlign: 'left', color: MUTE }}>{r.converted_at ? r.converted_at.slice(0, 10) : '–'}</td>
                 <td style={td}>{r.converted ? `$${((r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)) / 100).toFixed(2)}` : '–'}</td>
                 <td style={{ ...td, fontWeight: 700 }}>${(r.gross_cents / 100).toFixed(2)}</td>
