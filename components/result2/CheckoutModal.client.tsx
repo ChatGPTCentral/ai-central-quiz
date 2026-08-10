@@ -17,6 +17,44 @@ import { CheckoutCtx, type CheckoutMode } from '@/components/checkout-context'
 // The form is mounted only while the modal is open (Stripe.js + a Checkout
 // Session are created on intent, not for every result-page viewer).
 
+// ── Non-US trust strip ─────────────────────────────────────────────────
+// Non-US visitors convert at 2.2% against the US 7.8%, and it is not card
+// declines: 83 failed $4.99 attempts in three months, 45 of them US, and
+// Canada is 0-for-55 with zero failed attempts. They open the form, read it,
+// and leave. So the three doubts a non-US buyer actually has get answered in
+// writing, at the form: what is this in my money, when am I charged again,
+// and how do I get out. US visitors never see it.
+//
+// Rates are deliberately approximate ("about") — the job is recognisability,
+// not FX accuracy. Revisit the numbers if a year has passed.
+const FX: Record<string, { rate: number; sym: string }> = {
+  CA: { rate: 1.38, sym: 'C$' },
+  GB: { rate: 0.78, sym: '£' },
+  AU: { rate: 1.52, sym: 'A$' },
+  NZ: { rate: 1.66, sym: 'NZ$' },
+  IN: { rate: 87, sym: '₹' },
+  SG: { rate: 1.34, sym: 'S$' },
+  CH: { rate: 0.87, sym: 'CHF ' },
+  JP: { rate: 147, sym: '¥' },
+  MX: { rate: 18.7, sym: 'MX$' },
+  BR: { rate: 5.5, sym: 'R$' },
+  ZA: { rate: 17.8, sym: 'R' },
+  AE: { rate: 3.67, sym: 'AED ' },
+  PH: { rate: 57, sym: '₱' },
+  SE: { rate: 10.6, sym: 'kr ' },
+  NO: { rate: 10.9, sym: 'kr ' },
+  DK: { rate: 6.8, sym: 'kr ' },
+  PL: { rate: 3.9, sym: 'zł ' },
+}
+const EURO = new Set(['DE', 'FR', 'ES', 'IT', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'GR', 'SK', 'SI', 'LV', 'LT', 'EE', 'LU', 'CY', 'MT', 'HR'])
+
+function localPrice(country: string): string | null {
+  const fx = EURO.has(country) ? { rate: 0.91, sym: '€' } : FX[country]
+  if (!fx) return null
+  const v = 4.99 * fx.rate
+  return fx.sym + (v >= 100 ? String(Math.round(v)) : v.toFixed(2))
+}
+
 export default function CheckoutModalProvider({
   mode,
   submissionId,
@@ -24,6 +62,7 @@ export default function CheckoutModalProvider({
   utmSource,
   utmRef,
   fallbackUrl,
+  country,
   children,
 }: {
   mode: CheckoutMode
@@ -32,6 +71,8 @@ export default function CheckoutModalProvider({
   utmSource?: string
   utmRef?: string
   fallbackUrl: string
+  /** Visitor country from Vercel's IP geo header; absent locally. */
+  country?: string
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -48,12 +89,17 @@ export default function CheckoutModalProvider({
   // backdrop or the browser — becomes a queryable number instead of a video.
   const openedAt = useRef<number>(0)
 
+  // The country and whether the strip rendered ride on the open event, so the
+  // strip's effect is measurable per segment without an A/B the volume could
+  // never power (~80 non-US clicks a week).
+  const showTrust = !!country && country !== 'US'
+
   const doOpen = useCallback(() => {
     if (mode !== 'embedded') return
     openedAt.current = Date.now()
-    sendEvent('checkout_modal_open', { submissionId })
+    sendEvent('checkout_modal_open', { props: { country: country ?? null, trust: showTrust }, submissionId })
     setOpen(true)
-  }, [mode, submissionId])
+  }, [mode, submissionId, country, showTrust])
 
   // `how` is the whole point: leaving in 2s by backdrop is a misclick, leaving
   // at 40s by the X is someone who read the form and said no. Same event today.
@@ -104,6 +150,24 @@ export default function CheckoutModalProvider({
               <button ref={closeBtn} type="button" onClick={doClose} aria-label="Close" className="ac-cox">×</button>
             </div>
             <div className="ac-cobody">
+              {showTrust && (
+                <div className="ac-cotrust">
+                  {localPrice(country!) && (
+                    <div className="ac-cotrustrow">
+                      <span aria-hidden>💱</span>
+                      <span><strong>$4.99 is about {localPrice(country!)}</strong> in your money. You are charged in USD, your bank converts it automatically</span>
+                    </div>
+                  )}
+                  <div className="ac-cotrustrow">
+                    <span aria-hidden>📅</span>
+                    <span>One charge today. The $59.75 annual only bills if you stay past 4 weeks, and we email you before it does</span>
+                  </div>
+                  <div className="ac-cotrustrow">
+                    <span aria-hidden>🛡️</span>
+                    <span>Cancel any time in your trial month, two clicks. 30-day money-back guarantee on top</span>
+                  </div>
+                </div>
+              )}
               <EmbeddedCheckout submissionId={submissionId} anonId={anonId} utmSource={utmSource} utmRef={utmRef} />
               <div className="ac-cofallback">
                 <a
@@ -128,6 +192,10 @@ export default function CheckoutModalProvider({
               color: #1A1A1A; cursor: pointer; padding: 2px 6px; }
             .ac-cox:focus-visible { outline: 2px solid #E48715; outline-offset: 2px; }
             .ac-cobody { padding: 18px 16px 20px; }
+            .ac-cotrust { border: 2px solid #1A1A1A; background: #FEF7E7; padding: 10px 12px; margin-bottom: 14px;
+              display: flex; flex-direction: column; gap: 7px; }
+            .ac-cotrustrow { display: flex; gap: 8px; font-size: 12px; line-height: 1.45; color: #333333; }
+            .ac-cotrustrow strong { font-weight: 800; color: #1A1A1A; }
             .ac-cofallback { margin-top: 14px; text-align: center; }
             .ac-cofallback a { font-size: 12px; color: #8A8A8A; text-decoration: underline; }
             @keyframes ac-copop { from { opacity: 0; transform: translateY(8px) scale(.985) } to { opacity: 1; transform: none } }

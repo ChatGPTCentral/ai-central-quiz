@@ -597,6 +597,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     <CheckoutModalProvider
       mode={checkoutMode}
       submissionId={rowId}
+      country={visitorCountry}
       anonId={anonId ?? undefined}
       utmSource={segFields?.utm_source ?? undefined}
       utmRef={typeof searchParams.utm_ref === 'string' ? searchParams.utm_ref : undefined}
