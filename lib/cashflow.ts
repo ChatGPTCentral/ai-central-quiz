@@ -1,11 +1,13 @@
 // Monthly cash: what actually happened, then what we expect.
 //
-// Actuals come from the owner's trials sheet, mirrored in sheet_trials and
-// refreshed daily. That sheet is the source of truth for trials sold, and it
-// disagrees with every internal estimate we had: it reports 54.3% of 694 trials
-// converting to yearly, against 37% from our Stripe-derived RPC and a 66.7%
-// I measured on twelve trials. The sheet wins on sample size and on the fact
-// that the owner reconciles it against invoices.
+// Actuals come from `trial_ledger`, the single source of truth built from
+// EVERY Stripe charge since inception (see /admin/revenue). This used to read
+// the owner's spreadsheet mirror, which was the best source available until
+// the ledger existed and is now strictly worse for two reasons: it is hand
+// maintained, so it lags (on 2026-08-10 it stopped at Jul 25 and had no
+// August at all, showing 63 July trials against 86 real ones), and it cannot
+// see attribution. The ledger is rebuilt from Stripe daily and agrees with the
+// sheet within ±3 trials a month wherever the sheet is current.
 //
 // THE MATURITY PROBLEM, which is the whole reason this file is careful. A trial
 // bills its annual a month later, so the most recent months ALWAYS look weak:
@@ -63,26 +65,32 @@ export async function getCashflow(opts: {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
   })
-  const { data, error } = await c
-    .from('sheet_trials')
-    .select('trial_date, status, total')
-    .not('trial_date', 'is', null)
-  if (error) return { ...empty, error: error.message }
-
-  const rows = (data || []) as { trial_date: string; status: string | null; total: number | null }[]
+  const rows: { trial_at: string; converted: boolean; gross_cents: number; trial_refunded: boolean }[] = []
+  for (let o = 0; o < 20_000; o += 1000) {
+    const { data, error } = await c
+      .from('trial_ledger')
+      .select('trial_at, converted, gross_cents, trial_refunded')
+      .order('trial_at')
+      .range(o, o + 999)
+    if (error) return { ...empty, error: error.message }
+    if (!data) break
+    rows.push(...(data as typeof rows))
+    if (data.length < 1000) break
+  }
   if (rows.length === 0) {
-    return { ...empty, error: 'sheet_trials is empty — run /api/admin/sheet-sync' }
+    return { ...empty, error: 'trial_ledger is empty — run /api/admin/stripe-charges-sync' }
   }
 
   const byMonth = new Map<string, { trials: number; revenue: number; yearly: number }>()
   for (const r of rows) {
-    const month = r.trial_date.slice(0, 7)
+    if (r.trial_refunded) continue   // refunded money was never ours
+    const month = r.trial_at.slice(0, 7)
     const e = byMonth.get(month) || { trials: 0, revenue: 0, yearly: 0 }
     e.trials++
-    e.revenue += Number(r.total) || 0
-    // The two statuses that mean "paid the annual". Recovered counts: the money
-    // arrived, and excluding it would understate what a trial is worth.
-    if (r.status === 'Yearly Subscriber' || r.status === 'Yearly Subscriber / Recovered') e.yearly++
+    // Real dollars this cohort produced: the trial plus whatever conversion
+    // followed it, at whatever price that era charged.
+    e.revenue += (r.gross_cents || 0) / 100
+    if (r.converted) e.yearly++
     byMonth.set(month, e)
   }
 

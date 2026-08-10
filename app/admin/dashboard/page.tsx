@@ -134,226 +134,140 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   }
 }
 
-/** One classified entry per real Stripe charge since launch, for the matrix
- *  revenue split. `at` already carries the RIGHT clock for its kind:
- *  net $4.99s restate at the person's quiz date (the cohort owns the sale,
- *  same rule as the Net-new paid row), everything else sits at charge date
- *  (those people have no quiz date, and an annual is cash the day it bills). */
-// 'net'         — took the quiz, then bought, and had NEVER paid us before.
-//                 The north star. Quiz clock.
-// 'quizExisting'— took the quiz, then bought the trial, but had paid us at
-//                 some earlier point. The quiz earned the trial; it did not
-//                 earn a new customer. Quiz clock. Added 2026-08-10 after the
-//                 owner reconciled July against his Stripe export: 7 of the 44
-//                 trials filed as "not from the quiz" were people who took the
-//                 quiz the same day they bought.
-// 'notQuiz'     — never took the quiz, or took it only after paying. Charge clock.
+// The matrix's money rows, read from trial_ledger — THE single source of
+// truth (see /admin/revenue). This function used to classify raw charges
+// itself, which meant the same rules lived in two places and drifted; now the
+// database owns the rules and this only decides which CLOCK each row sits on.
+//
+// 'net'          quiz earned the trial from someone who had never paid. Quiz clock.
+// 'quizExisting' quiz earned the trial from an existing customer. Quiz clock.
+// 'notQuiz'      never took the quiz, or took it after paying. Charge clock.
+// 'annual'       the conversion that trial produced, on ITS TRIAL'S clock, so
+//                a week column answers "what did that week's trials become".
+// 'other'        every remaining dollar in the account: legacy subscriptions,
+//                old annual prices, duplicate subscriptions. Charge clock.
 type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annual' | 'other'
+
+type LedgerRow = {
+  charge_id: string; trial_at: string; trial_cents: number; trial_refunded: boolean
+  lifetime_bundle: boolean; attribution: string; quiz_completed_at: string | null
+  converted_at: string | null; converted_cents: number | null; converted_charge_id: string | null
+}
 
 async function revenueCharges(): Promise<{
   entries: { at: string; kind: RevKind; usd: number }[]
   mirrored: number
-  /** $54.74 charges split per the owner's pricing history (2026-08-10): that
-   *  amount is one payment for $4.99 paid trial + $49.75 LIFETIME option, an
-   *  upsell offered instead of the $59.75/year renewal. Counted so the matrix
-   *  footnote can say how many such splits are in the numbers. */
+  /** $54.74 bundles ($4.99 trial + $49.75 lifetime) inside the numbers. */
   lifetimeSplits: number
-  /** Annuals whose trial cohort predates the visible window (trial found only
-   *  in the owner's sheet, before MIRROR_START). Attributed to their real
-   *  cohort, which is off-screen — so they are excluded from every visible
-   *  column and disclosed in the footnote instead of polluting a recent week
-   *  that could not possibly have converted yet. */
+  /** Conversions whose trial cohort predates the visible window. Attributed to
+   *  their real (off-screen) cohort and disclosed, never shown under a recent
+   *  week that could not have produced them. */
   preWindowAnnuals: number
-  /** Emails of the quiz-earned trials from EXISTING customers (category B).
-   *  Part of the north star per the owner's 2026-08-10 definition. */
+  /** Emails of quiz-earned trials from EXISTING customers, for the north star. */
   quizExistingEmails: Set<string>
-  /** Net-new people with MORE than one $4.99 charge (the other direction of
-   *  the same people-vs-charges gap). */
+  /** People who bought a trial more than once (duplicate subscriptions). */
   quizRepeatTrials: number
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>() }
+  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>() }
+  if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
   })
 
-  // The mirror: real charges with exact cents. Filled by
-  // /api/admin/stripe-charges-sync (daily 06:20 + on demand). Empty mirror =
-  // five zero rows, never an inferred number.
-  const charges: { amount_cents: number; currency: string; charged_at: string; customer_id: string | null; email: string | null; customer_email: string | null; refunded: boolean }[] = []
-  for (let offset = 0; offset < 20_000; offset += 1000) {
+  // 1. The ledger: one row per trial, already classified by the database.
+  const ledger: LedgerRow[] = []
+  for (let o = 0; o < 20_000; o += 1000) {
+    const { data, error } = await c
+      .from('trial_ledger')
+      .select('charge_id, trial_at, trial_cents, trial_refunded, lifetime_bundle, attribution, quiz_completed_at, converted_at, converted_cents, converted_charge_id')
+      .order('trial_at')
+      .range(o, o + 999)
+    if (error || !data) break
+    ledger.push(...(data as LedgerRow[]))
+    if (data.length < 1000) break
+  }
+
+  // 2. Every charge, to derive "other revenue" as an EXACT residual: the
+  //    account total minus the charges the ledger already accounts for.
+  const charges: { id: string; amount_cents: number; charged_at: string; refunded: boolean }[] = []
+  for (let o = 0; o < 20_000; o += 1000) {
     const { data, error } = await c
       .from('stripe_charges')
-      .select('amount_cents, currency, charged_at, customer_id, email, customer_email, refunded')
+      .select('id, amount_cents, charged_at, refunded')
       .gte('charged_at', `${MIRROR_START_ISO}T00:00:00Z`)
-      // Chronological, so "the person's FIRST $4.99" below is deterministic.
-      .order('charged_at', { ascending: true })
-      .range(offset, offset + 999)
+      .order('charged_at')
+      .range(o, o + 999)
     if (error || !data) break
     charges.push(...(data as typeof charges))
     if (data.length < 1000) break
   }
 
-  // The owner's trials sheet, as the cohort source of last resort: it reaches
-  // a year back, far beyond the mirror, so an annual whose trial predates the
-  // mirror can still be attributed to its true trial week instead of falling
-  // back to its bill date (which reads as a fresh cohort converting weeks
-  // before it is due — the "$120 on Jul 29" bug the owner caught).
-  const sheetTrial = new Map<string, string>()
-  for (let offset = 0; offset < 5000; offset += 1000) {
-    const { data, error } = await c
-      .from('sheet_trials')
-      .select('email, trial_date')
-      .range(offset, offset + 999)
-    if (error || !data) break
-    for (const r of data as { email: string | null; trial_date: string | null }[]) {
-      const e = r.email?.trim().toLowerCase()
-      if (!e || !r.trial_date) continue
-      const prev = sheetTrial.get(e)
-      if (!prev || r.trial_date < prev) sheetTrial.set(e, r.trial_date)
-    }
-    if (data.length < 1000) break
-  }
-
-  // Who is who. netNew uses the same write-once quiz_completed_at rule as
-  // every other net-new number on this page.
-  type P = { netNew: boolean; quizAt: string | null; test: boolean; email: string | null }
-  const byCustomer = new Map<string, P>()
-  const byEmail = new Map<string, P>()
-  for (let offset = 0; offset < 20_000; offset += 1000) {
-    const { data, error } = await c
-      .from('submissions')
-      .select('email, quiz_completed_at, stripe_first_charge_at, stripe_customer_id, stripe_customer_ids, is_test')
-      .is('archived_at', null)
-      .range(offset, offset + 999)
-    if (error || !data) break
-    for (const r of data as { email: string | null; quiz_completed_at: string | null; stripe_first_charge_at: string | null; stripe_customer_id: string | null; stripe_customer_ids: unknown; is_test: boolean | null }[]) {
-      const e = r.email?.trim().toLowerCase() || null
-      const p: P = {
-        netNew: !!(r.quiz_completed_at && r.stripe_first_charge_at &&
-          new Date(r.stripe_first_charge_at).getTime() > new Date(r.quiz_completed_at).getTime()),
-        quizAt: r.quiz_completed_at,
-        test: r.is_test === true,
-        email: e,
-      }
-      if (r.stripe_customer_id) byCustomer.set(r.stripe_customer_id, p)
-      if (Array.isArray(r.stripe_customer_ids)) {
-        for (const id of r.stripe_customer_ids) if (typeof id === 'string') byCustomer.set(id, p)
-      }
-      if (e) {
-        const prev = byEmail.get(e)
-        // Prefer the row that actually took the quiz over a CRM-only sibling.
-        if (!prev || (!prev.quizAt && p.quizAt)) byEmail.set(e, p)
-      }
-    }
-    if (data.length < 1000) break
-  }
-
   const entries: { at: string; kind: RevKind; usd: number }[] = []
+  const quizExistingEmails = new Set<string>()
   let lifetimeSplits = 0
   let preWindowAnnuals = 0
-  /** Emails of category-B buyers: took the quiz, then bought a trial, but had
-   *  paid us before. They belong to the north star (the quiz earned the trial)
-   *  without being net-new customers, so the KPI layer needs them by name. */
-  const quizExistingEmails = new Set<string>()
-  /** Each person's trial COHORT anchor (quiz week for net-new, first-trial
-   *  charge date otherwise). Presence marks the trial as filed, so later
-   *  $4.99s are repeats — and the person's $59.75 restates to this anchor,
-   *  because "how much did that week's trials convert into" is the question
-   *  this matrix answers (owner call, 2026-08-10, the Gina case: trial Jul 10,
-   *  annual billed Aug 10, the money belongs to the Jul 10 cohort). */
-  const trialAnchor = new Map<P, string>()
-  // Per-person outcome, for the people-vs-charges reconciliation note. Keyed
-  // by the shared P object, which both lookup maps hold per submission row.
-  const outcome = new Map<P, { n499: number; other: number }>()
+  const accounted = new Set<string>()
+
+  for (const t of ledger) {
+    if (t.lifetime_bundle) lifetimeSplits++
+    // A quiz-earned trial restates to the week the person took the quiz; the
+    // cohort owns the sale. Everything else sits where it was charged.
+    const quizEarned = t.attribution === 'quiz_net_new' || t.attribution === 'quiz_existing'
+    const anchor = quizEarned && t.quiz_completed_at ? t.quiz_completed_at : t.trial_at
+
+    if (!t.trial_refunded) {
+      accounted.add(t.charge_id)
+      const usd = t.trial_cents / 100
+      if (t.attribution === 'quiz_net_new') entries.push({ at: anchor, kind: 'net', usd })
+      else if (t.attribution === 'quiz_existing') entries.push({ at: anchor, kind: 'quizExisting', usd })
+      else entries.push({ at: t.trial_at, kind: 'notQuiz', usd })
+    }
+
+    if (t.converted_at && t.converted_cents) {
+      if (t.converted_charge_id) accounted.add(t.converted_charge_id)
+      // A lifetime bundle is one charge doing two jobs: its trial half is
+      // already counted above, so only the $49.75 remainder lands here.
+      const usd = t.lifetime_bundle ? 49.75 : t.converted_cents / 100
+      if (anchor < `${MIRROR_START_ISO}T00:00:00Z`) preWindowAnnuals++
+      else entries.push({ at: anchor, kind: 'annual', usd })
+    }
+  }
+
+  // The residual. Anything the ledger did not account for is real money the
+  // three trial buckets cannot claim: legacy subscriptions, old annual prices,
+  // duplicate subscriptions.
   for (const ch of charges) {
-    if (ch.refunded) continue // returned money is not revenue
-    // Customer id first (most reliable), then either email the charge carries.
-    const person = (ch.customer_id && byCustomer.get(ch.customer_id))
-      || (ch.email && byEmail.get(ch.email))
-      || (ch.customer_email && byEmail.get(ch.customer_email))
-      || null
-    if (person?.test) continue
-    if (person) {
-      const o = outcome.get(person) || { n499: 0, other: 0 }
-      // A $54.74 lifetime bundle CONTAINS a paid trial, so it counts as one.
-      if (ch.currency === 'usd' && (ch.amount_cents === 499 || ch.amount_cents === 5474)) o.n499++
-      else o.other++
-      outcome.set(person, o)
-    }
-    const usd = ch.amount_cents / 100
-    const isUsd = ch.currency === 'usd'
-    if (isUsd && (ch.amount_cents === 499 || ch.amount_cents === 5474)) {
-      // $54.74 is ONE payment for TWO things — owner's pricing history, stated
-      // 2026-08-10: the $4.99 paid trial plus the $49.75 LIFETIME option (an
-      // upsell offered instead of the $59.75/year renewal). Split accordingly;
-      // the split preserves the total to the cent.
-      if (ch.amount_cents === 5474) {
-        lifetimeSplits++
-        entries.push({ at: ch.charged_at, kind: 'other', usd: 49.75 })
-      }
-      // ONE trial per person. Week Jul 20 taught this: 14 net-new people, 16
-      // trial charges, because two people subscribed twice minutes apart under
-      // two Stripe customers each. The extra $4.99s are real money but they
-      // are double-subscriptions, not second trials — they go to Other so the
-      // trials rows always reconcile with the people counts above them.
-      const repeat = person !== null && trialAnchor.has(person)
-      // Did the quiz earn this trial? The quiz must have been completed before
-      // the charge (one day of slack for people who take it late at night and
-      // pay after midnight). Separate question from whether they were already
-      // a customer, which is what netNew answers.
-      const quizEarnedIt = !!(person?.quizAt &&
-        Date.parse(person.quizAt) <= Date.parse(ch.charged_at) + 86_400_000)
-      if (repeat) {
-        entries.push({ at: ch.charged_at, kind: 'other', usd: 4.99 })
-      } else if (person?.netNew && person.quizAt) {
-        entries.push({ at: person.quizAt, kind: 'net', usd: 4.99 })
-        trialAnchor.set(person, person.quizAt)
-      } else if (quizEarnedIt && person?.quizAt) {
-        entries.push({ at: person.quizAt, kind: 'quizExisting', usd: 4.99 })
-        trialAnchor.set(person, person.quizAt)
-        if (person.email) quizExistingEmails.add(person.email)
-      } else {
-        entries.push({ at: ch.charged_at, kind: 'notQuiz', usd: 4.99 })
-        if (person) trialAnchor.set(person, ch.charged_at)
-      }
-    } else if (isUsd && ch.amount_cents === 5975) {
-      // COHORT clock: the annual restates to the week of the trial that
-      // earned it. Charges are processed chronologically and the annual bills
-      // ~a month after the trial, so the person's anchor is already recorded
-      // whenever their trial is inside the mirror. Fallback chain: quiz week
-      // for a net-new person, then the owner's SHEET (it reaches a year back),
-      // then — last resort — the charge date.
-      let anchor: string | null = null
-      if (person) {
-        const t = trialAnchor.get(person)
-        if (t) anchor = t
-        else if (person.netNew && person.quizAt) anchor = person.quizAt
-      }
-      if (!anchor) {
-        anchor = (ch.email && sheetTrial.get(ch.email)) || (person?.email && sheetTrial.get(person.email)) || null
-      }
-      if (anchor && anchor < MIRROR_START_ISO) {
-        // The trial cohort predates the visible window. Its money belongs to
-        // that (off-screen) cohort, so it must NOT appear in any visible
-        // column — a recent week showing conversions it could not have
-        // produced yet is exactly the bug this branch exists to prevent.
-        preWindowAnnuals++
-      } else {
-        entries.push({ at: anchor ?? ch.charged_at, kind: 'annual', usd })
-      }
-    } else {
-      // Legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD — real money
-      // the three named buckets cannot claim.
-      entries.push({ at: ch.charged_at, kind: 'other', usd })
-    }
+    if (ch.refunded) continue
+    if (accounted.has(ch.id)) continue
+    entries.push({ at: ch.charged_at, kind: 'other', usd: ch.amount_cents / 100 })
   }
-  let quizRepeatTrials = 0
-  for (const [p, o] of Array.from(outcome)) {
-    if (p.netNew && o.n499 > 1) quizRepeatTrials++
+
+  const seen = new Map<string, number>()
+  for (const t of ledger) {
+    if (!t.quiz_completed_at) continue
+    seen.set(t.charge_id, (seen.get(t.charge_id) || 0) + 1)
   }
+  // Emails for the north star: the ledger already says who is category B.
+  const { data: qe } = await c
+    .from('trial_ledger')
+    .select('person_key')
+    .eq('attribution', 'quiz_existing')
+    .limit(5000)
+  for (const r of (qe ?? []) as { person_key: string }[]) {
+    if (r.person_key?.includes('@')) quizExistingEmails.add(r.person_key)
+  }
+
+  // Duplicate subscriptions: people the ledger deduplicated away.
+  const { count: rawTrials } = await c
+    .from('stripe_charges')
+    .select('id', { count: 'exact', head: true })
+    .in('amount_cents', [399, 499, 5474])
+    .eq('refunded', false)
+  const quizRepeatTrials = Math.max(0, (rawTrials ?? 0) - ledger.length)
+
   return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails }
 }
 
