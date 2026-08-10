@@ -32,7 +32,12 @@ export interface BentoRow {
 export interface FunnelEventCounts { landing: number; started: number; checkout: number }
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
 export interface SeriesPoint {
-  bucket: string; views: number; starts: number; checkout: number; completed: number
+  bucket: string
+  /** Whether client instrumentation covered this period. The quiz launched
+   *  Jul 5 but the first funnel_event is Jul 9, so early buckets have no event
+   *  data — 'none' renders "–" rather than a lying 0. */
+  eventsCovered: 'none' | 'partial' | 'full'
+  views: number; starts: number; checkout: number; completed: number
   netNew: number
   /** First charges the quiz cannot claim, bucketed on CHARGE date. */
   otherPaid: number
@@ -237,7 +242,17 @@ function labelBucket(b: string, gran: Gran): string {
   if (!b) return ''
   if (gran === 'month') { const p = b.split('-'); return `${MONTHS[(+p[1] || 1) - 1]} '${p[0].slice(2)}` }
   const [, m, d] = b.split('-').map(Number)
-  return `${MONTHS[(m || 1) - 1]} ${d}`
+  const start = `${MONTHS[(m || 1) - 1]} ${d}`
+  // A week column covers seven days, so it is labelled with both ends. Naming
+  // only the Monday made "Jun 29" look like a day that predates launch, when
+  // it is the week Jul 5 launched inside (owner, 2026-08-10).
+  if (gran === 'week') {
+    const e = new Date(`${b}T00:00:00Z`)
+    e.setUTCDate(e.getUTCDate() + 6)
+    const em = e.getUTCMonth(), ed = e.getUTCDate()
+    return `${start} - ${em === (m || 1) - 1 ? ed : `${MONTHS[em]} ${ed}`}`
+  }
+  return start
 }
 const STEP_TABS: (Gran | 'all')[] = ['day', 'week', 'month', 'all']
 const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', month: 'M', all: 'All' }
@@ -380,19 +395,33 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       {stations.map(s => {
         const ns = buckets.map(p => s.pick(p))
         const max = Math.max(...ns, 1)
+        // Landing / started / checkout come from client events. Before Jul 9
+        // there are none, so those cells must read "–" (not measured) rather
+        // than 0 (measured as nobody) — the distinction the owner needed when
+        // the launch-week column looked empty.
+        const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Checkout clicked'
         const base = s.warm ? '98,167,88' : '4,107,177' // asparagus for paid, azul for the rest
         return (
           <div key={s.label}>
             <div className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: s.out ? 'none' : `1px solid ${ROWHAIR}` }}>
               <span className="flex items-center truncate" style={{ padding: '9px 8px 9px 0', fontSize: 10.5, fontWeight: 700, color: INK }}>{s.label}</span>
               <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 0', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
-              {ns.map((n, i) => (
-                <span key={buckets[i].bucket} className="flex items-center justify-center"
-                  title={`${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`}
-                  style={{ padding: '9px 2px', margin: 1, fontSize: 9.5, fontWeight: 700, color: INK, background: `rgba(${base},${(0.05 + (n / max) * 0.42).toFixed(2)})`, ...tnum }}>
-                  {compact(n)}
-                </span>
-              ))}
+              {ns.map((n, i) => {
+                const cov = buckets[i].eventsCovered
+                const blind = fromEvents && cov === 'none'
+                const thin = fromEvents && cov === 'partial'
+                return (
+                  <span key={buckets[i].bucket} className="flex items-center justify-center"
+                    title={
+                      blind ? `${labelBucket(buckets[i].bucket, gran as Gran)} · not measured — client tracking only started 9 Jul, four days after launch`
+                      : thin ? `${labelBucket(buckets[i].bucket, gran as Gran)} · ${fmt(n)}, UNDERSTATED — tracking started mid-period (9 Jul)`
+                      : `${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`
+                    }
+                    style={{ padding: '9px 2px', margin: 1, fontSize: 9.5, fontWeight: 700, color: blind ? MUTE : INK, background: blind ? 'transparent' : `rgba(${base},${(0.05 + (n / max) * 0.42).toFixed(2)})`, ...tnum }}>
+                    {blind ? '–' : thin ? `${compact(n)}*` : compact(n)}
+                  </span>
+                )
+              })}
             </div>
 
             {/* The step OUT of this station, sitting between the two counts it
@@ -407,11 +436,16 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 <span style={{ padding: '5px 8px 6px 0', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', ...tnum }}>
                   {pctDisp(s.out.all)}
                 </span>
-                {buckets.map(p => (
-                  <span key={p.bucket} style={{ padding: '5px 4px 6px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#6B6B6B', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                    {pctDisp(s.out!.per(p))}
-                  </span>
-                ))}
+                {buckets.map(p => {
+                  // A rate whose numerator or denominator was never measured
+                  // is not a rate. Blank it rather than print a fiction.
+                  const dead = p.eventsCovered !== 'full' && (fromEvents || s.label === 'Quiz completed' || s.label === 'Checkout clicked')
+                  return (
+                    <span key={p.bucket} title={dead ? 'not measurable — client tracking started 9 Jul' : undefined} style={{ padding: '5px 4px 6px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#6B6B6B', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                      {dead ? '–' : pctDisp(s.out!.per(p))}
+                    </span>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -475,6 +509,14 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             must never display conversions it could not have produced yet.</>
           )}
           {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic.
+        </div>
+      )}
+      {buckets.some(p => p.eventsCovered !== 'full') && (
+        <div style={{ fontSize: 10, color: '#6B6B6B', marginTop: 8, lineHeight: 1.55, maxWidth: 760 }}>
+          <strong style={{ color: INK }}>&ldquo;–&rdquo; means not measured, not zero.</strong> Client tracking started 9 Jul, four days
+          after launch, so landing views, quiz starts and checkout clicks do not exist before then. Completions and paid
+          come from the database and are complete throughout. A * marks a period where tracking started partway through,
+          so those counts are real but understated.
         </div>
       )}
       <div style={{ fontSize: 9.5, color: MUTE, marginTop: 6 }}>

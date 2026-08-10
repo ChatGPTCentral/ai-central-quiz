@@ -26,6 +26,18 @@ function bucketKey(iso: string, gran: Gran): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** The day AFTER a bucket's last day, as YYYY-MM-DD — the bucket's exclusive
+ *  end. Used to decide whether instrumentation existed for that period. */
+function bucketEnd(bucket: string, gran: Gran): string {
+  if (gran === 'month') {
+    const [y, m] = bucket.split('-').map(Number)
+    return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
+  }
+  const d = new Date(`${bucket}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + (gran === 'week' ? 7 : 1))
+  return d.toISOString().slice(0, 10)
+}
+
 type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; checkout: number }>>
 
 /** Placement counts as they come off the events read, before the sales join.
@@ -35,11 +47,11 @@ type RawPlacement = { placement: string; views: number; clicks: number; clickerI
 
 // Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
 // by day / week / month so the progression charts can toggle granularity.
-async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets }> {
+async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
-  const empty = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets }
+  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -100,9 +112,20 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
     if (data.length < PAGE) { truncated = false; break }
   }
   if (truncated) console.warn(`[dashboard] event read hit the ${MAX_EVENTS} ceiling — funnel counts are UNDERSTATED and the newest events are missing`)
+  // When client instrumentation actually started. The quiz launched Jul 5 but
+  // the first funnel_event is Jul 9, so the first days have NO event data at
+  // all. Printing 0 there reads as "nobody visited", which is false and made
+  // the launch-week column look broken. Buckets are marked instead.
+  let firstEventAt: string | null = null
+  for (const g of GRANS) {
+    for (const [bucket] of Array.from(ev[g])) {
+      if (g === 'day' && (!firstEventAt || bucket < firstEventAt)) firstEventAt = bucket
+    }
+  }
   const eventBuckets: EventBuckets = { day: {}, week: {}, month: {} }
   for (const g of GRANS) for (const [bucket, s] of Array.from(ev[g])) eventBuckets[g][bucket] = { views: s.views.size, starts: s.starts.size, checkout: s.checkout.size }
   return {
+    firstEventAt,
     funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size },
     placements: Array.from(pl.entries())
       .map(([placement, s]) => ({ placement, views: s.views.size, clicks: s.clicks.size, clickerIds: Array.from(s.buyers) }))
@@ -316,7 +339,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets }
+  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -454,6 +477,16 @@ export default async function DashboardPage({
     const cap = gran === 'day' ? 21 : gran === 'week' ? 12 : 12
     return keys.slice(-cap).map(bucket => ({
       bucket,
+      // Did client instrumentation cover this bucket? 'none' = it did not
+      // exist yet (render "–", never 0), 'partial' = it started mid-bucket so
+      // views/starts/clicks are real but understated.
+      eventsCovered: !events.firstEventAt
+        ? 'none' as const
+        : bucketEnd(bucket, gran) <= events.firstEventAt
+          ? 'none' as const
+          : bucket < events.firstEventAt && gran !== 'day'
+            ? 'partial' as const
+            : 'full' as const,
       views: evb[bucket]?.views || 0,
       starts: evb[bucket]?.starts || 0,
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
