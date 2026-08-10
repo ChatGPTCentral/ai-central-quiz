@@ -379,6 +379,28 @@ export default async function DashboardPage({
   const isUncertain = (v?: string | null) => !v || v.toLowerCase() === 'uncertain'
   const cleanUtm = (s?: string) => (s || '').trim() || null
 
+  // LOAD ORDER IS LOAD-BEARING: the row projection below reads
+  // rev.quizExistingEmails inside a .map callback that runs synchronously, so
+  // `rev` must already be initialised. When this sat BELOW the projection the
+  // dashboard threw a temporal-dead-zone ReferenceError in production
+  // (2026-08-10, digest 1002650819) — and tsc could not see it, because a
+  // const referenced through a closure looks legitimate to the type checker.
+  //
+  // The matrix's five revenue rows AND the "Not from the quiz" count, all from
+  // ONE classification pass over REAL charges in the stripe_charges mirror.
+  //
+  // The count used to come from a separate submissions-based query while the
+  // revenue came from the mirror, and on 2026-08-10 the two visibly disagreed
+  // (3 people vs 5 charges in one week): the submissions path could not see
+  // Stripe-only buyers or re-trialing old customers, and it counted people at
+  // their FIRST-EVER charge while the mirror counts trials. One pass, one
+  // truth: the count row is now exactly the notQuiz first-trial entries, so
+  // count × $4.99 equals the revenue row by construction.
+  const rev = await revenueCharges()
+  const notQuizTrialEntries = rev.entries.filter(e => e.kind === 'notQuiz')
+  const quizExistingEntries = rev.entries.filter(e => e.kind === 'quizExisting')
+
+
   // One projection per person.
   //
   // Net-new keys on quiz_completed_at, which is write-once and trigger-
@@ -413,20 +435,6 @@ export default async function DashboardPage({
       quizTrial,
     }
   })
-
-  // The matrix's five revenue rows AND the "Not from the quiz" count, all from
-  // ONE classification pass over REAL charges in the stripe_charges mirror.
-  //
-  // The count used to come from a separate submissions-based query while the
-  // revenue came from the mirror, and on 2026-08-10 the two visibly disagreed
-  // (3 people vs 5 charges in one week): the submissions path could not see
-  // Stripe-only buyers or re-trialing old customers, and it counted people at
-  // their FIRST-EVER charge while the mirror counts trials. One pass, one
-  // truth: the count row is now exactly the notQuiz first-trial entries, so
-  // count × $4.99 equals the revenue row by construction.
-  const rev = await revenueCharges()
-  const notQuizTrialEntries = rev.entries.filter(e => e.kind === 'notQuiz')
-  const quizExistingEntries = rev.entries.filter(e => e.kind === 'quizExisting')
 
   // "Which CTA gets clicked" becomes "which CTA gets PAID".
   // A click rate on its own has already misled us once: the click-quality
