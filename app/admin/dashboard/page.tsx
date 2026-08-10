@@ -151,17 +151,18 @@ type RevKind = 'net' | 'notQuiz' | 'annual' | 'other'
 async function revenueCharges(): Promise<{
   entries: { at: string; kind: RevKind; usd: number }[]
   mirrored: number
-  /** Net-new quiz buyers with NO $4.99 at all — they bought the year upfront
-   *  in one $54.74 charge via the beehiiv upgrade page. Counted so the matrix
-   *  can explain why Net-new paid × $4.99 ≠ trials revenue. */
-  quizDirectAnnual: number
+  /** $54.74 charges split per the owner's pricing history (2026-08-10): that
+   *  amount is one payment for $4.99 paid trial + $49.75 LIFETIME option, an
+   *  upsell offered instead of the $59.75/year renewal. Counted so the matrix
+   *  footnote can say how many such splits are in the numbers. */
+  lifetimeSplits: number
   /** Net-new people with MORE than one $4.99 charge (the other direction of
    *  the same people-vs-charges gap). */
   quizRepeatTrials: number
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { entries: [], mirrored: 0, quizDirectAnnual: 0, quizRepeatTrials: 0 }
+  if (!url || !key) return { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0 }
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
@@ -216,6 +217,7 @@ async function revenueCharges(): Promise<{
   }
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
+  let lifetimeSplits = 0
   // Per-person outcome, for the people-vs-charges reconciliation note. Keyed
   // by the shared P object, which both lookup maps hold per submission row.
   const outcome = new Map<P, { n499: number; other: number }>()
@@ -225,32 +227,44 @@ async function revenueCharges(): Promise<{
     if (person?.test) continue
     if (person) {
       const o = outcome.get(person) || { n499: 0, other: 0 }
-      if (ch.currency === 'usd' && ch.amount_cents === 499) o.n499++
+      // A $54.74 lifetime bundle CONTAINS a paid trial, so it counts as one.
+      if (ch.currency === 'usd' && (ch.amount_cents === 499 || ch.amount_cents === 5474)) o.n499++
       else o.other++
       outcome.set(person, o)
     }
     const usd = ch.amount_cents / 100
     const isUsd = ch.currency === 'usd'
-    if (isUsd && ch.amount_cents === 499 && person?.netNew && person.quizAt) {
+    if (isUsd && ch.amount_cents === 5474) {
+      // Owner's pricing history, stated 2026-08-10: $54.74 is ONE payment for
+      // TWO things — the $4.99 paid trial plus the $49.75 LIFETIME option (an
+      // upsell offered instead of the $59.75/year renewal). So the charge is
+      // split: the trial component goes to the trials row for that person
+      // (quiz clock if the quiz earned them), the lifetime component is Other
+      // Revenue. The split preserves the total to the cent.
+      lifetimeSplits++
+      if (person?.netNew && person.quizAt) {
+        entries.push({ at: person.quizAt, kind: 'net', usd: 4.99 })
+      } else {
+        entries.push({ at: ch.charged_at, kind: 'notQuiz', usd: 4.99 })
+      }
+      entries.push({ at: ch.charged_at, kind: 'other', usd: 49.75 })
+    } else if (isUsd && ch.amount_cents === 499 && person?.netNew && person.quizAt) {
       entries.push({ at: person.quizAt, kind: 'net', usd })
     } else if (isUsd && ch.amount_cents === 499) {
       entries.push({ at: ch.charged_at, kind: 'notQuiz', usd })
     } else if (isUsd && ch.amount_cents === 5975) {
       entries.push({ at: ch.charged_at, kind: 'annual', usd })
     } else {
-      // Legacy $39.75 annuals, odd amounts, non-USD — real money the three
-      // named buckets cannot claim.
+      // Legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD — real money
+      // the three named buckets cannot claim.
       entries.push({ at: ch.charged_at, kind: 'other', usd })
     }
   }
-  let quizDirectAnnual = 0
   let quizRepeatTrials = 0
   for (const [p, o] of Array.from(outcome)) {
-    if (!p.netNew) continue
-    if (o.n499 === 0 && o.other > 0) quizDirectAnnual++
-    if (o.n499 > 1) quizRepeatTrials++
+    if (p.netNew && o.n499 > 1) quizRepeatTrials++
   }
-  return { entries, mirrored: charges.length, quizDirectAnnual, quizRepeatTrials }
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials }
 }
 
 export default async function DashboardPage({
@@ -439,7 +453,7 @@ export default async function DashboardPage({
       funnelEvents={events.funnel}
       placements={placements}
       otherPaid={other.count}
-      quizDirectAnnual={rev.quizDirectAnnual}
+      lifetimeSplits={rev.lifetimeSplits}
       quizRepeatTrials={rev.quizRepeatTrials}
       series={series}
       exportHref={exportHref}

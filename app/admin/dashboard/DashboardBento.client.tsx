@@ -248,10 +248,10 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  row reads as that station's trend. Two rate rows close it out: result-page
  *  CVR (paid ÷ completed — the north star) and full-funnel CVR (paid ÷ landing).
  *  `all` collapses to the single whole-window column. */
-function VolumeMatrix({ series, gran, F, quizDirectAnnual, quizRepeatTrials }: {
+function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
   series: Series; gran: Gran | 'all'
   F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number }
-  quizDirectAnnual: number
+  lifetimeSplits: number
   quizRepeatTrials: number
 }) {
   const buckets = gran === 'all' ? [] : series[gran]
@@ -325,12 +325,12 @@ function VolumeMatrix({ series, gran, F, quizDirectAnnual, quizRepeatTrials }: {
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
       label: 'Quiz New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: '$4.99 trials bought from the quiz (net-new people), by QUIZ date',
+      sub: '$4.99 trials bought from the quiz (net-new people), by QUIZ date. Includes the $4.99 inside $54.74 lifetime bundles.',
       all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
     },
     {
       label: 'Other New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: '$4.99 trials the quiz cannot claim, by CHARGE date',
+      sub: '$4.99 trials the quiz cannot claim, by CHARGE date. Includes the $4.99 inside $54.74 lifetime bundles.',
       all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
     },
     {
@@ -341,7 +341,7 @@ function VolumeMatrix({ series, gran, F, quizDirectAnnual, quizRepeatTrials }: {
     {
       // heavy = the break line the owner asked for between row 4 and All revenue.
       label: 'Other Revenue', money: true, heavy: true,
-      sub: 'anything else: legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD, by CHARGE date',
+      sub: '$49.75 lifetime options (from $54.74 bundles), legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD, by CHARGE date',
       all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther,
     },
     {
@@ -453,17 +453,17 @@ function VolumeMatrix({ series, gran, F, quizDirectAnnual, quizRepeatTrials }: {
 
       {/* The people-vs-charges reconciliation, stated where the confusion
           happens. On 2026-08-10 the owner saw Net-new paid 8 against 6×$4.99
-          and correctly refused to trust it; the gap was real people buying a
-          different product, and that must be readable here, not in a chat. */}
-      {(quizDirectAnnual > 0 || quizRepeatTrials > 0) && (
+          and correctly refused to trust it; the ledger must explain itself
+          here, not in a chat. */}
+      {(lifetimeSplits > 0 || quizRepeatTrials > 0) && (
         <div style={{ fontSize: 10, color: '#6B6B6B', marginTop: 10, lineHeight: 1.55, maxWidth: 760 }}>
-          <strong style={{ color: INK }}>Why Net-new paid × $4.99 can differ from Quiz New Trials Revenue:</strong>{' '}
-          the count row counts people, the revenue rows count charges.
-          {quizDirectAnnual > 0 && (
-            <> {quizDirectAnnual} quiz buyer{quizDirectAnnual === 1 ? '' : 's'} skipped the $4.99 and bought the year
-            upfront in one $54.74 charge via the beehiiv upgrade page — that money sits in Other Revenue.</>
+          <strong style={{ color: INK }}>How the trials rows reconcile:</strong>{' '}
+          {lifetimeSplits > 0 && (
+            <> {lifetimeSplits} charge{lifetimeSplits === 1 ? '' : 's'} of $54.74 (the LIFETIME upsell: $4.99 paid trial
+            + $49.75 lifetime option instead of the $59.75/year renewal) {lifetimeSplits === 1 ? 'is' : 'are'} split
+            accordingly — the $4.99 sits in the trials row, the $49.75 in Other Revenue.</>
           )}
-          {quizRepeatTrials > 0 && <> {quizRepeatTrials} bought the $4.99 more than once.</>}
+          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person' : 'people'} bought the $4.99 more than once, so charge sums can exceed people counts.</>}
           {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic.
         </div>
       )}
@@ -474,13 +474,13 @@ function VolumeMatrix({ series, gran, F, quizDirectAnnual, quizRepeatTrials }: {
   )
 }
 
-export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, quizDirectAnnual, quizRepeatTrials }: {
+export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, lifetimeSplits, quizRepeatTrials }: {
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; series: Series; pct: boolean
   /** First-ever Stripe charges since launch the quiz cannot claim. Feeds the
    *  "Not from the quiz" station in the volume matrix. */
   otherPaid: number
   /** People-vs-charges reconciliation facts, rendered under the matrix. */
-  quizDirectAnnual: number
+  lifetimeSplits: number
   quizRepeatTrials: number
 }) {
   const [stageFilter, setStageFilter] = useState<string | null>(null)
@@ -650,7 +650,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             </div>
           </div>
           {hasSeries
-            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} quizDirectAnnual={quizDirectAnnual} quizRepeatTrials={quizRepeatTrials} /></div>
+            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} lifetimeSplits={lifetimeSplits} quizRepeatTrials={quizRepeatTrials} /></div>
             : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 
