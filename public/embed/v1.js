@@ -18,6 +18,12 @@
  * Embed types: popup · slider · standard · fullscreen
  * Listens for postMessage from the iframe for dynamic resize + auto-close
  * on form submission.
+ *
+ * CONTRACT NOTICE (2026-08-10): an exported copy of this file lives in the
+ * owner's separate widgets project. The URL params, message shapes and
+ * headers this file relies on are frozen as v1 — see docs/embed-protocol.md
+ * before changing anything here or in the quiz's embed-mode code. Breaking
+ * changes ship as a new v2.js.
  */
 (() => {
   'use strict'
