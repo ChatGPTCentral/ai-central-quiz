@@ -17,6 +17,10 @@
       "schedule": "30 6 * * *"
     },
     {
+      "path": "/api/admin/stripe-charges-sync",
+      "schedule": "20 6 * * *"
+    },
+    {
       "path": "/api/admin/posthog-sync",
       "schedule": "45 6 * * *"
     },

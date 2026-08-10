@@ -38,6 +38,13 @@ export interface SeriesPoint {
   otherPaid: number
   /** Money from this cohort's net-new buyers, bucketed on QUIZ date. */
   revenue: number
+  /** The revenue split, from REAL Stripe charges (stripe_charges mirror).
+   *  net = $4.99 trials from net-new people, on the QUIZ-date clock (the
+   *  cohort owns the sale). The other three sit on the CHARGE-date clock. */
+  revenueNet: number
+  revenueNotQuiz: number
+  revenueAnnual: number
+  revenueOther: number
   /** Net-new buyers whose annual bill date has actually passed. */
   matureTrials: number
   /** Of those, how many were really billed the annual. */
@@ -302,15 +309,39 @@ function VolumeMatrix({ series, gran, F }: {
   // would drag every recent column to zero and make the row worthless.
   const matureAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.matureTrials, 0)
   const billedAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.billedAnnual, 0)
-  const rateRows = [
+  // The revenue split rows sum REAL Stripe charges from the mirror, not the
+  // per-person LTV aggregate the old single Revenue row used. Each row names
+  // its clock, because two adjacent rows on unstated different clocks is
+  // exactly what produced the "24 vs 23" confusion.
+  const sumOf = (f: (p: SeriesPoint) => number) => buckets.reduce((a: number, p: SeriesPoint) => a + f(p), 0)
+  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
+  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string }[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
-      label: 'Revenue',
-      all: buckets.reduce((a: number, p: SeriesPoint) => a + p.revenue, 0),
-      per: (p: SeriesPoint) => p.revenue,
-      heavy: false,
-      money: true,
+      label: 'Net revenue', money: true, heavy: false,
+      sub: '$4.99 trials from net-new people, by QUIZ date',
+      all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
+    },
+    {
+      label: 'Not-quiz revenue', money: true, heavy: false,
+      sub: '$4.99 charges the quiz cannot claim, by CHARGE date',
+      all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
+    },
+    {
+      label: 'Annual revenue', money: true, heavy: false,
+      sub: '$59.75 yearly bills (trials maturing), by CHARGE date',
+      all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
+    },
+    {
+      label: 'Other revenue', money: true, heavy: false,
+      sub: 'everything else: legacy $39.75 annuals, odd amounts, non-USD, by CHARGE date',
+      all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther,
+    },
+    {
+      label: 'All revenue', money: true, heavy: true,
+      sub: 'the four rows above, every dollar Stripe collected minus refunds',
+      all: sumOf(revAll), per: revAll,
     },
     {
       label: 'Trial → annual',
@@ -389,6 +420,11 @@ function VolumeMatrix({ series, gran, F }: {
               {rr.label === 'Trial → annual' && (
                 <span title={`Only counts the ${matureAll} trials whose annual bill date has already passed. A trial from last week is not due yet, so counting it would drag the column to zero.`} style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0 }}>
                   · {matureAll} due
+                </span>
+              )}
+              {rr.sub && (
+                <span title={rr.sub} style={{ marginLeft: 5, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0, cursor: 'help' }}>
+                  ⓘ
                 </span>
               )}
             </span>

@@ -141,6 +141,92 @@ async function nonQuizCharges(): Promise<{ count: number; revenue: number; charg
   return { count, revenue, charges }
 }
 
+/** One classified entry per real Stripe charge since launch, for the matrix
+ *  revenue split. `at` already carries the RIGHT clock for its kind:
+ *  net $4.99s restate at the person's quiz date (the cohort owns the sale,
+ *  same rule as the Net-new paid row), everything else sits at charge date
+ *  (those people have no quiz date, and an annual is cash the day it bills). */
+type RevKind = 'net' | 'notQuiz' | 'annual' | 'other'
+
+async function revenueCharges(): Promise<{ entries: { at: string; kind: RevKind; usd: number }[]; mirrored: number }> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return { entries: [], mirrored: 0 }
+  const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
+
+  // The mirror: real charges with exact cents. Filled by
+  // /api/admin/stripe-charges-sync (daily 06:20 + on demand). Empty mirror =
+  // five zero rows, never an inferred number.
+  const charges: { amount_cents: number; currency: string; charged_at: string; customer_id: string | null; email: string | null; refunded: boolean }[] = []
+  for (let offset = 0; offset < 20_000; offset += 1000) {
+    const { data, error } = await c
+      .from('stripe_charges')
+      .select('amount_cents, currency, charged_at, customer_id, email, refunded')
+      .gte('charged_at', `${LAUNCH_ISO}T00:00:00Z`)
+      .range(offset, offset + 999)
+    if (error || !data) break
+    charges.push(...(data as typeof charges))
+    if (data.length < 1000) break
+  }
+
+  // Who is who. netNew uses the same write-once quiz_completed_at rule as
+  // every other net-new number on this page.
+  type P = { netNew: boolean; quizAt: string | null; test: boolean }
+  const byCustomer = new Map<string, P>()
+  const byEmail = new Map<string, P>()
+  for (let offset = 0; offset < 20_000; offset += 1000) {
+    const { data, error } = await c
+      .from('submissions')
+      .select('email, quiz_completed_at, stripe_first_charge_at, stripe_customer_id, stripe_customer_ids, is_test')
+      .is('archived_at', null)
+      .range(offset, offset + 999)
+    if (error || !data) break
+    for (const r of data as { email: string | null; quiz_completed_at: string | null; stripe_first_charge_at: string | null; stripe_customer_id: string | null; stripe_customer_ids: unknown; is_test: boolean | null }[]) {
+      const p: P = {
+        netNew: !!(r.quiz_completed_at && r.stripe_first_charge_at &&
+          new Date(r.stripe_first_charge_at).getTime() > new Date(r.quiz_completed_at).getTime()),
+        quizAt: r.quiz_completed_at,
+        test: r.is_test === true,
+      }
+      if (r.stripe_customer_id) byCustomer.set(r.stripe_customer_id, p)
+      if (Array.isArray(r.stripe_customer_ids)) {
+        for (const id of r.stripe_customer_ids) if (typeof id === 'string') byCustomer.set(id, p)
+      }
+      const e = r.email?.trim().toLowerCase()
+      if (e) {
+        const prev = byEmail.get(e)
+        // Prefer the row that actually took the quiz over a CRM-only sibling.
+        if (!prev || (!prev.quizAt && p.quizAt)) byEmail.set(e, p)
+      }
+    }
+    if (data.length < 1000) break
+  }
+
+  const entries: { at: string; kind: RevKind; usd: number }[] = []
+  for (const ch of charges) {
+    if (ch.refunded) continue // returned money is not revenue
+    const person = (ch.customer_id && byCustomer.get(ch.customer_id)) || (ch.email && byEmail.get(ch.email)) || null
+    if (person?.test) continue
+    const usd = ch.amount_cents / 100
+    const isUsd = ch.currency === 'usd'
+    if (isUsd && ch.amount_cents === 499 && person?.netNew && person.quizAt) {
+      entries.push({ at: person.quizAt, kind: 'net', usd })
+    } else if (isUsd && ch.amount_cents === 499) {
+      entries.push({ at: ch.charged_at, kind: 'notQuiz', usd })
+    } else if (isUsd && ch.amount_cents === 5975) {
+      entries.push({ at: ch.charged_at, kind: 'annual', usd })
+    } else {
+      // Legacy $39.75 annuals, odd amounts, non-USD — real money the three
+      // named buckets cannot claim.
+      entries.push({ at: ch.charged_at, kind: 'other', usd })
+    }
+  }
+  return { entries, mirrored: charges.length }
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -202,6 +288,10 @@ export default async function DashboardPage({
   // scoped to source='quiz_v2', so by construction it can never contain the
   // Stripe-created rows this row exists to count.
   const other = await nonQuizCharges()
+
+  // The matrix's five revenue rows, computed over REAL charges from the
+  // stripe_charges mirror rather than per-person LTV aggregates.
+  const rev = await revenueCharges()
 
   // "Which CTA gets clicked" becomes "which CTA gets PAID".
   // A click rate on its own has already misled us once: the click-quality
@@ -273,8 +363,19 @@ export default async function DashboardPage({
       otherByBucket.set(b, (otherByBucket.get(b) || 0) + 1)
     }
 
+    // The revenue split, each entry already carrying its own clock (see
+    // revenueCharges). Kind names match the SeriesPoint field suffixes.
+    const revByBucket = new Map<string, { net: number; notQuiz: number; annual: number; other: number }>()
+    for (const e of rev.entries) {
+      const b = bucketKey(e.at, gran)
+      if (!b || b < launchBucket) continue
+      const r = revByBucket.get(b) || { net: 0, notQuiz: 0, annual: 0, other: 0 }
+      r[e.kind] += e.usd
+      revByBucket.set(b, r)
+    }
+
     const evb = events.eventBuckets[gran]
-    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Array.from(otherByBucket.keys())]))
+    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Array.from(otherByBucket.keys()), ...Array.from(revByBucket.keys())]))
       .filter(k => k >= launchBucket).sort()
     const cap = gran === 'day' ? 21 : gran === 'week' ? 12 : 12
     return keys.slice(-cap).map(bucket => ({
@@ -286,6 +387,10 @@ export default async function DashboardPage({
       netNew: subs.get(bucket)?.netNew || 0,       // paid, bucketed on quiz_completed_at
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
       revenue: subs.get(bucket)?.revenue || 0,
+      revenueNet: revByBucket.get(bucket)?.net || 0,
+      revenueNotQuiz: revByBucket.get(bucket)?.notQuiz || 0,
+      revenueAnnual: revByBucket.get(bucket)?.annual || 0,
+      revenueOther: revByBucket.get(bucket)?.other || 0,
       matureTrials: subs.get(bucket)?.mature || 0,
       billedAnnual: subs.get(bucket)?.billedAnnual || 0,
       partial: bucket === nowBucket,
