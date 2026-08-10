@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { LTV_DEFAULTS, ltvFrom, type LtvModel } from '@/lib/ltv-model'
-import CashflowChart, { type CashflowPoint } from '@/components/admin/CashflowChart.client'
+import CashflowChart, { type CashPoint } from '@/components/admin/CashflowChart.client'
 
 const INK = '#333333'
 const RICH = '#1A1A1A'
@@ -32,13 +32,18 @@ export default function LtvModelPanel({
   measuredYear1,
   measuredDue,
   trialsPerMonth,
+  points,
+  cashflowError,
 }: {
-  /** The observed trial→annual rate, so the assumption can be judged. */
+  /** Trial→yearly rate from the owner's SHEET, mature months only. */
   measuredYear1: number | null
   /** How many mature trials that rate rests on. */
   measuredDue: number
-  /** Recent monthly trial volume, for the cashflow projection. */
+  /** Trials a month, recent average, used for the forecast. */
   trialsPerMonth: number
+  /** Actual months from the sheet, then the projection. */
+  points: CashPoint[]
+  cashflowError?: string
 }) {
   const [model, setModel] = useState<LtvModel>(LTV_DEFAULTS)
   const [loaded, setLoaded] = useState(false)
@@ -69,21 +74,6 @@ export default function LtvModelPanel({
     } catch { /* leave the form as-is; nothing destructive happened */ }
     finally { setSaving(false) }
   }
-
-  // 12 months of cash at today's trial run rate. Each month's cohort pays its
-  // trial that month, then its annual a month later, which is why the curve
-  // steps up from month 2 rather than starting flat.
-  const months: CashflowPoint[] = useMemo(() => {
-    const out: CashflowPoint[] = []
-    for (let m = 0; m < 12; m++) {
-      out.push({
-        m,
-        trial: trialsPerMonth * model.trialUsd,
-        annual: m >= 1 ? trialsPerMonth * model.year1Pct * model.annualUsd : 0,
-      })
-    }
-    return out
-  }, [trialsPerMonth, model])
 
   const field = (label: string, value: number, onChange: (n: number) => void, suffix: string, hint: string) => (
     <label style={{ display: 'block' }}>
@@ -148,12 +138,23 @@ export default function LtvModelPanel({
         </p>
 
         <div style={{ borderTop: `1px solid #E8E2D4`, paddingTop: 16 }}>
-          <CashflowChart points={months} />
-          <p style={{ fontSize: 11, color: MUTE, marginTop: 8, lineHeight: 1.5 }}>
-            Assumes {trialsPerMonth.toLocaleString()} trials a month, today&apos;s run rate, held flat.
-            Renewals use the year-1 rate above; the year-2 renewal falls outside this window and shows
-            up in LTV rather than in the chart.
-          </p>
+          {cashflowError ? (
+            <p style={{ fontSize: 12.5, color: '#BE3B3B', lineHeight: 1.5 }}>
+              Cashflow unavailable: {cashflowError}
+            </p>
+          ) : (
+            <>
+              <CashflowChart points={points} />
+              <p style={{ fontSize: 11, color: MUTE, marginTop: 8, lineHeight: 1.5 }}>
+                Actuals come from your trials sheet, synced daily. The forecast holds trials at{' '}
+                <strong style={{ color: RICH }}>{trialsPerMonth.toLocaleString()} a month</strong> (recent average) and
+                converts them at the rate the MATURE months actually show, not at the assumption above, so the
+                projection is anchored on what happened rather than on what we hope. The last two months are
+                faded because a trial bills its annual a month later, so they are still filling in and always
+                look weak.
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>

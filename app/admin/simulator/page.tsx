@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { LAUNCH_ISO } from '@/lib/dashboard-queries'
 import Simulator from './Simulator.client'
 import LtvModelPanel from '@/components/admin/LtvModelPanel.client'
+import { getCashflow } from '@/lib/cashflow'
+import { readLtvModel } from '@/lib/ltv-settings'
 
 // Revenue simulator — the live funnel as the baseline, then drag each step rate
 // to see what it is worth.
@@ -120,32 +122,16 @@ async function loadBaseline(): Promise<Baseline> {
 export default async function SimulatorPage() {
   const baseline = await loadBaseline()
 
-  // Recent trial run rate for the cashflow projection. Uses the baseline's own
-  // window so the chart and the simulator below it cannot disagree about how
-  // fast we are selling.
-  const trialsPerMonth = baseline.days > 0
-    ? Math.round((baseline.paid / baseline.days) * 30)
-    : 0
-
-  // The measured year-1 rate, so the assumption can be judged against the only
-  // evidence we have rather than set in the dark.
-  let measuredYear1: number | null = null
-  let measuredDue = 0
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-    if (url && key) {
-      const c = createClient(url, key, {
-        auth: { persistSession: false, autoRefreshToken: false },
-        global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
-      })
-      const { data } = await c.rpc('trial_to_annual_rate')
-      if (data && data.length) {
-        measuredYear1 = data[0].rate != null ? Number(data[0].rate) : null
-        measuredDue = Number(data[0].due) || 0
-      }
-    }
-  } catch { /* the panel handles nulls and says so */ }
+  // Actuals from the owner's sheet, then the forecast. The sheet is the source
+  // of truth for trials sold and it reports 54.3% of 694 converting to yearly,
+  // against 37% from our Stripe-derived RPC and a 66.7% measured on twelve. It
+  // wins on sample size and because it is reconciled against invoices.
+  const ltv = await readLtvModel()
+  const cash = await getCashflow({
+    trialUsd: ltv.trialUsd,
+    annualUsd: ltv.annualUsd,
+    year1Pct: ltv.year1Pct,
+  })
 
   return (
     <div className="p-8 max-w-[1400px]">
@@ -157,9 +143,11 @@ export default async function SimulatorPage() {
         </p>
       </div>
       <LtvModelPanel
-        measuredYear1={measuredYear1}
-        measuredDue={measuredDue}
-        trialsPerMonth={trialsPerMonth}
+        measuredYear1={cash.maturedRate}
+        measuredDue={cash.maturedTrials}
+        trialsPerMonth={cash.runRate}
+        points={cash.points}
+        cashflowError={cash.error}
       />
       <Simulator baseline={baseline} />
     </div>
