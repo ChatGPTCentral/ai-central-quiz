@@ -39,14 +39,18 @@ export interface SeriesPoint {
   eventsCovered: 'none' | 'partial' | 'full'
   views: number; starts: number; checkout: number; completed: number
   netNew: number
-  /** First charges the quiz cannot claim, bucketed on CHARGE date. */
+  /** Trials the quiz cannot claim at all, bucketed on CHARGE date. */
   otherPaid: number
+  /** Trials the quiz DID earn from people who had paid us before, so they are
+   *  not net-new customers. Bucketed on QUIZ date, like net-new. */
+  quizExistingPaid: number
   /** Money from this cohort's net-new buyers, bucketed on QUIZ date. */
   revenue: number
   /** The revenue split, from REAL Stripe charges (stripe_charges mirror).
    *  net = $4.99 trials from net-new people, on the QUIZ-date clock (the
    *  cohort owns the sale). The other three sit on the CHARGE-date clock. */
   revenueNet: number
+  revenueQuizExisting: number
   revenueNotQuiz: number
   revenueAnnual: number
   revenueOther: number
@@ -265,7 +269,7 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  `all` collapses to the single whole-window column. */
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
-  F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number }
+  F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number }
   lifetimeSplits: number
   quizRepeatTrials: number
   preWindowAnnuals: number
@@ -310,11 +314,16 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
       out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
     },
-    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true, note: 'by QUIZ date, so a late converter restates the week they took it' },
+    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true, note: 'THE NORTH STAR: took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
+    // The middle category, added after the owner reconciled July against his
+    // Stripe export: these people DID buy through the quiz, they just were not
+    // new customers. Filing them under "not from the quiz" understated the
+    // quiz and overstated the noise.
+    { label: 'Quiz, existing customer', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: F.quizExistingPaid, warm: true, note: 'took the quiz and then bought the trial, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
     // Not a funnel station: it never passes through the quiz. Kept adjacent
     // anyway, because the only way to know whether a good week was the QUIZ or
     // just a good week in Stripe is to see the two side by side.
-    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'trials ($4.99 people) the quiz cannot claim, one per person, by CHARGE date. Same classification as the revenue row below, so count × $4.99 always equals it.' },
+    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'never took the quiz, or took it only after paying. One per person, by CHARGE date. Same classification as the revenue row below, so count × $4.99 always equals it.' },
   ]
 
   // 156px station label (wide enough for "Quiz New Trials Revenue") ·
@@ -336,7 +345,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // its clock, because two adjacent rows on unstated different clocks is
   // exactly what produced the "24 vs 23" confusion.
   const sumOf = (f: (p: SeriesPoint) => number) => buckets.reduce((a: number, p: SeriesPoint) => a + f(p), 0)
-  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
+  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
   // `unit` = the single price a row is made of; it powers the hover arithmetic
   // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
   const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string; unit?: number }[] = [
@@ -348,8 +357,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
     },
     {
+      label: 'Quiz Existing Trials Revenue', money: true, heavy: false, unit: 4.99,
+      sub: 'ONE $4.99 trial per person who took the quiz and then bought, but had paid us before — quiz-earned, not a new customer. By QUIZ date.',
+      all: sumOf(p => p.revenueQuizExisting), per: (p: SeriesPoint) => p.revenueQuizExisting,
+    },
+    {
       label: 'Other New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: 'ONE $4.99 trial per person the quiz cannot claim, by CHARGE date. Includes the $4.99 inside $54.74 lifetime bundles; repeats sit in Other Revenue.',
+      sub: 'ONE $4.99 trial per person who never took the quiz (or took it after paying), by CHARGE date. Includes the $4.99 inside $54.74 lifetime bundles; repeats sit in Other Revenue.',
       all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
     },
     {
@@ -526,11 +540,12 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   )
 }
 
-export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
+export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, quizExistingPaid, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; series: Series; pct: boolean
   /** First-ever Stripe charges since launch the quiz cannot claim. Feeds the
    *  "Not from the quiz" station in the volume matrix. */
   otherPaid: number
+  quizExistingPaid: number
   /** People-vs-charges reconciliation facts, rendered under the matrix. */
   lifetimeSplits: number
   quizRepeatTrials: number
@@ -587,7 +602,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   //    count; paid is net-new. Completed + paid come from the SAME rows as every
   //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
-  const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew, otherPaid }
+  const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew, otherPaid, quizExistingPaid }
   const fullFunnelCvr = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
   const hasSeries = series.week.length > 0 || series.day.length > 0
 

@@ -139,7 +139,16 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
  *  net $4.99s restate at the person's quiz date (the cohort owns the sale,
  *  same rule as the Net-new paid row), everything else sits at charge date
  *  (those people have no quiz date, and an annual is cash the day it bills). */
-type RevKind = 'net' | 'notQuiz' | 'annual' | 'other'
+// 'net'         — took the quiz, then bought, and had NEVER paid us before.
+//                 The north star. Quiz clock.
+// 'quizExisting'— took the quiz, then bought the trial, but had paid us at
+//                 some earlier point. The quiz earned the trial; it did not
+//                 earn a new customer. Quiz clock. Added 2026-08-10 after the
+//                 owner reconciled July against his Stripe export: 7 of the 44
+//                 trials filed as "not from the quiz" were people who took the
+//                 quiz the same day they bought.
+// 'notQuiz'     — never took the quiz, or took it only after paying. Charge clock.
+type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annual' | 'other'
 
 async function revenueCharges(): Promise<{
   entries: { at: string; kind: RevKind; usd: number }[]
@@ -280,11 +289,20 @@ async function revenueCharges(): Promise<{
       // are double-subscriptions, not second trials — they go to Other so the
       // trials rows always reconcile with the people counts above them.
       const repeat = person !== null && trialAnchor.has(person)
+      // Did the quiz earn this trial? The quiz must have been completed before
+      // the charge (one day of slack for people who take it late at night and
+      // pay after midnight). Separate question from whether they were already
+      // a customer, which is what netNew answers.
+      const quizEarnedIt = !!(person?.quizAt &&
+        Date.parse(person.quizAt) <= Date.parse(ch.charged_at) + 86_400_000)
       if (repeat) {
         entries.push({ at: ch.charged_at, kind: 'other', usd: 4.99 })
       } else if (person?.netNew && person.quizAt) {
         entries.push({ at: person.quizAt, kind: 'net', usd: 4.99 })
-        if (person) trialAnchor.set(person, person.quizAt)
+        trialAnchor.set(person, person.quizAt)
+      } else if (quizEarnedIt && person?.quizAt) {
+        entries.push({ at: person.quizAt, kind: 'quizExisting', usd: 4.99 })
+        trialAnchor.set(person, person.quizAt)
       } else {
         entries.push({ at: ch.charged_at, kind: 'notQuiz', usd: 4.99 })
         if (person) trialAnchor.set(person, ch.charged_at)
@@ -389,6 +407,7 @@ export default async function DashboardPage({
   // count × $4.99 equals the revenue row by construction.
   const rev = await revenueCharges()
   const notQuizTrialEntries = rev.entries.filter(e => e.kind === 'notQuiz')
+  const quizExistingEntries = rev.entries.filter(e => e.kind === 'quizExisting')
 
   // "Which CTA gets clicked" becomes "which CTA gets PAID".
   // A click rate on its own has already misled us once: the click-quality
@@ -459,20 +478,26 @@ export default async function DashboardPage({
       if (!b || b < launchBucket) continue
       otherByBucket.set(b, (otherByBucket.get(b) || 0) + 1)
     }
+    const quizExistingByBucket = new Map<string, number>()
+    for (const e of quizExistingEntries) {
+      const b = bucketKey(e.at, gran)
+      if (!b || b < launchBucket) continue
+      quizExistingByBucket.set(b, (quizExistingByBucket.get(b) || 0) + 1)
+    }
 
     // The revenue split, each entry already carrying its own clock (see
     // revenueCharges). Kind names match the SeriesPoint field suffixes.
-    const revByBucket = new Map<string, { net: number; notQuiz: number; annual: number; other: number }>()
+    const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annual: number; other: number }>()
     for (const e of rev.entries) {
       const b = bucketKey(e.at, gran)
       if (!b || b < launchBucket) continue
-      const r = revByBucket.get(b) || { net: 0, notQuiz: 0, annual: 0, other: 0 }
+      const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annual: 0, other: 0 }
       r[e.kind] += e.usd
       revByBucket.set(b, r)
     }
 
     const evb = events.eventBuckets[gran]
-    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Array.from(otherByBucket.keys()), ...Array.from(revByBucket.keys())]))
+    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Array.from(otherByBucket.keys()), ...Array.from(quizExistingByBucket.keys()), ...Array.from(revByBucket.keys())]))
       .filter(k => k >= launchBucket).sort()
     const cap = gran === 'day' ? 21 : gran === 'week' ? 12 : 12
     return keys.slice(-cap).map(bucket => ({
@@ -493,8 +518,10 @@ export default async function DashboardPage({
       checkout: evb[bucket]?.checkout || 0,
       netNew: subs.get(bucket)?.netNew || 0,       // paid, bucketed on quiz_completed_at
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
+      quizExistingPaid: quizExistingByBucket.get(bucket) || 0,
       revenue: subs.get(bucket)?.revenue || 0,
       revenueNet: revByBucket.get(bucket)?.net || 0,
+      revenueQuizExisting: revByBucket.get(bucket)?.quizExisting || 0,
       revenueNotQuiz: revByBucket.get(bucket)?.notQuiz || 0,
       revenueAnnual: revByBucket.get(bucket)?.annual || 0,
       revenueOther: revByBucket.get(bucket)?.other || 0,
@@ -520,6 +547,7 @@ export default async function DashboardPage({
       funnelEvents={events.funnel}
       placements={placements}
       otherPaid={notQuizTrialEntries.length}
+      quizExistingPaid={quizExistingEntries.length}
       lifetimeSplits={rev.lifetimeSplits}
       quizRepeatTrials={rev.quizRepeatTrials}
       preWindowAnnuals={rev.preWindowAnnuals}
