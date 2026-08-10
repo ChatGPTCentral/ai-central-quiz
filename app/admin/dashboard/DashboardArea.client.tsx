@@ -9,10 +9,12 @@ import DashboardBento, { type BentoRow, type FunnelEventCounts, type PlacementSt
 // eats a full-width strip at the top — it drops down from a button next to Export.
 export default function DashboardArea({
   rows, sample, funnelEvents, placements, series, exportHref, launchLabel, rangeLabel, searchParamsStr, error,
-  otherPaid,
+  otherPaid, quizDirectAnnual, quizRepeatTrials,
 }: {
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]
   otherPaid: number
+  /** People-vs-charges reconciliation facts for the matrix footnote. */
+  quizDirectAnnual: number; quizRepeatTrials: number
   series: Series; exportHref: string; launchLabel: string; rangeLabel: string; searchParamsStr: string; error: string | null
 }) {
   const [pct, setPct] = useState(true)
@@ -72,7 +74,7 @@ export default function DashboardArea({
       )}
 
       <div style={{ padding: '0 36px 44px' }}>
-        <DashboardBento rows={rows} sample={sample} funnelEvents={funnelEvents} placements={placements} series={series} pct={pct} otherPaid={otherPaid} />
+        <DashboardBento rows={rows} sample={sample} funnelEvents={funnelEvents} placements={placements} series={series} pct={pct} otherPaid={otherPaid} quizDirectAnnual={quizDirectAnnual} quizRepeatTrials={quizRepeatTrials} />
       </div>
     </div>
   )

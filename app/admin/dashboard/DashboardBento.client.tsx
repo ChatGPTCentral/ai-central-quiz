@@ -248,9 +248,11 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  row reads as that station's trend. Two rate rows close it out: result-page
  *  CVR (paid ÷ completed — the north star) and full-funnel CVR (paid ÷ landing).
  *  `all` collapses to the single whole-window column. */
-function VolumeMatrix({ series, gran, F }: {
+function VolumeMatrix({ series, gran, F, quizDirectAnnual, quizRepeatTrials }: {
   series: Series; gran: Gran | 'all'
   F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number }
+  quizDirectAnnual: number
+  quizRepeatTrials: number
 }) {
   const buckets = gran === 'all' ? [] : series[gran]
   const fmt = (n: number) => n.toLocaleString()
@@ -316,21 +318,23 @@ function VolumeMatrix({ series, gran, F }: {
   // exactly what produced the "24 vs 23" confusion.
   const sumOf = (f: (p: SeriesPoint) => number) => buckets.reduce((a: number, p: SeriesPoint) => a + f(p), 0)
   const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
-  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string }[] = [
+  // `unit` = the single price a row is made of; it powers the hover arithmetic
+  // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
+  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string; unit?: number }[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
-      label: 'Quiz New Trials Revenue', money: true, heavy: false,
+      label: 'Quiz New Trials Revenue', money: true, heavy: false, unit: 4.99,
       sub: '$4.99 trials bought from the quiz (net-new people), by QUIZ date',
       all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
     },
     {
-      label: 'Other New Trials Revenue', money: true, heavy: false,
+      label: 'Other New Trials Revenue', money: true, heavy: false, unit: 4.99,
       sub: '$4.99 trials the quiz cannot claim, by CHARGE date',
       all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
     },
     {
-      label: 'Converted Trials Revenue', money: true, heavy: false,
+      label: 'Converted Trials Revenue', money: true, heavy: false, unit: 59.75,
       sub: '$59.75 bills from trials converting to the annual, quiz and non-quiz, by CHARGE date',
       all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
     },
@@ -414,7 +418,12 @@ function VolumeMatrix({ series, gran, F }: {
           `Trial → annual` counts ONLY trials whose bill date has passed. */}
       {rateRows.map(rr => {
         const money = 'money' in rr && rr.money === true
-        const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        // To the cent, always. "$30" for $29.94 is what made the owner
+        // (rightly) distrust the whole row on 2026-08-10.
+        const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        // The hover arithmetic: single-price rows show count × price, so a
+        // cell can be reconciled against Stripe and the count rows by eye.
+        const arith = (v: number) => (rr.unit ? `${Math.round(v / rr.unit)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}` : `$${v.toFixed(2)}`)
         return (
           <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
             <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
@@ -430,11 +439,11 @@ function VolumeMatrix({ series, gran, F }: {
                 </span>
               )}
             </span>
-            <span style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
+            <span title={money ? arith(rr.all) : undefined} style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
               {money ? usd(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
             </span>
             {buckets.map(p => (
-              <span key={p.bucket} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+              <span key={p.bucket} title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arith(rr.per(p))}` : undefined} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
                 {money ? usd(rr.per(p)) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(rr.per(p)))}
               </span>
             ))}
@@ -442,18 +451,37 @@ function VolumeMatrix({ series, gran, F }: {
         )
       })}
 
-      <div style={{ fontSize: 9.5, color: MUTE, marginTop: 10 }}>
+      {/* The people-vs-charges reconciliation, stated where the confusion
+          happens. On 2026-08-10 the owner saw Net-new paid 8 against 6×$4.99
+          and correctly refused to trust it; the gap was real people buying a
+          different product, and that must be readable here, not in a chat. */}
+      {(quizDirectAnnual > 0 || quizRepeatTrials > 0) && (
+        <div style={{ fontSize: 10, color: '#6B6B6B', marginTop: 10, lineHeight: 1.55, maxWidth: 760 }}>
+          <strong style={{ color: INK }}>Why Net-new paid × $4.99 can differ from Quiz New Trials Revenue:</strong>{' '}
+          the count row counts people, the revenue rows count charges.
+          {quizDirectAnnual > 0 && (
+            <> {quizDirectAnnual} quiz buyer{quizDirectAnnual === 1 ? '' : 's'} skipped the $4.99 and bought the year
+            upfront in one $54.74 charge via the beehiiv upgrade page — that money sits in Other Revenue.</>
+          )}
+          {quizRepeatTrials > 0 && <> {quizRepeatTrials} bought the $4.99 more than once.</>}
+          {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic.
+        </div>
+      )}
+      <div style={{ fontSize: 9.5, color: MUTE, marginTop: 6 }}>
         cell tint = count relative to that station&apos;s best period · hover a cell for the exact count
       </div>
     </div>
   )
 }
 
-export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid }: {
+export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, quizDirectAnnual, quizRepeatTrials }: {
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; series: Series; pct: boolean
   /** First-ever Stripe charges since launch the quiz cannot claim. Feeds the
    *  "Not from the quiz" station in the volume matrix. */
   otherPaid: number
+  /** People-vs-charges reconciliation facts, rendered under the matrix. */
+  quizDirectAnnual: number
+  quizRepeatTrials: number
 }) {
   const [stageFilter, setStageFilter] = useState<string | null>(null)
   const [trendGran, setTrendGran] = useState<Gran | 'all'>('week') // shared across all step rows
@@ -622,7 +650,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             </div>
           </div>
           {hasSeries
-            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} /></div>
+            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} quizDirectAnnual={quizDirectAnnual} quizRepeatTrials={quizRepeatTrials} /></div>
             : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 

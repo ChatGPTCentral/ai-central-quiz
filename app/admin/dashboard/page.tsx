@@ -148,7 +148,17 @@ async function nonQuizCharges(): Promise<{ count: number; revenue: number; charg
  *  (those people have no quiz date, and an annual is cash the day it bills). */
 type RevKind = 'net' | 'notQuiz' | 'annual' | 'other'
 
-async function revenueCharges(): Promise<{ entries: { at: string; kind: RevKind; usd: number }[]; mirrored: number }> {
+async function revenueCharges(): Promise<{
+  entries: { at: string; kind: RevKind; usd: number }[]
+  mirrored: number
+  /** Net-new quiz buyers with NO $4.99 at all — they bought the year upfront
+   *  in one $54.74 charge via the beehiiv upgrade page. Counted so the matrix
+   *  can explain why Net-new paid × $4.99 ≠ trials revenue. */
+  quizDirectAnnual: number
+  /** Net-new people with MORE than one $4.99 charge (the other direction of
+   *  the same people-vs-charges gap). */
+  quizRepeatTrials: number
+}> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   if (!url || !key) return { entries: [], mirrored: 0 }
@@ -206,10 +216,19 @@ async function revenueCharges(): Promise<{ entries: { at: string; kind: RevKind;
   }
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
+  // Per-person outcome, for the people-vs-charges reconciliation note. Keyed
+  // by the shared P object, which both lookup maps hold per submission row.
+  const outcome = new Map<P, { n499: number; other: number }>()
   for (const ch of charges) {
     if (ch.refunded) continue // returned money is not revenue
     const person = (ch.customer_id && byCustomer.get(ch.customer_id)) || (ch.email && byEmail.get(ch.email)) || null
     if (person?.test) continue
+    if (person) {
+      const o = outcome.get(person) || { n499: 0, other: 0 }
+      if (ch.currency === 'usd' && ch.amount_cents === 499) o.n499++
+      else o.other++
+      outcome.set(person, o)
+    }
     const usd = ch.amount_cents / 100
     const isUsd = ch.currency === 'usd'
     if (isUsd && ch.amount_cents === 499 && person?.netNew && person.quizAt) {
@@ -224,7 +243,14 @@ async function revenueCharges(): Promise<{ entries: { at: string; kind: RevKind;
       entries.push({ at: ch.charged_at, kind: 'other', usd })
     }
   }
-  return { entries, mirrored: charges.length }
+  let quizDirectAnnual = 0
+  let quizRepeatTrials = 0
+  for (const [p, o] of Array.from(outcome)) {
+    if (!p.netNew) continue
+    if (o.n499 === 0 && o.other > 0) quizDirectAnnual++
+    if (o.n499 > 1) quizRepeatTrials++
+  }
+  return { entries, mirrored: charges.length, quizDirectAnnual, quizRepeatTrials }
 }
 
 export default async function DashboardPage({
@@ -413,6 +439,8 @@ export default async function DashboardPage({
       funnelEvents={events.funnel}
       placements={placements}
       otherPaid={other.count}
+      quizDirectAnnual={rev.quizDirectAnnual}
+      quizRepeatTrials={rev.quizRepeatTrials}
       series={series}
       exportHref={exportHref}
       launchLabel={LAUNCH_LABEL}
