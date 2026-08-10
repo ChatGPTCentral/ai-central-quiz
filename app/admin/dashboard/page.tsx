@@ -161,7 +161,7 @@ async function revenueCharges(): Promise<{
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { entries: [], mirrored: 0 }
+  if (!url || !key) return { entries: [], mirrored: 0, quizDirectAnnual: 0, quizRepeatTrials: 0 }
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
