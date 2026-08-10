@@ -1,3 +1,9 @@
+> **SUPERSEDED 2026-08-09 by `docs/sunday-review.md`.**
+> Kept for the scheduling notes only. Its funnel definitions are WRONG now:
+> it keys net-new on `staged_at`, which enrichment re-stamps, and predates
+> `quiz_completed_at`, the sheet sync, and PostHog. Do not follow the prompt
+> below without re-reading the definitions table in the new doc.
+
 # Weekly conversion-optimization routine (Claude scheduled task)
 
 The bandit cron reallocates traffic automatically every day. This routine is
