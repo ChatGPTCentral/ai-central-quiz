@@ -248,11 +248,12 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  row reads as that station's trend. Two rate rows close it out: result-page
  *  CVR (paid ÷ completed — the north star) and full-funnel CVR (paid ÷ landing).
  *  `all` collapses to the single whole-window column. */
-function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
+function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
   F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number }
   lifetimeSplits: number
   quizRepeatTrials: number
+  preWindowAnnuals: number
 }) {
   const buckets = gran === 'all' ? [] : series[gran]
   const fmt = (n: number) => n.toLocaleString()
@@ -302,8 +303,11 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
   ]
 
   // 156px station label (wide enough for "Quiz New Trials Revenue") ·
-  // 104px all-window total · one 1fr per period
-  const grid = `156px 104px${buckets.length ? ` repeat(${buckets.length}, 1fr)` : ''}`
+  // 104px all-window total · one column per period with a FLOOR: bare 1fr
+  // shrinks 21 day columns to unreadable slivers that never overflow, so the
+  // scroll container had nothing to scroll. minmax gives day view a real
+  // width and the wrapper's overflow-x takes over.
+  const grid = `156px 104px${buckets.length ? ` repeat(${buckets.length}, minmax(46px, 1fr))` : ''}`
 
   const rpAll = F.completed > 0 ? (F.paid / F.completed) * 100 : 0
   const ffAll = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
@@ -456,7 +460,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
           happens. On 2026-08-10 the owner saw Net-new paid 8 against 6×$4.99
           and correctly refused to trust it; the ledger must explain itself
           here, not in a chat. */}
-      {(lifetimeSplits > 0 || quizRepeatTrials > 0) && (
+      {(lifetimeSplits > 0 || quizRepeatTrials > 0 || preWindowAnnuals > 0) && (
         <div style={{ fontSize: 10, color: '#6B6B6B', marginTop: 10, lineHeight: 1.55, maxWidth: 760 }}>
           <strong style={{ color: INK }}>How the trials rows reconcile:</strong>{' '}
           {lifetimeSplits > 0 && (
@@ -465,6 +469,11 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
             accordingly — the $4.99 sits in the trials row, the $49.75 in Other Revenue.</>
           )}
           {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person' : 'people'} subscribed twice — only their FIRST $4.99 counts as a trial here, the extras sit in Other Revenue, so trials revenue always equals people × $4.99.</>}
+          {preWindowAnnuals > 0 && (
+            <> {preWindowAnnuals} × $59.75 (${(preWindowAnnuals * 59.75).toLocaleString(undefined, { maximumFractionDigits: 0 })}) belong
+            to trial cohorts OLDER than this window (found via the trials sheet) and are not shown in any column — a recent week
+            must never display conversions it could not have produced yet.</>
+          )}
           {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic.
         </div>
       )}
@@ -475,7 +484,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
   )
 }
 
-export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, lifetimeSplits, quizRepeatTrials }: {
+export default function DashboardBento({ rows, sample, funnelEvents, placements, series, pct, otherPaid, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]; series: Series; pct: boolean
   /** First-ever Stripe charges since launch the quiz cannot claim. Feeds the
    *  "Not from the quiz" station in the volume matrix. */
@@ -483,6 +492,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   /** People-vs-charges reconciliation facts, rendered under the matrix. */
   lifetimeSplits: number
   quizRepeatTrials: number
+  preWindowAnnuals: number
 }) {
   const [stageFilter, setStageFilter] = useState<string | null>(null)
   const [trendGran, setTrendGran] = useState<Gran | 'all'>('week') // shared across all step rows
@@ -651,7 +661,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             </div>
           </div>
           {hasSeries
-            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} lifetimeSplits={lifetimeSplits} quizRepeatTrials={quizRepeatTrials} /></div>
+            ? <div className="ac-scrollx"><VolumeMatrix series={series} gran={trendGran} F={F} lifetimeSplits={lifetimeSplits} quizRepeatTrials={quizRepeatTrials} preWindowAnnuals={preWindowAnnuals} /></div>
             : <p style={{ padding: '16px 20px', fontSize: 12, color: MUTE }}>No time-series data in this window yet.</p>}
         </div>
 

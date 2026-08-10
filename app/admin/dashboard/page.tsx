@@ -126,13 +126,19 @@ async function revenueCharges(): Promise<{
    *  upsell offered instead of the $59.75/year renewal. Counted so the matrix
    *  footnote can say how many such splits are in the numbers. */
   lifetimeSplits: number
+  /** Annuals whose trial cohort predates the visible window (trial found only
+   *  in the owner's sheet, before MIRROR_START). Attributed to their real
+   *  cohort, which is off-screen — so they are excluded from every visible
+   *  column and disclosed in the footnote instead of polluting a recent week
+   *  that could not possibly have converted yet. */
+  preWindowAnnuals: number
   /** Net-new people with MORE than one $4.99 charge (the other direction of
    *  the same people-vs-charges gap). */
   quizRepeatTrials: number
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0 }
+  if (!url || !key) return { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0 }
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
@@ -155,9 +161,30 @@ async function revenueCharges(): Promise<{
     if (data.length < 1000) break
   }
 
+  // The owner's trials sheet, as the cohort source of last resort: it reaches
+  // a year back, far beyond the mirror, so an annual whose trial predates the
+  // mirror can still be attributed to its true trial week instead of falling
+  // back to its bill date (which reads as a fresh cohort converting weeks
+  // before it is due — the "$120 on Jul 29" bug the owner caught).
+  const sheetTrial = new Map<string, string>()
+  for (let offset = 0; offset < 5000; offset += 1000) {
+    const { data, error } = await c
+      .from('sheet_trials')
+      .select('email, trial_date')
+      .range(offset, offset + 999)
+    if (error || !data) break
+    for (const r of data as { email: string | null; trial_date: string | null }[]) {
+      const e = r.email?.trim().toLowerCase()
+      if (!e || !r.trial_date) continue
+      const prev = sheetTrial.get(e)
+      if (!prev || r.trial_date < prev) sheetTrial.set(e, r.trial_date)
+    }
+    if (data.length < 1000) break
+  }
+
   // Who is who. netNew uses the same write-once quiz_completed_at rule as
   // every other net-new number on this page.
-  type P = { netNew: boolean; quizAt: string | null; test: boolean }
+  type P = { netNew: boolean; quizAt: string | null; test: boolean; email: string | null }
   const byCustomer = new Map<string, P>()
   const byEmail = new Map<string, P>()
   for (let offset = 0; offset < 20_000; offset += 1000) {
@@ -168,17 +195,18 @@ async function revenueCharges(): Promise<{
       .range(offset, offset + 999)
     if (error || !data) break
     for (const r of data as { email: string | null; quiz_completed_at: string | null; stripe_first_charge_at: string | null; stripe_customer_id: string | null; stripe_customer_ids: unknown; is_test: boolean | null }[]) {
+      const e = r.email?.trim().toLowerCase() || null
       const p: P = {
         netNew: !!(r.quiz_completed_at && r.stripe_first_charge_at &&
           new Date(r.stripe_first_charge_at).getTime() > new Date(r.quiz_completed_at).getTime()),
         quizAt: r.quiz_completed_at,
         test: r.is_test === true,
+        email: e,
       }
       if (r.stripe_customer_id) byCustomer.set(r.stripe_customer_id, p)
       if (Array.isArray(r.stripe_customer_ids)) {
         for (const id of r.stripe_customer_ids) if (typeof id === 'string') byCustomer.set(id, p)
       }
-      const e = r.email?.trim().toLowerCase()
       if (e) {
         const prev = byEmail.get(e)
         // Prefer the row that actually took the quiz over a CRM-only sibling.
@@ -190,6 +218,7 @@ async function revenueCharges(): Promise<{
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
   let lifetimeSplits = 0
+  let preWindowAnnuals = 0
   /** Each person's trial COHORT anchor (quiz week for net-new, first-trial
    *  charge date otherwise). Presence marks the trial as filed, so later
    *  $4.99s are repeats — and the person's $59.75 restates to this anchor,
@@ -241,16 +270,27 @@ async function revenueCharges(): Promise<{
       // COHORT clock: the annual restates to the week of the trial that
       // earned it. Charges are processed chronologically and the annual bills
       // ~a month after the trial, so the person's anchor is already recorded
-      // whenever their trial is inside the mirror. Fallbacks: quiz week for a
-      // net-new person whose trial predates the mirror, charge date when the
-      // person (or their trial) cannot be linked at all.
-      let anchor = ch.charged_at
+      // whenever their trial is inside the mirror. Fallback chain: quiz week
+      // for a net-new person, then the owner's SHEET (it reaches a year back),
+      // then — last resort — the charge date.
+      let anchor: string | null = null
       if (person) {
         const t = trialAnchor.get(person)
         if (t) anchor = t
         else if (person.netNew && person.quizAt) anchor = person.quizAt
       }
-      entries.push({ at: anchor, kind: 'annual', usd })
+      if (!anchor) {
+        anchor = (ch.email && sheetTrial.get(ch.email)) || (person?.email && sheetTrial.get(person.email)) || null
+      }
+      if (anchor && anchor < MIRROR_START_ISO) {
+        // The trial cohort predates the visible window. Its money belongs to
+        // that (off-screen) cohort, so it must NOT appear in any visible
+        // column — a recent week showing conversions it could not have
+        // produced yet is exactly the bug this branch exists to prevent.
+        preWindowAnnuals++
+      } else {
+        entries.push({ at: anchor ?? ch.charged_at, kind: 'annual', usd })
+      }
     } else {
       // Legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD — real money
       // the three named buckets cannot claim.
@@ -261,7 +301,7 @@ async function revenueCharges(): Promise<{
   for (const [p, o] of Array.from(outcome)) {
     if (p.netNew && o.n499 > 1) quizRepeatTrials++
   }
-  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials }
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }
 }
 
 export default async function DashboardPage({
@@ -449,6 +489,7 @@ export default async function DashboardPage({
       otherPaid={notQuizTrialEntries.length}
       lifetimeSplits={rev.lifetimeSplits}
       quizRepeatTrials={rev.quizRepeatTrials}
+      preWindowAnnuals={rev.preWindowAnnuals}
       series={series}
       exportHref={exportHref}
       launchLabel={LAUNCH_LABEL}
