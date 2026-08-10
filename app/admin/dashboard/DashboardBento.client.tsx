@@ -27,7 +27,12 @@ export interface BentoRow {
   utmQuiz: string | null
   utmNewsletter: string | null
   ltv: number
+  /** No Stripe charge EVER before the quiz, then bought. A new customer. */
   netNew: boolean
+  /** THE NORTH STAR (owner, 2026-08-10): the quiz produced a trial from this
+   *  person, whether they were new to us or an existing customer buying
+   *  another trial. netNew is a strict subset. */
+  quizTrial: boolean
 }
 export interface FunnelEventCounts { landing: number; started: number; checkout: number }
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
@@ -576,7 +581,10 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   // ── KPIs (owner's order) ──
   const takers = slice.length
   const netNewPeople = slice.filter(r => r.netNew)
-  const cvr = takers > 0 ? (netNewPeople.length / takers) * 100 : 0
+  // THE NORTH STAR: trials the quiz produced, new customers AND existing ones
+  // buying another trial (owner's definition, 2026-08-10).
+  const quizTrialPeople = slice.filter(r => r.quizTrial)
+  const cvr = takers > 0 ? (quizTrialPeople.length / takers) * 100 : 0
   const quizRevenue = netNewPeople.reduce((a, b) => a + b.ltv, 0)
 
   // ── Breakdowns on the slice ──
@@ -690,8 +698,8 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
           {[
             { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected stage' : 'unique people, one shared cohort', dark: false },
             { label: 'Full-funnel CVR', v: `${fullFunnelCvr.toFixed(2)}%`, hint: `net-new ÷ ${F.landing.toLocaleString()} landing views`, dark: false },
-            { label: 'Result-page CVR', v: `${cvr.toFixed(1)}%`, hint: `net-new ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
-            { label: 'Net-new paid', v: netNewPeople.length.toLocaleString(), hint: 'first-ever charge AFTER their quiz', dark: false },
+            { label: 'Quiz → trial CVR', v: `${cvr.toFixed(1)}%`, hint: `quiz-earned trials ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
+            { label: 'Quiz-earned trials', v: quizTrialPeople.length.toLocaleString(), hint: `${netNewPeople.length} new customers + ${quizTrialPeople.length - netNewPeople.length} existing buying another trial`, dark: false },
             { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: 'sum of payments from net-new people', dark: false },
             { label: 'ARPU', v: takers > 0 ? `$${(quizRevenue / takers).toFixed(2)}` : '–', hint: `quiz revenue ÷ ${takers.toLocaleString()} quiz takers`, dark: false },
           ].map((k, i) => (

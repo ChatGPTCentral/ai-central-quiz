@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
     charged_at: string
     customer_id: string | null
     email: string | null
+    customer_email: string | null
     refunded: boolean
     description: string | null
     synced_at: string
@@ -74,9 +75,14 @@ export async function GET(req: NextRequest) {
   // hit, the sync is INCOMPLETE and says so in the response rather than
   // quietly serving a truncated mirror.
   while (pages < 50) {
+    // Expand the customer: the CHARGE's billing email and the CUSTOMER's email
+    // are frequently different (one Aug 7 sale bills as angiesmucker@… while
+    // the Stripe customer is admin@nexusbusinesssolutions.net), and attribution
+    // matches on email, so storing only one of them loses people.
     const page = await stripe.charges.list({
       created: { gte: sinceEpoch },
       limit: 100,
+      expand: ['data.customer'],
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     })
     pages++
@@ -89,6 +95,9 @@ export async function GET(req: NextRequest) {
         charged_at: new Date(ch.created * 1000).toISOString(),
         customer_id: typeof ch.customer === 'string' ? ch.customer : ch.customer?.id ?? null,
         email: (ch.billing_details?.email || ch.receipt_email || null)?.toLowerCase() ?? null,
+        customer_email: (typeof ch.customer === 'object' && ch.customer && !ch.customer.deleted
+          ? ch.customer.email?.toLowerCase() ?? null
+          : null),
         refunded: ch.refunded === true,
         description: ch.description ?? null,
         synced_at: new Date().toISOString(),

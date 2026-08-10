@@ -164,13 +164,16 @@ async function revenueCharges(): Promise<{
    *  column and disclosed in the footnote instead of polluting a recent week
    *  that could not possibly have converted yet. */
   preWindowAnnuals: number
+  /** Emails of the quiz-earned trials from EXISTING customers (category B).
+   *  Part of the north star per the owner's 2026-08-10 definition. */
+  quizExistingEmails: Set<string>
   /** Net-new people with MORE than one $4.99 charge (the other direction of
    *  the same people-vs-charges gap). */
   quizRepeatTrials: number
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0 }
+  if (!url || !key) return { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>() }
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
@@ -179,11 +182,11 @@ async function revenueCharges(): Promise<{
   // The mirror: real charges with exact cents. Filled by
   // /api/admin/stripe-charges-sync (daily 06:20 + on demand). Empty mirror =
   // five zero rows, never an inferred number.
-  const charges: { amount_cents: number; currency: string; charged_at: string; customer_id: string | null; email: string | null; refunded: boolean }[] = []
+  const charges: { amount_cents: number; currency: string; charged_at: string; customer_id: string | null; email: string | null; customer_email: string | null; refunded: boolean }[] = []
   for (let offset = 0; offset < 20_000; offset += 1000) {
     const { data, error } = await c
       .from('stripe_charges')
-      .select('amount_cents, currency, charged_at, customer_id, email, refunded')
+      .select('amount_cents, currency, charged_at, customer_id, email, customer_email, refunded')
       .gte('charged_at', `${MIRROR_START_ISO}T00:00:00Z`)
       // Chronological, so "the person's FIRST $4.99" below is deterministic.
       .order('charged_at', { ascending: true })
@@ -251,6 +254,10 @@ async function revenueCharges(): Promise<{
   const entries: { at: string; kind: RevKind; usd: number }[] = []
   let lifetimeSplits = 0
   let preWindowAnnuals = 0
+  /** Emails of category-B buyers: took the quiz, then bought a trial, but had
+   *  paid us before. They belong to the north star (the quiz earned the trial)
+   *  without being net-new customers, so the KPI layer needs them by name. */
+  const quizExistingEmails = new Set<string>()
   /** Each person's trial COHORT anchor (quiz week for net-new, first-trial
    *  charge date otherwise). Presence marks the trial as filed, so later
    *  $4.99s are repeats — and the person's $59.75 restates to this anchor,
@@ -263,7 +270,11 @@ async function revenueCharges(): Promise<{
   const outcome = new Map<P, { n499: number; other: number }>()
   for (const ch of charges) {
     if (ch.refunded) continue // returned money is not revenue
-    const person = (ch.customer_id && byCustomer.get(ch.customer_id)) || (ch.email && byEmail.get(ch.email)) || null
+    // Customer id first (most reliable), then either email the charge carries.
+    const person = (ch.customer_id && byCustomer.get(ch.customer_id))
+      || (ch.email && byEmail.get(ch.email))
+      || (ch.customer_email && byEmail.get(ch.customer_email))
+      || null
     if (person?.test) continue
     if (person) {
       const o = outcome.get(person) || { n499: 0, other: 0 }
@@ -303,6 +314,7 @@ async function revenueCharges(): Promise<{
       } else if (quizEarnedIt && person?.quizAt) {
         entries.push({ at: person.quizAt, kind: 'quizExisting', usd: 4.99 })
         trialAnchor.set(person, person.quizAt)
+        if (person.email) quizExistingEmails.add(person.email)
       } else {
         entries.push({ at: ch.charged_at, kind: 'notQuiz', usd: 4.99 })
         if (person) trialAnchor.set(person, ch.charged_at)
@@ -342,7 +354,7 @@ async function revenueCharges(): Promise<{
   for (const [p, o] of Array.from(outcome)) {
     if (p.netNew && o.n499 > 1) quizRepeatTrials++
   }
-  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails }
 }
 
 export default async function DashboardPage({
@@ -379,6 +391,12 @@ export default async function DashboardPage({
     const quizAt = r.quizCompletedAt
     const netNew = !!(r.stripeFirstChargeAt && quizAt &&
       new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime())
+    // THE NORTH STAR, per the owner 2026-08-10: trials the QUIZ produced,
+    // whether the buyer was new to us or already a customer. Category B comes
+    // from the charge-level pass (a real $4.99 trial after their quiz), never
+    // from "they had some charge later", which a monthly renewal would fake.
+    const email = r.email?.trim().toLowerCase() || null
+    const quizTrial = netNew || (!!email && rev.quizExistingEmails.has(email))
     const sexRaw = r.sexAiEstimate
     return {
       stage: r.stage || 'unknown',
@@ -392,6 +410,7 @@ export default async function DashboardPage({
       utmNewsletter: cleanUtm(r.utmSourceBeehiiv),
       ltv: r.lifetimeValueUsd || 0,
       netNew,
+      quizTrial,
     }
   })
 
