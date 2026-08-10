@@ -3,6 +3,7 @@ import {
   filteredSubmissionsAll,
   parseFilters,
   LAUNCH_ISO,
+  MIRROR_START_ISO,
   LAUNCH_LABEL,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
@@ -110,37 +111,6 @@ async function loadEventStats(): Promise<{ funnel: FunnelEventCounts; placements
   }
 }
 
-/** First-ever charges since launch that the quiz cannot claim. */
-async function nonQuizCharges(): Promise<{ count: number; revenue: number; charges: { at: string; value: number }[] }> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return { count: 0, revenue: 0, charges: [] }
-  const c = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
-  })
-  const { data } = await c
-    .from('submissions')
-    .select('quiz_completed_at, stripe_first_charge_at, lifetime_value_usd')
-    .gte('stripe_first_charge_at', `${LAUNCH_ISO}T00:00:00Z`)
-    .is('archived_at', null)
-    .or('is_test.is.null,is_test.eq.false')
-  let count = 0
-  let revenue = 0
-  const charges: { at: string; value: number }[] = []
-  for (const r of (data || []) as { quiz_completed_at: string | null; stripe_first_charge_at: string | null; lifetime_value_usd: number | string | null }[]) {
-    const charge = r.stripe_first_charge_at ? new Date(r.stripe_first_charge_at).getTime() : null
-    if (!charge) continue
-    const quizAt = r.quiz_completed_at ? new Date(r.quiz_completed_at).getTime() : null
-    if (quizAt !== null && charge > quizAt) continue   // the quiz earned this one
-    count++
-    const value = Number(r.lifetime_value_usd) || 0
-    revenue += value
-    charges.push({ at: r.stripe_first_charge_at as string, value })
-  }
-  return { count, revenue, charges }
-}
-
 /** One classified entry per real Stripe charge since launch, for the matrix
  *  revenue split. `at` already carries the RIGHT clock for its kind:
  *  net $4.99s restate at the person's quiz date (the cohort owns the sale,
@@ -176,7 +146,7 @@ async function revenueCharges(): Promise<{
     const { data, error } = await c
       .from('stripe_charges')
       .select('amount_cents, currency, charged_at, customer_id, email, refunded')
-      .gte('charged_at', `${LAUNCH_ISO}T00:00:00Z`)
+      .gte('charged_at', `${MIRROR_START_ISO}T00:00:00Z`)
       // Chronological, so "the person's FIRST $4.99" below is deterministic.
       .order('charged_at', { ascending: true })
       .range(offset, offset + 999)
@@ -344,21 +314,18 @@ export default async function DashboardPage({
     }
   })
 
-  // RECONCILIATION: every other first-ever charge since launch that the quiz
-  // cannot claim. Owner asked for this as a row under Net-new paid, and it is
-  // the honest counterweight to the north star: it says how much of the money
-  // arriving in Stripe the quiz had nothing to do with. Two kinds land here,
-  // people the Stripe sync created because we had never seen their email, and
-  // people whose charge PREDATES their quiz, i.e. existing customers.
+  // The matrix's five revenue rows AND the "Not from the quiz" count, all from
+  // ONE classification pass over REAL charges in the stripe_charges mirror.
   //
-  // Queried separately on purpose. allRows is the LAUNCH sample, which is now
-  // scoped to source='quiz_v2', so by construction it can never contain the
-  // Stripe-created rows this row exists to count.
-  const other = await nonQuizCharges()
-
-  // The matrix's five revenue rows, computed over REAL charges from the
-  // stripe_charges mirror rather than per-person LTV aggregates.
+  // The count used to come from a separate submissions-based query while the
+  // revenue came from the mirror, and on 2026-08-10 the two visibly disagreed
+  // (3 people vs 5 charges in one week): the submissions path could not see
+  // Stripe-only buyers or re-trialing old customers, and it counted people at
+  // their FIRST-EVER charge while the mirror counts trials. One pass, one
+  // truth: the count row is now exactly the notQuiz first-trial entries, so
+  // count × $4.99 equals the revenue row by construction.
   const rev = await revenueCharges()
+  const notQuizTrialEntries = rev.entries.filter(e => e.kind === 'notQuiz')
 
   // "Which CTA gets clicked" becomes "which CTA gets PAID".
   // A click rate on its own has already misled us once: the click-quality
@@ -420,12 +387,12 @@ export default async function DashboardPage({
       }
       subs.set(b, e)
     }
-    // Owner ask: the charges the quiz cannot claim, in the same buckets as
-    // everything else, so a good week for the quiz can be told apart from a
-    // good week for Stripe.
+    // The trials the quiz cannot claim, in the same buckets as everything
+    // else, so a good week for the quiz can be told apart from a good week
+    // for Stripe. Same classified entries as the revenue row, one per person.
     const otherByBucket = new Map<string, number>()
-    for (const ch of other.charges) {
-      const b = bucketKey(ch.at, gran)
+    for (const e of notQuizTrialEntries) {
+      const b = bucketKey(e.at, gran)
       if (!b || b < launchBucket) continue
       otherByBucket.set(b, (otherByBucket.get(b) || 0) + 1)
     }
@@ -479,7 +446,7 @@ export default async function DashboardPage({
       sample={sample}
       funnelEvents={events.funnel}
       placements={placements}
-      otherPaid={other.count}
+      otherPaid={notQuizTrialEntries.length}
       lifetimeSplits={rev.lifetimeSplits}
       quizRepeatTrials={rev.quizRepeatTrials}
       series={series}

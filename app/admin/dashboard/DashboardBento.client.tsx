@@ -298,7 +298,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
     // Not a funnel station: it never passes through the quiz. Kept adjacent
     // anyway, because the only way to know whether a good week was the QUIZ or
     // just a good week in Stripe is to see the two side by side.
-    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'by CHARGE date, since these people have no quiz date' },
+    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'trials ($4.99 people) the quiz cannot claim, one per person, by CHARGE date. Same classification as the revenue row below, so count × $4.99 always equals it.' },
   ]
 
   // 156px station label (wide enough for "Quiz New Trials Revenue") ·

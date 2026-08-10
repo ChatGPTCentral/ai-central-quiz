@@ -19,7 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
-import { LAUNCH_ISO } from '@/lib/dashboard-queries'
+import { MIRROR_START_ISO } from '@/lib/dashboard-queries'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -50,7 +50,10 @@ export async function GET(req: NextRequest) {
   if (!stripeKey) return NextResponse.json({ error: 'STRIPE_SECRET_KEY not set' }, { status: 500 })
   const stripe = new Stripe(stripeKey, { apiVersion: '2026-04-22.dahlia', maxNetworkRetries: 2 })
 
-  const sinceEpoch = Math.floor(Date.parse(`${LAUNCH_ISO}T00:00:00Z`) / 1000)
+  // Monday of launch week, not launch day: the week-gran matrix column that
+  // contains launch day starts Jun 29, and a mirror starting Jul 5 made that
+  // column silently incomplete.
+  const sinceEpoch = Math.floor(Date.parse(`${MIRROR_START_ISO}T00:00:00Z`) / 1000)
 
   type Row = {
     id: string
@@ -110,7 +113,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    since: LAUNCH_ISO,
+    since: MIRROR_START_ISO,
     pages,
     charges: rows.length,
     written,

@@ -141,6 +141,13 @@ export const LAUNCH_LABEL = 'Jul 5, 2026'
  *  there. staged_at is never overwritten, so it's the true "took the quiz" time. */
 export const LAUNCH_ISO = '2026-07-05'
 
+/** Where the stripe_charges mirror (and the matrix's money rows) begin: the
+ *  MONDAY of launch week. Launch day was a Sunday, so a mirror starting at
+ *  LAUNCH_ISO left the "Jun 29" week column showing only its final day and
+ *  silently dropping the Jun 29-Jul 4 trials the owner's spreadsheet has.
+ *  Every bucket the matrix can render is fully covered from here. */
+export const MIRROR_START_ISO = '2026-06-29'
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyFilters(q: any, f: DashboardFilters): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
