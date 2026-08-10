@@ -299,8 +299,9 @@ function VolumeMatrix({ series, gran, F }: {
     { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'by CHARGE date, since these people have no quiz date' },
   ]
 
-  // 132px station label · 104px all-window total · one 1fr per period
-  const grid = `132px 104px${buckets.length ? ` repeat(${buckets.length}, 1fr)` : ''}`
+  // 156px station label (wide enough for "Quiz New Trials Revenue") ·
+  // 104px all-window total · one 1fr per period
+  const grid = `156px 104px${buckets.length ? ` repeat(${buckets.length}, 1fr)` : ''}`
 
   const rpAll = F.completed > 0 ? (F.paid / F.completed) * 100 : 0
   const ffAll = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
@@ -319,28 +320,29 @@ function VolumeMatrix({ series, gran, F }: {
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
-      label: 'Net revenue', money: true, heavy: false,
-      sub: '$4.99 trials from net-new people, by QUIZ date',
+      label: 'Quiz New Trials Revenue', money: true, heavy: false,
+      sub: '$4.99 trials bought from the quiz (net-new people), by QUIZ date',
       all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
     },
     {
-      label: 'Not-quiz revenue', money: true, heavy: false,
-      sub: '$4.99 charges the quiz cannot claim, by CHARGE date',
+      label: 'Other New Trials Revenue', money: true, heavy: false,
+      sub: '$4.99 trials the quiz cannot claim, by CHARGE date',
       all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
     },
     {
-      label: 'Annual revenue', money: true, heavy: false,
-      sub: '$59.75 yearly bills (trials maturing), by CHARGE date',
+      label: 'Converted Trials Revenue', money: true, heavy: false,
+      sub: '$59.75 bills from trials converting to the annual, quiz and non-quiz, by CHARGE date',
       all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
     },
     {
-      label: 'Other revenue', money: true, heavy: false,
-      sub: 'everything else: legacy $39.75 annuals, odd amounts, non-USD, by CHARGE date',
+      // heavy = the break line the owner asked for between row 4 and All revenue.
+      label: 'Other Revenue', money: true, heavy: true,
+      sub: 'anything else: legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD, by CHARGE date',
       all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther,
     },
     {
-      label: 'All revenue', money: true, heavy: true,
-      sub: 'the four rows above, every dollar Stripe collected minus refunds',
+      label: 'All Revenue', money: true, heavy: true,
+      sub: 'rows 1-4, every dollar Stripe collected minus refunds',
       all: sumOf(revAll), per: revAll,
     },
     {
