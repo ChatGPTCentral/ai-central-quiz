@@ -418,12 +418,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
           `Trial → annual` counts ONLY trials whose bill date has passed. */}
       {rateRows.map(rr => {
         const money = 'money' in rr && rr.money === true
-        // To the cent, always. "$30" for $29.94 is what made the owner
-        // (rightly) distrust the whole row on 2026-08-10.
-        const usd = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        // The hover arithmetic: single-price rows show count × price, so a
-        // cell can be reconciled against Stripe and the count rows by eye.
-        const arith = (v: number) => (rr.unit ? `${Math.round(v / rr.unit)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}` : `$${v.toFixed(2)}`)
+        // Owner's display choice (2026-08-10): whole dollars on the face for
+        // readability, exact cents ALWAYS on hover. The underlying sums stay
+        // penny-true to Stripe; only the rendering rounds.
+        const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        // The hover arithmetic: exact cents, and single-price rows show
+        // count × price, so any cell reconciles against Stripe by eye.
+        const arith = (v: number) => (rr.unit ? `${Math.round(v / rr.unit)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}` : `$${v.toFixed(2)} exact`)
         return (
           <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
             <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
