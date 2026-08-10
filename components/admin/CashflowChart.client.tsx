@@ -31,6 +31,9 @@ export interface CashPoint {
   month: string
   trials: number
   revenue: number
+  /** Forecast only: the same month priced at the MEASURED rate, so the chart
+   *  can draw belief and history as two diverging lines. */
+  revenueAlt?: number
   kind: 'actual' | 'partial' | 'forecast'
 }
 
@@ -50,12 +53,25 @@ function label(month: string): string {
   return `${['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'][Number(m) - 1]}${y.slice(2)}`
 }
 
-export default function CashflowChart({ points }: { points: CashPoint[] }) {
+export default function CashflowChart({ points, assumedPct, measuredPct }: {
+  points: CashPoint[]
+  /** Year-1 rate the primary forecast uses (the owner's model). */
+  assumedPct?: number
+  /** Year-1 rate the alt line uses (the sheet's mature months). */
+  measuredPct?: number | null
+}) {
   const [hover, setHover] = useState<number | null>(null)
 
   const rows = useMemo(() => {
     let cum = 0
-    return points.map(p => { cum += p.revenue; return { ...p, cum } })
+    let cumAlt = 0
+    return points.map(p => {
+      cum += p.revenue
+      // The alt series shares history with the primary one and only diverges
+      // where an alternative revenue exists, i.e. in the forecast.
+      cumAlt += p.revenueAlt ?? p.revenue
+      return { ...p, cum, cumAlt }
+    })
   }, [points])
 
   const W = 900
@@ -68,7 +84,7 @@ export default function CashflowChart({ points }: { points: CashPoint[] }) {
   const plotH = H - padT - padB
 
   const maxBar = niceMax(Math.max(...rows.map(r => r.revenue), 1))
-  const maxCum = niceMax(Math.max(...rows.map(r => r.cum), 1))
+  const maxCum = niceMax(Math.max(...rows.map(r => Math.max(r.cum, r.cumAlt)), 1))
   const bw = Math.max(4, (plotW / rows.length) * 0.62)
   const xOf = (i: number) => padL + (plotW / rows.length) * (i + 0.5)
   const yBar = (v: number) => padT + plotH - (v / maxBar) * plotH
@@ -76,6 +92,7 @@ export default function CashflowChart({ points }: { points: CashPoint[] }) {
 
   const grid = [0, 0.25, 0.5, 0.75, 1]
   const firstForecast = rows.findIndex(r => r.kind === 'forecast')
+  const hasAlt = rows.some(r => r.revenueAlt !== undefined && Math.abs((r.revenueAlt ?? 0) - r.revenue) > 0.5)
 
   // Two separate cumulative paths so the forecast half can be dashed. They
   // overlap by one point, otherwise the line breaks at the boundary.
@@ -174,6 +191,14 @@ export default function CashflowChart({ points }: { points: CashPoint[] }) {
               fill="none" stroke={BLUE} strokeWidth="2.5" strokeDasharray="6 4" strokeLinejoin="round" opacity="0.8"
             />
           )}
+          {/* The measured-rate line. Only drawn where it actually differs, so
+              when assumption == history the chart stays one clean line. */}
+          {fcRows.length > 1 && hasAlt && (
+            <path
+              d={fcRows.map((r, i) => `${i === 0 ? 'M' : 'L'} ${xOf(i + Math.max(0, firstForecast - 1))} ${yCum(r.cumAlt)}`).join(' ')}
+              fill="none" stroke={GREEN} strokeWidth="2" strokeDasharray="2 4" strokeLinejoin="round" opacity="0.9"
+            />
+          )}
           {rows.map((r, i) => (
             <circle key={`p${r.month}`} cx={xOf(i)} cy={yCum(r.cum)} r={hover === i ? 4.5 : 2}
               fill={r.kind === 'forecast' ? '#FFFFFF' : BLUE} stroke={BLUE} strokeWidth={r.kind === 'forecast' ? 1.5 : 0} />
@@ -204,7 +229,12 @@ export default function CashflowChart({ points }: { points: CashPoint[] }) {
               </span>
               <span style={{ fontSize: 12.5, color: '#4A4A4A' }}>trials <strong style={{ color: RICH }}>{active.trials.toLocaleString()}</strong></span>
               <span style={{ fontSize: 12.5, color: '#4A4A4A' }}>revenue <strong style={{ color: FULVOUS }}>{usd0(active.revenue)}</strong></span>
-              <span style={{ fontSize: 12.5, color: '#4A4A4A', marginLeft: 'auto' }}>cumulative <strong style={{ color: BLUE }}>{usd0(active.cum)}</strong></span>
+              <span style={{ fontSize: 12.5, color: '#4A4A4A', marginLeft: 'auto' }}>
+                cumulative <strong style={{ color: BLUE }}>{usd0(active.cum)}</strong>
+                {active.kind === 'forecast' && hasAlt && active.cumAlt !== active.cum && (
+                  <span> · at measured <strong style={{ color: GREEN }}>{usd0(active.cumAlt)}</strong></span>
+                )}
+              </span>
             </>
           ) : (
             <span style={{ fontSize: 12, color: MUTE }}>Hover a month for trials, revenue and the running total.</span>
@@ -216,7 +246,16 @@ export default function CashflowChart({ points }: { points: CashPoint[] }) {
         <span className="inline-flex items-center" style={{ gap: 6 }}><span style={{ width: 10, height: 10, background: FULVOUS }} /> actual</span>
         <span className="inline-flex items-center" style={{ gap: 6 }}><span style={{ width: 10, height: 10, background: '#F3C99A' }} /> still filling in</span>
         <span className="inline-flex items-center" style={{ gap: 6 }}><span style={{ width: 10, height: 10, background: '#FFF', border: `1px dashed ${BLUE}` }} /> forecast</span>
-        <span className="inline-flex items-center" style={{ gap: 6 }}><span style={{ width: 16, height: 3, background: BLUE }} /> cumulative</span>
+        <span className="inline-flex items-center" style={{ gap: 6 }}>
+          <span style={{ width: 16, height: 3, background: BLUE }} />
+          cumulative{assumedPct !== undefined ? ` · your model ${Math.round(assumedPct * 100)}%` : ''}
+        </span>
+        {hasAlt && measuredPct != null && (
+          <span className="inline-flex items-center" style={{ gap: 6 }}>
+            <span style={{ width: 16, height: 3, background: GREEN, opacity: 0.9 }} />
+            at measured {(measuredPct * 100).toFixed(1)}%
+          </span>
+        )}
       </div>
     </div>
   )

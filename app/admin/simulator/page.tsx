@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { LAUNCH_ISO } from '@/lib/dashboard-queries'
-import Simulator from './Simulator.client'
-import LtvModelPanel from '@/components/admin/LtvModelPanel.client'
+import Workbench from './Workbench.client'
 import { getCashflow } from '@/lib/cashflow'
 import { readLtvModel } from '@/lib/ltv-settings'
 
@@ -122,15 +121,17 @@ async function loadBaseline(): Promise<Baseline> {
 export default async function SimulatorPage() {
   const baseline = await loadBaseline()
 
-  // Actuals from the owner's sheet, then the forecast. The sheet is the source
-  // of truth for trials sold and it reports 54.3% of 694 converting to yearly,
-  // against 37% from our Stripe-derived RPC and a 66.7% measured on twelve. It
-  // wins on sample size and because it is reconciled against invoices.
+  // Server supplies FACTS only: sheet actuals, the measured mature rate, the
+  // run rate, and the saved model. The forecast itself is computed in the
+  // client Workbench, because it has to react live to the model fields and to
+  // the funnel sliders — the disconnect between those three panels was the
+  // owner's complaint about this page.
   const ltv = await readLtvModel()
   const cash = await getCashflow({
     trialUsd: ltv.trialUsd,
     annualUsd: ltv.annualUsd,
     year1Pct: ltv.year1Pct,
+    forecastMonths: 0,
   })
 
   return (
@@ -138,18 +139,21 @@ export default async function SimulatorPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-black text-[#333333] mb-1">Simulator</h1>
         <p className="text-sm text-[#9C9C9C]">
-          What a customer is worth, and what the funnel pays out over a year. The LTV model set
-          here is the same one the Ads page prices paid traffic against.
+          One model, three views: what a customer is worth, what the year looks like, and what the
+          funnel produces. Change any panel and the others follow. The Ads page prices against the
+          same saved model.
         </p>
       </div>
-      <LtvModelPanel
-        measuredYear1={cash.maturedRate}
-        measuredDue={cash.maturedTrials}
-        trialsPerMonth={cash.runRate}
-        points={cash.points}
+      <Workbench
+        baseline={baseline}
+        actuals={cash.points}
+        maturedRate={cash.maturedRate}
+        maturedTrials={cash.maturedTrials}
+        runRate={cash.runRate}
+        lastActualMonth={cash.lastActualMonth}
         cashflowError={cash.error}
+        initialModel={ltv}
       />
-      <Simulator baseline={baseline} />
     </div>
   )
 }

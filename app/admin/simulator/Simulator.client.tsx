@@ -31,11 +31,13 @@ interface Model {
   toComplete: number    // 3. started → completed
   toCheckout: number    // 4. completed → checkout click
   toPaid: number        // 5. checkout → net-new
-  trialToAnnual: number // what share of trials become annual
-  annual: number        // annual price
 }
 
-function run(m: Model) {
+// The economics knobs (trial-to-annual, annual price) are GONE from this
+// model on purpose. They were a third private copy of the LTV maths, which is
+// why this panel's "pipeline" could disagree with the calculator above it.
+// Pipeline is now priced with the shared model via `ltvPerTrial`.
+function run(m: Model, ltvPerTrial: number) {
   const started = m.people * (m.toStart / 100)
   const completed = started * (m.toComplete / 100)
   const checkout = completed * (m.toCheckout / 100)
@@ -44,11 +46,19 @@ function run(m: Model) {
     started, completed, checkout, netNew,
     resultCvr: completed > 0 ? (netNew / completed) * 100 : 0,
     fullCvr: m.people > 0 ? (netNew / m.people) * 100 : 0,
-    pipeline: netNew * m.annual * (m.trialToAnnual / 100),
+    pipeline: netNew * ltvPerTrial,
   }
 }
 
-export default function Simulator({ baseline }: { baseline: Baseline }) {
+export default function Simulator({ baseline, ltvPerTrial, onProjection }: {
+  baseline: Baseline
+  /** From the shared LTV model, so pipeline here = the calculator's number. */
+  ltvPerTrial: number
+  /** Reports projected trials/MONTH after every knob change, so the cashflow
+   *  forecast above follows this panel. isBaseline=true means "back to the
+   *  live funnel", which releases the scenario override. */
+  onProjection?: (perMonth: number, isBaseline: boolean) => void
+}) {
   const rate = (num: number, den: number) => (den > 0 ? Math.min(100, (num / den) * 100) : 0)
 
   // Today = literally the live funnel. Change nothing and this page shows the
@@ -59,14 +69,20 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
     toComplete: rate(baseline.completed, baseline.started),
     toCheckout: rate(baseline.checkout, baseline.completed),
     toPaid: rate(baseline.paid, baseline.checkout),
-    trialToAnnual: Math.round(baseline.renewalRate * 100),
-    annual: 59.75,
   }), [baseline])
 
   const [m, setM] = useState<Model>(today)
-  const set = <K extends keyof Model>(k: K, v: Model[K]) => setM(p => ({ ...p, [k]: v }))
-  const now = useMemo(() => run(today), [today])
-  const sim = useMemo(() => run(m), [m])
+  // Every change reports the new projection UP, inside the handler rather than
+  // an effect, so there is no render-loop risk and "untouched" reports nothing.
+  const report = (next: Model) => {
+    if (!onProjection) return
+    const perMonth = baseline.days > 0 ? (run(next, ltvPerTrial).netNew / baseline.days) * 30 : 0
+    onProjection(perMonth, JSON.stringify(next) === JSON.stringify(today))
+  }
+  const set = <K extends keyof Model>(k: K, v: Model[K]) =>
+    setM(p => { const next = { ...p, [k]: v }; report(next); return next })
+  const now = useMemo(() => run(today, ltvPerTrial), [today, ltvPerTrial])
+  const sim = useMemo(() => run(m, ltvPerTrial), [m, ltvPerTrial])
   const dirty = JSON.stringify(m) !== JSON.stringify(today)
   const chg = (a: number, b: number) => (b > 0 ? ((a - b) / b) * 100 : 0)
 
@@ -87,7 +103,7 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
           <h1 style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-0.02em', color: INK, margin: '4px 0 0' }}>What is this funnel worth?</h1>
         </div>
         {dirty && (
-          <button onClick={() => setM(today)} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 800, border: '1px solid #333333', background: '#FFFFFF', color: INK, cursor: 'pointer' }}>
+          <button onClick={() => { setM(today); report(today) }} style={{ padding: '6px 12px', fontSize: 11, fontWeight: 800, border: '1px solid #333333', background: '#FFFFFF', color: INK, cursor: 'pointer' }}>
             reset to today
           </button>
         )}
@@ -109,7 +125,7 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
         <div className="grid ac-kpis" style={{ gridTemplateColumns: '1fr 1fr' }}>
           {[
             { label: 'Net-new trials', v: Math.round(sim.netNew).toLocaleString(), was: Math.round(now.netNew).toLocaleString(), d: chg(sim.netNew, now.netNew), hint: 'people who take the quiz and pay', dark: true },
-            { label: 'Pipeline', v: money(sim.pipeline), was: money(now.pipeline), d: chg(sim.pipeline, now.pipeline), hint: `net-new x ${money(m.annual)} x ${pct(m.trialToAnnual)} that renew`, dark: false },
+            { label: 'Pipeline', v: money(sim.pipeline), was: money(now.pipeline), d: chg(sim.pipeline, now.pipeline), hint: `net-new x ${money(ltvPerTrial)} LTV, the model set above`, dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: 20, background: k.dark ? '#333333' : 'transparent', borderLeft: i ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
@@ -172,24 +188,6 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
               )
             })}
 
-            {/* the two economics knobs, same row shape */}
-            <div className="ac-simrow" style={{ padding: '10px 0', borderBottom: `1px solid ${ROWHAIR}` }}>
-              <span style={{ fontSize: 10.5, fontWeight: 800, color: '#FFFFFF', background: FULVOUS_DARK, width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>$</span>
-              <span style={{ fontSize: 12.5, color: INK }}>
-                <strong style={{ fontWeight: 700 }}>{pct(m.trialToAnnual)}</strong> of trials renew at {money(m.annual)}
-                <span style={{ fontSize: 10, color: MUTE, marginLeft: 6 }}>observed {pct(baseline.renewalRate * 100)}</span>
-              </span>
-              <input
-                className="ac-simslider"
-                type="range" min={0} max={100} step={1} value={m.trialToAnnual}
-                onChange={e => set('trialToAnnual', Number(e.target.value))}
-                aria-label="Trials that renew"
-                style={{ width: '100%', accentColor: FULVOUS_DARK }}
-              />
-              <span style={{ fontSize: 15, fontWeight: 800, color: FULVOUS_DARK, textAlign: 'right', ...tnum }}>{money(sim.pipeline)}</span>
-              <span className="ac-simdelta" style={{ fontSize: 10, color: MUTE, textAlign: 'right' }}>pipeline</span>
-            </div>
-
             <div className="flex" style={{ gap: 22, marginTop: 16, flexWrap: 'wrap' }}>
               <div>
                 <div style={eyebrow}>Result-page CVR</div>
@@ -202,17 +200,6 @@ export default function Simulator({ baseline }: { baseline: Baseline }) {
                 <div style={{ fontSize: 16, fontWeight: 800, color: INK, marginTop: 3, ...tnum }}>
                   {pct(sim.fullCvr)}<span style={{ fontSize: 10.5, color: MUTE, fontWeight: 600 }}> · today {pct(now.fullCvr)}</span>
                 </div>
-              </div>
-              <div>
-                <div style={eyebrow}>Annual price</div>
-                <span className="inline-flex items-center" style={{ border: '1px solid #333333', background: '#FFFFFF', marginTop: 3 }}>
-                  <span style={{ fontSize: 11, color: MUTE, paddingLeft: 7 }}>$</span>
-                  <input
-                    type="number" min={0} step={5} value={m.annual}
-                    onChange={e => set('annual', Math.max(0, Number(e.target.value)))}
-                    style={{ width: 78, padding: '4px 8px', fontSize: 12.5, fontWeight: 800, border: 'none', outline: 'none', background: 'transparent', color: INK, ...tnum }}
-                  />
-                </span>
               </div>
             </div>
           </div>
