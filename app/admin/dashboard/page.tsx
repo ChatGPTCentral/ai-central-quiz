@@ -220,8 +220,13 @@ async function revenueCharges(): Promise<{
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
   let lifetimeSplits = 0
-  /** People whose first trial charge has been filed; later $4.99s are repeats. */
-  const seenTrial = new Set<P>()
+  /** Each person's trial COHORT anchor (quiz week for net-new, first-trial
+   *  charge date otherwise). Presence marks the trial as filed, so later
+   *  $4.99s are repeats — and the person's $59.75 restates to this anchor,
+   *  because "how much did that week's trials convert into" is the question
+   *  this matrix answers (owner call, 2026-08-10, the Gina case: trial Jul 10,
+   *  annual billed Aug 10, the money belongs to the Jul 10 cohort). */
+  const trialAnchor = new Map<P, string>()
   // Per-person outcome, for the people-vs-charges reconciliation note. Keyed
   // by the shared P object, which both lookup maps hold per submission row.
   const outcome = new Map<P, { n499: number; other: number }>()
@@ -252,17 +257,30 @@ async function revenueCharges(): Promise<{
       // two Stripe customers each. The extra $4.99s are real money but they
       // are double-subscriptions, not second trials — they go to Other so the
       // trials rows always reconcile with the people counts above them.
-      const repeat = person !== null && seenTrial.has(person)
-      if (person) seenTrial.add(person)
+      const repeat = person !== null && trialAnchor.has(person)
       if (repeat) {
         entries.push({ at: ch.charged_at, kind: 'other', usd: 4.99 })
       } else if (person?.netNew && person.quizAt) {
         entries.push({ at: person.quizAt, kind: 'net', usd: 4.99 })
+        if (person) trialAnchor.set(person, person.quizAt)
       } else {
         entries.push({ at: ch.charged_at, kind: 'notQuiz', usd: 4.99 })
+        if (person) trialAnchor.set(person, ch.charged_at)
       }
     } else if (isUsd && ch.amount_cents === 5975) {
-      entries.push({ at: ch.charged_at, kind: 'annual', usd })
+      // COHORT clock: the annual restates to the week of the trial that
+      // earned it. Charges are processed chronologically and the annual bills
+      // ~a month after the trial, so the person's anchor is already recorded
+      // whenever their trial is inside the mirror. Fallbacks: quiz week for a
+      // net-new person whose trial predates the mirror, charge date when the
+      // person (or their trial) cannot be linked at all.
+      let anchor = ch.charged_at
+      if (person) {
+        const t = trialAnchor.get(person)
+        if (t) anchor = t
+        else if (person.netNew && person.quizAt) anchor = person.quizAt
+      }
+      entries.push({ at: anchor, kind: 'annual', usd })
     } else {
       // Legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD — real money
       // the three named buckets cannot claim.

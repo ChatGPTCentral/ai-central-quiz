@@ -335,7 +335,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials }: {
     },
     {
       label: 'Converted Trials Revenue', money: true, heavy: false, unit: 59.75,
-      sub: '$59.75 bills from trials converting to the annual, quiz and non-quiz, by CHARGE date',
+      sub: '$59.75 bills, restated to the WEEK OF THE TRIAL that earned them (quiz week for net-new). Recent columns fill in as their trials mature ~a month later. Annuals whose trial predates the mirror sit at charge date.',
       all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
     },
     {
