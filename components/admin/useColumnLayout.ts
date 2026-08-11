@@ -20,13 +20,21 @@ export function useColumnLayout(opts: {
   all: LayoutCol[]
   initialOrder: string[] | null
   initialHidden: string[] | null
+  /** The view the owner asked for, used when nothing is saved yet and when he
+   *  hits reset. Falls back to every column in declaration order. */
+  defaultOrder?: string[]
+  defaultHidden?: string[]
 }) {
-  const defaultOrder = opts.all.map(c => c.key)
+  const declared = opts.all.map(c => c.key)
+  const defaultOrder = opts.defaultOrder
+    ? [...opts.defaultOrder.filter(k => declared.includes(k)), ...declared.filter(k => !opts.defaultOrder!.includes(k))]
+    : declared
+  const defaultHidden = opts.defaultHidden ?? []
   // A column added to the code LATER must still appear for someone holding an
   // older saved layout, so unknown keys are appended rather than dropped.
   const saved = (opts.initialOrder ?? []).filter(k => defaultOrder.includes(k))
   const [order, setOrder] = useState<string[]>([...saved, ...defaultOrder.filter(k => !saved.includes(k))])
-  const [hidden, setHidden] = useState<Set<string>>(new Set(opts.initialHidden ?? []))
+  const [hidden, setHidden] = useState<Set<string>>(new Set(opts.initialHidden ?? defaultHidden))
   const [drag, setDrag] = useState<string | null>(null)
   const [over, setOver] = useState<string | null>(null)
   const [status, setStatus] = useState('')
@@ -57,7 +65,7 @@ export function useColumnLayout(opts: {
   const hide = (key: string) => { const n = new Set(hidden); n.add(key); setHidden(n); void save(order, n) }
   const show = (key: string) => { const n = new Set(hidden); n.delete(key); setHidden(n); void save(order, n) }
   const reset = async () => {
-    setOrder(defaultOrder); setHidden(new Set())
+    setOrder(defaultOrder); setHidden(new Set(defaultHidden))
     setStatus('saving…')
     try {
       await fetch('/api/admin/table-layout', {

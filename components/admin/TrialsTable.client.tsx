@@ -15,6 +15,7 @@ import { useState } from 'react'
 import TrialState from './TrialState.client'
 import { fmtDay } from '@/lib/dates'
 import { useColumnLayout } from './useColumnLayout'
+import ColumnsMenu from './ColumnsMenu.client'
 
 export interface TrialRow {
   charge_id: string
@@ -91,7 +92,11 @@ const ALL_COLUMNS: Col[] = [
     ) : <span style={{ color: MUTE, fontSize: 11 }}>–</span> },
 ]
 
-const DEFAULT_ORDER = ALL_COLUMNS.map(c => c.key)
+/** The owner's default view: who, when, where to act, what they paid. The
+ *  analytical columns (channel, utm, country, second-payment date) stay one
+ *  click away in the Columns menu. */
+const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'stripe', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
+const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }
 // One line per row, always: cells never wrap, the table scrolls instead.
@@ -108,10 +113,22 @@ export default function TrialsTable({
     tableKey: 'revenue_trials',
     all: ALL_COLUMNS.map(c => ({ key: c.key, label: c.label })),
     initialOrder, initialHidden,
+    defaultOrder: DEFAULT_ORDER, defaultHidden: DEFAULT_HIDDEN,
   })
-  const [sort, setSort] = useState<'desc' | 'asc'>('desc')
+  // Default view: whoever is still TRIALING first, oldest first inside that —
+  // those are the people whose renewal is closest, so they are the ones worth
+  // acting on today. Everything else follows in the same chronological order.
+  const [sort, setSort] = useState<'trialing' | 'asc' | 'desc'>('trialing')
   const visible = L.visibleKeys.map(k => ALL_COLUMNS.find(c => c.key === k)!).filter(Boolean)
-  const view = [...rows].sort((a, b) => (sort === 'asc' ? a.trial_at.localeCompare(b.trial_at) : b.trial_at.localeCompare(a.trial_at)))
+  const view = [...rows].sort((a, b) => {
+    if (sort === 'trialing') {
+      const at = a.derivedState === 'not_due' ? 0 : 1
+      const bt = b.derivedState === 'not_due' ? 0 : 1
+      if (at !== bt) return at - bt
+      return a.trial_at.localeCompare(b.trial_at)
+    }
+    return sort === 'asc' ? a.trial_at.localeCompare(b.trial_at) : b.trial_at.localeCompare(a.trial_at)
+  })
 
   const btn = (active: boolean): React.CSSProperties => ({
     padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
@@ -122,30 +139,13 @@ export default function TrialsTable({
     <>
       <div className="flex items-center flex-wrap" style={{ gap: 7, marginTop: 10, marginBottom: 6 }}>
         <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Rows:</span>
-        <button type="button" onClick={() => setSort('desc')} style={btn(sort === 'desc')}>Date ↓ newest</button>
+        <button type="button" onClick={() => setSort('trialing')} style={btn(sort === 'trialing')} title="Still trialing first, then chronological">Trialing first</button>
         <button type="button" onClick={() => setSort('asc')} style={btn(sort === 'asc')}>Date ↑ oldest</button>
+        <button type="button" onClick={() => setSort('desc')} style={btn(sort === 'desc')}>Date ↓ newest</button>
         <span style={{ width: 10 }} />
-        <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Columns: drag a header to move it, × to remove it</span>
-        <button type="button" onClick={L.reset} style={{ padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px solid ${HAIR}`, background: '#FFFDFA', color: MUTE }}>
-          reset columns
-        </button>
-        {L.status && <span style={{ fontSize: 11, fontWeight: 700, color: L.status.includes('NOT') ? '#B00020' : GREEN }}>{L.status}</span>}
+        <ColumnsMenu all={ALL_COLUMNS.map(c => ({ key: c.key, label: c.label }))} hidden={L.hidden}
+                     onHide={L.hide} onShow={L.show} onReset={L.reset} status={L.status} />
       </div>
-
-      {L.hidden.size > 0 && (
-        <div className="flex items-center flex-wrap" style={{ gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Removed:</span>
-          {Array.from(L.hidden).map(k => {
-            const col = ALL_COLUMNS.find(c => c.key === k)
-            if (!col) return null
-            return (
-              <button key={k} type="button" onClick={() => L.show(k)}
-                style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px dashed ${MUTE}`, background: '#FFFDFA', color: MUTE }}
-                title="Put this column back">+ {col.label}</button>
-            )
-          })}
-        </div>
-      )}
 
       {/* Cells never wrap, so the table scrolls sideways instead of
           growing a second line per row. */}

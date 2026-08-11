@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { fmtMonth } from '@/lib/dates'
 import { useColumnLayout } from './useColumnLayout'
+import ColumnsMenu from './ColumnsMenu.client'
 
 export interface MonthRow {
   month: string
@@ -36,7 +37,8 @@ const AMBER = '#B26A00'
 const RED = '#B00020'
 
 const usd0 = (n: number) => `$${Math.round(n).toLocaleString()}`
-const pct = (n: number, d: number) => (d > 0 ? `${((100 * n) / d).toFixed(1)}%` : '–')
+// Whole percent: a tenth of a point on 30 trials is noise dressed as precision.
+const pct = (n: number, d: number) => (d > 0 ? `${Math.round((100 * n) / d)}%` : '–')
 
 type Col = {
   key: string; label: string; align: 'left' | 'right'
@@ -80,6 +82,11 @@ const COLUMNS: Col[] = [
     total: t => <span style={{ color: MUTE }}>{t.sheet.toLocaleString()}</span> },
 ]
 
+/** The owner's default view. Era, Due and the sheet check are still one click
+ *  away in the Columns menu, they just are not what he looks at daily. */
+const DEFAULT_ORDER = ['month', 'quiz', 'trials', 'converted', 'rate', 'trialCash', 'convCash', 'due', 'era', 'sheet']
+const DEFAULT_HIDDEN = ['due', 'era', 'sheet']
+
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }
 // One line per row, always.
 const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
@@ -94,8 +101,10 @@ export default function MonthsTable({
     tableKey: 'revenue_months',
     all: COLUMNS.map(c => ({ key: c.key, label: c.label })),
     initialOrder, initialHidden,
+    defaultOrder: DEFAULT_ORDER, defaultHidden: DEFAULT_HIDDEN,
   })
-  const [sort, setSort] = useState<'desc' | 'asc'>('desc')
+  // Chronological by default: a time series reads left-to-right, oldest first.
+  const [sort, setSort] = useState<'desc' | 'asc'>('asc')
   const visible = L.visibleKeys.map(k => COLUMNS.find(c => c.key === k)!).filter(Boolean)
   const view = [...rows].sort((a, b) => (sort === 'asc' ? a.month.localeCompare(b.month) : b.month.localeCompare(a.month)))
 
@@ -111,28 +120,9 @@ export default function MonthsTable({
         <button type="button" onClick={() => setSort('desc')} style={btn(sort === 'desc')}>Newest first</button>
         <button type="button" onClick={() => setSort('asc')} style={btn(sort === 'asc')}>Oldest first</button>
         <span style={{ width: 10 }} />
-        <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Columns: drag a header to move it, × to remove it</span>
-        <button type="button" onClick={L.reset}
-          style={{ padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px solid ${HAIR}`, background: '#FFFDFA', color: MUTE }}>
-          reset columns
-        </button>
-        {L.status && <span style={{ fontSize: 11, fontWeight: 700, color: L.status.includes('NOT') ? RED : GREEN }}>{L.status}</span>}
+        <ColumnsMenu all={COLUMNS.map(c => ({ key: c.key, label: c.label }))} hidden={L.hidden}
+                     onHide={L.hide} onShow={L.show} onReset={L.reset} status={L.status} />
       </div>
-
-      {L.hidden.size > 0 && (
-        <div className="flex items-center flex-wrap" style={{ gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Removed:</span>
-          {Array.from(L.hidden).map(k => {
-            const col = COLUMNS.find(c => c.key === k)
-            if (!col) return null
-            return (
-              <button key={k} type="button" onClick={() => L.show(k)}
-                style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px dashed ${MUTE}`, background: '#FFFDFA', color: MUTE }}
-                title="Put this column back">+ {col.label}</button>
-            )
-          })}
-        </div>
-      )}
 
       {/* Cells never wrap, so the table scrolls sideways instead of
           growing a second line per row. */}

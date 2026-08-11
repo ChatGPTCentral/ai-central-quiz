@@ -290,21 +290,6 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         all price against it.
       </p>
 
-      <nav className="flex flex-wrap" style={{ gap: 7, marginTop: 14 }}>
-        <a href="#eras" style={navChip}>1 &middot; Eras and totals</a>
-        <a href="#over-time" style={navChip}>2 &middot; Trials over time</a>
-        <a href="#trials" style={navChip}>3 &middot; Every trial and its status</a>
-        <a href="/admin/dashboard" style={{ ...navChip, background: '#FEF7E7' }}>Dashboard &rarr;</a>
-      </nav>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 13, marginTop: 20 }}>
-        <Stat label="Gross, all time" value={usd0(d.grossAll)} sub={`${d.chargeCount.toLocaleString()} charges, refunds excluded`} />
-        <Stat label="Trials, all time" value={L.length.toLocaleString()} sub="one per person per purchase" />
-        <Stat label="Converted" value={counts.converted.toLocaleString()} sub={`${pct(convDue, due)} of the ${due} past their renewal date`} />
-        <Stat label="Trial cash" value={usd0(trialCash)} sub="the $3.99 and $4.99 charges" />
-        <Stat label="Conversion cash" value={usd0(convCash)} sub="annuals and lifetimes that followed" />
-      </div>
-
       {/* ERAS */}
       <h2 id="eras" style={{ fontSize: 15, fontWeight: 800, marginTop: 34, color: INK, scrollMarginTop: 16 }}>1 &middot; Eras and totals</h2>
       <table style={{ width: '100%', marginTop: 10, borderCollapse: 'collapse' }}>
@@ -349,15 +334,6 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         that window, which is where their subscription and lifetime-deal money shows up. Rates count only trials whose
         renewal date has passed, so the current month never drags the number down.
       </p>
-
-      {/* QUIZ ERA ATTRIBUTION */}
-      <h2 style={{ fontSize: 15, fontWeight: 800, marginTop: 32, color: INK }}>Since the quiz launched, who it earned</h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 13, marginTop: 10 }}>
-        <Stat label="Quiz, new customer" value={att.net.toLocaleString()} sub="never paid before, took the quiz, then bought" />
-        <Stat label="Quiz, existing customer" value={att.existing.toLocaleString()} sub="had paid before, quiz earned another trial" />
-        <Stat label="Not from the quiz" value={att.none.toLocaleString()} sub="never took it, or took it after paying" />
-        <Stat label="Quiz share" value={pct(att.net + att.existing, quizEra.length)} sub={`${att.net + att.existing} of ${quizEra.length} trials since 5 Jul`} />
-      </div>
 
       {/* SECTION 2 */}
       <h2 id="over-time" style={{ fontSize: 15, fontWeight: 800, marginTop: 34, color: INK, scrollMarginTop: 16 }}>2 &middot; Trials over time</h2>
