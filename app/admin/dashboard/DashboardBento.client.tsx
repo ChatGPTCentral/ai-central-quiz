@@ -329,6 +329,14 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     // anyway, because the only way to know whether a good week was the QUIZ or
     // just a good week in Stripe is to see the two side by side.
     { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'never took the quiz, or took it only after paying. One per person, by CHARGE date. Same classification as the revenue row below, so count × $4.99 always equals it.' },
+    // The sum of the three rows above: every trial the business sold in that
+    // period, however it was earned. Without it the eye has to add three rows
+    // to answer "how are we doing", which is the first question anyone asks.
+    {
+      label: 'ALL TRIALS', pick: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
+      tot: F.paid + F.quizExistingPaid + F.otherPaid, warm: true,
+      note: 'every trial sold: quiz new customers + quiz existing customers + not from the quiz. The quiz rows sit on the QUIZ clock and the third on the CHARGE clock, so this is a count of trials, not of one single moment.',
+    },
   ]
 
   // 156px station label (wide enough for "Quiz New Trials Revenue") ·
