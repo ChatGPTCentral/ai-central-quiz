@@ -527,6 +527,21 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         referrerPolicy="strict-origin-when-cross-origin"
         allowFullScreen
+        // /result is the slowest page we have: LCP 5.16s desktop and 5.13s
+        // mobile at the 75th percentile, where Google calls 4s "poor". It is
+        // also the page every sale happens on.
+        //
+        // A YouTube embed downloads its player JavaScript the moment it is in
+        // the document, autoplay or not, and on the winning sellfirst layout
+        // this video sits six sections down in the optional tour. So on load
+        // it was fetching roughly a megabyte and occupying the main thread to
+        // render something almost nobody scrolls to, while the price above it
+        // waited its turn.
+        //
+        // lazy defers it until the visitor approaches it. No visual change,
+        // and autoplay is already false on this path, so nothing about the
+        // experience moves except how soon the rest of the page appears.
+        loading="lazy"
         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
       />
     </div>
