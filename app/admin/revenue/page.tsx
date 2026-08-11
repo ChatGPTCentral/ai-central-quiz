@@ -25,6 +25,8 @@
 import { createClient } from '@supabase/supabase-js'
 import TrialState from '@/components/admin/TrialState.client'
 import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.client'
+import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
+import { fmtDay, fmtMonth } from '@/lib/dates'
 
 /** The Stripe account these dashboard links point at. Not a secret: it is the
  *  account id that appears in every dashboard URL the owner already uses. */
@@ -96,11 +98,12 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, sheet, overrides] = await Promise.all([
+  const [eras, charges, sheet, overrides, rowOrder] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
+    c.from('trial_row_order').select('charge_id, position').limit(20_000),
   ])
   const ledger: Row[] = []
   for (let o = 0; o < 20_000; o += 1000) {
@@ -120,6 +123,10 @@ async function load() {
     const m = r.trial_date.slice(0, 7)
     sheetByMonth.set(m, (sheetByMonth.get(m) || 0) + 1)
   }
+  const orderBy = new Map<string, number>()
+  for (const o of (rowOrder.data ?? []) as { charge_id: string; position: number }[]) {
+    orderBy.set(o.charge_id, o.position)
+  }
   const overrideBy = new Map<string, string>()
   for (const o of (overrides.data ?? []) as { charge_id: string; state: string }[]) {
     overrideBy.set(o.charge_id, o.state)
@@ -128,6 +135,8 @@ async function load() {
     eras: (eras.data ?? []) as Era[],
     ledger,
     overrideBy,
+    orderBy,
+    chargeRows: chRows,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
@@ -175,7 +184,23 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     e.era = Math.max(e.era, r.era)
     byMonth.set(m, e)
   }
-  const months = Array.from(byMonth.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  // Month order is the owner's choice, remembered in the URL.
+  const msort = searchParams.msort === 'asc' ? 'asc' : 'desc'
+  const months = Array.from(byMonth.entries())
+    .sort((a, b) => (msort === 'asc' ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0])))
+
+  // Every dollar the account took inside each era's window. Eras 1a and 1b
+  // have no trials at all — the product did not exist — so a trial-only table
+  // showed them empty, which read as "no revenue" when they in fact carry the
+  // subscription and lifetime-deal money.
+  const eraCash = new Map<number, number>()
+  for (const ch of d.chargeRows) {
+    if (ch.refunded) continue
+    const day = ch.charged_at.slice(0, 10)
+    const e = d.eras.find(x => day >= x.starts_on && (!x.ends_on || day <= x.ends_on))
+    if (!e) continue
+    eraCash.set(e.era, (eraCash.get(e.era) ?? 0) + ch.amount_cents / 100)
+  }
 
   const byEra = new Map<number, { t: number; cdue: number; due: number; trial: number; conv: number }>()
   for (const r of L) {
@@ -213,13 +238,35 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     (!fState || stateOf(r) === fState) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr))
-  const people = filtered.slice(0, limit)
+  // Manual order first (only rows the owner has dragged have one), then date,
+  // newest first. A row he has never touched can never jump the queue.
+  const ordered = [...filtered].sort((a, b) => {
+    const pa = d!.orderBy.get(a.charge_id)
+    const pb = d!.orderBy.get(b.charge_id)
+    if (pa !== undefined && pb !== undefined) return pa - pb
+    if (pa !== undefined) return -1
+    if (pb !== undefined) return 1
+    return b.trial_at.localeCompare(a.trial_at)
+  })
+  const people = ordered.slice(0, limit)
+  const tableRows: TrialRow[] = people.map(r => {
+    const st = stateOf(r)
+    return {
+      charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
+      name: r.name, country: r.country, utm_source: r.utm_source,
+      trial_at: r.trial_at, trial_cents: r.trial_cents, era: r.era, attribution: r.attribution,
+      converted: r.converted, converted_at: r.converted_at, converted_cents: r.converted_cents,
+      gross_cents: r.gross_cents, lifetime_bundle: r.lifetime_bundle,
+      derivedState: st, derivedLabel: STATE_LABEL[st], derivedColor: STATE_COLOR[st],
+      override: d!.overrideBy.get(r.charge_id) ?? null,
+    }
+  })
   const counts: Record<State, number> = { converted: 0, lapsed: 0, not_due: 0, refunded: 0 }
   for (const r of L) counts[stateOf(r)]++
 
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
-    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, ...patch }
+    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, msort: msort === 'asc' ? 'asc' : undefined, ...patch }
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v)
     const s = p.toString()
     return `/admin/revenue${s ? `?${s}` : ''}`
@@ -237,7 +284,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     <div style={{ padding: '22px 26px 60px', maxWidth: 1240 }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Revenue</h1>
       <p style={{ fontSize: 13.5, color: MUTE, marginTop: 6, maxWidth: 800, lineHeight: 1.55 }}>
-        Every charge in the Stripe account since {d.firstCharge.slice(0, 10)}, {d.chargeCount.toLocaleString()} of them,
+        Every charge in the Stripe account since {fmtDay(d.firstCharge)}, {d.chargeCount.toLocaleString()} of them,
         turned into one trial ledger. This is the single source of truth: the dashboard, the simulator and the ads page
         all price against it.
       </p>
@@ -270,6 +317,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
             <th style={th}>Rate</th>
             <th style={th}>Trial cash</th>
             <th style={th}>Conversion cash</th>
+            <th style={th}>All revenue</th>
           </tr>
         </thead>
         <tbody>
@@ -281,21 +329,24 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
                   <span style={{ color: e.color }}>&#9632;</span> {e.code} &middot; {e.name}
                   {e.notes && <div style={{ fontSize: 10.5, color: MUTE, fontWeight: 400, marginTop: 2, maxWidth: 430, lineHeight: 1.4 }}>{e.notes}</div>}
                 </td>
-                <td style={{ ...td, textAlign: 'left', color: MUTE, fontSize: 11.5 }}>{e.starts_on} → {e.ends_on ?? 'now'}</td>
+                <td style={{ ...td, textAlign: 'left', color: MUTE, fontSize: 11.5 }}>{fmtDay(e.starts_on)} → {e.ends_on ? fmtDay(e.ends_on) : 'now'}</td>
                 <td style={td}>{s ? s.t.toLocaleString() : '–'}</td>
                 <td style={{ ...td, color: MUTE }}>{s ? s.due.toLocaleString() : '–'}</td>
                 <td style={td}>{s ? s.cdue.toLocaleString() : '–'}</td>
                 <td style={{ ...td, fontWeight: 800, color: GREEN }}>{s ? pct(s.cdue, s.due) : '–'}</td>
                 <td style={td}>{s ? usd0(s.trial) : '–'}</td>
                 <td style={td}>{s ? usd0(s.conv) : '–'}</td>
+                <td style={{ ...td, fontWeight: 800 }}>{usd0(eraCash.get(e.era) ?? 0)}</td>
               </tr>
             )
           })}
         </tbody>
       </table>
       <p style={{ fontSize: 11, color: MUTE, marginTop: 8, lineHeight: 1.5, maxWidth: 800 }}>
-        Era 1 has no trials by definition, it predates the product. Rates count only trials whose renewal date has
-        passed, so the current month never drags the number down.
+        Eras 1a and 1b have no trials because the trial product did not exist yet, so their trial and conversion cash
+        are empty by definition. <strong style={{ color: INK }}>All revenue</strong> is every dollar the account took in
+        that window, which is where their subscription and lifetime-deal money shows up. Rates count only trials whose
+        renewal date has passed, so the current month never drags the number down.
       </p>
 
       {/* QUIZ ERA ATTRIBUTION */}
@@ -325,7 +376,12 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       <table style={{ width: '100%', marginTop: 10, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: `2px solid ${INK}` }}>
-            <th style={{ ...th, textAlign: 'left' }}>Month</th>
+            <th style={{ ...th, textAlign: 'left' }}>
+              <a href={qs({ msort: msort === 'asc' ? undefined : 'asc' })} style={{ color: INK, textDecoration: 'none' }}
+                 title="Sort months oldest or newest first">
+                Month {msort === 'asc' ? '↑' : '↓'}
+              </a>
+            </th>
             <th style={th}>Era</th>
             <th style={th}>Trials</th>
             <th style={th}>From quiz</th>
@@ -334,6 +390,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
             <th style={th}>Rate</th>
             <th style={th}>Trial cash</th>
             <th style={th}>Conversion cash</th>
+            <th style={th}>All revenue</th>
             <th style={th}>Your sheet</th>
           </tr>
         </thead>
@@ -343,7 +400,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
             const diff = sh === undefined ? null : s.t - sh
             return (
               <tr key={m} style={{ borderBottom: `1px solid ${HAIR}` }}>
-                <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>{m}</td>
+                <td style={{ ...td, textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtMonth(m)}</td>
                 <td style={{ ...td, color: MUTE }}>{s.era}</td>
                 <td style={{ ...td, fontWeight: 700 }}>{s.t}</td>
                 <td style={{ ...td, color: s.q > 0 ? GREEN : MUTE, fontWeight: s.q > 0 ? 700 : 400 }}>{s.q || '–'}</td>
@@ -395,74 +452,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         )}
       </div>
 
-      <table style={{ width: '100%', marginTop: 8, borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: `2px solid ${INK}` }}>
-            <th style={{ ...th, textAlign: 'left' }}>Trial date</th>
-            <th style={{ ...th, textAlign: 'left' }}>Email</th>
-            <th style={{ ...th, textAlign: 'left' }}>Name</th>
-            <th style={{ ...th, textAlign: 'left' }}>Status</th>
-            <th style={{ ...th, textAlign: 'left' }}>Channel</th>
-            <th style={{ ...th, textAlign: 'left' }}>UTM source</th>
-            <th style={{ ...th, textAlign: 'left' }}>Country</th>
-            <th style={th}>Payment 1</th>
-            <th style={{ ...th, textAlign: 'left' }}>Paid 2 on</th>
-            <th style={th}>Payment 2</th>
-            <th style={th}>Total</th>
-            <th style={{ ...th, textAlign: 'left' }}>Stripe</th>
-          </tr>
-        </thead>
-        <tbody>
-          {people.map(r => {
-            const st = stateOf(r)
-            const p2 = r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)
-            return (
-              <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}` }}>
-                <td style={{ ...td, textAlign: 'left', color: MUTE, whiteSpace: 'nowrap' }}>
-                  {r.trial_at.slice(0, 10)}
-                  <span title={`Pricing era ${r.era}`} style={{ marginLeft: 5, fontSize: 9.5, color: MUTE }}>e{r.era}</span>
-                </td>
-                <td style={{ ...td, textAlign: 'left' }}>{r.person_key}</td>
-                <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>{r.name || '–'}</td>
-                <td style={{ ...td, textAlign: 'left' }}>
-                  <TrialState
-                    chargeId={r.charge_id}
-                    derived={st}
-                    derivedLabel={STATE_LABEL[st]}
-                    derivedColor={STATE_COLOR[st]}
-                    initial={d!.overrideBy.get(r.charge_id) ?? null}
-                  />
-                </td>
-                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: r.attribution === 'not_quiz' ? MUTE : GREEN, fontWeight: r.attribution === 'not_quiz' ? 400 : 700 }}>
-                  {ATTR_LABEL[r.attribution] ?? r.attribution}
-                </td>
-                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: MUTE }}>{r.utm_source || '–'}</td>
-                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: MUTE }}>{r.country || '–'}</td>
-                <td style={td}>
-                  ${(r.trial_cents / 100).toFixed(2)}
-                  {r.lifetime_bundle && <span title="One $54.74 charge: the $4.99 trial and the $49.75 lifetime together" style={{ marginLeft: 4, color: AMBER, fontWeight: 700 }}>+LT</span>}
-                </td>
-                <td style={{ ...td, textAlign: 'left', color: MUTE, whiteSpace: 'nowrap' }}>{r.converted_at ? r.converted_at.slice(0, 10) : '–'}</td>
-                <td style={td}>{r.converted ? `$${(p2 / 100).toFixed(2)}` : '–'}</td>
-                <td style={{ ...td, fontWeight: 700 }}>${(r.gross_cents / 100).toFixed(2)}</td>
-                <td style={{ ...td, textAlign: 'left', whiteSpace: 'nowrap' }}>
-                  {r.customer_id ? (
-                    <>
-                      <a href={stripeCustomer(r.customer_id)} target="_blank" rel="noopener noreferrer"
-                         title={`Open ${r.customer_id} in Stripe`}
-                         style={{ fontSize: 11.5, fontWeight: 700, color: INK, textDecoration: 'underline' }}>profile</a>
-                      <span style={{ color: HAIR, margin: '0 5px' }}>|</span>
-                      <a href={stripeNewSub(r.customer_id)} target="_blank" rel="noopener noreferrer"
-                         title="Open Stripe with the create-subscription panel, this customer preselected"
-                         style={{ fontSize: 11.5, fontWeight: 700, color: GREEN, textDecoration: 'underline' }}>+ sub</a>
-                    </>
-                  ) : <span style={{ color: MUTE, fontSize: 11 }}>–</span>}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <TrialsTable rows={tableRows} />
     </div>
   )
 }

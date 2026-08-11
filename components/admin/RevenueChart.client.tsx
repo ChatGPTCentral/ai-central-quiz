@@ -13,6 +13,7 @@
 // month's bar and its share of the line describe the same cohort.
 
 import { useState } from 'react'
+import { fmtMonth, fmtMonthShort } from '@/lib/dates'
 
 export interface ChartPoint {
   month: string          // YYYY-MM
@@ -79,7 +80,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
                 x={x(i) + 1} y={yBar(p.trials)} width={Math.max(1, bw - 2)} height={PADT + plotH - yBar(p.trials)}
                 fill={colorOf(p.era)} opacity={hover === null || hover === i ? 0.95 : 0.45}
                 onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-            <title>{`${p.month} · ${p.trials} trials · ${usd(p.gross)} earned`}</title>
+            <title>{`${fmtMonth(p.month)} · ${p.trials} trials · ${usd(p.gross)} earned`}</title>
           </rect>
         ))}
 
@@ -94,7 +95,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
         {points.map((p, i) => (
           i % Math.ceil(points.length / 14) === 0 ? (
             <text key={p.month} x={x(i) + bw / 2} y={H - PADB + 15} textAnchor="middle" fontSize={9} fill={MUTE}>
-              {p.month.slice(2)}
+              {fmtMonthShort(p.month)}
             </text>
           ) : null
         ))}
@@ -104,7 +105,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
       <div style={{ fontSize: 11.5, color: h ? INK : MUTE, marginTop: 6, minHeight: 18 }}>
         {h ? (
           <>
-            <strong>{h.month}</strong> · era {codeOf(h.era)} · <strong>{h.trials}</strong> trials ·
+            <strong>{fmtMonth(h.month)}</strong> · era {codeOf(h.era)} · <strong>{h.trials}</strong> trials ·
             {' '}{usd(h.gross)} earned by that cohort · {usd(cum[hover!])} cumulative
           </>
         ) : 'hover a month for its numbers'}
