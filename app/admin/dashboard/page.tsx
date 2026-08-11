@@ -152,6 +152,7 @@ type LedgerRow = {
   charge_id: string; trial_at: string; trial_cents: number; trial_refunded: boolean
   lifetime_bundle: boolean; attribution: string; quiz_completed_at: string | null
   converted_at: string | null; converted_cents: number | null; converted_charge_id: string | null
+  due: boolean; converted: boolean
 }
 
 async function revenueCharges(): Promise<{
@@ -167,10 +168,16 @@ async function revenueCharges(): Promise<{
   quizExistingEmails: Set<string>
   /** People who bought a trial more than once (duplicate subscriptions). */
   quizRepeatTrials: number
+  /** Every trial with the clock it sits on, whether its renewal date has
+   *  passed, and whether it converted. The Trial→annual row is built from
+   *  THIS, not from a lifetime-value threshold on submissions — that older
+   *  path called a Jun-29 cohort 0% while the ledger showed it converting,
+   *  which is exactly the two-sources problem this rebuild exists to kill. */
+  trialPoints: { at: string; due: boolean; converted: boolean }[]
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>() }
+  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>(), trialPoints: [] }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -182,7 +189,7 @@ async function revenueCharges(): Promise<{
   for (let o = 0; o < 20_000; o += 1000) {
     const { data, error } = await c
       .from('trial_ledger')
-      .select('charge_id, trial_at, trial_cents, trial_refunded, lifetime_bundle, attribution, quiz_completed_at, converted_at, converted_cents, converted_charge_id')
+      .select('charge_id, trial_at, trial_cents, trial_refunded, lifetime_bundle, attribution, quiz_completed_at, converted_at, converted_cents, converted_charge_id, due, converted')
       .order('trial_at')
       .range(o, o + 999)
     if (error || !data) break
@@ -206,6 +213,7 @@ async function revenueCharges(): Promise<{
   }
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
+  const trialPoints: { at: string; due: boolean; converted: boolean }[] = []
   const quizExistingEmails = new Set<string>()
   let lifetimeSplits = 0
   let preWindowAnnuals = 0
@@ -220,6 +228,9 @@ async function revenueCharges(): Promise<{
 
     if (!t.trial_refunded) {
       accounted.add(t.charge_id)
+      // Same clock as this trial's revenue row, so the rate and the money can
+      // never describe different weeks.
+      trialPoints.push({ at: anchor, due: t.due, converted: t.converted })
       const usd = t.trial_cents / 100
       if (t.attribution === 'quiz_net_new') entries.push({ at: anchor, kind: 'net', usd })
       else if (t.attribution === 'quiz_existing') entries.push({ at: anchor, kind: 'quizExisting', usd })
@@ -276,7 +287,7 @@ async function revenueCharges(): Promise<{
     .eq('refunded', false)
   const quizRepeatTrials = Math.max(0, (rawTrials ?? 0) - ledger.length)
 
-  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails }
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, trialPoints }
 }
 
 export default async function DashboardPage({
@@ -393,6 +404,12 @@ export default async function DashboardPage({
     const DUE_AFTER_MS = 32 * 24 * 60 * 60 * 1000
     const nowMs = Date.now()
 
+    // CLEAN counters: completions and paid restricted to days that actually
+    // had client tracking. A month like Jul 2026 contains untracked days
+    // (tracking began 9 Jul), and mixing them in produced step rates whose
+    // numerator and denominator described different windows — a real
+    // completion divided by views that were never recorded. Rates use these.
+    const clean = new Map<string, { completed: number; netNew: number }>()
     const subs = new Map<string, { completed: number; netNew: number; revenue: number; mature: number; billedAnnual: number }>()
     for (const r of allRows) {
       // Same anchor as the KPIs above, so a person lands in the week they took
@@ -417,6 +434,12 @@ export default async function DashboardPage({
         }
       }
       subs.set(b, e)
+      if (events.firstEventAt && quizAt.slice(0, 10) >= events.firstEventAt) {
+        const cl = clean.get(b) || { completed: 0, netNew: 0 }
+        cl.completed++
+        if (chargeMs !== null && chargeMs > new Date(quizAt).getTime()) cl.netNew++
+        clean.set(b, cl)
+      }
     }
     // The trials the quiz cannot claim, in the same buckets as everything
     // else, so a good week for the quiz can be told apart from a good week
@@ -436,6 +459,18 @@ export default async function DashboardPage({
 
     // The revenue split, each entry already carrying its own clock (see
     // revenueCharges). Kind names match the SeriesPoint field suffixes.
+    // Trial→annual, from the ledger, on the same clock as the money.
+    const maturity = new Map<string, { due: number; conv: number }>()
+    for (const t of rev.trialPoints) {
+      const b = bucketKey(t.at, gran)
+      if (!b || b < launchBucket) continue
+      if (!t.due) continue
+      const m = maturity.get(b) || { due: 0, conv: 0 }
+      m.due++
+      if (t.converted) m.conv++
+      maturity.set(b, m)
+    }
+
     const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annual: number; other: number }>()
     // What the conversion money is actually MADE OF, per bucket. A conversion
     // can be a $59.75 annual or the $49.75 half of a lifetime bundle, so the
@@ -487,8 +522,10 @@ export default async function DashboardPage({
       revenueAnnual: revByBucket.get(bucket)?.annual || 0,
       annualParts: Array.from(annualParts.get(bucket)?.entries() ?? []).sort((a, b) => b[0] - a[0]),
       revenueOther: revByBucket.get(bucket)?.other || 0,
-      matureTrials: subs.get(bucket)?.mature || 0,
-      billedAnnual: subs.get(bucket)?.billedAnnual || 0,
+      matureTrials: maturity.get(bucket)?.due || 0,
+      billedAnnual: maturity.get(bucket)?.conv || 0,
+      cleanCompleted: clean.get(bucket)?.completed || 0,
+      cleanNetNew: clean.get(bucket)?.netNew || 0,
       partial: bucket === nowBucket,
     }))
   }

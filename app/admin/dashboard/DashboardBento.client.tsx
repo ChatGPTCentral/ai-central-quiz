@@ -63,7 +63,12 @@ export interface SeriesPoint {
    *  states the real mix instead of dividing by an assumed price. */
   annualParts: [number, number][]
   revenueOther: number
-  /** Net-new buyers whose annual bill date has actually passed. */
+  /** Completions and paid restricted to days that had client tracking, so a
+   *  partially-instrumented period's step rates are computed over the window
+   *  that was actually measured instead of mixing tracked and untracked days. */
+  cleanCompleted: number
+  cleanNetNew: number
+  /** Trials whose renewal date has passed, from the ledger. */
   matureTrials: number
   /** Of those, how many were really billed the annual. */
   billedAnnual: number
@@ -313,15 +318,15 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     },
     {
       label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: F.started, warm: false,
-      out: { label: 'started → completed', all: step(F.completed, F.started), per: p => step(p.completed, p.starts) },
+      out: { label: 'started → completed', all: step(F.completed, F.started), per: p => step(p.cleanCompleted, p.starts) },
     },
     {
       label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: F.completed, warm: false,
-      out: { label: 'completed → clicked', all: step(F.checkout, F.completed), per: p => step(p.checkout, p.completed) },
+      out: { label: 'completed → clicked', all: step(F.checkout, F.completed), per: p => step(p.checkout, p.cleanCompleted) },
     },
     {
       label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
-      out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.netNew, p.checkout) },
+      out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.cleanNetNew, p.checkout) },
     },
     { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true, note: 'THE NORTH STAR: took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
     // The middle category, added after the owner reconciled July against his
@@ -333,14 +338,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     // anyway, because the only way to know whether a good week was the QUIZ or
     // just a good week in Stripe is to see the two side by side.
     { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'never took the quiz, or took it only after paying. One per person, by CHARGE date. Same classification as the revenue row below, so count × $4.99 always equals it.' },
-    // The sum of the three rows above: every trial the business sold in that
-    // period, however it was earned. Without it the eye has to add three rows
-    // to answer "how are we doing", which is the first question anyone asks.
-    {
-      label: 'ALL TRIALS', pick: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
-      tot: F.paid + F.quizExistingPaid + F.otherPaid, warm: true,
-      note: 'every trial sold: quiz new customers + quiz existing customers + not from the quiz. The quiz rows sit on the QUIZ clock and the third on the CHARGE clock, so this is a count of trials, not of one single moment.',
-    },
+
   ]
 
   // 156px station label (wide enough for "Quiz New Trials Revenue") ·
@@ -365,9 +363,17 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
   // `unit` = the single price a row is made of; it powers the hover arithmetic
   // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
-  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string; unit?: number; parts?: (p: SeriesPoint) => [number, number][] }[] = [
+  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; count?: boolean; sub?: string; unit?: number; parts?: (p: SeriesPoint) => [number, number][] }[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
+    {
+      // Every trial sold, however earned. A summary row, styled like All
+      // Revenue, because that is what it is: a total, not a funnel station.
+      label: 'ALL TRIALS', heavy: true, count: true,
+      sub: 'quiz new customers + quiz existing customers + not from the quiz. The two quiz rows sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
+      all: F.paid + F.quizExistingPaid + F.otherPaid,
+      per: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
+    },
     {
       label: 'Quiz New Trials Revenue', money: true, heavy: false, unit: 4.99,
       sub: 'ONE $4.99 trial per net-new person (their first), by QUIZ date. Includes the $4.99 inside $54.74 lifetime bundles; repeat $4.99s from the same person sit in Other Revenue.',
@@ -426,13 +432,11 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       {/* station rows */}
       {stations.map(s => {
         const ns = buckets.map(p => s.pick(p))
-        const max = Math.max(...ns, 1)
         // Landing / started / checkout come from client events. Before Jul 9
         // there are none, so those cells must read "–" (not measured) rather
         // than 0 (measured as nobody) — the distinction the owner needed when
         // the launch-week column looked empty.
         const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Checkout clicked'
-        const base = s.warm ? '98,167,88' : '4,107,177' // asparagus for paid, azul for the rest
         return (
           <div key={s.label}>
             <div className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: s.out ? 'none' : `1px solid ${ROWHAIR}` }}>
@@ -449,7 +453,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                       : thin ? `${labelBucket(buckets[i].bucket, gran as Gran)} · ${fmt(n)}, UNDERSTATED — tracking started mid-period (9 Jul)`
                       : `${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`
                     }
-                    style={{ padding: '9px 2px', margin: 1, fontSize: 9.5, fontWeight: 700, color: blind ? MUTE : INK, background: blind ? 'transparent' : `rgba(${base},${(0.05 + (n / max) * 0.42).toFixed(2)})`, ...tnum }}>
+                    style={{ padding: '9px 4px', fontSize: 10, fontWeight: 700, color: blind ? MUTE : INK, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
                     {blind ? '–' : thin ? `${compact(n)}*` : compact(n)}
                   </span>
                 )
@@ -524,7 +528,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           return `$${v.toFixed(2)} exact`
         }
         return (
-          <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
+          <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : rr.count ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
             <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
               {rr.label}
               {rr.label === 'Trial → annual' && (
@@ -543,13 +547,27 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
               if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
               return acc
             }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
-              {money ? usd(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
+              {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
             </span>
-            {buckets.map(p => (
-              <span key={p.bucket} title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(rr.per(p), rr.parts?.(p))}` : undefined} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                {money ? usd(rr.per(p)) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(rr.per(p)))}
-              </span>
-            ))}
+            {buckets.map(p => {
+              const v = rr.per(p)
+              // Grayscale shading, and ONLY on the plain conversion-rate rows.
+              // The colour scale on every cell made the table hard to read
+              // (owner); the headline rows keep their colour instead, which is
+              // what the eye should land on first.
+              const shade = !money && !rr.count && !rr.heavy && rr.label !== 'Trial → annual'
+                ? `rgba(26,26,26,${(0.03 + Math.min(1, v / 100) * 0.16).toFixed(3)})`
+                : undefined
+              return (
+                <span key={p.bucket}
+                  title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(v, rr.parts?.(p))}` : undefined}
+                  style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800,
+                           color: money ? '#2E7D32' : rr.count ? INK : '#B26A00',
+                           background: shade, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                  {money ? usd(v) : rr.count ? fmt(v) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(v))}
+                </span>
+              )
+            })}
           </div>
         )
       })}
@@ -585,7 +603,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         </div>
       )}
       <div style={{ fontSize: 9.5, color: MUTE, marginTop: 6 }}>
-        cell tint = count relative to that station&apos;s best period · hover a cell for the exact count
+        hover a cell for its exact figure · the light grey shading appears only on step-conversion rows, so the
+        headline rows stay the ones your eye lands on
       </div>
     </div>
   )
