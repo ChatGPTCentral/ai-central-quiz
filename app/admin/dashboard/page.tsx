@@ -7,36 +7,25 @@ import {
   LAUNCH_LABEL,
   type DashboardFilters,
 } from '@/lib/dashboard-queries'
+import {
+  classifyLedger,
+  loadLedgerAndCharges,
+  bucketKey,
+  bucketEnd,
+  type Entry,
+  type TrialPoint,
+  type Gran,
+} from '@/lib/trial-entries'
 import DashboardArea from './DashboardArea.client'
 import { type BentoRow, type FunnelEventCounts, type PlacementStat, type SeriesPoint, type Series } from './DashboardBento.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 30
 
-type Gran = 'day' | 'week' | 'month'
+// bucketKey / bucketEnd moved to lib/trial-entries.ts: the drill endpoint has
+// to bucket exactly the way this page does, and a copied date function is a
+// disagreement waiting to happen.
 const GRANS: Gran[] = ['day', 'week', 'month']
-
-// Bucket an ISO timestamp for a given granularity → a sortable key.
-//   day → YYYY-MM-DD · week → Monday YYYY-MM-DD · month → YYYY-MM
-function bucketKey(iso: string, gran: Gran): string {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return ''
-  if (gran === 'month') return d.toISOString().slice(0, 7)
-  if (gran === 'week') { const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d.toISOString().slice(0, 10) }
-  return d.toISOString().slice(0, 10)
-}
-
-/** The day AFTER a bucket's last day, as YYYY-MM-DD — the bucket's exclusive
- *  end. Used to decide whether instrumentation existed for that period. */
-function bucketEnd(bucket: string, gran: Gran): string {
-  if (gran === 'month') {
-    const [y, m] = bucket.split('-').map(Number)
-    return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
-  }
-  const d = new Date(`${bucket}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + (gran === 'week' ? 7 : 1))
-  return d.toISOString().slice(0, 10)
-}
 
 type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; checkout: number }>>
 
@@ -150,17 +139,15 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
 // did the quiz produce" has to include the renewals its trials went on to pay.
 // Two real kinds rather than a shadow tag, so ALL REVENUE stays a plain sum of
 // its parts and nothing can be double-counted.
-type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annualQuiz' | 'annualNotQuiz' | 'other'
-
-type LedgerRow = {
-  charge_id: string; person_key: string; trial_at: string; trial_cents: number; trial_refunded: boolean
-  lifetime_bundle: boolean; attribution: string; quiz_completed_at: string | null
-  converted_at: string | null; converted_cents: number | null; converted_charge_id: string | null
-  due: boolean; converted: boolean
-}
+//
+// The classification itself lives in lib/trial-entries.ts because
+// /api/admin/drill replays it to answer "which rows made this cell". A
+// drill-down that re-queried would be a second implementation of the same
+// rules, which is how every number in this project that disagreed with itself
+// got that way.
 
 async function revenueCharges(): Promise<{
-  entries: { at: string; kind: RevKind; usd: number }[]
+  entries: Entry[]
   mirrored: number
   /** $54.74 bundles ($4.99 trial + $49.75 lifetime) inside the numbers. */
   lifetimeSplits: number
@@ -182,7 +169,7 @@ async function revenueCharges(): Promise<{
    *  THIS, not from a lifetime-value threshold on submissions — that older
    *  path called a Jun-29 cohort 0% while the ledger showed it converting,
    *  which is exactly the two-sources problem this rebuild exists to kill. */
-  trialPoints: { at: string; due: boolean; converted: boolean; attribution: string }[]
+  trialPoints: TrialPoint[]
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
@@ -193,103 +180,12 @@ async function revenueCharges(): Promise<{
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
   })
 
-  // 1. The ledger: one row per trial, already classified by the database.
-  const ledger: LedgerRow[] = []
-  for (let o = 0; o < 20_000; o += 1000) {
-    const { data, error } = await c
-      .from('trial_ledger')
-      .select('charge_id, person_key, trial_at, trial_cents, trial_refunded, lifetime_bundle, attribution, quiz_completed_at, converted_at, converted_cents, converted_charge_id, due, converted')
-      .order('trial_at')
-      .range(o, o + 999)
-    if (error || !data) break
-    ledger.push(...(data as LedgerRow[]))
-    if (data.length < 1000) break
-  }
+  const { ledger, charges } = await loadLedgerAndCharges(c)
 
-  // 2. Every charge, to derive "other revenue" as an EXACT residual: the
-  //    account total minus the charges the ledger already accounts for.
-  const charges: { id: string; amount_cents: number; charged_at: string; refunded: boolean }[] = []
-  for (let o = 0; o < 20_000; o += 1000) {
-    const { data, error } = await c
-      .from('stripe_charges')
-      .select('id, amount_cents, charged_at, refunded')
-      .gte('charged_at', `${MIRROR_START_ISO}T00:00:00Z`)
-      .order('charged_at')
-      .range(o, o + 999)
-    if (error || !data) break
-    charges.push(...(data as typeof charges))
-    if (data.length < 1000) break
-  }
-
-  const entries: { at: string; kind: RevKind; usd: number }[] = []
-  const trialPoints: { at: string; due: boolean; converted: boolean; attribution: string }[] = []
-  const quizExistingEmails = new Set<string>()
-  const netNewEmails = new Set<string>()
-  let lifetimeSplits = 0
-  let preWindowAnnuals = 0
-  const accounted = new Set<string>()
-
-  for (const t of ledger) {
-    if (t.lifetime_bundle) lifetimeSplits++
-    // A quiz-earned trial restates to the week the person took the quiz; the
-    // cohort owns the sale. Everything else sits where it was charged.
-    const quizEarned = t.attribution === 'quiz_net_new' || t.attribution === 'quiz_existing'
-    const anchor = quizEarned && t.quiz_completed_at ? t.quiz_completed_at : t.trial_at
-
-    if (!t.trial_refunded) {
-      accounted.add(t.charge_id)
-      // Same clock as this trial's revenue row, so the rate and the money can
-      // never describe different weeks.
-      trialPoints.push({ at: anchor, due: t.due, converted: t.converted, attribution: t.attribution })
-      // Both sets come from the ledger's own person key, so "who is net-new"
-      // and "who is an existing-customer buyer" have exactly one definition.
-      if (t.person_key?.includes('@')) {
-        if (t.attribution === 'quiz_net_new') netNewEmails.add(t.person_key)
-        else if (t.attribution === 'quiz_existing') quizExistingEmails.add(t.person_key)
-      }
-      const usd = t.trial_cents / 100
-      if (t.attribution === 'quiz_net_new') entries.push({ at: anchor, kind: 'net', usd })
-      else if (t.attribution === 'quiz_existing') entries.push({ at: anchor, kind: 'quizExisting', usd })
-      else entries.push({ at: t.trial_at, kind: 'notQuiz', usd })
-    }
-
-    if (t.converted_at && t.converted_cents) {
-      if (t.converted_charge_id) accounted.add(t.converted_charge_id)
-      const quizEarnedTrial = t.attribution === 'quiz_net_new' || t.attribution === 'quiz_existing'
-      if (t.lifetime_bundle) {
-        // A lifetime is NOT an annual. Owner's rule, stated twice: the $4.99
-        // half of a $54.74 bundle belongs with the trials, the $49.75 half is
-        // Other Revenue. Converted Trials Revenue means $59.75 renewals, full
-        // stop. (The ledger still counts this person as CONVERTED, because
-        // they did — that is a question about the rate, not about which
-        // revenue bucket their money sits in.)
-        entries.push({ at: t.trial_at, kind: 'other', usd: 49.75 })
-      } else if (anchor < `${MIRROR_START_ISO}T00:00:00Z`) {
-        preWindowAnnuals++
-      } else {
-        entries.push({
-          at: anchor,
-          kind: quizEarnedTrial ? 'annualQuiz' : 'annualNotQuiz',
-          usd: t.converted_cents / 100,
-        })
-      }
-    }
-  }
-
-  // The residual. Anything the ledger did not account for is real money the
-  // three trial buckets cannot claim: legacy subscriptions, old annual prices,
-  // duplicate subscriptions.
-  for (const ch of charges) {
-    if (ch.refunded) continue
-    if (accounted.has(ch.id)) continue
-    entries.push({ at: ch.charged_at, kind: 'other', usd: ch.amount_cents / 100 })
-  }
-
-  const seen = new Map<string, number>()
-  for (const t of ledger) {
-    if (!t.quiz_completed_at) continue
-    seen.set(t.charge_id, (seen.get(t.charge_id) || 0) + 1)
-  }
+  // ONE classification pass, shared with /api/admin/drill so the drawer that
+  // opens a cell lists the very entries that were summed into it.
+  const { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails } =
+    classifyLedger(ledger, charges, MIRROR_START_ISO)
 
   // Duplicate subscriptions: people the ledger deduplicated away.
   const { count: rawTrials } = await c

@@ -15,6 +15,7 @@ import { useMemo, useState } from 'react'
 import { STAGES } from '@/lib/segmentation-v2'
 import { countryFlag } from '@/lib/country-flags'
 import { COMPANY_SIZE_ORDER } from '@/lib/enrichment/standardize'
+import DrillDown, { type DrillTarget } from '@/components/admin/DrillDown.client'
 
 export interface BentoRow {
   stage: string
@@ -309,6 +310,33 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const compact = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
   const pctDisp = (raw: number) => `${raw < 10 ? raw.toFixed(1) : Math.round(raw)}%`
 
+  // ── Drill-down: any ledger-backed cell can be opened and read row by row.
+  //
+  // The owner's ask after two days of arguing about totals (2026-08-11): let
+  // the spreadsheet habit work here too, click the number and see the cells
+  // behind it. Only rows whose `metric` is set are clickable, which is exactly
+  // the rows that come from trial_ledger; event-sourced rows (landing views,
+  // quiz starts) are counts of anonymous sessions with no rows to show.
+  const [drill, setDrill] = useState<DrillTarget | null>(null)
+  const allBucketKeys = buckets.map(p => p.bucket)
+  /** Returns the click handler for a cell, or undefined when the row is not
+   *  drillable. `bucket === null` means the All window column, which opens
+   *  exactly the columns on screen, matching how that total is summed. */
+  const openCell = (metric: string | undefined, label: string, bucket: string | null, value: string, money: boolean) => {
+    if (!metric || !buckets.length || gran === 'all') return undefined
+    return () => setDrill({
+      metric, label, cellValue: value, money,
+      columnLabel: bucket ? labelBucket(bucket, gran as Gran) : `all ${buckets.length} columns shown`,
+      gran: gran as string,
+      buckets: bucket ? [bucket] : allBucketKeys,
+    })
+  }
+  /** Cells you can open say so: a pointer and a dotted underline, nothing
+   *  louder, because most of the table is numbers and a table of links reads
+   *  as noise. */
+  const drillable = (on: boolean): React.CSSProperties =>
+    on ? { cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 } : {}
+
   // Step-to-step rate: the share of the PREVIOUS station that made it here.
   // Clamped to 100 like the summary rows below — a step rate over 100% means
   // the two stations are counted over different windows, not that more people
@@ -342,10 +370,12 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     tot: number
     warm: boolean
     note?: string
+    /** Drill key. Set = every cell in the row opens the ledger rows behind it. */
+    metric?: string
     out?: { label: string; all: number; per: (p: SeriesPoint) => number }
     /** "of which" rows: the parts this station is made of, rendered indented
      *  underneath it. They sum to the station, so the eye can check it. */
-    breakdown?: { label: string; pick: (p: SeriesPoint) => number; tot: number; note?: string }[]
+    breakdown?: { label: string; pick: (p: SeriesPoint) => number; tot: number; note?: string; metric?: string }[]
     /** Render like the All Revenue row: it is a total, not a station. */
     summary?: boolean
   }[] = [
@@ -380,14 +410,14 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       label: 'ALL TRIALS',
       pick: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
       tot: sumB(p => p.netNew + p.quizExistingPaid + p.otherPaid, F.paid + F.quizExistingPaid + F.otherPaid),
-      warm: true, summary: true,
+      warm: true, summary: true, metric: 'trials_all',
       note: 'every trial sold in the period. The two quiz rows below sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
       breakdown: [
-        { label: 'from net-new', pick: (p: SeriesPoint) => p.netNew, tot: sumB(p => p.netNew, F.paid),
+        { label: 'from net-new', pick: (p: SeriesPoint) => p.netNew, tot: sumB(p => p.netNew, F.paid), metric: 'trials_net',
           note: 'took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
-        { label: 'from existing', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: sumB(p => p.quizExistingPaid, F.quizExistingPaid),
+        { label: 'from existing', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: sumB(p => p.quizExistingPaid, F.quizExistingPaid), metric: 'trials_existing',
           note: 'took the quiz and then bought, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
-        { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: sumB(p => p.otherPaid, F.otherPaid),
+        { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: sumB(p => p.otherPaid, F.otherPaid), metric: 'trials_notquiz',
           note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows, so count × $4.99 always equals them.' },
       ],
     },
@@ -399,7 +429,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       label: 'ALL CONVERSIONS',
       pick: (p: SeriesPoint) => p.billedAnnual,
       tot: sumB(p => p.billedAnnual, billedAll),
-      warm: true, summary: true,
+      warm: true, summary: true, metric: 'conversions',
       note: 'trials that went on to pay a renewal, credited to the week of the trial that earned them. A $54.74 lifetime buyer is NOT counted here: they bought the library outright, so there is no renewal to come.',
     },
 
@@ -430,9 +460,14 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     label: string; all: number; per: (p: SeriesPoint) => number
     heavy: boolean; money?: boolean; count?: boolean; sub?: string; unit?: number
     parts?: (p: SeriesPoint) => [number, number][]
+    /** Drill key, as on the stations. */
+    metric?: string
+    /** Suppress the All window figure. For a rate whose denominator is still
+     *  filling up, a window total is not a smaller truth, it is a wrong one. */
+    noTotal?: string
     /** "of which" lines, same idea as the station breakdowns: the parts this
      *  total is made of, indented underneath and summing to it. */
-    breakdown?: { label: string; all: number; per: (p: SeriesPoint) => number; money?: boolean }[]
+    breakdown?: { label: string; all: number; per: (p: SeriesPoint) => number; money?: boolean; metric?: string }[]
   }
   const allTrials = (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid
   const allTrialsTot = sumB(p => p.netNew + p.quizExistingPaid + p.otherPaid, F.paid + F.quizExistingPaid + F.otherPaid)
@@ -463,26 +498,31 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       sub: 'trials that went on to pay a renewal, divided by ALL trials of that period. Recent periods read low because their trials are not due yet, which is the truth rather than a gap.',
       all: allTrialsTot > 0 ? (sumB(p => p.billedAnnual, billedAll) / allTrialsTot) * 100 : 0,
       per: (p: SeriesPoint) => { const t = allTrials(p); return t > 0 ? Math.min(100, (p.billedAnnual / t) * 100) : 0 },
+      // No window total. At any moment a large share of trials have not
+      // reached their renewal date, so a single all-window rate is guaranteed
+      // to understate and would be read as the real conversion rate (owner,
+      // 2026-08-11). The per-period cells still say what each cohort did.
+      noTotal: 'no window figure on purpose: there are always trials not yet due, so one blended rate would always be too low. Read the older columns instead.',
     },
     {
       // Every dollar Stripe collected, then what it is made of. Same shape as
       // ALL TRIALS above: the total first, its parts indented beneath, and the
       // parts sum to it so the arithmetic can be checked by eye.
-      label: 'ALL REVENUE', money: true, heavy: true,
+      label: 'ALL REVENUE', money: true, heavy: true, metric: 'rev_all',
       sub: 'every dollar Stripe collected in the period, refunds excluded. The six lines beneath add up to it.',
       all: sumOf(revAll), per: revAll,
       // Renewal money is TWO lines, not one. A $59.75 is only quiz money if the
       // $4.99 that earned it was quiz money, so the split follows the trial
-      // behind the charge: the "quiz" line is the renewals of net-new AND of
-      // existing-customer trials together, which is exactly the money "quiz
+      // behind the charge: the "won - quiz" line is the renewals of net-new AND
+      // of existing-customer trials together, which is exactly the money "quiz
       // revenue" in the KPI row is allowed to claim.
       breakdown: [
-        { label: 'from net-new trials', money: true, all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet },
-        { label: 'from existing trials', money: true, all: sumOf(p => p.revenueQuizExisting), per: (p: SeriesPoint) => p.revenueQuizExisting },
-        { label: 'from not-quiz trials', money: true, all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz },
-        { label: 'from converted trials - quiz', money: true, all: sumOf(p => p.revenueAnnualQuiz), per: (p: SeriesPoint) => p.revenueAnnualQuiz },
-        { label: 'from converted trials - no quiz', money: true, all: sumOf(p => p.revenueAnnualNotQuiz), per: (p: SeriesPoint) => p.revenueAnnualNotQuiz },
-        { label: 'from other revenue', money: true, all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther },
+        { label: 'from net-new trials', money: true, all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet, metric: 'rev_net' },
+        { label: 'from existing trials', money: true, all: sumOf(p => p.revenueQuizExisting), per: (p: SeriesPoint) => p.revenueQuizExisting, metric: 'rev_existing' },
+        { label: 'from not-quiz trials', money: true, all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz, metric: 'rev_notquiz' },
+        { label: 'from won trials - quiz', money: true, all: sumOf(p => p.revenueAnnualQuiz), per: (p: SeriesPoint) => p.revenueAnnualQuiz, metric: 'rev_won_quiz' },
+        { label: 'from won trials - no quiz', money: true, all: sumOf(p => p.revenueAnnualNotQuiz), per: (p: SeriesPoint) => p.revenueAnnualNotQuiz, metric: 'rev_won_noquiz' },
+        { label: 'from other revenue', money: true, all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther, metric: 'rev_other' },
       ],
     },
   ]
@@ -541,23 +581,41 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
               const shade = !money && !rr.count && !rr.heavy && rr.label !== 'Trial → annual'
                 ? `rgba(26,26,26,${(0.03 + Math.min(1, v / 100) * 0.16).toFixed(3)})`
                 : undefined
+              const disp = money ? usd(v) : rr.count ? fmt(v) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(v))
+              const open = openCell(rr.metric, rr.label, p.bucket, disp, money)
               return (
-                <span key={p.bucket}
-                  title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(v, rr.parts?.(p))}` : undefined}
+                <span key={p.bucket} onClick={open}
+                  title={[
+                    money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(v, rr.parts?.(p))}` : undefined,
+                    open ? 'click to see the rows behind it' : undefined,
+                  ].filter(Boolean).join(' · ') || undefined}
                   style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800,
                            color: money ? '#2E7D32' : rr.count ? INK : '#B26A00',
-                           background: shade, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                  {money ? usd(v) : rr.count ? fmt(v) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(v))}
+                           background: shade, borderLeft: `1px solid ${ROWHAIR}`, ...tnum, ...drillable(!!open) }}>
+                  {disp}
                 </span>
               )
             })}
-            <span title={money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
-              const i = acc.findIndex(a => a[0] === c)
-              if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
-              return acc
-            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : rr.count ? INK : '#B26A00', ...tnum }}>
-              {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
-            </span>
+            {(() => {
+              // Percentages read to ONE decimal everywhere, headline or not: a
+              // second decimal on a rate built from tens of trials is precision
+              // the data does not have (owner, 2026-08-11).
+              const totalDisp = rr.noTotal ? '–' : money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(1)}%`
+              const openTot = rr.noTotal ? undefined : openCell(rr.metric, rr.label, null, totalDisp, money)
+              return (
+                <span onClick={openTot}
+                  title={rr.noTotal ? rr.noTotal : money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
+                    const i = acc.findIndex(a => a[0] === c)
+                    if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
+                    return acc
+                  }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined}
+                  style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800,
+                           color: rr.noTotal ? MUTE : money ? '#2E7D32' : rr.count ? INK : '#B26A00',
+                           cursor: rr.noTotal ? 'help' : undefined, ...tnum, ...drillable(!!openTot) }}>
+                  {totalDisp}
+                </span>
+              )
+            })()}
           </div>
           {/* "Of which" — the parts this total is made of, indented and summing
               to the row above, the same shape the funnel uses for ALL TRIALS. */}
@@ -566,14 +624,26 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
               <span className="truncate" style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
                 ↳ {b.label}
               </span>
-              {buckets.map(p => (
-                <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#3F6B3C', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                  {b.money ? usd(b.per(p)) : fmt(b.per(p))}
-                </span>
-              ))}
-              <span style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#3F6B3C', ...tnum }}>
-                {b.money ? usd(b.all) : fmt(b.all)}
-              </span>
+              {buckets.map(p => {
+                const d = b.money ? usd(b.per(p)) : fmt(b.per(p))
+                const open = openCell(b.metric, b.label, p.bucket, d, !!b.money)
+                return (
+                  <span key={p.bucket} onClick={open} title={open ? 'click to see the rows behind it' : undefined}
+                    style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#3F6B3C', borderLeft: `1px solid ${ROWHAIR}`, ...tnum, ...drillable(!!open) }}>
+                    {d}
+                  </span>
+                )
+              })}
+              {(() => {
+                const d = b.money ? usd(b.all) : fmt(b.all)
+                const open = openCell(b.metric, b.label, null, d, !!b.money)
+                return (
+                  <span onClick={open} title={open ? 'click to see the rows behind it' : undefined}
+                    style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#3F6B3C', ...tnum, ...drillable(!!open) }}>
+                    {d}
+                  </span>
+                )
+              })()}
             </div>
           ))}
           </div>
@@ -619,19 +689,28 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 const cov = buckets[i].eventsCovered
                 const blind = fromEvents && cov === 'none'
                 const thin = fromEvents && cov === 'partial'
+                const d = blind ? '–' : thin ? `${compact(n)}*` : compact(n)
+                const open = blind ? undefined : openCell(s.metric, s.label, buckets[i].bucket, fmt(n), false)
                 return (
-                  <span key={buckets[i].bucket} className="flex items-center justify-center"
+                  <span key={buckets[i].bucket} className="flex items-center justify-center" onClick={open}
                     title={
                       blind ? `${labelBucket(buckets[i].bucket, gran as Gran)} · not measured — client tracking only started 9 Jul, four days after launch`
                       : thin ? `${labelBucket(buckets[i].bucket, gran as Gran)} · ${fmt(n)}, UNDERSTATED — tracking started mid-period (9 Jul)`
-                      : `${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`
+                      : `${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}${open ? ' · click to see the rows behind it' : ''}`
                     }
-                    style={{ padding: '9px 4px', fontSize: 10, fontWeight: s.summary ? 800 : 700, color: blind ? MUTE : INK, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                    {blind ? '–' : thin ? `${compact(n)}*` : compact(n)}
+                    style={{ padding: '9px 4px', fontSize: 10, fontWeight: s.summary ? 800 : 700, color: blind ? MUTE : INK, borderLeft: `1px solid ${ROWHAIR}`, ...tnum, ...drillable(!!open) }}>
+                    {d}
                   </span>
                 )
               })}
-              <span className="flex items-center justify-center" style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
+              {(() => {
+                const open = openCell(s.metric, s.label, null, fmt(s.tot), false)
+                return (
+                  <span className="flex items-center justify-center" onClick={open}
+                    title={open ? 'click to see the rows behind it' : undefined}
+                    style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum, ...drillable(!!open) }}>{fmt(s.tot)}</span>
+                )
+              })()}
             </div>
 
             {/* "Of which" — the parts this station is made of, indented so the
@@ -643,14 +722,24 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                   style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
                   ↳ {b.label}
                 </span>
-                {buckets.map(p => (
-                  <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#4A4A4A', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                    {compact(b.pick(p))}
-                  </span>
-                ))}
-                <span style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', ...tnum }}>
-                  {fmt(b.tot)}
-                </span>
+                {buckets.map(p => {
+                  const open = openCell(b.metric, b.label, p.bucket, fmt(b.pick(p)), false)
+                  return (
+                    <span key={p.bucket} onClick={open} title={open ? 'click to see the rows behind it' : undefined}
+                      style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#4A4A4A', borderLeft: `1px solid ${ROWHAIR}`, ...tnum, ...drillable(!!open) }}>
+                      {compact(b.pick(p))}
+                    </span>
+                  )
+                })}
+                {(() => {
+                  const open = openCell(b.metric, b.label, null, fmt(b.tot), false)
+                  return (
+                    <span onClick={open} title={open ? 'click to see the rows behind it' : undefined}
+                      style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', ...tnum, ...drillable(!!open) }}>
+                      {fmt(b.tot)}
+                    </span>
+                  )
+                })()}
               </div>
             ))}
 
@@ -716,7 +805,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             to trial cohorts OLDER than this window (found via the trials sheet) and are not shown in any column — a recent week
             must never display conversions it could not have produced yet.</>
           )}
-          {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic.
+          {' '}Every cell reconciles to Stripe to the cent — hover it for the arithmetic,
+          or click any underlined number to open the rows it was summed from.
         </div>
       )}
       {buckets.some(p => p.eventsCovered !== 'full') && (
@@ -729,9 +819,12 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         </div>
       )}
       <div style={{ fontSize: 9.5, color: MUTE, marginTop: 6 }}>
-        hover a cell for its exact figure · the light grey shading appears only on step-conversion rows, so the
-        headline rows stay the ones your eye lands on
+        hover a cell for its exact figure · <strong style={{ color: INK }}>underlined numbers open</strong>, showing the
+        exact rows behind them · the light grey shading appears only on step-conversion rows, so the headline rows stay
+        the ones your eye lands on
       </div>
+
+      <DrillDown target={drill} onClose={() => setDrill(null)} />
     </div>
   )
 }
@@ -917,7 +1010,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
             { label: 'ARPU', v: takers > 0 ? `$${(quizRevenue / takers).toFixed(2)}` : '–', hint: `quiz revenue ÷ ${takers.toLocaleString()} quiz takers`, dark: false },
             // Same numerator as the matrix's Full-funnel CVR row: quiz-earned
             // trials, not net-new only. Two places, one definition.
-            { label: 'Full-funnel CVR', v: `${(wsum(p => p.views, F.landing) > 0 ? (winQuizTrials / wsum(p => p.views, F.landing)) * 100 : 0).toFixed(2)}%`, hint: `${winQuizTrials} quiz-earned trials ÷ ${wsum(p => p.views, F.landing).toLocaleString()} landing views`, dark: false },
+            { label: 'Full-funnel CVR', v: `${(wsum(p => p.views, F.landing) > 0 ? (winQuizTrials / wsum(p => p.views, F.landing)) * 100 : 0).toFixed(1)}%`, hint: `${winQuizTrials} quiz-earned trials ÷ ${wsum(p => p.views, F.landing).toLocaleString()} landing views`, dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: '18px 18px', background: k.dark ? '#333333' : 'transparent', borderLeft: i > 0 ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
