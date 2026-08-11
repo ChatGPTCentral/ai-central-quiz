@@ -415,6 +415,23 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
               </tr>
             )
           })}
+          {/* Totals: the same columns summed, so the month table can be read as
+              a whole without adding it up by hand. Rate is converted ÷ due
+              across every month, which is the all-time rate, not an average of
+              monthly rates (averaging rates weights a 4-trial month like a
+              100-trial one). */}
+          <tr style={{ borderTop: `2px solid ${INK}`, background: LATTE }}>
+            <td style={{ ...td, textAlign: 'left', fontWeight: 800 }}>All time</td>
+            <td style={td} />
+            <td style={{ ...td, fontWeight: 800 }}>{L.length.toLocaleString()}</td>
+            <td style={{ ...td, fontWeight: 800, color: GREEN }}>{months.reduce((a, [, v]) => a + v.q, 0).toLocaleString()}</td>
+            <td style={{ ...td, color: MUTE }}>{due.toLocaleString()}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{convDue.toLocaleString()}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{pct(convDue, due)}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{usd0(trialCash)}</td>
+            <td style={{ ...td, fontWeight: 800 }}>{usd0(convCash)}</td>
+            <td style={{ ...td, color: MUTE }}>{Array.from(d.sheetByMonth.values()).reduce((a, b) => a + b, 0).toLocaleString()}</td>
+          </tr>
         </tbody>
       </table>
 

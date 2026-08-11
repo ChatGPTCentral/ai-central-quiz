@@ -458,10 +458,23 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 {buckets.map(p => {
                   // A rate whose numerator or denominator was never measured
                   // is not a rate. Blank it rather than print a fiction.
-                  const dead = p.eventsCovered !== 'full' && (fromEvents || s.label === 'Quiz completed' || s.label === 'Checkout clicked')
+                  // Only a period with NO instrumentation at all is unmeasurable.
+                  // A PARTIAL period (tracking started partway through, e.g. Jul
+                  // 2026: 22 of 31 days) still has a real, if understated, rate —
+                  // blanking it hid a whole month and answered a question nobody
+                  // asked. It now shows with a * and says why.
+                  const usesEvents = fromEvents || s.label === 'Quiz completed' || s.label === 'Checkout clicked'
+                  const dead = usesEvents && p.eventsCovered === 'none'
+                  const thinRate = usesEvents && p.eventsCovered === 'partial'
                   return (
-                    <span key={p.bucket} title={dead ? 'not measurable — client tracking started 9 Jul' : undefined} style={{ padding: '5px 4px 6px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#6B6B6B', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                      {dead ? '–' : pctDisp(s.out!.per(p))}
+                    <span key={p.bucket}
+                      title={
+                        dead ? 'not measurable — client tracking started 9 Jul'
+                        : thinRate ? 'UNDERSTATED — tracking started partway through this period, so the denominator is short'
+                        : undefined
+                      }
+                      style={{ padding: '5px 4px 6px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#6B6B6B', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                      {dead ? '–' : `${pctDisp(s.out!.per(p))}${thinRate ? '*' : ''}`}
                     </span>
                   )
                 })}
@@ -534,8 +547,9 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         <div style={{ fontSize: 10, color: '#6B6B6B', marginTop: 8, lineHeight: 1.55, maxWidth: 760 }}>
           <strong style={{ color: INK }}>&ldquo;–&rdquo; means not measured, not zero.</strong> Client tracking started 9 Jul, four days
           after launch, so landing views, quiz starts and checkout clicks do not exist before then. Completions and paid
-          come from the database and are complete throughout. A * marks a period where tracking started partway through,
-          so those counts are real but understated.
+          come from the database and are complete throughout. A <strong style={{ color: INK }}>*</strong> marks a period
+          where tracking started partway through — July 2026 has 22 of its 31 days — so those counts and rates are real
+          but understated, and they are shown rather than hidden.
         </div>
       )}
       <div style={{ fontSize: 9.5, color: MUTE, marginTop: 6 }}>
