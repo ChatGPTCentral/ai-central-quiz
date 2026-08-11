@@ -228,11 +228,19 @@ async function revenueCharges(): Promise<{
 
     if (t.converted_at && t.converted_cents) {
       if (t.converted_charge_id) accounted.add(t.converted_charge_id)
-      // A lifetime bundle is one charge doing two jobs: its trial half is
-      // already counted above, so only the $49.75 remainder lands here.
-      const usd = t.lifetime_bundle ? 49.75 : t.converted_cents / 100
-      if (anchor < `${MIRROR_START_ISO}T00:00:00Z`) preWindowAnnuals++
-      else entries.push({ at: anchor, kind: 'annual', usd })
+      if (t.lifetime_bundle) {
+        // A lifetime is NOT an annual. Owner's rule, stated twice: the $4.99
+        // half of a $54.74 bundle belongs with the trials, the $49.75 half is
+        // Other Revenue. Converted Trials Revenue means $59.75 renewals, full
+        // stop. (The ledger still counts this person as CONVERTED, because
+        // they did — that is a question about the rate, not about which
+        // revenue bucket their money sits in.)
+        entries.push({ at: t.trial_at, kind: 'other', usd: 49.75 })
+      } else if (anchor < `${MIRROR_START_ISO}T00:00:00Z`) {
+        preWindowAnnuals++
+      } else {
+        entries.push({ at: anchor, kind: 'annual', usd: t.converted_cents / 100 })
+      }
     }
   }
 

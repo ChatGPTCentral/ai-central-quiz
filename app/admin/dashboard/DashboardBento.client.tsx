@@ -386,13 +386,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     {
       label: 'Converted Trials Revenue', money: true, heavy: false,
       parts: (p: SeriesPoint) => p.annualParts,
-      sub: 'Conversions, restated to the WEEK OF THE TRIAL that earned them. Usually a $59.75 annual, sometimes the $49.75 half of a $54.74 lifetime bundle, so a cell can mix both prices — hover it to see exactly what it is made of. Recent columns fill in as their trials mature about a month later.',
+      sub: '$59.75 annual renewals only, restated to the WEEK OF THE TRIAL that earned them. The $49.75 half of a $54.74 lifetime bundle is NOT an annual and sits in Other Revenue. Recent columns fill in as their trials mature about a month later.',
       all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
     },
     {
       // heavy = the break line the owner asked for between row 4 and All revenue.
       label: 'Other Revenue', money: true, heavy: true,
-      sub: '$49.75 lifetime options (from $54.74 bundles), repeat $4.99s (double-subscriptions), legacy $39.75 annuals, $7.99 subs, odd amounts, non-USD, by CHARGE date',
+      sub: '$49.75 lifetime options (the second half of a $54.74 bundle), repeat $4.99s (double-subscriptions), legacy annual prices, $7.99 subs, odd amounts, non-USD. By CHARGE date.',
       all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther,
     },
     {
