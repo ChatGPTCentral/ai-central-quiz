@@ -411,7 +411,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // is how this project has hurt itself before. So the stripped arm is a
   // hypothesis with a control beside it, not a decision already taken.
   //
-  // ?preview=strip renders it without recording an exposure.
+  // ?xv=strip renders it without recording an exposure (the preview param
+  // on this page is xv, not preview).
   const stripped =
     previewVar.includes('strip') ||
     assignments.some(a => a.experimentKey === 'result_strip_v1' && a.variantKey === 'stripped')
