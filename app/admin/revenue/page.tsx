@@ -98,12 +98,12 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, sheet, overrides, rowOrder] = await Promise.all([
+  const [eras, charges, sheet, overrides, layout] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
-    c.from('trial_row_order').select('charge_id, position').limit(20_000),
+    c.from('app_settings').select('value').eq('key', 'table_layout:revenue_trials').maybeSingle(),
   ])
   const ledger: Row[] = []
   for (let o = 0; o < 20_000; o += 1000) {
@@ -123,10 +123,7 @@ async function load() {
     const m = r.trial_date.slice(0, 7)
     sheetByMonth.set(m, (sheetByMonth.get(m) || 0) + 1)
   }
-  const orderBy = new Map<string, number>()
-  for (const o of (rowOrder.data ?? []) as { charge_id: string; position: number }[]) {
-    orderBy.set(o.charge_id, o.position)
-  }
+  const lay = (layout.data?.value ?? null) as { order?: string[]; hidden?: string[] } | null
   const overrideBy = new Map<string, string>()
   for (const o of (overrides.data ?? []) as { charge_id: string; state: string }[]) {
     overrideBy.set(o.charge_id, o.state)
@@ -135,7 +132,8 @@ async function load() {
     eras: (eras.data ?? []) as Era[],
     ledger,
     overrideBy,
-    orderBy,
+    colOrder: lay?.order ?? null,
+    colHidden: lay?.hidden ?? null,
     chargeRows: chRows,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
     chargeCount: chRows.length,
@@ -238,17 +236,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     (!fState || stateOf(r) === fState) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr))
-  // Manual order first (only rows the owner has dragged have one), then date,
-  // newest first. A row he has never touched can never jump the queue.
-  const ordered = [...filtered].sort((a, b) => {
-    const pa = d!.orderBy.get(a.charge_id)
-    const pb = d!.orderBy.get(b.charge_id)
-    if (pa !== undefined && pb !== undefined) return pa - pb
-    if (pa !== undefined) return -1
-    if (pb !== undefined) return 1
-    return b.trial_at.localeCompare(a.trial_at)
-  })
-  const people = ordered.slice(0, limit)
+  const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
     const st = stateOf(r)
     return {
@@ -440,7 +428,8 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4, maxWidth: 860, lineHeight: 1.6 }}>
         Every trial ever sold and what became of it, laid out like your trials spreadsheet: date, email, name, status,
         channel, source, country, first payment, second payment, total. Status is editable and saves as you change it,
-        &ldquo;Auto&rdquo; means the charges decide. Each trial is in exactly one state, so the counts below always add up
+        &ldquo;Auto&rdquo; means the charges decide. Drag any column header to move it, or × to remove it — the layout
+        saves to your account, not to this browser. Each trial is in exactly one state, so the counts below always add up
         to {L.length.toLocaleString()}.
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 12 }}>
@@ -469,7 +458,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         )}
       </div>
 
-      <TrialsTable rows={tableRows} />
+      <TrialsTable rows={tableRows} initialOrder={d.colOrder} initialHidden={d.colHidden} />
     </div>
   )
 }
