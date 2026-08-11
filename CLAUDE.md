@@ -97,6 +97,13 @@ Treat it the way a programmer treats the team board:
   `waiting_owner` with `assignee='owner'`; declined-for-now ideas go to
   `parked`. Never let the board drift from reality.
 - Statuses: `backlog | next | in_progress | waiting_owner | done | parked`.
+- **`next` holds AT MOST 5 cards, ranked 1-5 in `sort`.** Everything else is
+  `backlog`. This is the rule, not a preference: on 2026-08-11 `next` held 28
+  cards and `backlog` held zero, which made `next` a wish list. A status that
+  contains everything ranks nothing, and the board stops being a decision.
+  Adding a sixth card to `next` means demoting one, deliberately, and saying
+  which. If a card cannot beat any of the five, it is backlog.
+- **`in_progress` holds at most 3.** More than that and none of them are.
   Phases: `A` loops/measurement · `B` owned loop (nurture) · `C` conversion ·
   `D` paid loop · `OPS` · `FUTURE`.
 
