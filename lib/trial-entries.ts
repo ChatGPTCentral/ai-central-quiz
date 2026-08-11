@@ -239,23 +239,41 @@ export function classifyLedger(
     }
   }
 
-  // The residual. Anything the ledger did not account for is real money the
-  // three trial buckets cannot claim: legacy subscriptions, old annual prices,
-  // duplicate subscriptions.
+  // The residual, and WHAT EACH PIECE OF IT IS.
+  //
+  // This used to say "a charge no trial in the ledger accounts for" on every
+  // row, which is true and useless: it reads as "we do not know what this is"
+  // whether the charge is a legacy subscription or somebody's second $4.99
+  // from twenty minutes after their first. The owner opened this cell on
+  // 2026-08-11 and could not tell a real misfiling from a known one, so now
+  // each row says which it is.
+  const peopleWithTrials = new Set(ledger.filter(t => !t.trial_refunded).map(t => t.person_key))
+  const TRIAL_PRICES = new Set([399, 499, 5474])
   for (const ch of charges) {
     if (ch.refunded) continue
     if (accounted.has(ch.id)) continue
+    const who = ch.customer_email || ch.email || ch.customer_id || ''
+    const known = peopleWithTrials.has(who)
+    const why = TRIAL_PRICES.has(ch.amount_cents)
+      ? known
+        ? 'duplicate subscription: this person already has a trial, and only their first one counts'
+        : 'trial-priced charge with no trial row, usually a test-flagged person or an email we cannot match'
+      : ch.amount_cents >= 2000
+        ? known
+          ? 'a later renewal, beyond the trial it already paid for'
+          : 'renewal-sized charge from someone who never had a trial with us'
+        : 'neither a trial nor a renewal price'
     entries.push({
       at: ch.charged_at,
       chargedAt: ch.charged_at,
       kind: 'other',
       usd: ch.amount_cents / 100,
       chargeId: ch.id,
-      personKey: ch.customer_email || ch.email || ch.customer_id || '',
+      personKey: who,
       name: ch.description ?? null,
       customerId: ch.customer_id ?? null,
       submissionId: null,
-      why: 'a charge no trial in the ledger accounts for',
+      why,
     })
   }
 
