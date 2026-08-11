@@ -22,6 +22,7 @@ import Stripe from 'stripe'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
 import { verifyExpressPayment, sendExpressAlert } from '@/lib/express-alert'
 import { posthogCapture } from '@/lib/posthog-server'
+import { mirrorCharge } from '@/lib/mirror-charge'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -204,6 +205,17 @@ export async function POST(req: NextRequest) {
           .catch(err => console.error('[stripe-webhook] express alert failed:', err)),
       )
     }
+  }
+
+  // Mirror the charge the moment it happens, so /admin/revenue and the
+  // dashboard's money rows are live rather than up-to-yesterday. The daily
+  // sweep still runs: a webhook can be missed, and a full re-walk is what
+  // keeps refunds current.
+  if (event.type === 'charge.succeeded' || event.type === 'charge.updated' || event.type === 'charge.refunded') {
+    const ch = event.data.object as Stripe.Charge
+    waitUntil(
+      mirrorCharge(ch, s).catch(err => console.error('[stripe-webhook] mirrorCharge failed:', err)),
+    )
   }
 
   if (RELEVANT.has(event.type)) {

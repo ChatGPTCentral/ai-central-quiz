@@ -28,6 +28,7 @@ import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.c
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import MonthsTable, { type MonthRow, type MonthTotals } from '@/components/admin/MonthsTable.client'
 import { fmtDay, fmtMonth } from '@/lib/dates'
+import SyncCharges from '@/components/admin/SyncCharges.client'
 
 /** The Stripe account these dashboard links point at. Not a secret: it is the
  *  account id that appears in every dashboard URL the owner already uses. */
@@ -99,9 +100,10 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, sheet, overrides, layout, mLayout] = await Promise.all([
+  const [eras, charges, lastSync, sheet, overrides, layout, mLayout] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
+    c.from('stripe_charges').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
     c.from('app_settings').select('value').eq('key', 'table_layout:revenue_trials').maybeSingle(),
@@ -144,6 +146,7 @@ async function load() {
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
     sheetByMonth,
+    lastSyncedAt: (lastSync.data?.synced_at as string | undefined) ?? null,
   }
 }
 
@@ -291,6 +294,10 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       </p>
 
       {/* ERAS */}
+      <div style={{ marginTop: 12 }}>
+        <SyncCharges lastSyncedAt={d.lastSyncedAt} />
+      </div>
+
       <h2 id="eras" style={{ fontSize: 15, fontWeight: 800, marginTop: 34, color: INK, scrollMarginTop: 16 }}>1 &middot; Eras and totals</h2>
       <table style={{ width: '100%', marginTop: 10, borderCollapse: 'collapse' }}>
         <thead>
