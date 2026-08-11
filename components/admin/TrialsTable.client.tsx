@@ -14,6 +14,7 @@
 import { useState } from 'react'
 import TrialState from './TrialState.client'
 import { fmtDay } from '@/lib/dates'
+import { useColumnLayout } from './useColumnLayout'
 
 export interface TrialRow {
   charge_id: string
@@ -92,8 +93,9 @@ const ALL_COLUMNS: Col[] = [
 
 const DEFAULT_ORDER = ALL_COLUMNS.map(c => c.key)
 
-const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px' }
-const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', fontVariantNumeric: 'tabular-nums' }
+const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }
+// One line per row, always: cells never wrap, the table scrolls instead.
+const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
 export default function TrialsTable({
   rows, initialOrder, initialHidden,
@@ -102,63 +104,14 @@ export default function TrialsTable({
   initialOrder: string[] | null
   initialHidden: string[] | null
 }) {
-  // Any column added to the code later must still appear, even for someone
-  // with a saved layout from before it existed — hence the concat of unknowns.
-  const saved = (initialOrder ?? []).filter(k => DEFAULT_ORDER.includes(k))
-  const [order, setOrder] = useState<string[]>([...saved, ...DEFAULT_ORDER.filter(k => !saved.includes(k))])
-  const [hidden, setHidden] = useState<Set<string>>(new Set(initialHidden ?? []))
+  const L = useColumnLayout({
+    tableKey: 'revenue_trials',
+    all: ALL_COLUMNS.map(c => ({ key: c.key, label: c.label })),
+    initialOrder, initialHidden,
+  })
   const [sort, setSort] = useState<'desc' | 'asc'>('desc')
-  const [drag, setDrag] = useState<string | null>(null)
-  const [over, setOver] = useState<string | null>(null)
-  const [status, setStatus] = useState('')
-
-  const visible = order.filter(k => !hidden.has(k)).map(k => ALL_COLUMNS.find(c => c.key === k)!).filter(Boolean)
+  const visible = L.visibleKeys.map(k => ALL_COLUMNS.find(c => c.key === k)!).filter(Boolean)
   const view = [...rows].sort((a, b) => (sort === 'asc' ? a.trial_at.localeCompare(b.trial_at) : b.trial_at.localeCompare(a.trial_at)))
-
-  const save = async (nextOrder: string[], nextHidden: Set<string>) => {
-    setStatus('saving…')
-    try {
-      const res = await fetch('/api/admin/table-layout', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table: 'revenue_trials', order: nextOrder, hidden: Array.from(nextHidden) }),
-      })
-      if (!res.ok) throw new Error(String(res.status))
-      setStatus('layout saved')
-      setTimeout(() => setStatus(''), 1800)
-    } catch {
-      setStatus('NOT saved, try again')
-    }
-  }
-
-  const drop = (onKey: string) => {
-    if (!drag || drag === onKey) { setDrag(null); setOver(null); return }
-    const next = [...order]
-    next.splice(next.indexOf(drag), 1)
-    next.splice(next.indexOf(onKey), 0, drag)
-    setOrder(next); setDrag(null); setOver(null)
-    void save(next, hidden)
-  }
-
-  const hide = (key: string) => {
-    const next = new Set(hidden); next.add(key)
-    setHidden(next); void save(order, next)
-  }
-  const show = (key: string) => {
-    const next = new Set(hidden); next.delete(key)
-    setHidden(next); void save(order, next)
-  }
-  const reset = async () => {
-    setOrder(DEFAULT_ORDER); setHidden(new Set())
-    setStatus('saving…')
-    try {
-      await fetch('/api/admin/table-layout', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table: 'revenue_trials', reset: true }),
-      })
-      setStatus('layout reset')
-      setTimeout(() => setStatus(''), 1800)
-    } catch { setStatus('NOT saved, try again') }
-  }
 
   const btn = (active: boolean): React.CSSProperties => ({
     padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
@@ -173,20 +126,20 @@ export default function TrialsTable({
         <button type="button" onClick={() => setSort('asc')} style={btn(sort === 'asc')}>Date ↑ oldest</button>
         <span style={{ width: 10 }} />
         <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Columns: drag a header to move it, × to remove it</span>
-        <button type="button" onClick={reset} style={{ padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px solid ${HAIR}`, background: '#FFFDFA', color: MUTE }}>
+        <button type="button" onClick={L.reset} style={{ padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px solid ${HAIR}`, background: '#FFFDFA', color: MUTE }}>
           reset columns
         </button>
-        {status && <span style={{ fontSize: 11, fontWeight: 700, color: status.includes('NOT') ? '#B00020' : GREEN }}>{status}</span>}
+        {L.status && <span style={{ fontSize: 11, fontWeight: 700, color: L.status.includes('NOT') ? '#B00020' : GREEN }}>{L.status}</span>}
       </div>
 
-      {hidden.size > 0 && (
+      {L.hidden.size > 0 && (
         <div className="flex items-center flex-wrap" style={{ gap: 6, marginBottom: 8 }}>
           <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Removed:</span>
-          {Array.from(hidden).map(k => {
+          {Array.from(L.hidden).map(k => {
             const col = ALL_COLUMNS.find(c => c.key === k)
             if (!col) return null
             return (
-              <button key={k} type="button" onClick={() => show(k)}
+              <button key={k} type="button" onClick={() => L.show(k)}
                 style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', border: `2px dashed ${MUTE}`, background: '#FFFDFA', color: MUTE }}
                 title="Put this column back">+ {col.label}</button>
             )
@@ -194,26 +147,17 @@ export default function TrialsTable({
         </div>
       )}
 
+      {/* Cells never wrap, so the table scrolls sideways instead of
+          growing a second line per row. */}
+      <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: `2px solid ${INK}` }}>
             {visible.map(c => (
-              <th key={c.key}
-                  draggable
-                  onDragStart={() => setDrag(c.key)}
-                  onDragOver={e => { e.preventDefault(); setOver(c.key) }}
-                  onDrop={() => drop(c.key)}
-                  onDragEnd={() => { setDrag(null); setOver(null) }}
-                  style={{
-                    ...th, textAlign: c.align, cursor: 'grab', userSelect: 'none',
-                    background: over === c.key && drag ? '#FEF7E7' : undefined,
-                    opacity: drag === c.key ? 0.45 : 1,
-                    whiteSpace: 'nowrap',
-                  }}
-                  title="Drag to reorder">
+              <th key={c.key} {...L.headerProps(c.key)} style={{ ...th, textAlign: c.align, ...L.headerStyle(c.key) }}>
                 <span style={{ marginRight: 4, color: HAIR }}>⠿</span>
                 {c.label}
-                <button type="button" onClick={() => hide(c.key)}
+                <button type="button" onClick={() => L.hide(c.key)}
                         title={`Remove the ${c.label} column`}
                         style={{ marginLeft: 5, border: 'none', background: 'transparent', cursor: 'pointer', color: MUTE, fontSize: 12, fontWeight: 700, padding: 0 }}>×</button>
               </th>
@@ -230,6 +174,7 @@ export default function TrialsTable({
           ))}
         </tbody>
       </table>
+      </div>
     </>
   )
 }

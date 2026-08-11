@@ -57,8 +57,12 @@ export default function TrialState({
   }
 
   const manual = value !== 'auto'
+  // ONE line per row, always: what the charges say moves into the tooltip
+  // rather than a second line under the control, which made some rows twice
+  // the height of their neighbours.
   return (
-    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
+          title={manual ? `Manual override. The charges say: ${derivedLabel}` : `Derived from the charges: ${derivedLabel}`}>
       <select
         value={value}
         disabled={saving}
@@ -77,12 +81,8 @@ export default function TrialState({
           </option>
         ))}
       </select>
-      {manual && (
-        <span style={{ fontSize: 9.5, color: '#7A7A7A' }} title={`The charges say: ${derivedLabel}`}>
-          charges say {derived === 'converted' ? 'converted' : derived === 'lapsed' ? 'not converted' : derivedLabel.toLowerCase()}
-        </span>
-      )}
-      {failed && <span style={{ fontSize: 9.5, color: '#B00020' }}>not saved, try again</span>}
+      {manual && <span style={{ fontSize: 9.5, color: '#B26A00', fontWeight: 700 }} aria-hidden>manual</span>}
+      {failed && <span style={{ fontSize: 9.5, color: '#B00020' }}>not saved</span>}
     </span>
   )
 }

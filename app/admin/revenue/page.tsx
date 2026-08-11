@@ -26,6 +26,7 @@ import { createClient } from '@supabase/supabase-js'
 import TrialState from '@/components/admin/TrialState.client'
 import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.client'
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
+import MonthsTable, { type MonthRow, type MonthTotals } from '@/components/admin/MonthsTable.client'
 import { fmtDay, fmtMonth } from '@/lib/dates'
 
 /** The Stripe account these dashboard links point at. Not a secret: it is the
@@ -98,12 +99,13 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, sheet, overrides, layout] = await Promise.all([
+  const [eras, charges, sheet, overrides, layout, mLayout] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
     c.from('app_settings').select('value').eq('key', 'table_layout:revenue_trials').maybeSingle(),
+    c.from('app_settings').select('value').eq('key', 'table_layout:revenue_months').maybeSingle(),
   ])
   const ledger: Row[] = []
   for (let o = 0; o < 20_000; o += 1000) {
@@ -124,6 +126,7 @@ async function load() {
     sheetByMonth.set(m, (sheetByMonth.get(m) || 0) + 1)
   }
   const lay = (layout.data?.value ?? null) as { order?: string[]; hidden?: string[] } | null
+  const mLay = (mLayout.data?.value ?? null) as { order?: string[]; hidden?: string[] } | null
   const overrideBy = new Map<string, string>()
   for (const o of (overrides.data ?? []) as { charge_id: string; state: string }[]) {
     overrideBy.set(o.charge_id, o.state)
@@ -134,6 +137,8 @@ async function load() {
     overrideBy,
     colOrder: lay?.order ?? null,
     colHidden: lay?.hidden ?? null,
+    monthColOrder: mLay?.order ?? null,
+    monthColHidden: mLay?.hidden ?? null,
     chargeRows: chRows,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
     chargeCount: chRows.length,
@@ -182,10 +187,18 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     e.era = Math.max(e.era, r.era)
     byMonth.set(m, e)
   }
-  // Month order is the owner's choice, remembered in the URL.
-  const msort = searchParams.msort === 'asc' ? 'asc' : 'desc'
-  const months = Array.from(byMonth.entries())
-    .sort((a, b) => (msort === 'asc' ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0])))
+  const months = Array.from(byMonth.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  const monthRows: MonthRow[] = months.map(([m, v]) => ({
+    month: m, era: v.era, trials: v.t, quiz: v.q, due: v.due, converted: v.cdue,
+    trialCash: v.trial, convCash: v.conv,
+    sheet: d!.sheetByMonth.has(m) ? d!.sheetByMonth.get(m)! : null,
+  }))
+  const monthTotals: MonthTotals = {
+    trials: L.length,
+    quiz: months.reduce((a, [, v]) => a + v.q, 0),
+    due, converted: convDue, trialCash, convCash,
+    sheet: Array.from(d.sheetByMonth.values()).reduce((a, b) => a + b, 0),
+  }
 
   // Every dollar the account took inside each era's window. Eras 1a and 1b
   // have no trials at all — the product did not exist — so a trial-only table
@@ -254,7 +267,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
 
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
-    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, msort: msort === 'asc' ? 'asc' : undefined, ...patch }
+    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, ...patch }
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v)
     const s = p.toString()
     return `/admin/revenue${s ? `?${s}` : ''}`
@@ -361,67 +374,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         <strong style={{ color: INK }}> conversion cash</strong> is what the same people paid when their annual or
         lifetime landed, credited back to the month they started. The last column is your spreadsheet, for checking.
       </p>
-      <table style={{ width: '100%', marginTop: 10, borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: `2px solid ${INK}` }}>
-            <th style={{ ...th, textAlign: 'left' }}>
-              <a href={qs({ msort: msort === 'asc' ? undefined : 'asc' })} style={{ color: INK, textDecoration: 'none' }}
-                 title="Sort months oldest or newest first">
-                Month {msort === 'asc' ? '↑' : '↓'}
-              </a>
-            </th>
-            <th style={th}>Era</th>
-            <th style={th}>Trials</th>
-            <th style={th}>From quiz</th>
-            <th style={th}>Due</th>
-            <th style={th}>Converted</th>
-            <th style={th}>Rate</th>
-            <th style={th}>Trial cash</th>
-            <th style={th}>Conversion cash</th>
-            <th style={th}>All revenue</th>
-            <th style={th}>Your sheet</th>
-          </tr>
-        </thead>
-        <tbody>
-          {months.map(([m, s]) => {
-            const sh = d.sheetByMonth.get(m)
-            const diff = sh === undefined ? null : s.t - sh
-            return (
-              <tr key={m} style={{ borderBottom: `1px solid ${HAIR}` }}>
-                <td style={{ ...td, textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtMonth(m)}</td>
-                <td style={{ ...td, color: MUTE }}>{s.era}</td>
-                <td style={{ ...td, fontWeight: 700 }}>{s.t}</td>
-                <td style={{ ...td, color: s.q > 0 ? GREEN : MUTE, fontWeight: s.q > 0 ? 700 : 400 }}>{s.q || '–'}</td>
-                <td style={{ ...td, color: MUTE }}>{s.due}</td>
-                <td style={td}>{s.cdue}</td>
-                <td style={{ ...td, fontWeight: 700 }}>{s.due > 0 ? pct(s.cdue, s.due) : '–'}</td>
-                <td style={td}>{usd0(s.trial)}</td>
-                <td style={td}>{usd0(s.conv)}</td>
-                <td style={{ ...td, color: diff === null ? MUTE : diff === 0 ? GREEN : Math.abs(diff) <= 3 ? AMBER : RED }}>
-                  {sh === undefined || diff === null ? '–' : `${sh}${diff === 0 ? ' ✓' : ` (${diff > 0 ? '+' : ''}${diff})`}`}
-                </td>
-              </tr>
-            )
-          })}
-          {/* Totals: the same columns summed, so the month table can be read as
-              a whole without adding it up by hand. Rate is converted ÷ due
-              across every month, which is the all-time rate, not an average of
-              monthly rates (averaging rates weights a 4-trial month like a
-              100-trial one). */}
-          <tr style={{ borderTop: `2px solid ${INK}`, background: LATTE }}>
-            <td style={{ ...td, textAlign: 'left', fontWeight: 800 }}>All time</td>
-            <td style={td} />
-            <td style={{ ...td, fontWeight: 800 }}>{L.length.toLocaleString()}</td>
-            <td style={{ ...td, fontWeight: 800, color: GREEN }}>{months.reduce((a, [, v]) => a + v.q, 0).toLocaleString()}</td>
-            <td style={{ ...td, color: MUTE }}>{due.toLocaleString()}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{convDue.toLocaleString()}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{pct(convDue, due)}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{usd0(trialCash)}</td>
-            <td style={{ ...td, fontWeight: 800 }}>{usd0(convCash)}</td>
-            <td style={{ ...td, color: MUTE }}>{Array.from(d.sheetByMonth.values()).reduce((a, b) => a + b, 0).toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </table>
+      <MonthsTable rows={monthRows} totals={monthTotals} initialOrder={d.monthColOrder} initialHidden={d.monthColHidden} />
 
       {/* SECTION 3 — the piece that matters most: the owner's CSV, live */}
       <h2 id="trials" style={{ fontSize: 15, fontWeight: 800, marginTop: 38, color: INK, scrollMarginTop: 16 }}>3 &middot; Every trial and its status</h2>
