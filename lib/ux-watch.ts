@@ -67,10 +67,10 @@ export const UX_QUERIES: {
     claim: 'people clicked something that does nothing',
     threshold: 15,
     severity: 'warn',
-    sql: `SELECT properties.$current_url AS url, coalesce(properties.$el_text, '(no text)') AS el, count() AS n
+    sql: `SELECT toString(properties.$current_url) AS url, coalesce(nullIf(toString(properties.$el_text), ''), '(no text)') AS el, count() AS n
           FROM events
           WHERE event = '$dead_click' AND timestamp > now() - INTERVAL 6 HOUR
-            AND properties.$current_url NOT LIKE '%/admin%'
+            AND toString(properties.$current_url) NOT LIKE '%/admin%'
           GROUP BY url, el ORDER BY n DESC LIMIT 6`,
     read: rows => ({
       value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
@@ -86,10 +86,10 @@ export const UX_QUERIES: {
     claim: 'people clicked the same spot over and over',
     threshold: 8,
     severity: 'warn',
-    sql: `SELECT properties.$current_url AS url, coalesce(properties.$el_text, '(no text)') AS el, count() AS n
+    sql: `SELECT toString(properties.$current_url) AS url, coalesce(nullIf(toString(properties.$el_text), ''), '(no text)') AS el, count() AS n
           FROM events
           WHERE event = '$rageclick' AND timestamp > now() - INTERVAL 6 HOUR
-            AND properties.$current_url NOT LIKE '%/admin%'
+            AND toString(properties.$current_url) NOT LIKE '%/admin%'
           GROUP BY url, el ORDER BY n DESC LIMIT 6`,
     read: rows => ({
       value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
@@ -107,11 +107,11 @@ export const UX_QUERIES: {
     // detail about a cross-origin script, so it is noise we cannot act on and
     // it would drown everything that IS actionable.
     sql: `SELECT substring(coalesce(toString(properties.$exception_values), ''), 1, 160) AS msg,
-                 properties.$current_url AS url, count() AS n
+                 toString(properties.$current_url) AS url, count() AS n
           FROM events
           WHERE event = '$exception' AND timestamp > now() - INTERVAL 6 HOUR
             AND toString(properties.$exception_values) NOT ILIKE '%Script error%'
-            AND properties.$current_url NOT LIKE '%/admin%'
+            AND toString(properties.$current_url) NOT LIKE '%/admin%'
           GROUP BY msg, url ORDER BY n DESC LIMIT 6`,
     read: rows => ({
       value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
@@ -126,10 +126,10 @@ export const UX_QUERIES: {
     // A 404 is always somebody who clicked a link to us. The middleware now
     // rescues punctuation-only paths, so anything left is a real bad link that
     // wants finding at the source.
-    sql: `SELECT properties.$current_url AS url, count() AS n
+    sql: `SELECT toString(properties.$current_url) AS url, count() AS n
           FROM events
           WHERE event = '$pageview' AND timestamp > now() - INTERVAL 6 HOUR
-            AND (properties.$current_url ILIKE '%/404%' OR properties.pathname ILIKE '%/404%')
+            AND (toString(properties.$current_url) ILIKE '%/404%' OR toString(properties.$pathname) ILIKE '%/404%')
           GROUP BY url ORDER BY n DESC LIMIT 5`,
     read: rows => ({
       value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
@@ -144,8 +144,8 @@ export const UX_QUERIES: {
     threshold: 0,
     severity: 'critical',
     sql: `SELECT
-            countIf(event = '$pageview' AND properties.$current_url ILIKE '%/quiz-v2%') AS started,
-            countIf(event = '$pageview' AND properties.$current_url ILIKE '%/result%') AS finished
+            countIf(event = '$pageview' AND toString(properties.$current_url) ILIKE '%/quiz-v2%') AS started,
+            countIf(event = '$pageview' AND toString(properties.$current_url) ILIKE '%/result%') AS finished
           FROM events WHERE timestamp > now() - INTERVAL 6 HOUR`,
     read: rows => {
       const r = rows[0] || {}
@@ -174,8 +174,8 @@ export const UX_QUERIES: {
           FROM events
           WHERE event = '$pageview' AND timestamp > now() - INTERVAL 6 HOUR
             AND toString(properties.$current_url) NOT LIKE '%/admin%'
-            AND $session_id NOT IN (
-              SELECT $session_id FROM events
+            AND properties.$session_id NOT IN (
+              SELECT properties.$session_id FROM events
               WHERE timestamp > now() - INTERVAL 6 HOUR
                 AND event IN ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click')
             )
@@ -197,8 +197,8 @@ export const UX_QUERIES: {
     threshold: 12,
     severity: 'warn',
     sql: `SELECT
-            uniqIf($session_id, event = 'checkout_click') AS opened,
-            uniqIf($session_id, event = '$pageview' AND toString(properties.$current_url) ILIKE '%/checkout/success%') AS paid
+            uniqIf(properties.$session_id, event = 'checkout_click') AS opened,
+            uniqIf(properties.$session_id, event = '$pageview' AND toString(properties.$current_url) ILIKE '%/checkout/success%') AS paid
           FROM events WHERE timestamp > now() - INTERVAL 6 HOUR`,
     read: rows => {
       const r = rows[0] || {}
@@ -215,7 +215,7 @@ export const UX_QUERIES: {
     // tells you people leave; this tells you which sentence made them leave.
     threshold: 0,
     severity: 'warn',
-    sql: `SELECT toString(properties.qid) AS qid, uniq($session_id) AS people
+    sql: `SELECT toString(properties.qid) AS qid, uniq(properties.$session_id) AS people
           FROM events
           WHERE event = 'quiz_step' AND timestamp > now() - INTERVAL 24 HOUR
           GROUP BY qid ORDER BY people DESC LIMIT 20`,
@@ -250,7 +250,7 @@ export const UX_QUERIES: {
           FROM events
           WHERE event = '$web_vitals' AND timestamp > now() - INTERVAL 6 HOUR
             AND toString(properties.$current_url) NOT LIKE '%/admin%'
-            AND properties.$web_vitals_LCP_value > 0
+            AND toFloat(properties.$web_vitals_LCP_value) > 0
           GROUP BY page HAVING count() >= 15 ORDER BY lcp_s DESC LIMIT 5`,
     read: rows => {
       // 2.5s is Google's "needs improvement" line; 4s is "poor". Judge on the
@@ -273,7 +273,7 @@ export const UX_QUERIES: {
     // when the result has to be thrown away.
     threshold: 0,
     severity: 'warn',
-    sql: `SELECT toString(properties.experiment) AS exp, toString(properties.variant) AS arm, uniq($session_id) AS people
+    sql: `SELECT toString(properties.experiment) AS exp, toString(properties.variant) AS arm, uniq(properties.$session_id) AS people
           FROM events
           WHERE event = 'experiment_exposure' AND timestamp > now() - INTERVAL 24 HOUR
           GROUP BY exp, arm ORDER BY exp, arm`,

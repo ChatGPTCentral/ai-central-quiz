@@ -37,17 +37,17 @@ export interface UxPageRow {
 export async function uxByPage(days = 7): Promise<{ rows: UxPageRow[]; snapshotDays: number; lastFetched: string | null }> {
   const sql = `
     WITH quiet AS (
-      SELECT $session_id AS sid FROM events
+      SELECT properties.$session_id AS sid FROM events
       WHERE timestamp > now() - INTERVAL ${days} DAY
       GROUP BY sid
       HAVING countIf(event IN ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click')) = 0
     )
     SELECT
       replaceRegexpOne(toString(properties.$current_url), '\\\\?.*$', '') AS url,
-      uniqIf($session_id, event = '$pageview') AS sessions,
+      uniqIf(properties.$session_id, event = '$pageview') AS sessions,
       countIf(event = '$rageclick') AS rage,
       countIf(event = '$dead_click') AS dead,
-      uniqIf($session_id, event = '$pageview' AND $session_id IN (SELECT sid FROM quiet)) AS quickback,
+      uniqIf(properties.$session_id, event = '$pageview' AND properties.$session_id IN (SELECT sid FROM quiet)) AS quickback,
       countIf(event = '$exception') AS script_errors,
       argMaxIf(coalesce(nullIf(toString(properties.$el_text), ''), '(no text)'), 1, event = '$dead_click') AS worst_element
     FROM events
