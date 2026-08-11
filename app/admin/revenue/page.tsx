@@ -66,19 +66,23 @@ interface Row {
 /** The four states a trial can be in. This is the answer to "what happened to
  *  this person", and it is deliberately exhaustive: every trial is in exactly
  *  one of them, so the four counts always sum to the trial total. */
-type State = 'converted' | 'lapsed' | 'not_due' | 'refunded'
+type State = 'converted' | 'lifetime' | 'lapsed' | 'not_due' | 'refunded'
 function stateOf(r: Row): State {
   if (r.trial_refunded) return 'refunded'
+  // A $54.74 buyer took the library outright: nothing left to renew, so they
+  // are neither converted nor lapsed. Their own state, per the owner's rule.
+  if (r.lifetime_bundle) return 'lifetime'
   if (r.converted) return 'converted'
   return r.due ? 'lapsed' : 'not_due'
 }
 const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
+  lifetime: 'Lifetime',
   lapsed: 'Did not convert',
   not_due: 'Trialing',
   refunded: 'Refunded',
 }
-const STATE_COLOR: Record<State, string> = { converted: GREEN, lapsed: RED, not_due: AMBER, refunded: MUTE }
+const STATE_COLOR: Record<State, string> = { converted: GREEN, lifetime: '#7E9BB5', lapsed: RED, not_due: AMBER, refunded: MUTE }
 
 const navChip: React.CSSProperties = {
   padding: '6px 12px', fontSize: 11.5, fontWeight: 700,
@@ -178,7 +182,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   const due = L.filter(r => r.due && !r.trial_refunded).length
   const convDue = L.filter(r => r.converted && r.due).length
   const trialCash = L.reduce((a, r) => a + (r.trial_refunded ? 0 : r.trial_cents), 0) / 100
-  const convCash = L.reduce((a, r) => a + (r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)), 0) / 100
+  const convCash = L.reduce((a, r) => a + (r.converted_cents ?? 0), 0) / 100
 
   const byMonth = new Map<string, { t: number; c: number; due: number; cdue: number; trial: number; conv: number; era: number; q: number }>()
   for (const r of L) {
@@ -188,7 +192,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     if (r.converted) e.c++
     if (r.due && !r.trial_refunded) { e.due++; if (r.converted) e.cdue++ }
     if (!r.trial_refunded) e.trial += r.trial_cents / 100
-    e.conv += (r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)) / 100
+    e.conv += (r.converted_cents ?? 0) / 100
     if (r.attribution !== 'not_quiz') e.q++
     e.era = Math.max(e.era, r.era)
     byMonth.set(m, e)
@@ -225,7 +229,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     e.t++
     if (r.due && !r.trial_refunded) { e.due++; if (r.converted) e.cdue++ }
     if (!r.trial_refunded) e.trial += r.trial_cents / 100
-    e.conv += (r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)) / 100
+    e.conv += (r.converted_cents ?? 0) / 100
     byEra.set(r.era, e)
   }
 
@@ -268,7 +272,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       override: d!.overrideBy.get(r.charge_id) ?? null,
     }
   })
-  const counts: Record<State, number> = { converted: 0, lapsed: 0, not_due: 0, refunded: 0 }
+  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, not_due: 0, refunded: 0 }
   for (const r of L) counts[stateOf(r)]++
 
   const qs = (patch: Record<string, string | undefined>) => {
@@ -373,7 +377,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 12 }}>
         <a href={qs({ state: undefined })} style={chip(!fState)}>All {L.length}</a>
-        {(['converted', 'lapsed', 'not_due', 'refunded'] as State[]).map(s => (
+        {(['converted', 'lifetime', 'lapsed', 'not_due', 'refunded'] as State[]).map(s => (
           <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
             {STATE_LABEL[s]} {counts[s]}
           </a>

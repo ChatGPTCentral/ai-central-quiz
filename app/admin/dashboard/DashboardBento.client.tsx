@@ -385,12 +385,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       pick: (p: SeriesPoint) => p.billedAnnual,
       tot: billedAll,
       warm: true, summary: true,
-      note: 'trials that went on to pay a renewal, credited to the week of the trial that earned them. Includes lifetime conversions, which is why it can exceed the count of $59.75 charges.',
-      out: {
-        label: `trial CVR${matureAll ? ` (of ${matureAll} due)` : ''}`,
-        all: matureAll > 0 ? (billedAll / matureAll) * 100 : 0,
-        per: p => (p.matureTrials > 0 ? Math.min(100, (p.billedAnnual / p.matureTrials) * 100) : 0),
-      },
+      note: 'trials that went on to pay a renewal, credited to the week of the trial that earned them. A $54.74 lifetime buyer is NOT counted here: they bought the library outright, so there is no renewal to come.',
     },
 
   ]
@@ -426,9 +421,27 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
      *  total is made of, indented underneath and summing to it. */
     breakdown?: { label: string; all: number; per: (p: SeriesPoint) => number; money?: boolean }[]
   }
-  const rateRows: RateRow[] = [
+  const allTrials = (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid
+  const allTrialsTot = F.paid + F.quizExistingPaid + F.otherPaid
+
+  // The two headline rates lead the table: they are the answer, the funnel
+  // beneath them is the explanation.
+  const topRows: RateRow[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
+  ]
+
+  const rateRows: RateRow[] = [
+    {
+      // Conversions ÷ ALL trials, not ÷ matured trials. Every trial becomes
+      // due eventually, so the honest denominator is all of them: a recent
+      // week reading 0% is not a broken number, it is a week whose trials
+      // have not reached their renewal date yet.
+      label: 'TRIAL CVR', heavy: true,
+      sub: 'trials that went on to pay a renewal, divided by ALL trials of that period. Recent periods read low because their trials are not due yet, which is the truth rather than a gap.',
+      all: allTrialsTot > 0 ? (billedAll / allTrialsTot) * 100 : 0,
+      per: (p: SeriesPoint) => { const t = allTrials(p); return t > 0 ? Math.min(100, (p.billedAnnual / t) * 100) : 0 },
+    },
     {
       // Every dollar Stripe collected, then what it is made of. Same shape as
       // ALL TRIALS above: the total first, its parts indented beneath, and the
@@ -448,6 +461,97 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
 
   const head: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6B6B6B' }
 
+  /** One renderer for every summary row, used above the funnel and below
+   *  it, so a headline rate can never drift into a different style from
+   *  its twin. */
+  const renderRates = (rows: RateRow[]) => rows.map(rr => {
+        const money = 'money' in rr && rr.money === true
+        // Owner's display choice (2026-08-10): whole dollars on the face for
+        // readability, exact cents ALWAYS on hover. The underlying sums stay
+        // penny-true to Stripe; only the rendering rounds.
+        const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+        // The hover arithmetic must be TRUE, not plausible. A row whose money
+        // comes at one price shows count × price; a row that mixes prices (a
+        // conversion can be a $59.75 annual or the $49.75 half of a lifetime
+        // bundle) lists what it is actually made of. Dividing a mixed total by
+        // one assumed price produced "1 × $59.75 = $49.75" — arithmetic that
+        // contradicts itself in the same sentence (owner, 2026-08-11).
+        const arithOf = (v: number, parts?: [number, number][]) => {
+          if (parts && parts.length) {
+            const sum = parts.reduce((a, [c, n]) => a + (c / 100) * n, 0)
+            return `${parts.map(([c, n]) => `${n} × $${(c / 100).toFixed(2)}`).join(' + ')} = $${sum.toFixed(2)}`
+          }
+          if (rr.unit) {
+            const n = v / rr.unit
+            // Only claim a count when the total really is that many units.
+            if (Math.abs(n - Math.round(n)) < 0.005) return `${Math.round(n)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}`
+          }
+          return `$${v.toFixed(2)} exact`
+        }
+        return (
+          <div key={rr.label}>
+          <div className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : rr.count ? '#F3F8F3' : LATTE, borderBottom: rr.heavy && !rr.breakdown ? '2px solid #333333' : `1px solid ${ROWHAIR}`, borderTop: rr.breakdown ? '2px solid #333333' : undefined }}>
+            <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
+              {rr.label}
+              {rr.label === 'Trial → annual' && (
+                <span title={`Only counts the ${matureAll} trials whose annual bill date has already passed. A trial from last week is not due yet, so counting it would drag the column to zero.`} style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0 }}>
+                  · {matureAll} due
+                </span>
+              )}
+              {rr.sub && (
+                <span title={rr.sub} style={{ marginLeft: 5, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0, cursor: 'help' }}>
+                  ⓘ
+                </span>
+              )}
+            </span>
+            {buckets.map(p => {
+              const v = rr.per(p)
+              // Grayscale shading, and ONLY on the plain conversion-rate rows.
+              // The colour scale on every cell made the table hard to read
+              // (owner); the headline rows keep their colour instead, which is
+              // what the eye should land on first.
+              const shade = !money && !rr.count && !rr.heavy && rr.label !== 'Trial → annual'
+                ? `rgba(26,26,26,${(0.03 + Math.min(1, v / 100) * 0.16).toFixed(3)})`
+                : undefined
+              return (
+                <span key={p.bucket}
+                  title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(v, rr.parts?.(p))}` : undefined}
+                  style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800,
+                           color: money ? '#2E7D32' : rr.count ? INK : '#B26A00',
+                           background: shade, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                  {money ? usd(v) : rr.count ? fmt(v) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(v))}
+                </span>
+              )
+            })}
+            <span title={money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
+              const i = acc.findIndex(a => a[0] === c)
+              if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
+              return acc
+            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : rr.count ? INK : '#B26A00', ...tnum }}>
+              {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
+            </span>
+          </div>
+          {/* "Of which" — the parts this total is made of, indented and summing
+              to the row above, the same shape the funnel uses for ALL TRIALS. */}
+          {rr.breakdown?.map(b => (
+            <div key={b.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: '#F8FBF8', borderBottom: `1px solid ${ROWHAIR}` }}>
+              <span className="truncate" style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
+                ↳ {b.label}
+              </span>
+              {buckets.map(p => (
+                <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#3F6B3C', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                  {b.money ? usd(b.per(p)) : fmt(b.per(p))}
+                </span>
+              ))}
+              <span style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#3F6B3C', ...tnum }}>
+                {b.money ? usd(b.all) : fmt(b.all)}
+              </span>
+            </div>
+          ))}
+          </div>
+        )
+  })
+
   return (
     <div style={{ padding: '4px 20px 18px' }}>
       {/* header */}
@@ -460,6 +564,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         ))}
         <span style={{ ...head, ...totalCol, padding: '6px 8px' }}>All window</span>
       </div>
+
+      {renderRates(topRows)}
 
       {/* station rows */}
       {stations.map(s => {
@@ -561,95 +667,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         )
       })}
 
-      {/* rate rows. `money` renders dollars instead of a percentage, and
-          `Trial → annual` counts ONLY trials whose bill date has passed. */}
-      {rateRows.map(rr => {
-        const money = 'money' in rr && rr.money === true
-        // Owner's display choice (2026-08-10): whole dollars on the face for
-        // readability, exact cents ALWAYS on hover. The underlying sums stay
-        // penny-true to Stripe; only the rendering rounds.
-        const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-        // The hover arithmetic must be TRUE, not plausible. A row whose money
-        // comes at one price shows count × price; a row that mixes prices (a
-        // conversion can be a $59.75 annual or the $49.75 half of a lifetime
-        // bundle) lists what it is actually made of. Dividing a mixed total by
-        // one assumed price produced "1 × $59.75 = $49.75" — arithmetic that
-        // contradicts itself in the same sentence (owner, 2026-08-11).
-        const arithOf = (v: number, parts?: [number, number][]) => {
-          if (parts && parts.length) {
-            const sum = parts.reduce((a, [c, n]) => a + (c / 100) * n, 0)
-            return `${parts.map(([c, n]) => `${n} × $${(c / 100).toFixed(2)}`).join(' + ')} = $${sum.toFixed(2)}`
-          }
-          if (rr.unit) {
-            const n = v / rr.unit
-            // Only claim a count when the total really is that many units.
-            if (Math.abs(n - Math.round(n)) < 0.005) return `${Math.round(n)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}`
-          }
-          return `$${v.toFixed(2)} exact`
-        }
-        return (
-          <div key={rr.label}>
-          <div className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : rr.count ? '#F3F8F3' : LATTE, borderBottom: rr.heavy && !rr.breakdown ? '2px solid #333333' : `1px solid ${ROWHAIR}`, borderTop: rr.breakdown ? '2px solid #333333' : undefined }}>
-            <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
-              {rr.label}
-              {rr.label === 'Trial → annual' && (
-                <span title={`Only counts the ${matureAll} trials whose annual bill date has already passed. A trial from last week is not due yet, so counting it would drag the column to zero.`} style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0 }}>
-                  · {matureAll} due
-                </span>
-              )}
-              {rr.sub && (
-                <span title={rr.sub} style={{ marginLeft: 5, fontSize: 9, fontWeight: 700, color: '#6B6B6B', textTransform: 'none', letterSpacing: 0, cursor: 'help' }}>
-                  ⓘ
-                </span>
-              )}
-            </span>
-            {buckets.map(p => {
-              const v = rr.per(p)
-              // Grayscale shading, and ONLY on the plain conversion-rate rows.
-              // The colour scale on every cell made the table hard to read
-              // (owner); the headline rows keep their colour instead, which is
-              // what the eye should land on first.
-              const shade = !money && !rr.count && !rr.heavy && rr.label !== 'Trial → annual'
-                ? `rgba(26,26,26,${(0.03 + Math.min(1, v / 100) * 0.16).toFixed(3)})`
-                : undefined
-              return (
-                <span key={p.bucket}
-                  title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(v, rr.parts?.(p))}` : undefined}
-                  style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800,
-                           color: money ? '#2E7D32' : rr.count ? INK : '#B26A00',
-                           background: shade, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                  {money ? usd(v) : rr.count ? fmt(v) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(v))}
-                </span>
-              )
-            })}
-            <span title={money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
-              const i = acc.findIndex(a => a[0] === c)
-              if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
-              return acc
-            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : rr.count ? INK : '#B26A00', ...tnum }}>
-              {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
-            </span>
-          </div>
-          {/* "Of which" — the parts this total is made of, indented and summing
-              to the row above, the same shape the funnel uses for ALL TRIALS. */}
-          {rr.breakdown?.map(b => (
-            <div key={b.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: '#F8FBF8', borderBottom: `1px solid ${ROWHAIR}` }}>
-              <span className="truncate" style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
-                ↳ {b.label}
-              </span>
-              {buckets.map(p => (
-                <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#3F6B3C', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
-                  {b.money ? usd(b.per(p)) : fmt(b.per(p))}
-                </span>
-              ))}
-              <span style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#3F6B3C', ...tnum }}>
-                {b.money ? usd(b.all) : fmt(b.all)}
-              </span>
-            </div>
-          ))}
-          </div>
-        )
-      })}
+      {renderRates(rateRows)}
+
 
       {/* The people-vs-charges reconciliation, stated where the confusion
           happens. On 2026-08-10 the owner saw Net-new paid 8 against 6×$4.99

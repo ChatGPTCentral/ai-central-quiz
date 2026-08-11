@@ -77,7 +77,9 @@ const ALL_COLUMNS: Col[] = [
     cell: r => <>${(r.trial_cents / 100).toFixed(2)}{r.lifetime_bundle && <span title="One $54.74 charge: the $4.99 trial and the $49.75 lifetime together" style={{ marginLeft: 4, color: AMBER, fontWeight: 700 }}>+LT</span>}</> },
   { key: 'paid2on', label: 'Paid 2 on', align: 'left', cell: r => <span style={{ color: MUTE, whiteSpace: 'nowrap' }}>{r.converted_at ? fmtDay(r.converted_at) : '–'}</span> },
   { key: 'payment2', label: 'Payment 2', align: 'right',
-    cell: r => (r.converted ? `$${((r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)) / 100).toFixed(2)}` : '–') },
+    // The lifetime half is shown on Payment 1 as +LT, not here: this column is
+    // the RENEWAL, and a lifetime buyer has no renewal coming.
+    cell: r => (r.converted ? `$${((r.converted_cents ?? 0) / 100).toFixed(2)}` : '–') },
   { key: 'total', label: 'Total', align: 'right', cell: r => <span style={{ fontWeight: 700 }}>${(r.gross_cents / 100).toFixed(2)}</span> },
   { key: 'stripe', label: 'Stripe', align: 'left',
     cell: r => r.customer_id ? (
