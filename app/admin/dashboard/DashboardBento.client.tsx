@@ -58,6 +58,10 @@ export interface SeriesPoint {
   revenueQuizExisting: number
   revenueNotQuiz: number
   revenueAnnual: number
+  /** What the conversion money is made of: [cents, count] pairs. A conversion
+   *  is a $59.75 annual OR the $49.75 half of a lifetime bundle, so the hover
+   *  states the real mix instead of dividing by an assumed price. */
+  annualParts: [number, number][]
   revenueOther: number
   /** Net-new buyers whose annual bill date has actually passed. */
   matureTrials: number
@@ -361,7 +365,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
   // `unit` = the single price a row is made of; it powers the hover arithmetic
   // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
-  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string; unit?: number }[] = [
+  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; sub?: string; unit?: number; parts?: (p: SeriesPoint) => [number, number][] }[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
@@ -380,8 +384,9 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
     },
     {
-      label: 'Converted Trials Revenue', money: true, heavy: false, unit: 59.75,
-      sub: '$59.75 bills, restated to the WEEK OF THE TRIAL that earned them (quiz week for net-new). Recent columns fill in as their trials mature ~a month later. Annuals whose trial predates the mirror sit at charge date.',
+      label: 'Converted Trials Revenue', money: true, heavy: false,
+      parts: (p: SeriesPoint) => p.annualParts,
+      sub: 'Conversions, restated to the WEEK OF THE TRIAL that earned them. Usually a $59.75 annual, sometimes the $49.75 half of a $54.74 lifetime bundle, so a cell can mix both prices — hover it to see exactly what it is made of. Recent columns fill in as their trials mature about a month later.',
       all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
     },
     {
@@ -500,9 +505,24 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         // readability, exact cents ALWAYS on hover. The underlying sums stay
         // penny-true to Stripe; only the rendering rounds.
         const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-        // The hover arithmetic: exact cents, and single-price rows show
-        // count × price, so any cell reconciles against Stripe by eye.
-        const arith = (v: number) => (rr.unit ? `${Math.round(v / rr.unit)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}` : `$${v.toFixed(2)} exact`)
+        // The hover arithmetic must be TRUE, not plausible. A row whose money
+        // comes at one price shows count × price; a row that mixes prices (a
+        // conversion can be a $59.75 annual or the $49.75 half of a lifetime
+        // bundle) lists what it is actually made of. Dividing a mixed total by
+        // one assumed price produced "1 × $59.75 = $49.75" — arithmetic that
+        // contradicts itself in the same sentence (owner, 2026-08-11).
+        const arithOf = (v: number, parts?: [number, number][]) => {
+          if (parts && parts.length) {
+            const sum = parts.reduce((a, [c, n]) => a + (c / 100) * n, 0)
+            return `${parts.map(([c, n]) => `${n} × $${(c / 100).toFixed(2)}`).join(' + ')} = $${sum.toFixed(2)}`
+          }
+          if (rr.unit) {
+            const n = v / rr.unit
+            // Only claim a count when the total really is that many units.
+            if (Math.abs(n - Math.round(n)) < 0.005) return `${Math.round(n)} × $${rr.unit.toFixed(2)} = $${v.toFixed(2)}`
+          }
+          return `$${v.toFixed(2)} exact`
+        }
         return (
           <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
             <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
@@ -518,11 +538,15 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 </span>
               )}
             </span>
-            <span title={money ? arith(rr.all) : undefined} style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
+            <span title={money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
+              const i = acc.findIndex(a => a[0] === c)
+              if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
+              return acc
+            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
               {money ? usd(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
             </span>
             {buckets.map(p => (
-              <span key={p.bucket} title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arith(rr.per(p))}` : undefined} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+              <span key={p.bucket} title={money ? `${labelBucket(p.bucket, gran as Gran)} · ${arithOf(rr.per(p), rr.parts?.(p))}` : undefined} style={{ padding: '9px 4px', textAlign: 'center', fontSize: 10, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
                 {money ? usd(rr.per(p)) : (rr.label === 'Trial → annual' && p.matureTrials === 0 ? '–' : pctDisp(rr.per(p)))}
               </span>
             ))}

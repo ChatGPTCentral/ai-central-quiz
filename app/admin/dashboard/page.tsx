@@ -429,12 +429,24 @@ export default async function DashboardPage({
     // The revenue split, each entry already carrying its own clock (see
     // revenueCharges). Kind names match the SeriesPoint field suffixes.
     const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annual: number; other: number }>()
+    // What the conversion money is actually MADE OF, per bucket. A conversion
+    // can be a $59.75 annual or the $49.75 half of a lifetime bundle, so the
+    // hover must state the real mix instead of dividing the total by an
+    // assumed price — which produced "1 × $59.75 = $49.75", a sentence that
+    // is false on its face (owner, 2026-08-11).
+    const annualParts = new Map<string, Map<number, number>>()
     for (const e of rev.entries) {
       const b = bucketKey(e.at, gran)
       if (!b || b < launchBucket) continue
       const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annual: 0, other: 0 }
       r[e.kind] += e.usd
       revByBucket.set(b, r)
+      if (e.kind === 'annual') {
+        const m = annualParts.get(b) || new Map<number, number>()
+        const cents = Math.round(e.usd * 100)
+        m.set(cents, (m.get(cents) || 0) + 1)
+        annualParts.set(b, m)
+      }
     }
 
     const evb = events.eventBuckets[gran]
@@ -465,6 +477,7 @@ export default async function DashboardPage({
       revenueQuizExisting: revByBucket.get(bucket)?.quizExisting || 0,
       revenueNotQuiz: revByBucket.get(bucket)?.notQuiz || 0,
       revenueAnnual: revByBucket.get(bucket)?.annual || 0,
+      annualParts: Array.from(annualParts.get(bucket)?.entries() ?? []).sort((a, b) => b[0] - a[0]),
       revenueOther: revByBucket.get(bucket)?.other || 0,
       matureTrials: subs.get(bucket)?.mature || 0,
       billedAnnual: subs.get(bucket)?.billedAnnual || 0,
