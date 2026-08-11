@@ -396,6 +396,26 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     revealPreview ||
     assignments.some(a => a.experimentKey === 'result_reveal_v1' && a.variantKey === 'reveal')
 
+  // ── result_strip_v1 · the diversions arm ─────────────────────────────
+  //
+  // THE EVIDENCE. Every engagement feature on this page is done MORE by people
+  // who do not buy, measured over 74 buyers against 1,476 others who reached
+  // the result page: the wheel 2.7% against 3.8%, the free win 1.4% against
+  // 2.1%, sharing 5.4% against 6.2%, the exit rescue 4.1% against 5.6%. Not one
+  // is positive. And all three experiments this page has ever won removed a
+  // step between arrival and the offer.
+  //
+  // THE REASON IT IS AN EXPERIMENT AND NOT A DELETION. That is correlation.
+  // The people who spin the wheel may be lower intent to begin with rather than
+  // made lower intent by the wheel, and deleting four features on a correlation
+  // is how this project has hurt itself before. So the stripped arm is a
+  // hypothesis with a control beside it, not a decision already taken.
+  //
+  // ?preview=strip renders it without recording an exposure.
+  const stripped =
+    previewVar.includes('strip') ||
+    assignments.some(a => a.experimentKey === 'result_strip_v1' && a.variantKey === 'stripped')
+
   // ── One-tap wallets (Express Checkout Element) ───────────────────────
   // 64% of payment intents are canceled — people open the hosted form and
   // leave. This skips the form entirely.
@@ -721,7 +741,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                         guarantee
             Every section is identical between arms, only the order and the
             video's position change, so a win is attributable to the order. */}
-        {reveal && (
+        {reveal && !stripped && (
           <UnlockReveal
             offer={offer}
             firstName={firstName || null}
@@ -772,7 +792,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         <RiskFree offer={offer} checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA)} />
 
         {/* ── THE PASS · the reward, before the housekeeping ──────────── */}
-        {passSection}
+        {/* The pass and its LinkedIn share are a closure moment: a reward
+            collected and a page left. Held out of the stripped arm for the
+            same reason as the wheel, and restored the instant the experiment
+            ends whichever way it goes. */}
+        {!stripped && passSection}
 
         {/* ── FAQ last: answers for the undecided, out of the way of
                everyone else. It should never sit between desire and reward. ── */}
