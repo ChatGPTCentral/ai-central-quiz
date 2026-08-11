@@ -1,5 +1,6 @@
 import { listExperiments, experimentResults, type VariantResult } from '@/lib/experiment-queries'
-import { clarityUxByPage, type UxPageRow } from '@/lib/clarity'
+import { clarityUxByPage } from '@/lib/clarity'
+import { uxByPage, type UxPageRow } from '@/lib/ux-by-page'
 import ClarityPullNow from '@/components/admin/ClarityPullNow.client'
 import ExperimentsPanel from './ExperimentsPanel.client'
 
@@ -34,8 +35,20 @@ export default async function ExperimentsPage() {
   }
 
   // Clarity UX snapshots (best-effort; empty until the first pull lands)
-  let ux: Awaited<ReturnType<typeof clarityUxByPage>> = { rows: [], snapshotDays: 0, lastFetched: null }
-  try { ux = await clarityUxByPage(7) } catch { /* table shows its empty state */ }
+  // PostHog first, Clarity as the fallback while both are running.
+  //
+  // Deliberately in this order and NOT the other way round: the point of the
+  // re-map is that this table keeps working when the Clarity snapshot stops,
+  // so PostHog has to be the one being proved every day. Falling back the
+  // other way would leave the new path untested until the moment we needed it.
+  let ux: { rows: UxPageRow[]; snapshotDays: number; lastFetched: string | null } = { rows: [], snapshotDays: 0, lastFetched: null }
+  try { ux = await uxByPage(7) } catch { /* fall through */ }
+  if (!ux.rows.length) {
+    try {
+      const c = await clarityUxByPage(7)
+      ux = { ...c, rows: c.rows.map(r => ({ ...r, worstElement: null })) }
+    } catch { /* table shows its empty state */ }
+  }
   const uxPath = (u: string) => { try { return new URL(u).pathname || '/' } catch { return u } }
   const uxRows: UxPageRow[] = ux.rows.slice(0, 8)
 
@@ -66,10 +79,11 @@ export default async function ExperimentsPage() {
       </div>
       <ExperimentsPanel initialExperiments={experiments} initialResults={results} />
 
-      {/* UX health · Clarity (moved from the retired Funnel page) */}
+      {/* UX health. Reads PostHog now, with Clarity only as a fallback while
+          both run, so this table survives the Clarity snapshot being retired. */}
       <div style={{ border: '1px solid #333333', background: '#FFFFFF', marginTop: 28 }}>
         <div className="flex items-baseline justify-between flex-wrap" style={{ padding: '12px 16px', background: LATTE, borderBottom: '1px solid #333333', gap: 10 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>UX health · Clarity</span>
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>UX health</span>
           <span className="inline-flex items-center" style={{ gap: 10 }}>
             <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>
               {ux.snapshotDays || 0} daily snapshot{ux.snapshotDays === 1 ? '' : 's'}{ux.lastFetched ? ` · last pull ${new Date(ux.lastFetched).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
@@ -92,7 +106,8 @@ export default async function ExperimentsPage() {
                 <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{fmt(r.sessions)}</span>
                 <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{r.scrollDepth === null ? '–' : `${r.scrollDepth}%`}</span>
                 <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.rage > 0 ? 800 : 400, color: r.rage > 0 ? '#BE3B3B' : undefined, ...tnum }}>{r.rage}</span>
-                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.dead > 0 ? 800 : 400, color: r.dead > 0 ? '#BE593B' : undefined, ...tnum }}>{r.dead}</span>
+                <span title={r.worstElement ? `most dead clicks on: "${r.worstElement}"` : undefined}
+                      style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.dead > 0 ? 800 : 400, color: r.dead > 0 ? '#BE593B' : undefined, ...tnum }}>{r.dead}</span>
                 <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{r.quickback}</span>
                 <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.scriptErrors > 0 ? 800 : 400, color: r.scriptErrors > 0 ? '#BE3B3B' : undefined, ...tnum }}>{r.scriptErrors}</span>
               </div>

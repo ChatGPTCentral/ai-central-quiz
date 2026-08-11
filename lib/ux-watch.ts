@@ -160,6 +160,143 @@ export const UX_QUERIES: {
       }
     },
   },
+  {
+    key: 'quick_back',
+    claim: 'people arrived and left again within seconds',
+    // THE CLARITY RE-MAP. Clarity called this Quickback and it was the one
+    // signal it owned; PostHog has no native event for it, so it is derived:
+    // a pageview whose session produced nothing else. Someone who lands, looks,
+    // and leaves without a single interaction did not bounce because they were
+    // busy, they bounced because the page did not hold them.
+    threshold: 25,
+    severity: 'warn',
+    sql: `SELECT replaceRegexpOne(toString(properties.$current_url), '\\?.*$', '') AS page, count() AS n
+          FROM events
+          WHERE event = '$pageview' AND timestamp > now() - INTERVAL 6 HOUR
+            AND toString(properties.$current_url) NOT LIKE '%/admin%'
+            AND $session_id NOT IN (
+              SELECT $session_id FROM events
+              WHERE timestamp > now() - INTERVAL 6 HOUR
+                AND event IN ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click')
+            )
+          GROUP BY page ORDER BY n DESC LIMIT 6`,
+    read: rows => ({
+      value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
+      detail: rows.length
+        ? rows.map(r => `${r.n}× ${String(r.page || '').replace(/^https?:\/\/[^/]+/, '') || '/'}`).join(' | ')
+        : 'none',
+    }),
+  },
+  {
+    key: 'checkout_abandon',
+    claim: 'people opened checkout and did not buy',
+    // WHY THEY BOUNCE, at the most expensive moment there is. A high number
+    // here with no errors beside it is a persuasion or a pricing problem; a
+    // high number WITH errors is a bug. The pairing is the diagnosis, which is
+    // why both live in the same six-hour report.
+    threshold: 12,
+    severity: 'warn',
+    sql: `SELECT
+            uniqIf($session_id, event = 'checkout_click') AS opened,
+            uniqIf($session_id, event = '$pageview' AND toString(properties.$current_url) ILIKE '%/checkout/success%') AS paid
+          FROM events WHERE timestamp > now() - INTERVAL 6 HOUR`,
+    read: rows => {
+      const r = rows[0] || {}
+      const opened = Number(r.opened || 0)
+      const paid = Number(r.paid || 0)
+      const lost = Math.max(0, opened - paid)
+      return { value: lost, detail: `${opened} opened checkout, ${paid} reached success, ${lost} walked` }
+    },
+  },
+  {
+    key: 'quiz_step_dropoff',
+    claim: 'one quiz question is losing more people than the rest',
+    // WHERE they bounce, to the question. A funnel that only reports its ends
+    // tells you people leave; this tells you which sentence made them leave.
+    threshold: 0,
+    severity: 'warn',
+    sql: `SELECT toString(properties.qid) AS qid, uniq($session_id) AS people
+          FROM events
+          WHERE event = 'quiz_step' AND timestamp > now() - INTERVAL 24 HOUR
+          GROUP BY qid ORDER BY people DESC LIMIT 20`,
+    read: rows => {
+      if (rows.length < 3) return { value: 0, detail: 'not enough steps recorded to judge' }
+      // The biggest single fall between consecutive steps. A quiz always loses
+      // people gradually; one step losing far more than its neighbours is the
+      // thing worth reading, so the report names it rather than the total.
+      let worst = { qid: '', drop: 0, from: 0 }
+      for (let i = 1; i < rows.length; i++) {
+        const from = Number(rows[i - 1].people || 0)
+        const to = Number(rows[i].people || 0)
+        const drop = from > 0 ? ((from - to) / from) * 100 : 0
+        if (drop > worst.drop) worst = { qid: String(rows[i].qid), drop, from }
+      }
+      return {
+        value: worst.drop > 25 && worst.from >= 20 ? 1 : 0,
+        detail: `worst step "${worst.qid}" loses ${worst.drop.toFixed(0)}% of the ${worst.from} who reached the one before it`,
+      }
+    },
+  },
+  {
+    key: 'slow_pages',
+    claim: 'a page got slow enough to cost sales',
+    // A result page that takes four seconds is a result page nobody reads.
+    // PostHog captures web vitals for free and nobody has ever looked at them.
+    threshold: 0,
+    severity: 'warn',
+    sql: `SELECT replaceRegexpOne(toString(properties.$current_url), '\\?.*$', '') AS page,
+                 round(quantile(0.75)(toFloat(properties.$web_vitals_LCP_value)) / 1000, 2) AS lcp_s,
+                 count() AS n
+          FROM events
+          WHERE event = '$web_vitals' AND timestamp > now() - INTERVAL 6 HOUR
+            AND toString(properties.$current_url) NOT LIKE '%/admin%'
+            AND properties.$web_vitals_LCP_value > 0
+          GROUP BY page HAVING count() >= 15 ORDER BY lcp_s DESC LIMIT 5`,
+    read: rows => {
+      // 2.5s is Google's "needs improvement" line; 4s is "poor". Judge on the
+      // 75th percentile, which is what Core Web Vitals reports on, so one slow
+      // phone on a train does not raise an alarm.
+      const bad = rows.filter(r => Number(r.lcp_s || 0) > 4)
+      return {
+        value: bad.length,
+        detail: rows.length
+          ? rows.map(r => `${String(r.page || '').replace(/^https?:\/\/[^/]+/, '') || '/'} ${r.lcp_s}s`).join(' | ')
+          : 'no web vitals in window',
+      }
+    },
+  },
+  {
+    key: 'experiment_health',
+    claim: 'a running experiment is splitting unevenly',
+    // An experiment whose arms drift apart is not measuring what it thinks it
+    // is. Cheap to check, and the alternative is discovering it at the end
+    // when the result has to be thrown away.
+    threshold: 0,
+    severity: 'warn',
+    sql: `SELECT toString(properties.experiment) AS exp, toString(properties.variant) AS arm, uniq($session_id) AS people
+          FROM events
+          WHERE event = 'experiment_exposure' AND timestamp > now() - INTERVAL 24 HOUR
+          GROUP BY exp, arm ORDER BY exp, arm`,
+    read: rows => {
+      if (!rows.length) return { value: 0, detail: 'no exposures in the last 24h' }
+      const byExp = new Map<string, number[]>()
+      for (const r of rows) {
+        const k = String(r.exp)
+        byExp.set(k, [...(byExp.get(k) ?? []), Number(r.people || 0)])
+      }
+      const skewed: string[] = []
+      const seen: string[] = []
+      for (const [exp, arms] of Array.from(byExp)) {
+        const total = arms.reduce((a, b) => a + b, 0)
+        seen.push(`${exp} ${arms.join('/')}`)
+        // Only judge once there is enough traffic for a split to mean anything.
+        if (total < 40 || arms.length < 2) continue
+        const share = Math.max(...arms) / total
+        if (share > 0.65) skewed.push(`${exp} is ${Math.round(share * 100)}% one arm`)
+      }
+      return { value: skewed.length, detail: skewed.length ? skewed.join(' | ') : seen.join(' | ') }
+    },
+  },
 ]
 
 /**
