@@ -314,6 +314,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   //   1,819 → 73% → 1,319 → 72% → 944 → 33% → 312 → …
   // Every rate sits between the two counts it relates, which is why it hangs
   // off the SOURCE station rather than the destination.
+  // Declared before the stations, which reference them: trials whose renewal
+  // date has passed, and how many of those paid. (Moved up when ALL
+  // CONVERSIONS became a station — tsc caught the temporal-dead-zone read
+  // this time, unlike the closure version that reached production.)
+  const matureAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.matureTrials, 0)
+  const billedAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.billedAnnual, 0)
+
   const stations: {
     label: string
     pick: (p: SeriesPoint) => number
@@ -369,6 +376,22 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows, so count × $4.99 always equals them.' },
       ],
     },
+    {
+      // The trials that went on to pay their renewal. Counted from the SAME
+      // ledger rows as the rate below it, so the two can never disagree: this
+      // used to count $59.75 CHARGES while the rate counted converted TRIALS,
+      // which hid every lifetime conversion and made 13/17 read as 11/17.
+      label: 'ALL CONVERSIONS',
+      pick: (p: SeriesPoint) => p.billedAnnual,
+      tot: billedAll,
+      warm: true, summary: true,
+      note: 'trials that went on to pay a renewal, credited to the week of the trial that earned them. Includes lifetime conversions, which is why it can exceed the count of $59.75 charges.',
+      out: {
+        label: `trial CVR${matureAll ? ` (of ${matureAll} due)` : ''}`,
+        all: matureAll > 0 ? (billedAll / matureAll) * 100 : 0,
+        per: p => (p.matureTrials > 0 ? Math.min(100, (p.billedAnnual / p.matureTrials) * 100) : 0),
+      },
+    },
 
   ]
 
@@ -387,8 +410,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // Trial to annual, counted ONLY on trials whose bill date has passed. A trial
   // from last week has not failed to convert, it is not due, and counting it
   // would drag every recent column to zero and make the row worthless.
-  const matureAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.matureTrials, 0)
-  const billedAll = buckets.reduce((a: number, p: SeriesPoint) => a + p.billedAnnual, 0)
   // The revenue split rows sum REAL Stripe charges from the mirror, not the
   // per-person LTV aggregate the old single Revenue row used. Each row names
   // its clock, because two adjacent rows on unstated different clocks is
@@ -405,7 +426,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
      *  total is made of, indented underneath and summing to it. */
     breakdown?: { label: string; all: number; per: (p: SeriesPoint) => number; money?: boolean }[]
   }
-  const convCount = (p: SeriesPoint) => p.annualParts.reduce((a, [, n]) => a + n, 0)
   const rateRows: RateRow[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
@@ -423,20 +443,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         { label: 'from converted trials', money: true, all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual },
         { label: 'from other revenue', money: true, all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther },
       ],
-    },
-    {
-      // The count behind 'from converted trials', so the rate below has a
-      // visible numerator instead of being a percentage from nowhere.
-      label: 'ALL CONVERTED TRIALS', count: true, heavy: false,
-      sub: 'how many trials paid their $59.75 renewal, credited to the week of the trial that earned them.',
-      all: buckets.reduce((a, p) => a + convCount(p), 0),
-      per: convCount,
-    },
-    {
-      label: 'Trial → annual',
-      all: matureAll > 0 ? (billedAll / matureAll) * 100 : 0,
-      per: (p: SeriesPoint) => (p.matureTrials > 0 ? Math.min(100, (p.billedAnnual / p.matureTrials) * 100) : 0),
-      heavy: false,
     },
   ]
 
@@ -501,7 +507,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
               <div key={b.label} className="grid items-center" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
                 <span className="truncate" title={b.note}
                   style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
-                  ↳ of which {b.label}
+                  ↳ {b.label}
                 </span>
                 {buckets.map(p => (
                   <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#4A4A4A', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
@@ -629,7 +635,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           {rr.breakdown?.map(b => (
             <div key={b.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: '#F8FBF8', borderBottom: `1px solid ${ROWHAIR}` }}>
               <span className="truncate" style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
-                ↳ of which {b.label}
+                ↳ {b.label}
               </span>
               {buckets.map(p => (
                 <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#3F6B3C', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
