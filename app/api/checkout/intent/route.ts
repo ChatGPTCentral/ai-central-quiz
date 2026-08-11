@@ -36,6 +36,23 @@ function stripe(): Stripe {
 const clean = (v: unknown, max = 200): string | undefined =>
   typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined
 
+/**
+ * The email is a CONVENIENCE. It must never be able to stop a sale.
+ *
+ * On 2026-08-11 a real buyer typed "upb.edu,co", a comma for a dot. We passed
+ * it to Stripe as a prefill, Stripe rejected the whole session for an invalid
+ * address, and the checkout form never rendered: they wanted to pay and got a
+ * blank box. Anything that does not clearly parse is dropped and Stripe simply
+ * asks for it, which costs one field and saves the sale.
+ */
+function usableEmail(e: string | undefined): string | undefined {
+  if (!e) return undefined
+  // Deliberately strict, because the only cost of rejecting a good address is
+  // that the buyer types it again, and the cost of passing a bad one is the
+  // entire checkout.
+  return /^[^\s@,;]+@[^\s@,;]+\.[A-Za-z]{2,}$/.test(e) ? e : undefined
+}
+
 /** The buyer's email from their quiz row. Best effort; never blocks a sale. */
 async function emailForSubmission(submissionId?: string): Promise<string | undefined> {
   if (!submissionId) return undefined
@@ -51,8 +68,7 @@ async function emailForSubmission(submissionId?: string): Promise<string | undef
     global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
   })
     const { data } = await db.from('submissions').select('email').eq('id', submissionId).maybeSingle()
-    const e = clean(data?.email, 320)
-    return e && e.includes('@') ? e : undefined
+    return usableEmail(clean(data?.email, 320))
   } catch {
     return undefined
   }

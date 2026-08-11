@@ -109,15 +109,24 @@ export default async function HomePage({
             see exactly where you land versus everyone else, then a plan to climb
           </p>
           <div className="w-full max-w-[400px]">
-            <PassCard
-              name="YOUR NAME"
-              personaLabel="AI Professional"
-              stageLine="STAGE: ?????"
-              passPct="Top ??% World"
-              issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
-              refNo="AC-????"
-              description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
-            />
+            {/* The pass is the single most tapped thing on this page and it
+                did nothing. Clarity counted 169 dead clicks in 14 days across
+                1,365 landing sessions: a card that says YOUR NAME and STAGE:
+                ????? reads as the thing to touch, and touching it went
+                nowhere. It goes to the quiz now, same destination as the
+                button under it. A person who wants to act should never have to
+                find the right pixel. */}
+            <Link href={quizHref} aria-label="take the quiz and mint your member pass" style={{ display: 'block', textDecoration: 'none' }}>
+              <PassCard
+                name="YOUR NAME"
+                personaLabel="AI Professional"
+                stageLine="STAGE: ?????"
+                passPct="Top ??% World"
+                issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
+                refNo="AC-????"
+                description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
+              />
+            </Link>
           </div>
         </div>
 
@@ -127,15 +136,24 @@ export default async function HomePage({
               "YOUR NAME" placeholder makes the reward tangible at a glance.
               (Flipped to the left per owner request.) */}
           <div className="w-full max-w-[440px] mx-auto flex flex-col items-center">
-            <PassCard
-              name="YOUR NAME"
-              personaLabel="AI Professional"
-              stageLine="STAGE: ?????"
-              passPct="Top ??% World"
-              issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
-              refNo="AC-????"
-              description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
-            />
+            {/* The pass is the single most tapped thing on this page and it
+                did nothing. Clarity counted 169 dead clicks in 14 days across
+                1,365 landing sessions: a card that says YOUR NAME and STAGE:
+                ????? reads as the thing to touch, and touching it went
+                nowhere. It goes to the quiz now, same destination as the
+                button under it. A person who wants to act should never have to
+                find the right pixel. */}
+            <Link href={quizHref} aria-label="take the quiz and mint your member pass" style={{ display: 'block', textDecoration: 'none' }}>
+              <PassCard
+                name="YOUR NAME"
+                personaLabel="AI Professional"
+                stageLine="STAGE: ?????"
+                passPct="Top ??% World"
+                issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
+                refNo="AC-????"
+                description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
+              />
+            </Link>
 
             {/* landing_cta_v1 · the button under the pass card.
                 control  'share' — today's page, verbatim.

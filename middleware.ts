@@ -14,9 +14,27 @@ const ANON_MAX_AGE = 400 * 24 * 60 * 60 // Chrome's 400-day cookie cap
 // `?internal=0` clears it, and /api/events drops everything carrying it.
 const INTERNAL_COOKIE = 'ac_internal'
 
+/** A path made of nothing but punctuation, e.g. "/)**_**".
+ *
+ *  Clarity found 104 sessions in 14 days landing on quiz.thecentral.ai/)**_**
+ *  and getting a 404. Somewhere a link went out as [text](url)**_** and the
+ *  trailing markdown was swallowed into the href, so every one of those people
+ *  clicked a link to us and got nothing. They were trying to reach the landing
+ *  page, so send them there rather than to a dead end. Deliberately narrow: it
+ *  only fires when there is not a single letter or digit in the path, so no
+ *  real route can ever match it.
+ */
+const JUNK_PATH = /^\/[^A-Za-z0-9/]{1,16}\/?$/
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
   const internalParam = req.nextUrl.searchParams.get('internal')
+
+  if (JUNK_PATH.test(pathname)) {
+    const url = req.nextUrl.clone()
+    url.pathname = '/'
+    return NextResponse.redirect(url)
+  }
 
   if (pathname.startsWith('/admin')) {
     // Login route is public
