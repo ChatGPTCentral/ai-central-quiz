@@ -33,6 +33,32 @@ would fake it. `stripe_charges` is the mirror of record, synced daily 06:20
 UTC, refunds excluded; the owner's trials spreadsheet is the reconciliation
 source of truth.
 
+## One source per fact, and only one
+
+Owner's rule, 2026-08-11: **there is a single source of truth for each kind of
+data, and every screen slices from it.** Consistency between pages is not the
+goal, it is the symptom; the goal is that no fact is computed twice.
+
+| Domain | The one source | Everything downstream |
+|---|---|---|
+| Money, trials, conversions | `stripe_charges` → `trial_ledger` | `/admin/revenue`, the dashboard's trial and money rows, the simulator's cashflow, `trial_to_annual_rate()`, the ads page LTV |
+| Who a person is, quiz answers, stage, UTM, country | `submissions` | CRM tables, segmentation, the dashboard's demographics |
+| On-page behaviour | `funnel_events` (+ PostHog) | landing views, quiz starts, checkout clicks, placements |
+| Pricing periods | `payment_eras` | era labels and colours everywhere |
+| The owner's spreadsheet | `sheet_trials` | RECONCILIATION ONLY, never an input to a number |
+
+Rules that follow from it:
+- A screen may JOIN sources, never RE-DERIVE a fact another source owns. The
+  dashboard used to recompute "is this person net-new" from
+  `stripe_first_charge_at > quiz_completed_at` while the ledger already
+  answered it. They matched at 71 each the day it was found, and matching by
+  coincidence of two code paths is the state right before a silent drift.
+- If two screens disagree, do not patch the screen. Find which one is
+  re-deriving and delete that derivation.
+- Adding a rule (a new price, a bundle, a refund case) means editing the
+  ledger, once. If a fix needs touching two files to keep numbers equal, the
+  architecture is wrong, not the numbers.
+
 ## The roadmap board is the source of truth
 
 The project roadmap lives in the Supabase table `roadmap_tasks` (project

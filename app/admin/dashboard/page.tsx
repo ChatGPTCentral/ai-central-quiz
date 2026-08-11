@@ -149,7 +149,7 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
 type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annual' | 'other'
 
 type LedgerRow = {
-  charge_id: string; trial_at: string; trial_cents: number; trial_refunded: boolean
+  charge_id: string; person_key: string; trial_at: string; trial_cents: number; trial_refunded: boolean
   lifetime_bundle: boolean; attribution: string; quiz_completed_at: string | null
   converted_at: string | null; converted_cents: number | null; converted_charge_id: string | null
   due: boolean; converted: boolean
@@ -166,6 +166,11 @@ async function revenueCharges(): Promise<{
   preWindowAnnuals: number
   /** Emails of quiz-earned trials from EXISTING customers, for the north star. */
   quizExistingEmails: Set<string>
+  /** Emails of NET-NEW trial buyers. The ledger decides this rather than a
+   *  second computation over submissions: the two agreed at 71 each today, but
+   *  they agreed by coincidence of two code paths, and every number in this
+   *  project that was computed twice eventually disagreed. */
+  netNewEmails: Set<string>
   /** People who bought a trial more than once (duplicate subscriptions). */
   quizRepeatTrials: number
   /** Every trial with the clock it sits on, whether its renewal date has
@@ -173,11 +178,11 @@ async function revenueCharges(): Promise<{
    *  THIS, not from a lifetime-value threshold on submissions — that older
    *  path called a Jun-29 cohort 0% while the ledger showed it converting,
    *  which is exactly the two-sources problem this rebuild exists to kill. */
-  trialPoints: { at: string; due: boolean; converted: boolean }[]
+  trialPoints: { at: string; due: boolean; converted: boolean; attribution: string }[]
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>(), trialPoints: [] }
+  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>(), netNewEmails: new Set<string>(), trialPoints: [] }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -189,7 +194,7 @@ async function revenueCharges(): Promise<{
   for (let o = 0; o < 20_000; o += 1000) {
     const { data, error } = await c
       .from('trial_ledger')
-      .select('charge_id, trial_at, trial_cents, trial_refunded, lifetime_bundle, attribution, quiz_completed_at, converted_at, converted_cents, converted_charge_id, due, converted')
+      .select('charge_id, person_key, trial_at, trial_cents, trial_refunded, lifetime_bundle, attribution, quiz_completed_at, converted_at, converted_cents, converted_charge_id, due, converted')
       .order('trial_at')
       .range(o, o + 999)
     if (error || !data) break
@@ -213,8 +218,9 @@ async function revenueCharges(): Promise<{
   }
 
   const entries: { at: string; kind: RevKind; usd: number }[] = []
-  const trialPoints: { at: string; due: boolean; converted: boolean }[] = []
+  const trialPoints: { at: string; due: boolean; converted: boolean; attribution: string }[] = []
   const quizExistingEmails = new Set<string>()
+  const netNewEmails = new Set<string>()
   let lifetimeSplits = 0
   let preWindowAnnuals = 0
   const accounted = new Set<string>()
@@ -230,7 +236,13 @@ async function revenueCharges(): Promise<{
       accounted.add(t.charge_id)
       // Same clock as this trial's revenue row, so the rate and the money can
       // never describe different weeks.
-      trialPoints.push({ at: anchor, due: t.due, converted: t.converted })
+      trialPoints.push({ at: anchor, due: t.due, converted: t.converted, attribution: t.attribution })
+      // Both sets come from the ledger's own person key, so "who is net-new"
+      // and "who is an existing-customer buyer" have exactly one definition.
+      if (t.person_key?.includes('@')) {
+        if (t.attribution === 'quiz_net_new') netNewEmails.add(t.person_key)
+        else if (t.attribution === 'quiz_existing') quizExistingEmails.add(t.person_key)
+      }
       const usd = t.trial_cents / 100
       if (t.attribution === 'quiz_net_new') entries.push({ at: anchor, kind: 'net', usd })
       else if (t.attribution === 'quiz_existing') entries.push({ at: anchor, kind: 'quizExisting', usd })
@@ -269,15 +281,6 @@ async function revenueCharges(): Promise<{
     if (!t.quiz_completed_at) continue
     seen.set(t.charge_id, (seen.get(t.charge_id) || 0) + 1)
   }
-  // Emails for the north star: the ledger already says who is category B.
-  const { data: qe } = await c
-    .from('trial_ledger')
-    .select('person_key')
-    .eq('attribution', 'quiz_existing')
-    .limit(5000)
-  for (const r of (qe ?? []) as { person_key: string }[]) {
-    if (r.person_key?.includes('@')) quizExistingEmails.add(r.person_key)
-  }
 
   // Duplicate subscriptions: people the ledger deduplicated away.
   const { count: rawTrials } = await c
@@ -287,7 +290,7 @@ async function revenueCharges(): Promise<{
     .eq('refunded', false)
   const quizRepeatTrials = Math.max(0, (rawTrials ?? 0) - ledger.length)
 
-  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, trialPoints }
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, netNewEmails, trialPoints }
 }
 
 export default async function DashboardPage({
@@ -344,14 +347,17 @@ export default async function DashboardPage({
   // after the stale created_at. Four such rows were inflating this number.
   const rows: BentoRow[] = allRows.map(r => {
     const quizAt = r.quizCompletedAt
-    const netNew = !!(r.stripeFirstChargeAt && quizAt &&
-      new Date(r.stripeFirstChargeAt).getTime() > new Date(quizAt).getTime())
+    // THE LEDGER DECIDES. This used to recompute net-new from
+    // stripe_first_charge_at vs quiz_completed_at, a second implementation of
+    // a rule the ledger already owns. Same answer today, but "computed twice"
+    // is how every drift in this project started.
+    const emailKey = r.email?.trim().toLowerCase() || null
+    const netNew = !!(emailKey && rev.netNewEmails.has(emailKey))
     // THE NORTH STAR, per the owner 2026-08-10: trials the QUIZ produced,
     // whether the buyer was new to us or already a customer. Category B comes
     // from the charge-level pass (a real $4.99 trial after their quiz), never
     // from "they had some charge later", which a monthly renewal would fake.
-    const email = r.email?.trim().toLowerCase() || null
-    const quizTrial = netNew || (!!email && rev.quizExistingEmails.has(email))
+    const quizTrial = netNew || (!!emailKey && rev.quizExistingEmails.has(emailKey))
     const sexRaw = r.sexAiEstimate
     return {
       stage: r.stage || 'unknown',
@@ -461,9 +467,13 @@ export default async function DashboardPage({
     // revenueCharges). Kind names match the SeriesPoint field suffixes.
     // Trial→annual, from the ledger, on the same clock as the money.
     const maturity = new Map<string, { due: number; conv: number }>()
+    // Net-new per bucket, from the ledger like its two siblings, so the three
+    // parts of ALL TRIALS come from one place and always sum to it.
+    const netNewByBucket = new Map<string, number>()
     for (const t of rev.trialPoints) {
       const b = bucketKey(t.at, gran)
       if (!b || b < launchBucket) continue
+      if (t.attribution === 'quiz_net_new') netNewByBucket.set(b, (netNewByBucket.get(b) || 0) + 1)
       if (!t.due) continue
       const m = maturity.get(b) || { due: 0, conv: 0 }
       m.due++
@@ -512,7 +522,7 @@ export default async function DashboardPage({
       starts: evb[bucket]?.starts || 0,
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
       checkout: evb[bucket]?.checkout || 0,
-      netNew: subs.get(bucket)?.netNew || 0,       // paid, bucketed on quiz_completed_at
+      netNew: netNewByBucket.get(bucket) || 0,     // from the ledger, quiz clock
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
       quizExistingPaid: quizExistingByBucket.get(bucket) || 0,
       revenue: subs.get(bucket)?.revenue || 0,
