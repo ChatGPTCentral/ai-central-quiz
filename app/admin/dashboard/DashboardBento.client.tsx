@@ -58,6 +58,9 @@ export interface SeriesPoint {
   revenueQuizExisting: number
   revenueNotQuiz: number
   revenueAnnual: number
+  /** Of that conversion money, the part whose TRIAL was quiz-earned. Feeds
+   *  "quiz revenue"; never added into ALL REVENUE, which would double it. */
+  revenueAnnualQuiz: number
   /** What the conversion money is made of: [cents, count] pairs. A conversion
    *  is a $59.75 annual OR the $49.75 half of a lifetime bundle, so the hover
    *  states the real mix instead of dividing by an assumed price. */
@@ -748,14 +751,34 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
 
   const slice = useMemo(() => (stageFilter ? rows.filter(r => r.stage === stageFilter) : rows), [rows, stageFilter])
 
-  // ── KPIs (owner's order) ──
-  const takers = slice.length
+  // ── KPIs ──
+  //
+  // THESE READ THE SAME BUCKETS AS THE MATRIX. They used to be computed from
+  // the person rows over the whole window while the matrix summed the visible
+  // periods, so the same metric appeared twice with two values: full-funnel
+  // CVR read 2.18% up here and 2.10% below, and quiz-earned trials read 85
+  // against the matrix's 84. One computation, one window, or they will drift
+  // again the moment either side changes.
+  const kb = trendGran === 'all' ? [] : series[trendGran]
+  const wsum = (pick: (p: SeriesPoint) => number, whole: number) =>
+    kb.length ? kb.reduce((a, p) => a + pick(p), 0) : whole
+
   const netNewPeople = slice.filter(r => r.netNew)
-  // THE NORTH STAR: trials the quiz produced, new customers AND existing ones
-  // buying another trial (owner's definition, 2026-08-10).
   const quizTrialPeople = slice.filter(r => r.quizTrial)
-  const cvr = takers > 0 ? (quizTrialPeople.length / takers) * 100 : 0
-  const quizRevenue = netNewPeople.reduce((a, b) => a + b.ltv, 0)
+
+  // Volume still counts the people in the selected slice (the stage filter has
+  // to bite somewhere), but every RATE below divides two window sums so the
+  // numerator and denominator always describe the same period.
+  const takers = stageFilter ? slice.length : wsum(p => p.completed, rows.length)
+  const winNetNew = wsum(p => p.netNew, netNewPeople.length)
+  const winQuizTrials = wsum(p => p.netNew + p.quizExistingPaid, quizTrialPeople.length)
+  const cvr = takers > 0 ? (winQuizTrials / takers) * 100 : 0
+
+  // QUIZ REVENUE, per the owner 2026-08-11: not just the trials, but every
+  // dollar those quiz-earned people produced — their $4.99s AND the renewals
+  // that followed them. Money from people the quiz never touched is excluded,
+  // which is the whole point of calling it quiz revenue.
+  const quizRevenue = wsum(p => p.revenueNet + p.revenueQuizExisting + p.revenueAnnualQuiz, 0)
 
   // ── Breakdowns on the slice ──
   const desc = (data: { label: string; value: number }[], top = 6) => [...data].sort((a, b) => b.value - a.value).slice(0, top)
@@ -781,7 +804,6 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
   const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew, otherPaid, quizExistingPaid }
-  const fullFunnelCvr = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
   const hasSeries = series.week.length > 0 || series.day.length > 0
 
   const bestCtr = placements.reduce<string | null>((best, p) => {
@@ -867,10 +889,10 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
         <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
           {[
             { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected stage' : 'unique people, one shared cohort', dark: false },
-            { label: 'Full-funnel CVR', v: `${fullFunnelCvr.toFixed(2)}%`, hint: `net-new ÷ ${F.landing.toLocaleString()} landing views`, dark: false },
-            { label: 'Quiz → trial CVR', v: `${cvr.toFixed(1)}%`, hint: `quiz-earned trials ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
-            { label: 'Quiz-earned trials', v: quizTrialPeople.length.toLocaleString(), hint: `${netNewPeople.length} new customers + ${quizTrialPeople.length - netNewPeople.length} existing buying another trial`, dark: false },
-            { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: 'sum of payments from net-new people', dark: false },
+            { label: 'Full-funnel CVR', v: `${(wsum(p => p.views, F.landing) > 0 ? (winNetNew / wsum(p => p.views, F.landing)) * 100 : 0).toFixed(2)}%`, hint: `net-new ÷ ${wsum(p => p.views, F.landing).toLocaleString()} landing views`, dark: false },
+            { label: 'Quiz → trial CVR', v: `${cvr.toFixed(1)}%`, hint: `${winQuizTrials} quiz-earned trials ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
+            { label: 'Quiz-earned trials', v: winQuizTrials.toLocaleString(), hint: `${winNetNew} new customers + ${winQuizTrials - winNetNew} existing buying another trial`, dark: false },
+            { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: 'their $4.99 trials plus every renewal those trials produced', dark: false },
             { label: 'ARPU', v: takers > 0 ? `$${(quizRevenue / takers).toFixed(2)}` : '–', hint: `quiz revenue ÷ ${takers.toLocaleString()} quiz takers`, dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: '18px 18px', background: k.dark ? '#333333' : 'transparent', borderLeft: i > 0 ? '1px solid #333333' : 'none' }}>

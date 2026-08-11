@@ -146,7 +146,10 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
 //                a week column answers "what did that week's trials become".
 // 'other'        every remaining dollar in the account: legacy subscriptions,
 //                old annual prices, duplicate subscriptions. Charge clock.
-type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annual' | 'other'
+// 'annualQuizTag' is a SHADOW of 'annual': the same dollars, marked as having
+// come from a quiz-earned trial. It powers "quiz revenue" without being added
+// into ALL REVENUE, which only sums the real kinds.
+type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annual' | 'other' | 'annualQuizTag'
 
 type LedgerRow = {
   charge_id: string; person_key: string; trial_at: string; trial_cents: number; trial_refunded: boolean
@@ -251,6 +254,7 @@ async function revenueCharges(): Promise<{
 
     if (t.converted_at && t.converted_cents) {
       if (t.converted_charge_id) accounted.add(t.converted_charge_id)
+      const quizEarnedTrial = t.attribution === 'quiz_net_new' || t.attribution === 'quiz_existing'
       if (t.lifetime_bundle) {
         // A lifetime is NOT an annual. Owner's rule, stated twice: the $4.99
         // half of a $54.74 bundle belongs with the trials, the $49.75 half is
@@ -263,6 +267,10 @@ async function revenueCharges(): Promise<{
         preWindowAnnuals++
       } else {
         entries.push({ at: anchor, kind: 'annual', usd: t.converted_cents / 100 })
+        // The same money again, tagged by whether the QUIZ earned the trial
+        // behind it. Kept as its own kind so it never double-counts in
+        // ALL REVENUE, which sums the untagged kinds only.
+        if (quizEarnedTrial) entries.push({ at: anchor, kind: 'annualQuizTag', usd: t.converted_cents / 100 })
       }
     }
   }
@@ -481,7 +489,7 @@ export default async function DashboardPage({
       maturity.set(b, m)
     }
 
-    const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annual: number; other: number }>()
+    const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annual: number; other: number; annualQuizTag: number }>()
     // What the conversion money is actually MADE OF, per bucket. A conversion
     // can be a $59.75 annual or the $49.75 half of a lifetime bundle, so the
     // hover must state the real mix instead of dividing the total by an
@@ -491,7 +499,7 @@ export default async function DashboardPage({
     for (const e of rev.entries) {
       const b = bucketKey(e.at, gran)
       if (!b || b < launchBucket) continue
-      const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annual: 0, other: 0 }
+      const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annual: 0, other: 0, annualQuizTag: 0 }
       r[e.kind] += e.usd
       revByBucket.set(b, r)
       if (e.kind === 'annual') {
@@ -530,6 +538,7 @@ export default async function DashboardPage({
       revenueQuizExisting: revByBucket.get(bucket)?.quizExisting || 0,
       revenueNotQuiz: revByBucket.get(bucket)?.notQuiz || 0,
       revenueAnnual: revByBucket.get(bucket)?.annual || 0,
+      revenueAnnualQuiz: revByBucket.get(bucket)?.annualQuizTag || 0,
       annualParts: Array.from(annualParts.get(bucket)?.entries() ?? []).sort((a, b) => b[0] - a[0]),
       revenueOther: revByBucket.get(bucket)?.other || 0,
       matureTrials: maturity.get(bucket)?.due || 0,
