@@ -117,7 +117,7 @@ export default function DrillDown({ target, onClose }: { target: DrillTarget | n
             <div style={{ padding: 16, fontSize: 12, color: MUTE }}>No rows. This cell really is zero.</div>
           )}
           {rows !== null && rows.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: `2px solid ${INK}` }}>
                   <th style={th}>In this column by</th>
@@ -144,7 +144,11 @@ export default function DrillDown({ target, onClose }: { target: DrillTarget | n
                         ? <span title="Same day as the column date">same day</span>
                         : fmtDay(r.chargedAt)}
                     </td>
-                    <td style={{ ...td, fontSize: 11, color: '#4A4A4A', whiteSpace: 'normal', maxWidth: 240 }}>{r.why}</td>
+                    {/* One line per row, always. The reason text is the longest
+                        column here and wrapping it made every row two lines
+                        deep, which is exactly what the tables elsewhere were
+                        fixed not to do. The drawer scrolls sideways instead. */}
+                    <td style={{ ...td, fontSize: 11, color: '#4A4A4A' }} title={r.why}>{r.why}</td>
                     <td style={td}>
                       {r.submissionId && (
                         <a href={personResultPath({ id: r.submissionId, name: r.name || '' })} target="_blank" rel="noopener noreferrer"

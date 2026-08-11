@@ -30,8 +30,11 @@ import TrialState from '@/components/admin/TrialState.client'
 import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.client'
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import MonthsTable, { type MonthRow, type MonthTotals } from '@/components/admin/MonthsTable.client'
+import MultiTrialTable, { type MultiTrialRow } from '@/components/admin/MultiTrialTable.client'
 import { fmtDay, fmtMonth } from '@/lib/dates'
 import SyncCharges from '@/components/admin/SyncCharges.client'
+import LedgerHealth from '@/components/admin/LedgerHealth'
+import type { CheckResult } from '@/lib/ledger-invariants'
 
 /** The Stripe account these dashboard links point at. Not a secret: it is the
  *  account id that appears in every dashboard URL the owner already uses. */
@@ -107,7 +110,7 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, lastSync, sheet, overrides, layout, mLayout] = await Promise.all([
+  const [eras, charges, lastSync, sheet, overrides, layout, mLayout, health] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
     c.from('stripe_charges').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
@@ -115,6 +118,7 @@ async function load() {
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
     c.from('app_settings').select('value').eq('key', 'table_layout:revenue_trials').maybeSingle(),
     c.from('app_settings').select('value').eq('key', 'table_layout:revenue_months').maybeSingle(),
+    c.from('ledger_checks').select('ran_at, passed, results').order('ran_at', { ascending: false }).limit(1).maybeSingle(),
   ])
   const ledger: Row[] = []
   for (let o = 0; o < 20_000; o += 1000) {
@@ -154,6 +158,8 @@ async function load() {
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
     sheetByMonth,
     lastSyncedAt: (lastSync.data?.synced_at as string | undefined) ?? null,
+    checks: ((health.data?.results ?? null) as CheckResult[] | null),
+    checksRanAt: ((health.data?.ran_at ?? null) as string | null),
   }
 }
 
@@ -275,6 +281,35 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, not_due: 0, refunded: 0 }
   for (const r of L) counts[stateOf(r)]++
 
+  // Per-person rollup for section 4. Built from the SAME ledger rows the table
+  // above renders, never a second query: "how many trials does this person
+  // have" must have one answer on this page.
+  const byPerson = new Map<string, MultiTrialRow>()
+  for (const r of L) {
+    if (r.trial_refunded) continue
+    const e = byPerson.get(r.person_key) || {
+      personKey: r.person_key, name: r.name, customerId: r.customer_id,
+      trials: 0, renewals: 0, gap: 0, lifetimes: 0, notDue: 0,
+      firstTrial: r.trial_at, lastTrial: r.trial_at, paidUsd: 0, quizEarned: false,
+    }
+    e.trials++
+    e.paidUsd += r.gross_cents / 100
+    if (r.converted) e.renewals++
+    if (r.lifetime_bundle) e.lifetimes++
+    if (!r.due) e.notDue++
+    // A gap is a trial that is DUE, did not convert, and is not a lifetime.
+    // Those three exclusions are what make the number actionable rather than
+    // alarming: a trial from last week is not a missing subscription.
+    if (r.due && !r.converted && !r.lifetime_bundle) e.gap++
+    if (r.attribution === 'quiz_net_new' || r.attribution === 'quiz_existing') e.quizEarned = true
+    if (r.trial_at < e.firstTrial) e.firstTrial = r.trial_at
+    if (r.trial_at > e.lastTrial) e.lastTrial = r.trial_at
+    if (!e.name && r.name) e.name = r.name
+    if (!e.customerId && r.customer_id) e.customerId = r.customer_id
+    byPerson.set(r.person_key, e)
+  }
+  const multiRows: MultiTrialRow[] = Array.from(byPerson.values()).filter(p => p.trials > 1)
+
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
     const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, ...patch }
@@ -293,6 +328,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
 
   return (
     <div style={{ padding: '22px 26px 60px', maxWidth: 1240 }}>
+      <LedgerHealth checks={d.checks} ranAt={d.checksRanAt} />
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Revenue</h1>
       <p style={{ fontSize: 13.5, color: MUTE, marginTop: 6, maxWidth: 800, lineHeight: 1.55 }}>
         Every charge in the Stripe account since {fmtDay(d.firstCharge)}, {d.chargeCount.toLocaleString()} of them,
@@ -402,6 +438,18 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       </div>
 
       <TrialsTable rows={tableRows} initialOrder={d.colOrder} initialHidden={d.colHidden} />
+
+      {/* SECTION 4 — the people who bought more than one trial.
+          Only possible to see since trials started counting gross: the old
+          rule threw the second one away, so this whole section was a blind
+          spot with money in it. */}
+      <h2 id="multi" style={{ fontSize: 15, fontWeight: 800, marginTop: 38, color: INK, scrollMarginTop: 16 }}>4 &middot; Customers with more than one trial</h2>
+      <p style={{ fontSize: 12.5, color: MUTE, marginTop: 6, lineHeight: 1.55, maxWidth: 780 }}>
+        Every $4.99 is a paid trial and a person may buy several, so somebody with two trials should end up with
+        two yearlies. Where they have not, this says so. Read the gap column: that is a subscription to create or
+        a duplicate to cancel.
+      </p>
+      <MultiTrialTable rows={multiRows} />
     </div>
   )
 }

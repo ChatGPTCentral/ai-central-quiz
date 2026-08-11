@@ -17,6 +17,8 @@ import {
   type Gran,
 } from '@/lib/trial-entries'
 import DashboardArea from './DashboardArea.client'
+import LedgerHealth from '@/components/admin/LedgerHealth'
+import type { CheckResult } from '@/lib/ledger-invariants'
 import { type BentoRow, type FunnelEventCounts, type PlacementStat, type SeriesPoint, type Series } from './DashboardBento.client'
 
 export const dynamic = 'force-dynamic'
@@ -458,7 +460,26 @@ export default async function DashboardPage({
   const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   const rangeLabel = sample === 'launch' ? `${LAUNCH_LABEL} - ${today}` : 'all data'
 
+  // The ledger's own verdict on itself, from the last Stripe sync. Silent when
+  // it passes; a red block above everything when it does not, because a wrong
+  // number acted on is worse than no number.
+  let health: { checks: CheckResult[] | null; ranAt: string | null } = { checks: null, ranAt: null }
+  try {
+    const hUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const hKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+    if (hUrl && hKey) {
+      const hc = createClient(hUrl, hKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+      })
+      const { data } = await hc.from('ledger_checks').select('ran_at, results').order('ran_at', { ascending: false }).limit(1).maybeSingle()
+      health = { checks: (data?.results ?? null) as CheckResult[] | null, ranAt: (data?.ran_at ?? null) as string | null }
+    }
+  } catch { /* health is a nice-to-have; it must never take the page down */ }
+
   return (
+    <>
+    <div style={{ padding: '0 20px' }}><LedgerHealth checks={health.checks} ranAt={health.ranAt} /></div>
     <DashboardArea
       rows={rows}
       sample={sample}
@@ -476,5 +497,6 @@ export default async function DashboardPage({
       searchParamsStr={sp.toString()}
       error={error}
     />
+    </>
   )
 }

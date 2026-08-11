@@ -20,6 +20,7 @@ import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
 import { MIRROR_START_ISO } from '@/lib/dashboard-queries'
+import { runLedgerChecks, recordLedgerChecks } from '@/lib/ledger-invariants'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -120,6 +121,19 @@ export async function GET(req: NextRequest) {
     written += chunk.length
   }
 
+  // The mirror has just moved, so the ledger's invariants are re-checked
+  // against what it now says. This is the guardrail the 2026-08-11 bugs got
+  // past: a double-claimed renewal and 39 deduplicated trials both survived
+  // for weeks because nothing asked whether the numbers still added up.
+  // Failures are recorded and returned, never thrown: a check that can break
+  // the sync it guards is the first thing anyone disables.
+  const checks = await runLedgerChecks(c)
+  await recordLedgerChecks(c, checks)
+  const failed = checks.filter(k => !k.ok)
+  if (failed.length) {
+    console.error('[stripe-charges-sync] LEDGER CHECKS FAILED:', failed.map(f => `${f.key}: ${f.detail}`).join(' | '))
+  }
+
   return NextResponse.json({
     ok: true,
     since: MIRROR_START_ISO,
@@ -127,6 +141,8 @@ export async function GET(req: NextRequest) {
     charges: rows.length,
     written,
     refunded: rows.filter(r => r.refunded).length,
+    checksPassed: failed.length === 0,
+    checks,
     ...(truncated ? { WARNING: 'page ceiling hit — the mirror is INCOMPLETE' } : {}),
   })
 }
