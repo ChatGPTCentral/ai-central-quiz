@@ -57,10 +57,12 @@ export interface SeriesPoint {
   revenueNet: number
   revenueQuizExisting: number
   revenueNotQuiz: number
-  revenueAnnual: number
-  /** Of that conversion money, the part whose TRIAL was quiz-earned. Feeds
-   *  "quiz revenue"; never added into ALL REVENUE, which would double it. */
+  /** Renewal money, split by WHO earned the trial behind it. Kept as two real
+   *  buckets rather than a total plus a shadow tag, so ALL REVENUE stays a
+   *  plain sum of the lines printed under it and "quiz revenue" can take its
+   *  half without either number being derived twice. */
   revenueAnnualQuiz: number
+  revenueAnnualNotQuiz: number
   /** What the conversion money is made of: [cents, count] pairs. A conversion
    *  is a $59.75 annual OR the $49.75 half of a lifetime bundle, so the hover
    *  states the real mix instead of dividing by an assumed price. */
@@ -291,8 +293,9 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
 /** Volume matrix — the funnel repeated per period as a heat table.
  *  Rows are stations (counts, not rates); cell tint is the count relative to
  *  that station's best period, so a column reads as its own little funnel and a
- *  row reads as that station's trend. Two rate rows close it out: result-page
- *  CVR (paid ÷ completed — the north star) and full-funnel CVR (paid ÷ landing).
+ *  row reads as that station's trend. Two rate rows OPEN it: result-page CVR
+ *  (quiz-earned trials ÷ completed — the north star) and full-funnel CVR
+ *  (quiz-earned trials ÷ landing views).
  *  `all` collapses to the single whole-window column. */
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
@@ -420,7 +423,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // its clock, because two adjacent rows on unstated different clocks is
   // exactly what produced the "24 vs 23" confusion.
   const sumOf = (f: (p: SeriesPoint) => number) => buckets.reduce((a: number, p: SeriesPoint) => a + f(p), 0)
-  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
+  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnualQuiz + p.revenueAnnualNotQuiz + p.revenueOther
   // `unit` = the single price a row is made of; it powers the hover arithmetic
   // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
   type RateRow = {
@@ -436,9 +439,18 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
 
   // The two headline rates lead the table: they are the answer, the funnel
   // beneath them is the explanation.
+  //
+  // BOTH count QUIZ-EARNED trials, net-new plus existing-customer. The north
+  // star is "trials attributable to the quiz", and an existing customer who
+  // took the quiz and bought another trial is the quiz working — the same
+  // definition the KPI row and the ALL TRIALS breakdown use. Numerating on
+  // net-new alone made the headline read 2.10% while the box above it said
+  // something else, which is how a metric quietly ends up with two values.
+  const quizEarned = (p: SeriesPoint) => p.netNew + p.quizExistingPaid
+  const quizEarnedTot = sumB(quizEarned, F.paid + F.quizExistingPaid)
   const topRows: RateRow[] = [
-    { label: 'Result-page CVR', all: step(sumB(p => p.netNew, F.paid), sumB(p => p.completed, F.completed)), per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
-    { label: 'Full-funnel CVR', all: step(sumB(p => p.netNew, F.paid), sumB(p => p.views, F.landing)), per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
+    { label: 'Result-page CVR', all: step(quizEarnedTot, sumB(p => p.completed, F.completed)), per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (quizEarned(p) / p.completed) * 100) : 0), heavy: false },
+    { label: 'Full-funnel CVR', all: step(quizEarnedTot, sumB(p => p.views, F.landing)), per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (quizEarned(p) / p.views) * 100) : 0), heavy: true },
   ]
 
   const rateRows: RateRow[] = [
@@ -457,13 +469,19 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // ALL TRIALS above: the total first, its parts indented beneath, and the
       // parts sum to it so the arithmetic can be checked by eye.
       label: 'ALL REVENUE', money: true, heavy: true,
-      sub: 'every dollar Stripe collected in the period, refunds excluded. The five lines beneath add up to it.',
+      sub: 'every dollar Stripe collected in the period, refunds excluded. The six lines beneath add up to it.',
       all: sumOf(revAll), per: revAll,
+      // Renewal money is TWO lines, not one. A $59.75 is only quiz money if the
+      // $4.99 that earned it was quiz money, so the split follows the trial
+      // behind the charge: the "quiz" line is the renewals of net-new AND of
+      // existing-customer trials together, which is exactly the money "quiz
+      // revenue" in the KPI row is allowed to claim.
       breakdown: [
         { label: 'from net-new trials', money: true, all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet },
         { label: 'from existing trials', money: true, all: sumOf(p => p.revenueQuizExisting), per: (p: SeriesPoint) => p.revenueQuizExisting },
         { label: 'from not-quiz trials', money: true, all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz },
-        { label: 'from converted trials', money: true, all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual },
+        { label: 'from converted trials - quiz', money: true, all: sumOf(p => p.revenueAnnualQuiz), per: (p: SeriesPoint) => p.revenueAnnualQuiz },
+        { label: 'from converted trials - no quiz', money: true, all: sumOf(p => p.revenueAnnualNotQuiz), per: (p: SeriesPoint) => p.revenueAnnualNotQuiz },
         { label: 'from other revenue', money: true, all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther },
       ],
     },
@@ -884,16 +902,22 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
           }
         `}</style>
 
-        {/* ── Row 1 · the top line, in the owner's reading order:
-               volume → the two CVRs → the paid count → money → money per head ── */}
+        {/* ── Row 1 · the top line, in the owner's reading order (2026-08-11):
+               takers → the trials the quiz earned → the rate between them →
+               the money those trials produced → per head → and the whole
+               funnel's rate last, because landing views are upstream context
+               rather than the north star itself. Every box reads left to right
+               as numerator-follows-denominator. ── */}
         <div className="grid ac-kpis" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
           {[
             { label: sample === 'launch' ? 'Total quiz takers' : 'Total records', v: takers.toLocaleString(), hint: stageFilter ? 'in the selected stage' : 'unique people, one shared cohort', dark: false },
-            { label: 'Full-funnel CVR', v: `${(wsum(p => p.views, F.landing) > 0 ? (winNetNew / wsum(p => p.views, F.landing)) * 100 : 0).toFixed(2)}%`, hint: `net-new ÷ ${wsum(p => p.views, F.landing).toLocaleString()} landing views`, dark: false },
-            { label: 'Quiz → trial CVR', v: `${cvr.toFixed(1)}%`, hint: `${winQuizTrials} quiz-earned trials ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
             { label: 'Quiz-earned trials', v: winQuizTrials.toLocaleString(), hint: `${winNetNew} new customers + ${winQuizTrials - winNetNew} existing buying another trial`, dark: false },
-            { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: 'their $4.99 trials plus every renewal those trials produced', dark: false },
+            { label: 'Quiz → trial CVR', v: `${cvr.toFixed(1)}%`, hint: `${winQuizTrials} quiz-earned trials ÷ ${takers.toLocaleString()} quiz takers · the north star`, dark: true },
+            { label: 'Quiz revenue', v: `$${quizRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, hint: `$${Math.round(wsum(p => p.revenueNet, 0)).toLocaleString()} net-new + $${Math.round(wsum(p => p.revenueQuizExisting, 0)).toLocaleString()} existing + $${Math.round(wsum(p => p.revenueAnnualQuiz, 0)).toLocaleString()} their renewals`, dark: false },
             { label: 'ARPU', v: takers > 0 ? `$${(quizRevenue / takers).toFixed(2)}` : '–', hint: `quiz revenue ÷ ${takers.toLocaleString()} quiz takers`, dark: false },
+            // Same numerator as the matrix's Full-funnel CVR row: quiz-earned
+            // trials, not net-new only. Two places, one definition.
+            { label: 'Full-funnel CVR', v: `${(wsum(p => p.views, F.landing) > 0 ? (winQuizTrials / wsum(p => p.views, F.landing)) * 100 : 0).toFixed(2)}%`, hint: `${winQuizTrials} quiz-earned trials ÷ ${wsum(p => p.views, F.landing).toLocaleString()} landing views`, dark: false },
           ].map((k, i) => (
             <div key={k.label} style={{ padding: '18px 18px', background: k.dark ? '#333333' : 'transparent', borderLeft: i > 0 ? '1px solid #333333' : 'none' }}>
               <div style={{ ...eyebrow, color: k.dark ? '#C9C3B8' : MUTE }}>{k.label}</div>
