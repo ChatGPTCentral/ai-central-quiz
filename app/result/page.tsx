@@ -14,6 +14,7 @@ import ExpenseEmail from '@/components/result2/ExpenseEmail.client'
 import { NextStageGap } from '@/components/result2/NextStageGap'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
+import { offerForCountry, lifetimePriceId, TRIAL_OFFER, LIFETIME_OFFER } from '@/lib/offers'
 import { QUESTIONS_V2_MERGED as QUIZ_QUESTIONS } from '@/lib/questions-v2-merged'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType, adopterTopPct } from '@/lib/readiness-type'
@@ -52,6 +53,8 @@ const VIDEO_ID = 'WO6TM6UVfYM' // "Introducing the Ultimate AI Library from AI C
 // where it becomes the last thing you think about before clicking. One promise,
 // repeated: the price lives in the offer stack, the button sells the outcome.
 const CTA_LABEL = 'unlock all tutorials'
+/** The lifetime ask. "Unlock" is a trial word; this offer is a purchase. */
+const CTA_LABEL_LIFETIME = 'get lifetime access'
 
 interface SegFields {
   email?: string | null
@@ -114,6 +117,12 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
 }
 
 const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
+
+// The lifetime payment link, for the countries where the trial never renews.
+// Distinct from the trial link because the static link is what people reach
+// when the modal fails, and a lifetime pitch must never hand off to a $4.99
+// subscription checkout.
+const STRIPE_LIFETIME_URL = process.env.NEXT_PUBLIC_LIFETIME_PAYMENT_URL || null
 
 // Design tokens (same handoff as v1)
 const INK = '#333333'
@@ -251,7 +260,38 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // is the one identifier the static link CAN carry, so the webhook now reads
   // it. Only applied to buy.stripe.com URLs: a custom ctaUrl from the editor
   // may be anything, and appending a Stripe param to it would be nonsense.
-  const rawCheckoutUrl = endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
+  // ── Which offer this visitor sees ────────────────────────────────────────
+  //
+  // India's trials do not renew. Not rarely: 42 due, zero renewals, against
+  // 62.6% in the US. So India is sold the library outright instead, and the
+  // whole page speaks in one offer's terms rather than putting lifetime copy
+  // over a trial button.
+  //
+  // Both gates must be open: the Stripe price has to exist AND the static
+  // fallback link has to exist, because a visitor whose modal fails is sent to
+  // that link and it must charge what the page promised. Either one missing
+  // and India simply sees the normal page, because a wrong charge is the only
+  // outcome that must be impossible. ?offer=lifetime previews it anywhere,
+  // ?offer=trial forces the normal page.
+  //
+  // DECLARED HERE, above rawCheckoutUrl, because that line reads it. This page
+  // has already shipped one temporal-dead-zone crash (digest 1002650819) that
+  // tsc could not see.
+  const visitorCountry = headers().get('x-vercel-ip-country') ?? undefined
+  const offerParam = typeof searchParams.offer === 'string' ? searchParams.offer.trim().toLowerCase() : ''
+  const lifetimeReady = !!lifetimePriceId() && !!STRIPE_LIFETIME_URL
+  const offer = offerParam === 'trial'
+    ? TRIAL_OFFER
+    : offerParam === 'lifetime' && lifetimeReady
+      ? LIFETIME_OFFER
+      : offerForCountry(visitorCountry, lifetimeReady)
+  const isLifetime = offer.key === 'lifetime'
+  // Every CTA on the page asks for the offer this visitor is being shown.
+  const CTA = isLifetime ? CTA_LABEL_LIFETIME : CTA_LABEL
+
+  const rawCheckoutUrl = isLifetime && STRIPE_LIFETIME_URL
+    ? STRIPE_LIFETIME_URL
+    : endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
   const checkoutUrl = (() => {
     if (!rowId || !/(^|\/\/)(buy\.stripe\.com)/.test(rawCheckoutUrl)) return rawCheckoutUrl
     try {
@@ -283,9 +323,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const design = typeof searchParams.design === 'string' ? searchParams.design.trim().toLowerCase() : ''
   const leverage = Math.min(90, Math.max(8, Math.round(score * 0.33)))
   const site = process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
-  // Visitor country from Vercel's IP geo header (absent locally) — used to
-  // surface trial notifications from the visitor's own region first.
-  const visitorCountry = headers().get('x-vercel-ip-country') ?? undefined
+  // Visitor country is resolved above, with the offer that depends on it.
 
   // Next rung up the ladder (for the gauge caption). Weeks rule: the next
   // step is always ~1 week away.
@@ -385,6 +423,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     (process.env.NEXT_PUBLIC_EXPRESS_PAY !== 'false' && expressParam !== '0')
   const expressPayEl = expressOn ? (
     <ExpressPay
+      offer={offer.key}
       submissionId={rowId}
       anonId={anonId ?? undefined}
       utmSource={segFields?.utm_source ?? undefined}
@@ -445,7 +484,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">
-          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', CTA_LABEL)} placement="v2_study_plan" submissionId={rowId} />
+          <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', CTA)} placement="v2_study_plan" submissionId={rowId} />
           <PayBadges fallbackUrl={checkoutUrl} submissionId={rowId} placement="v2_study_plan_badges" />
           <p style={{ fontSize: 13, color: MUTE, textAlign: 'center', maxWidth: 460 }}>
             Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these five.
@@ -503,29 +542,35 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           nextStageLabel={nextStage?.label ?? null}
           checkoutUrl={checkoutUrl}
           submissionId={rowId}
-          ctaLabel={CTA_LABEL}
+          ctaLabel={CTA}
         />
 
         {withVideo && videoBlock(true)}
 
         <OfferStack
+          offer={offer}
           checkoutUrl={checkoutUrl}
           submissionId={rowId}
           rungClassName={rung.className}
-          ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+          ctaLabel={ov('offerCard.ctaLabel', CTA)}
           expressPay={expressPayEl}
         />
 
         {/* Directly under the price, because that is the exact moment the
             objection lands. Theory under test: the blocker is not $59.75, it
             is whose money it is. See the component for the kill number. */}
-        <div style={{ maxWidth: 640 }}>
-          <ExpenseEmail
-            stageLabel={rung.className}
-            hoursLost={segFields?.hours_lost ?? null}
-            submissionId={rowId}
-          />
-        </div>
+        {/* The expense-request template exists to get a RENEWAL approved by
+            someone else's budget. A lifetime buyer has no renewal, so this is
+            not copy to reword, it is a section that does not apply to them. */}
+        {!isLifetime && (
+          <div style={{ maxWidth: 640 }}>
+            <ExpenseEmail
+              stageLabel={rung.className}
+              hoursLost={segFields?.hours_lost ?? null}
+              submissionId={rowId}
+            />
+          </div>
+        )}
 
         {/* Live trial notifications sit UNDER the pay buttons, not over the
             video: social proof lands hardest at the moment of decision. */}
@@ -596,6 +641,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   return (
     <CheckoutModalProvider
       mode={checkoutMode}
+      offer={offer}
       submissionId={rowId}
       country={visitorCountry}
       anonId={anonId ?? undefined}
@@ -613,6 +659,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
         {aspirational ? (
           <AspirationalHero
+            offer={offer}
             firstName={firstName}
             score={segFields?.score ?? score}
             aheadPct={rt.aheadPct}
@@ -621,7 +668,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             nextStageLabel={nextStage?.label ?? null}
             checkoutUrl={checkoutUrl}
             submissionId={rowId}
-            ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+            ctaLabel={ov('offerCard.ctaLabel', CTA)}
           />
         ) : ['a', 'b', 'c', 'd'].includes(design) ? (
           <LabHero variant={design} firstName={firstName} score={score} topPct={topPct} leverage={leverage} rungClassName={rung.className} stageKey={stageKey} aheadPct={rt.aheadPct} checkoutUrl={checkoutUrl} submissionId={rowId} />
@@ -677,10 +724,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             video's position change, so a win is attributable to the order. */}
         {reveal && (
           <UnlockReveal
+            offer={offer}
             firstName={firstName || null}
             checkoutUrl={checkoutUrl}
             submissionId={rowId}
-            ctaLabel={ov('offerCard.ctaLabel', CTA_LABEL)}
+            ctaLabel={ov('offerCard.ctaLabel', CTA)}
             // Imported in a server component, so the question list costs the
             // client bundle nothing and the claim tracks the real quiz length.
             questionCount={QUIZ_QUESTIONS.length}
@@ -722,7 +770,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         {/* Last objection, answered at the last decision point: everyone who
             reached the bottom and did not click is holding a "what if I get
             stuck with a renewal" worry, not a value worry. */}
-        <RiskFree checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA_LABEL)} />
+        <RiskFree offer={offer} checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA)} />
 
         {/* ── THE PASS · the reward, before the housekeeping ──────────── */}
         {passSection}
@@ -743,13 +791,14 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           moved to leave. A downsell must never reach someone who might still
           buy; by the time both gates pass, this person has already said no. */}
       <AdsRescue
+        offerPrice={offer.price}
         submissionId={rowId}
         email={segFields?.email ?? null}
         firstName={firstName || null}
         utmSource={segFields?.utm_source ?? (typeof searchParams.utm_source === 'string' ? searchParams.utm_source : null)}
       />
 
-      <OfferBar paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', `${CTA_LABEL} ↗`)} />
+      <OfferBar offer={offer} paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', `${CTA} ↗`)} />
     </CheckoutModalProvider>
   )
 }

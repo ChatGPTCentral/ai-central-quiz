@@ -1,5 +1,6 @@
 import CheckoutLink from '@/components/CheckoutLink.client'
 import PayBadges from '@/components/result2/PayBadges.client'
+import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // The guarantee section. Its only job is to answer the last silent objection:
 // "what if I pay and it turns out to be junk, or I forget and get billed?"
@@ -19,7 +20,7 @@ const CREAM = '#FEF7E7'
 const FULVOUS = '#E48715'
 const PAPER = '#FBF6EC'
 
-const PROMISES = [
+const TRIAL_PROMISES = [
   {
     t: 'Cancel in two clicks',
     d: 'Change your mind during the trial month and you are never billed again. It is a link in your account, not an email to us.',
@@ -31,6 +32,24 @@ const PROMISES = [
   {
     t: 'Full access from minute one',
     d: 'Nothing is held back during the trial month. You judge the real library, all 1,200+ tutorials, not a sample of it.',
+  },
+]
+
+/** The lifetime version. The trial's reassurances are all about the renewal,
+ *  which is the thing this offer removes, so promising "cancel any time"
+ *  beside "no subscription" would read as boilerplate nobody wrote. */
+const LIFETIME_PROMISES = [
+  {
+    t: 'Nothing to cancel',
+    d: 'This is one payment, not a subscription. No renewal date, no reminder email, nothing sitting on your card.',
+  },
+  {
+    t: '30 days, money back',
+    d: 'If the library is not useful to you, reply to any of our emails inside 30 days and we return the $49.75 in full. No form, no reason needed.',
+  },
+  {
+    t: 'Yours, including what comes next',
+    d: 'All 1,200+ tutorials from minute one, and every one we add afterwards. Buying today does not freeze you on today\'s library.',
   },
 ]
 
@@ -54,11 +73,14 @@ export function RiskFree({
   checkoutUrl,
   submissionId,
   ctaLabel,
+  offer = TRIAL_OFFER,
 }: {
   checkoutUrl: string
   submissionId?: string
   ctaLabel: string
+  offer?: Offer
 }) {
+  const PROMISES = offer.oneTime ? LIFETIME_PROMISES : TRIAL_PROMISES
   return (
     <section
       style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER }}

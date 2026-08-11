@@ -1,5 +1,6 @@
 import CheckoutLink from '@/components/CheckoutLink.client'
 import PayBadges from '@/components/result2/PayBadges.client'
+import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // The offer stack. The old card said "get everything, $4.99" — no itemisation,
 // no anchor, no risk reversal, no reason to act today. People do not buy a
@@ -23,11 +24,15 @@ export function OfferStack({
   rungClassName,
   ctaLabel,
   expressPay,
+  offer = TRIAL_OFFER,
 }: {
   checkoutUrl: string
   submissionId?: string
   rungClassName: string
   ctaLabel: string
+  /** What we are actually selling this visitor. Defaults to the trial so every
+   *  other caller is unchanged. */
+  offer?: Offer
   /** Optional one-tap wallet element, injected by the page so this stays a
    *  server component. Null when the flag is off or no wallet is available. */
   expressPay?: React.ReactNode
@@ -62,12 +67,17 @@ export function OfferStack({
 
       {/* the price, anchored by arithmetic rather than a made-up RRP */}
       <div className="flex flex-wrap items-baseline" style={{ gap: 10, padding: '16px 26px 4px' }}>
-        <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', color: RICH, lineHeight: 1 }}>$4.99</span>
-        <span style={{ fontSize: 14.5, color: BODY, fontWeight: 300 }}>for your first 4 weeks</span>
+        <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', color: RICH, lineHeight: 1 }}>{offer.price}</span>
+        <span style={{ fontSize: 14.5, color: BODY, fontWeight: 300 }}>{offer.oneTime ? 'once, and it is yours' : 'for your first 4 weeks'}</span>
       </div>
       <p style={{ padding: '6px 26px 0', margin: 0, fontSize: 13, color: MUTE, lineHeight: 1.5 }}>
-        That is <strong style={{ color: RICH, fontWeight: 700 }}>less than half a cent per tutorial</strong>. After 4 weeks it is
-        $59.75/year, about $4.98 a month, and we email you before it renews.
+        {offer.oneTime ? (
+          <>That is <strong style={{ color: RICH, fontWeight: 700 }}>about four cents per tutorial</strong>, paid once.
+          No renewal, no yearly charge, nothing to cancel. The library is yours and every update lands in it.</>
+        ) : (
+          <>That is <strong style={{ color: RICH, fontWeight: 700 }}>less than half a cent per tutorial</strong>. After 4 weeks it is
+          $59.75/year, about $4.98 a month, and we email you before it renews.</>
+        )}
       </p>
 
       {/* risk reversal — the objection is the renewal, so answer it at the button */}
@@ -75,10 +85,12 @@ export function OfferStack({
         <div className="flex" style={{ gap: 10 }}>
           <span aria-hidden style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>Covered both ways</div>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>{offer.oneTime ? 'Nothing to cancel' : 'Covered both ways'}</div>
             <div className="mt-1" style={{ fontSize: 12.5, color: BODY, fontWeight: 300, lineHeight: 1.5 }}>
-              Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account.
-              Plus a 30-day money-back guarantee: if it is not useful, one email and you get the $4.99 back.
+              {offer.oneTime
+                ? 'There is no subscription here, so there is nothing to remember and nothing to cancel. '
+                : 'Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account. Plus a 30-day money-back guarantee: '}
+              {offer.guarantee}
             </div>
           </div>
         </div>

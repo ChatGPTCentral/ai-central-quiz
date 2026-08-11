@@ -36,13 +36,16 @@ const GREEN = '#2D6A26'
 const PAID_SOURCES = new Set(['li_ads', 'linkedin_ads', 'linkedin', 'google_ads', 'meta_ads'])
 
 export default function AdsRescue({
-  submissionId, email, firstName, utmSource,
+  submissionId, email, firstName, utmSource, offerPrice = '$4.99',
 }: {
   submissionId?: string
   /** Known from the quiz, so the form is one click rather than a keyboard. */
   email?: string | null
   firstName?: string | null
   utmSource?: string | null
+  /** The price this visitor was shown, so the downsell does not quote a
+   *  different one than the page they just read. */
+  offerPrice?: string
 }) {
   const [open, setOpen] = useState(false)
   const [sent, setSent] = useState(false)
@@ -193,7 +196,7 @@ export default function AdsRescue({
               {email
                 ? <>One tap &middot; it goes straight to <strong style={{ color: BODY }}>{email}</strong>, nothing to type. </>
                 : 'Unsubscribe any time. '}
-              The $4.99 library is still there when you want it.
+              The {offerPrice} library is still there when you want it.
             </p>
           </>
         )}

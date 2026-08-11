@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
+import { lifetimePriceId } from '@/lib/offers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -67,14 +68,18 @@ async function emailForSubmission(submissionId?: string): Promise<string | undef
  * route depends on. So the element mounts in deferred mode off this cheap
  * read, and POST below runs only when someone actually taps to pay.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const price = await stripe().prices.retrieve(PRICE_ID)
+    // ?offer=lifetime renders the wallet sheet at the lifetime amount. The
+    // server still decides: an unconfigured lifetime price falls back to the
+    // trial rather than quoting a number nothing can charge.
+    const wantLifetime = req.nextUrl.searchParams.get('offer') === 'lifetime' && !!lifetimePriceId()
+    const price = await stripe().prices.retrieve(wantLifetime ? lifetimePriceId()! : PRICE_ID)
     if (!price.unit_amount || !price.currency) {
       return NextResponse.json({ error: 'price_has_no_amount' }, { status: 500 })
     }
     return NextResponse.json(
-      { amount: price.unit_amount, currency: price.currency },
+      { amount: price.unit_amount, currency: price.currency, offer: wantLifetime ? 'lifetime' : 'trial' },
       { headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' } },
     )
   } catch (e) {
@@ -83,7 +88,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string } = {}
+  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string; offer?: string } = {}
   try { body = await req.json() } catch { /* empty body is fine */ }
 
   const metadata: Record<string, string> = { source: 'quiz_result_express' }
@@ -92,12 +97,17 @@ export async function POST(req: NextRequest) {
   const utm = clean(body.utmSource, 120); if (utm) metadata.utm_source = utm
   const ref = clean(body.utmRef, 120); if (ref) metadata.utm_ref = ref
 
+  // A lifetime sale only happens if the lifetime price is configured. The
+  // client names an offer, never a price.
+  const lifetime = clean(body.offer) === 'lifetime' && !!lifetimePriceId()
+  metadata.offer = lifetime ? 'lifetime' : 'trial'
+
   try {
     const s = stripe()
 
     // Price is the source of truth for the amount. If someone edits the price
     // in Stripe, both checkout paths move together.
-    const price = await s.prices.retrieve(PRICE_ID)
+    const price = await s.prices.retrieve(lifetime ? lifetimePriceId()! : PRICE_ID)
     const amount = price.unit_amount
     const currency = price.currency
     if (!amount || amount <= 0 || !currency) {
@@ -124,8 +134,10 @@ export async function POST(req: NextRequest) {
       amount,
       currency,
       customer: customerId,
-      // The whole renewal rests on this line.
-      setup_future_usage: 'off_session',
+      // The whole renewal rests on this line — for the TRIAL. A lifetime buyer
+      // has no renewal, so their card is not kept on file: that is the offer,
+      // and a saved card is how a day-28 charge gets created out of habit.
+      ...(lifetime ? {} : { setup_future_usage: 'off_session' as const }),
       automatic_payment_methods: { enabled: true },
       metadata,
       ...(email ? { receipt_email: email } : {}),
@@ -141,10 +153,15 @@ export async function POST(req: NextRequest) {
       amount,
       currency,
       customerId,
+      offer: lifetime ? 'lifetime' : 'trial',
       renewalCheck: {
         setupFutureUsage: intent.setup_future_usage,
         customer: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id ?? null,
-        ok: intent.setup_future_usage === 'off_session' && !!intent.customer,
+        // A lifetime sale is correctly configured when there is NO card saved
+        // for later, which is the opposite test from the trial.
+        ok: lifetime
+          ? intent.setup_future_usage == null && !!intent.customer
+          : intent.setup_future_usage === 'off_session' && !!intent.customer,
       },
     })
   } catch (e) {

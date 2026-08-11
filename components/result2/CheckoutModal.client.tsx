@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import EmbeddedCheckout from '@/app/checkout/EmbeddedCheckout.client'
 import { sendEvent } from '@/lib/events-client'
 import { CheckoutCtx, type CheckoutMode } from '@/components/checkout-context'
+import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // On-page checkout for the embedded A/B (experiment checkout_embed_v1).
 //
@@ -48,10 +49,10 @@ const FX: Record<string, { rate: number; sym: string }> = {
 }
 const EURO = new Set(['DE', 'FR', 'ES', 'IT', 'NL', 'BE', 'AT', 'PT', 'IE', 'FI', 'GR', 'SK', 'SI', 'LV', 'LT', 'EE', 'LU', 'CY', 'MT', 'HR'])
 
-function localPrice(country: string): string | null {
+function localPrice(country: string, usd: number): string | null {
   const fx = EURO.has(country) ? { rate: 0.91, sym: '€' } : FX[country]
   if (!fx) return null
-  const v = 4.99 * fx.rate
+  const v = usd * fx.rate
   return fx.sym + (v >= 100 ? String(Math.round(v)) : v.toFixed(2))
 }
 
@@ -63,6 +64,7 @@ export default function CheckoutModalProvider({
   utmRef,
   fallbackUrl,
   country,
+  offer = TRIAL_OFFER,
   children,
 }: {
   mode: CheckoutMode
@@ -73,6 +75,8 @@ export default function CheckoutModalProvider({
   fallbackUrl: string
   /** Visitor country from Vercel's IP geo header; absent locally. */
   country?: string
+  /** What this visitor is buying. Defaults to the trial. */
+  offer?: Offer
   children: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
@@ -141,34 +145,38 @@ export default function CheckoutModalProvider({
           className="ac-coov"
           role="dialog"
           aria-modal="true"
-          aria-label="Start your $4.99 trial"
+          aria-label={offer.oneTime ? `Get lifetime access for ${offer.price}` : `Start your ${offer.price} trial`}
           onClick={e => { if (e.target === e.currentTarget) closeWith('backdrop') }}
         >
           <div className="ac-comodal">
             <div className="ac-cohead">
-              <span className="ac-cotitle">Start your $4.99 trial</span>
+              <span className="ac-cotitle">{offer.oneTime ? `Get the library for ${offer.price}` : `Start your ${offer.price} trial`}</span>
               <button ref={closeBtn} type="button" onClick={doClose} aria-label="Close" className="ac-cox">×</button>
             </div>
             <div className="ac-cobody">
               {showTrust && (
                 <div className="ac-cotrust">
-                  {localPrice(country!) && (
+                  {localPrice(country!, offer.cents / 100) && (
                     <div className="ac-cotrustrow">
                       <span aria-hidden>💱</span>
-                      <span><strong>$4.99 is about {localPrice(country!)}</strong> in your money. You are charged in USD, your bank converts it automatically</span>
+                      <span><strong>{offer.price} is about {localPrice(country!, offer.cents / 100)}</strong> in your money. You are charged in USD, your bank converts it automatically</span>
                     </div>
                   )}
                   <div className="ac-cotrustrow">
                     <span aria-hidden>📅</span>
-                    <span>One charge today. The $59.75 annual only bills if you stay past 4 weeks, and we email you before it does</span>
+                    <span>{offer.oneTime
+                      ? 'One charge, today, and that is the end of it. No renewal, no card kept on file, nothing to cancel'
+                      : 'One charge today. The $59.75 annual only bills if you stay past 4 weeks, and we email you before it does'}</span>
                   </div>
                   <div className="ac-cotrustrow">
                     <span aria-hidden>🛡️</span>
-                    <span>Cancel any time in your trial month, two clicks. 30-day money-back guarantee on top</span>
+                    <span>{offer.oneTime
+                      ? `30-day money-back guarantee: reply to any email inside 30 days and the ${offer.price} comes back`
+                      : 'Cancel any time in your trial month, two clicks. 30-day money-back guarantee on top'}</span>
                   </div>
                 </div>
               )}
-              <EmbeddedCheckout submissionId={submissionId} anonId={anonId} utmSource={utmSource} utmRef={utmRef} />
+              <EmbeddedCheckout submissionId={submissionId} anonId={anonId} utmSource={utmSource} utmRef={utmRef} offer={offer.key} />
               <div className="ac-cofallback">
                 <a
                   href={fallbackUrl}

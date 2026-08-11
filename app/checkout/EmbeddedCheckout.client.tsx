@@ -12,8 +12,11 @@ const PK = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 let _p: Promise<Stripe | null> | null = null
 function getStripe() { if (!_p && PK) _p = loadStripe(PK); return _p }
 
-export default function EmbeddedCheckout({ submissionId, anonId, utmSource, utmRef }: {
+export default function EmbeddedCheckout({ submissionId, anonId, utmSource, utmRef, offer }: {
   submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string
+  /** 'lifetime' for the countries where the trial never renews. The server
+   *  decides whether it can be honoured; this only asks. */
+  offer?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +40,7 @@ export default function EmbeddedCheckout({ submissionId, anonId, utmSource, utmR
           fetchClientSecret: async () => {
             const res = await fetch('/api/checkout/session', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ submissionId, anonId, utmSource, utmRef }),
+              body: JSON.stringify({ submissionId, anonId, utmSource, utmRef, offer }),
             })
             const d = await res.json()
             if (!res.ok || !d.client_secret) throw new Error(d.error || 'could not start checkout')

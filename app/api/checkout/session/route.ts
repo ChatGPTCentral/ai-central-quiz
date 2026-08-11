@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
+import { lifetimePriceId } from '@/lib/offers'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -65,7 +66,7 @@ async function emailForSubmission(submissionId?: string): Promise<string | undef
 }
 
 export async function POST(req: NextRequest) {
-  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string } = {}
+  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string; offer?: string } = {}
   try { body = await req.json() } catch { /* no body is fine */ }
 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
@@ -75,16 +76,28 @@ export async function POST(req: NextRequest) {
   const utm = clean(body.utmSource, 120); if (utm) metadata.utm_source = utm
   const ref = clean(body.utmRef, 120); if (ref) metadata.utm_ref = ref
 
+  // Which offer. The client asks for one, the server decides whether it can be
+  // honoured: 'lifetime' is only real if the price is configured, and if it is
+  // not we sell the trial rather than charge a lifetime price that does not
+  // exist. The client cannot name a price, only an offer.
+  const lifetime = clean(body.offer) === 'lifetime' && !!lifetimePriceId()
+  const priceId = lifetime ? lifetimePriceId()! : PRICE_ID
+  metadata.offer = lifetime ? 'lifetime' : 'trial'
+
   const customerEmail = await emailForSubmission(sub)
 
   try {
     const session = await stripe().checkout.sessions.create({
       ui_mode: 'embedded_page',
       mode: 'payment',
-      line_items: [{ price: PRICE_ID, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       customer_creation: 'always',
       ...(customerEmail ? { customer_email: customerEmail } : {}),
-      payment_intent_data: { setup_future_usage: 'off_session', metadata },
+      // A lifetime buyer has nothing coming, so the card is NOT saved for
+      // off-session use. That is the entire promise of the offer, and a saved
+      // card is how a day-28 charge gets set up by habit. No card on file, no
+      // renewal to create by mistake.
+      payment_intent_data: lifetime ? { metadata } : { setup_future_usage: 'off_session', metadata },
       // 'auto', not 'required'. Required forces the full address form — country,
       // line 1, city, postal code, state — which on a phone is five fields and a
       // scroll for a $4.99 impulse buy. 'auto' lets Stripe ask only for what the

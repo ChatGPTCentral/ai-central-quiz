@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import PayBadges from '@/components/result2/PayBadges.client'
 import { sendEvent } from '@/lib/events-client'
+import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // The unlock reveal — a wheel that is honest about what it is.
 //
@@ -65,12 +66,14 @@ const SEEN_KEY = 'ac_unlock_revealed'
  * the neighbouring wedge and clips at the edge — and stacking also gives the
  * numbers the weight they deserve.
  */
-const SEGMENTS: { main: string; sub: string; fill: string; text: string; size?: number }[] = [
+const BASE_SEGMENTS: { main: string; sub: string; fill: string; text: string; size?: number }[] = [
   { main: '1,200+', sub: 'tutorials', fill: RICH, text: CREAM },
   { main: '50+', sub: 'templates', fill: CREAM, text: RICH },
   { main: '30-day', sub: 'plan', fill: RICH, text: CREAM },
   { main: 'Prompt', sub: 'packs', fill: CREAM, text: RICH },
   { main: 'Weekly', sub: 'drops', fill: RICH, text: CREAM },
+  // Filled in from the offer at render time: the wheel must land on the price
+  // this visitor is actually being asked for.
   { main: '$4.99', sub: 'first month', fill: FULVOUS, text: RICH, size: 22 },
 ]
 /** The wedge the ticker settles on. Not secret, not random, not called luck. */
@@ -81,7 +84,7 @@ const CY = 160
 const R = 126
 const RIM = 139
 
-const PER = 360 / SEGMENTS.length
+const PER = 360 / BASE_SEGMENTS.length
 /** Six full turns, then round to put LANDS_ON's midpoint under the ticker. */
 const FINAL = 6 * 360 + (360 - (LANDS_ON * PER + PER / 2))
 
@@ -97,7 +100,7 @@ function sector(i: number) {
 }
 
 export function UnlockReveal({
-  firstName, checkoutUrl, submissionId, ctaLabel, questionCount,
+  firstName, checkoutUrl, submissionId, ctaLabel, questionCount, offer = TRIAL_OFFER,
 }: {
   firstName?: string | null
   checkoutUrl: string
@@ -105,7 +108,12 @@ export function UnlockReveal({
   ctaLabel: string
   /** Real length of the quiz, passed from the server so the claim cannot drift. */
   questionCount: number
+  offer?: Offer
 }) {
+  // The wheel has to land on the price this visitor is being asked for, so the
+  // price wedge is rebuilt from the offer rather than baked into the constant.
+  const SEGMENTS = BASE_SEGMENTS.map((seg, i) =>
+    i === LANDS_ON ? { ...seg, main: offer.price, sub: offer.oneTime ? 'one time' : 'first month' } : seg)
   const [phase, setPhase] = useState<'idle' | 'spinning' | 'done'>('idle')
   const [turns, setTurns] = useState(0)
   const [tx, setTx] = useState('none')
@@ -317,12 +325,13 @@ export function UnlockReveal({
                 All six, for
               </div>
               <div className="mt-2 flex items-baseline justify-center" style={{ gap: 10 }}>
-                <span style={{ fontSize: 46, fontWeight: 800, letterSpacing: '-0.045em', color: RICH, lineHeight: 1 }}>$4.99</span>
-                <span style={{ fontSize: 15.5, color: BODY, fontWeight: 300 }}>for your first month</span>
+                <span style={{ fontSize: 46, fontWeight: 800, letterSpacing: '-0.045em', color: RICH, lineHeight: 1 }}>{offer.price}</span>
+                <span style={{ fontSize: 15.5, color: BODY, fontWeight: 300 }}>{offer.oneTime ? 'once, yours for good' : 'for your first month'}</span>
               </div>
               <p className="mt-2" style={{ fontSize: 13, color: MUTE, lineHeight: 1.5 }}>
-                Then $59.75/year, and we email you before it renews. Cancel any time in the first
-                month and you pay nothing more.
+                {offer.oneTime
+                  ? 'One payment and the library is yours, including everything we add to it. No renewal, no card kept on file, nothing to cancel.'
+                  : 'Then $59.75/year, and we email you before it renews. Cancel any time in the first month and you pay nothing more.'}
               </p>
               <div className="mt-5 flex flex-col items-center" style={{ gap: 10 }}>
                 <CheckoutLink

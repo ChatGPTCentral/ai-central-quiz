@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { sendEvent } from '@/lib/events-client'
 import { firePlacementView } from '@/components/CheckoutLink.client'
 import { useCheckout } from '@/components/checkout-context'
+import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 const DURATION_SECONDS = 15 * 60 // 15 minutes
 
@@ -13,7 +14,7 @@ const DURATION_SECONDS = 15 * 60 // 15 minutes
  * Placements v2_offer_bar / v2_offer_bar_banner; shares the sessionStorage
  * countdown key with v1 so a visitor who sees both pages keeps one timer.
  */
-export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗' }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string }) {
+export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const { mode, open } = useCheckout()
 
@@ -64,7 +65,7 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-full-dark-bg.png" alt="AI Central" style={{ height: 18, width: 'auto', display: 'block', opacity: 0.9 }} />
         <span style={{ fontSize: 12.5, color: '#FEF7E7', opacity: 0.75, letterSpacing: '0.04em' }}>
-          Full library · <strong style={{ color: '#E7B02F', opacity: 1 }}>$4.99 first month</strong>
+          Full library · <strong style={{ color: '#E7B02F', opacity: 1 }}>{offer.oneTime ? `${offer.price} once, yours for good` : `${offer.price} first month`}</strong>
         </span>
       </div>
       <div className="md:hidden" />

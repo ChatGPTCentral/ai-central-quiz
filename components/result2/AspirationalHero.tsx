@@ -1,6 +1,7 @@
 import { StageGauge } from '@/components/result2/StageGauge'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import PayBadges from '@/components/result2/PayBadges.client'
+import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // The "almost" hero (experiment arm `aspirational`).
 //
@@ -37,6 +38,7 @@ export function AspirationalHero({
   checkoutUrl,
   submissionId,
   ctaLabel,
+  offer = TRIAL_OFFER,
 }: {
   firstName: string
   score: number
@@ -48,6 +50,7 @@ export function AspirationalHero({
   checkoutUrl: string
   submissionId?: string
   ctaLabel: string
+  offer?: Offer
 }) {
   const who = firstName ? `${firstName}, you` : 'You'
   const target = nextStageLabel ?? null
@@ -104,7 +107,7 @@ export function AspirationalHero({
             </div>
 
             <span style={{ fontSize: 12.5, color: MUTE }}>
-              $4.99 for 4 weeks &middot; cancel any time &middot;{' '}
+              {offer.reassurance} &middot;{' '}
               <a href="#pass" style={{ color: MUTE, textDecoration: 'underline' }}>or get your free pass first ↓</a>
             </span>
           </div>
