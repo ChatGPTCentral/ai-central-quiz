@@ -311,6 +311,9 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     warm: boolean
     note?: string
     out?: { label: string; all: number; per: (p: SeriesPoint) => number }
+    /** "of which" rows: the parts this station is made of, rendered indented
+     *  underneath it. They sum to the station, so the eye can check it. */
+    breakdown?: { label: string; pick: (p: SeriesPoint) => number; tot: number; note?: string }[]
   }[] = [
     {
       label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false,
@@ -326,18 +329,34 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     },
     {
       label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
-      out: { label: 'clicked → paid', all: step(F.paid, F.checkout), per: p => step(p.cleanNetNew, p.checkout) },
+      // The step out of checkout is measured against the QUIZ-earned trials
+      // only. The people who never took the quiz never passed through this
+      // station, so including them would inflate a rate with buyers the
+      // funnel never touched.
+      out: {
+        label: 'clicked → trial (quiz)',
+        all: step(F.paid + F.quizExistingPaid, F.checkout),
+        per: p => step(p.cleanNetNew + p.quizExistingPaid, p.checkout),
+      },
     },
-    { label: 'Net-new paid', pick: (p: SeriesPoint) => p.netNew, tot: F.paid, warm: true, note: 'THE NORTH STAR: took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
-    // The middle category, added after the owner reconciled July against his
-    // Stripe export: these people DID buy through the quiz, they just were not
-    // new customers. Filing them under "not from the quiz" understated the
-    // quiz and overstated the noise.
-    { label: 'Quiz, existing customer', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: F.quizExistingPaid, warm: true, note: 'took the quiz and then bought the trial, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
-    // Not a funnel station: it never passes through the quiz. Kept adjacent
-    // anyway, because the only way to know whether a good week was the QUIZ or
-    // just a good week in Stripe is to see the two side by side.
-    { label: 'Not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid, warm: false, note: 'never took the quiz, or took it only after paying. One per person, by CHARGE date. Same classification as the revenue row below, so count × $4.99 always equals it.' },
+    {
+      // The funnel's terminal station: every trial sold, then what it is made
+      // of. The three parts sum to this row, so the breakdown can be checked
+      // by eye rather than trusted.
+      label: 'ALL TRIALS',
+      pick: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
+      tot: F.paid + F.quizExistingPaid + F.otherPaid,
+      warm: true,
+      note: 'every trial sold in the period. The two quiz rows below sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
+      breakdown: [
+        { label: 'net-new (the north star)', pick: (p: SeriesPoint) => p.netNew, tot: F.paid,
+          note: 'took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
+        { label: 'quiz, existing customer', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: F.quizExistingPaid,
+          note: 'took the quiz and then bought, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
+        { label: 'not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid,
+          note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows, so count × $4.99 always equals them.' },
+      ],
+    },
 
   ]
 
@@ -366,14 +385,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; count?: boolean; sub?: string; unit?: number; parts?: (p: SeriesPoint) => [number, number][] }[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
-    {
-      // Every trial sold, however earned. A summary row, styled like All
-      // Revenue, because that is what it is: a total, not a funnel station.
-      label: 'ALL TRIALS', heavy: true, count: true,
-      sub: 'quiz new customers + quiz existing customers + not from the quiz. The two quiz rows sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
-      all: F.paid + F.quizExistingPaid + F.otherPaid,
-      per: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
-    },
     {
       label: 'Quiz New Trials Revenue', money: true, heavy: false, unit: 4.99,
       sub: 'ONE $4.99 trial per net-new person (their first), by QUIZ date. Includes the $4.99 inside $54.74 lifetime bundles; repeat $4.99s from the same person sit in Other Revenue.',
@@ -459,6 +470,26 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 )
               })}
             </div>
+
+            {/* "Of which" — the parts this station is made of, indented so the
+                eye reads them as a breakdown rather than as more stations.
+                They sum to the row above, which is the point. */}
+            {s.breakdown?.map(b => (
+              <div key={b.label} className="grid items-center" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
+                <span className="truncate" title={b.note}
+                  style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
+                  ↳ of which {b.label}
+                </span>
+                <span style={{ padding: '6px 8px 6px 0', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', ...tnum }}>
+                  {fmt(b.tot)}
+                </span>
+                {buckets.map(p => (
+                  <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#4A4A4A', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                    {compact(b.pick(p))}
+                  </span>
+                ))}
+              </div>
+            ))}
 
             {/* The step OUT of this station, sitting between the two counts it
                 relates. Deliberately lighter than the two summary rates at the
