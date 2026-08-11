@@ -99,6 +99,16 @@ const eyebrow: React.CSSProperties = { fontSize: 10, fontWeight: 700, textTransf
 const panelTitle: React.CSSProperties = { fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: INK }
 const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 
+/** The "All window" column. Declared once so every row renders it identically:
+ *  centred like the period columns beside it, and carrying the same solid rule
+ *  on its left edge. When each row styled its own copy the rule broke wherever
+ *  a row was added later without it. */
+const totalCol: React.CSSProperties = {
+  textAlign: 'center',
+  borderLeft: '2px solid #1A1A1A',
+  padding: '0 8px',
+}
+
 /** Stage x quiz conversions column template. One constant so the header and
  *  the rows can never drift apart, which they did when ARPU was added. */
 const GRID_STAGE = 'minmax(96px,1.2fr) 38px 38px 46px 58px 56px'
@@ -442,7 +452,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             {labelBucket(p.bucket, gran as Gran)}
           </span>
         ))}
-        <span style={{ ...head, padding: '6px 8px 6px 6px', textAlign: 'right', borderLeft: `2px solid ${INK}` }}>All window</span>
+        <span style={{ ...head, ...totalCol, padding: '6px 8px' }}>All window</span>
       </div>
 
       {/* station rows */}
@@ -481,7 +491,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                   </span>
                 )
               })}
-              <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 6px', fontSize: 11.5, fontWeight: 800, color: INK, borderLeft: `2px solid ${INK}`, ...tnum }}>{fmt(s.tot)}</span>
+              <span className="flex items-center justify-center" style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
             </div>
 
             {/* "Of which" — the parts this station is made of, indented so the
@@ -498,7 +508,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                     {compact(b.pick(p))}
                   </span>
                 ))}
-                <span style={{ padding: '6px 8px 6px 6px', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', borderLeft: `2px solid ${INK}`, ...tnum }}>
+                <span style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', ...tnum }}>
                   {fmt(b.tot)}
                 </span>
               </div>
@@ -536,7 +546,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                     </span>
                   )
                 })}
-                <span style={{ padding: '5px 8px 6px 6px', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', borderLeft: `2px solid ${INK}`, ...tnum }}>
+                <span style={{ ...totalCol, padding: '5px 8px 6px', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', ...tnum }}>
                   {pctDisp(s.out.all)}
                 </span>
               </div>
@@ -609,7 +619,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
               const i = acc.findIndex(a => a[0] === c)
               if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
               return acc
-            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ padding: '9px 8px 9px 6px', textAlign: 'right', borderLeft: `2px solid ${INK}`, fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
+            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : rr.count ? INK : '#B26A00', ...tnum }}>
               {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
             </span>
           </div>
