@@ -15,8 +15,28 @@
 import Stripe from 'stripe'
 import { LIFETIME_OFFER } from '@/lib/offers'
 
-/** The Ultimate AI Library product, which already carries the one-time prices. */
-const LIBRARY_PRODUCT = process.env.STRIPE_LIBRARY_PRODUCT_ID || 'prod_SNEjXShn2LU06z'
+/**
+ * The lifetime price that already exists: $49.75 one-time, on the product
+ * "📚 The AI Library 2.0 / Lifetime", and the price behind the owner's
+ * existing payment link buy.stripe.com/7sIcQe7NAgLT8s8008.
+ *
+ * Named here the same way the $4.99 trial price is named in the checkout
+ * routes, for the same reasons: it is deterministic, it costs no Stripe call
+ * on the result page, and there is nothing to configure before the offer
+ * works. The env var still overrides it.
+ *
+ * My first cut hunted for this price on the wrong product and found nothing,
+ * so the offer sat dark waiting for a price that was already sold every day.
+ */
+const DEFAULT_LIFETIME_PRICE = 'price_1QJdLFBLsgHOvWxyA11vAlSh'
+
+/** Products that carry lifetime pricing, searched if the price above is ever
+ *  retired. The lifetime lives on its own product, NOT on the subscription
+ *  product the trial is sold from. */
+const LIFETIME_PRODUCTS = [
+  process.env.STRIPE_LIFETIME_PRODUCT_ID || 'prod_RC1ORmdESrFqvc',
+  'prod_SNEjXShn2LU06z',
+]
 
 /** Cached for ten minutes per instance. This is read on the result page, which
  *  is the hottest path we have, so it must not become a Stripe call per view.
@@ -26,7 +46,7 @@ let cache: { at: number; id: string | null } | null = null
 const TTL_MS = 10 * 60 * 1000
 
 export function lifetimePriceIdSync(): string | null {
-  return process.env.STRIPE_LIFETIME_PRICE_ID?.trim() || null
+  return process.env.STRIPE_LIFETIME_PRICE_ID?.trim() || DEFAULT_LIFETIME_PRICE
 }
 
 /**
@@ -38,8 +58,9 @@ export function lifetimePriceIdSync(): string | null {
  * the trial rather than guessing.
  */
 export async function resolveLifetimePriceId(): Promise<string | null> {
-  const fromEnv = lifetimePriceIdSync()
-  if (fromEnv) return fromEnv
+  // The known price, which is the normal path and costs nothing.
+  const named = lifetimePriceIdSync()
+  if (named) return named
 
   const now = Date.now()
   if (cache && now - cache.at < TTL_MS) return cache.id
@@ -49,12 +70,15 @@ export async function resolveLifetimePriceId(): Promise<string | null> {
 
   try {
     const stripe = new Stripe(key, { apiVersion: '2026-04-22.dahlia', maxNetworkRetries: 1 })
-    const prices = await stripe.prices.list({ product: LIBRARY_PRODUCT, active: true, limit: 100 })
-    const match = prices.data.find(
-      p => p.type === 'one_time' && p.currency === 'usd' && p.unit_amount === LIFETIME_OFFER.cents,
-    )
-    cache = { at: now, id: match?.id ?? null }
-    return cache.id
+    for (const product of LIFETIME_PRODUCTS) {
+      const prices = await stripe.prices.list({ product, active: true, limit: 100 })
+      const match = prices.data.find(
+        p => p.type === 'one_time' && p.currency === 'usd' && p.unit_amount === LIFETIME_OFFER.cents,
+      )
+      if (match) { cache = { at: now, id: match.id }; return match.id }
+    }
+    cache = { at: now, id: null }
+    return null
   } catch {
     // A Stripe hiccup must not take the result page down, and must not sell
     // anything at a price we could not confirm.
