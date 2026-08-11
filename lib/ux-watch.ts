@@ -215,9 +215,15 @@ export const UX_QUERIES: {
     // tells you people leave; this tells you which sentence made them leave.
     threshold: 0,
     severity: 'warn',
-    sql: `SELECT toString(properties.qid) AS qid, uniq(properties.$session_id) AS people
+    // Event and property names confirmed against the project taxonomy: the
+    // event is quiz_step_viewed and the identifier is question_id. My first
+    // draft guessed 'quiz_step' and 'qid', both wrong, and a wrong event name
+    // returns zero rows rather than an error — so this check would have
+    // reported "not enough steps to judge" every six hours, forever, and read
+    // as healthy.
+    sql: `SELECT toString(properties.question_id) AS qid, uniq(properties.$session_id) AS people
           FROM events
-          WHERE event = 'quiz_step' AND timestamp > now() - INTERVAL 24 HOUR
+          WHERE event = 'quiz_step_viewed' AND timestamp > now() - INTERVAL 24 HOUR
           GROUP BY qid ORDER BY people DESC LIMIT 20`,
     read: rows => {
       if (rows.length < 3) return { value: 0, detail: 'not enough steps recorded to judge' }
