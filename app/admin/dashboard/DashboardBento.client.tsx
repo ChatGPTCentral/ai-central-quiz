@@ -361,11 +361,11 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       warm: true, summary: true,
       note: 'every trial sold in the period. The two quiz rows below sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
       breakdown: [
-        { label: 'net-new (the north star)', pick: (p: SeriesPoint) => p.netNew, tot: F.paid,
+        { label: 'from net-new', pick: (p: SeriesPoint) => p.netNew, tot: F.paid,
           note: 'took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
-        { label: 'quiz, existing customer', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: F.quizExistingPaid,
+        { label: 'from existing', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: F.quizExistingPaid,
           note: 'took the quiz and then bought, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
-        { label: 'not from the quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid,
+        { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid,
           note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows, so count × $4.99 always equals them.' },
       ],
     },
@@ -397,40 +397,40 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnual + p.revenueOther
   // `unit` = the single price a row is made of; it powers the hover arithmetic
   // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
-  const rateRows: { label: string; all: number; per: (p: SeriesPoint) => number; heavy: boolean; money?: boolean; count?: boolean; sub?: string; unit?: number; parts?: (p: SeriesPoint) => [number, number][] }[] = [
+  type RateRow = {
+    label: string; all: number; per: (p: SeriesPoint) => number
+    heavy: boolean; money?: boolean; count?: boolean; sub?: string; unit?: number
+    parts?: (p: SeriesPoint) => [number, number][]
+    /** "of which" lines, same idea as the station breakdowns: the parts this
+     *  total is made of, indented underneath and summing to it. */
+    breakdown?: { label: string; all: number; per: (p: SeriesPoint) => number; money?: boolean }[]
+  }
+  const convCount = (p: SeriesPoint) => p.annualParts.reduce((a, [, n]) => a + n, 0)
+  const rateRows: RateRow[] = [
     { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
     { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
     {
-      label: 'Quiz New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: 'ONE $4.99 trial per net-new person (their first), by QUIZ date. Includes the $4.99 inside $54.74 lifetime bundles; repeat $4.99s from the same person sit in Other Revenue.',
-      all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet,
-    },
-    {
-      label: 'Quiz Existing Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: 'ONE $4.99 trial per person who took the quiz and then bought, but had paid us before — quiz-earned, not a new customer. By QUIZ date.',
-      all: sumOf(p => p.revenueQuizExisting), per: (p: SeriesPoint) => p.revenueQuizExisting,
-    },
-    {
-      label: 'Other New Trials Revenue', money: true, heavy: false, unit: 4.99,
-      sub: 'ONE $4.99 trial per person who never took the quiz (or took it after paying), by CHARGE date. Includes the $4.99 inside $54.74 lifetime bundles; repeats sit in Other Revenue.',
-      all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz,
-    },
-    {
-      label: 'Converted Trials Revenue', money: true, heavy: false,
-      parts: (p: SeriesPoint) => p.annualParts,
-      sub: '$59.75 annual renewals only, restated to the WEEK OF THE TRIAL that earned them. The $49.75 half of a $54.74 lifetime bundle is NOT an annual and sits in Other Revenue. Recent columns fill in as their trials mature about a month later.',
-      all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual,
-    },
-    {
-      // heavy = the break line the owner asked for between row 4 and All revenue.
-      label: 'Other Revenue', money: true, heavy: true,
-      sub: '$49.75 lifetime options (the second half of a $54.74 bundle), repeat $4.99s (double-subscriptions), legacy annual prices, $7.99 subs, odd amounts, non-USD. By CHARGE date.',
-      all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther,
-    },
-    {
-      label: 'All Revenue', money: true, heavy: true,
-      sub: 'rows 1-4, every dollar Stripe collected minus refunds',
+      // Every dollar Stripe collected, then what it is made of. Same shape as
+      // ALL TRIALS above: the total first, its parts indented beneath, and the
+      // parts sum to it so the arithmetic can be checked by eye.
+      label: 'ALL REVENUE', money: true, heavy: true,
+      sub: 'every dollar Stripe collected in the period, refunds excluded. The five lines beneath add up to it.',
       all: sumOf(revAll), per: revAll,
+      breakdown: [
+        { label: 'from net-new trials', money: true, all: sumOf(p => p.revenueNet), per: (p: SeriesPoint) => p.revenueNet },
+        { label: 'from existing trials', money: true, all: sumOf(p => p.revenueQuizExisting), per: (p: SeriesPoint) => p.revenueQuizExisting },
+        { label: 'from not-quiz trials', money: true, all: sumOf(p => p.revenueNotQuiz), per: (p: SeriesPoint) => p.revenueNotQuiz },
+        { label: 'from converted trials', money: true, all: sumOf(p => p.revenueAnnual), per: (p: SeriesPoint) => p.revenueAnnual },
+        { label: 'from other revenue', money: true, all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther },
+      ],
+    },
+    {
+      // The count behind 'from converted trials', so the rate below has a
+      // visible numerator instead of being a percentage from nowhere.
+      label: 'ALL CONVERTED TRIALS', count: true, heavy: false,
+      sub: 'how many trials paid their $59.75 renewal, credited to the week of the trial that earned them.',
+      all: buckets.reduce((a, p) => a + convCount(p), 0),
+      per: convCount,
     },
     {
       label: 'Trial → annual',
@@ -582,7 +582,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           return `$${v.toFixed(2)} exact`
         }
         return (
-          <div key={rr.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : rr.count ? '#F3F8F3' : LATTE, borderBottom: rr.heavy ? '2px solid #333333' : `1px solid ${ROWHAIR}` }}>
+          <div key={rr.label}>
+          <div className="grid items-center" style={{ gridTemplateColumns: grid, background: money ? '#F3F8F3' : rr.count ? '#F3F8F3' : LATTE, borderBottom: rr.heavy && !rr.breakdown ? '2px solid #333333' : `1px solid ${ROWHAIR}`, borderTop: rr.breakdown ? '2px solid #333333' : undefined }}>
             <span style={{ padding: '9px 8px 9px 0', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: INK }}>
               {rr.label}
               {rr.label === 'Trial → annual' && (
@@ -622,6 +623,24 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ ...totalCol, padding: '9px 8px', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : rr.count ? INK : '#B26A00', ...tnum }}>
               {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
             </span>
+          </div>
+          {/* "Of which" — the parts this total is made of, indented and summing
+              to the row above, the same shape the funnel uses for ALL TRIALS. */}
+          {rr.breakdown?.map(b => (
+            <div key={b.label} className="grid items-center" style={{ gridTemplateColumns: grid, background: '#F8FBF8', borderBottom: `1px solid ${ROWHAIR}` }}>
+              <span className="truncate" style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
+                ↳ of which {b.label}
+              </span>
+              {buckets.map(p => (
+                <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#3F6B3C', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                  {b.money ? usd(b.per(p)) : fmt(b.per(p))}
+                </span>
+              ))}
+              <span style={{ ...totalCol, padding: '6px 8px', fontSize: 10.5, fontWeight: 800, color: '#3F6B3C', ...tnum }}>
+                {b.money ? usd(b.all) : fmt(b.all)}
+              </span>
+            </div>
+          ))}
           </div>
         )
       })}
