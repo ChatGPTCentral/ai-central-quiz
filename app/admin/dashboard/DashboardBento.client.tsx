@@ -309,6 +309,15 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // arrived than left.
   const step = (n: number, d: number) => (d > 0 ? Math.min(100, (n / d) * 100) : 0)
 
+  // THE TOTAL COLUMN SUMS WHAT IS ON SCREEN, nothing more. It used to carry
+  // the whole-window figure while the table showed only the last 12 periods,
+  // so 'ALL TRIALS' read 777 above columns that added to a fraction of it —
+  // a total you cannot check against the row it sits in is worse than no
+  // total (owner, 2026-08-11). In the 'All' view there are no period columns,
+  // so the whole-window number IS the answer and the fallback is used.
+  const sumB = (pick: (p: SeriesPoint) => number, whole: number) =>
+    buckets.length ? buckets.reduce((a, p) => a + pick(p), 0) : whole
+
   // Each station carries the conversion OUT of it, rendered as a thin row
   // directly underneath, so the column multiplies as you read down:
   //   1,819 → 73% → 1,319 → 72% → 944 → 33% → 312 → …
@@ -335,26 +344,26 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     summary?: boolean
   }[] = [
     {
-      label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false,
-      out: { label: 'landing → started', all: step(F.started, F.landing), per: p => step(p.starts, p.views) },
+      label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: sumB(p => p.views, F.landing), warm: false,
+      out: { label: 'landing → started', all: step(sumB(p => p.starts, F.started), sumB(p => p.views, F.landing)), per: p => step(p.starts, p.views) },
     },
     {
-      label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: F.started, warm: false,
-      out: { label: 'started → completed', all: step(F.completed, F.started), per: p => step(p.cleanCompleted, p.starts) },
+      label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: sumB(p => p.starts, F.started), warm: false,
+      out: { label: 'started → completed', all: step(sumB(p => p.cleanCompleted, F.completed), sumB(p => p.starts, F.started)), per: p => step(p.cleanCompleted, p.starts) },
     },
     {
-      label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: F.completed, warm: false,
-      out: { label: 'completed → clicked', all: step(F.checkout, F.completed), per: p => step(p.checkout, p.cleanCompleted) },
+      label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: sumB(p => p.completed, F.completed), warm: false,
+      out: { label: 'completed → clicked', all: step(sumB(p => p.checkout, F.checkout), sumB(p => p.cleanCompleted, F.completed)), per: p => step(p.checkout, p.cleanCompleted) },
     },
     {
-      label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: F.checkout, warm: false,
+      label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: sumB(p => p.checkout, F.checkout), warm: false,
       // The step out of checkout is measured against the QUIZ-earned trials
       // only. The people who never took the quiz never passed through this
       // station, so including them would inflate a rate with buyers the
       // funnel never touched.
       out: {
         label: 'clicked → trial (quiz)',
-        all: step(F.paid + F.quizExistingPaid, F.checkout),
+        all: step(sumB(p => p.cleanNetNew + p.quizExistingPaid, F.paid + F.quizExistingPaid), sumB(p => p.checkout, F.checkout)),
         per: p => step(p.cleanNetNew + p.quizExistingPaid, p.checkout),
       },
     },
@@ -364,15 +373,15 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // by eye rather than trusted.
       label: 'ALL TRIALS',
       pick: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
-      tot: F.paid + F.quizExistingPaid + F.otherPaid,
+      tot: sumB(p => p.netNew + p.quizExistingPaid + p.otherPaid, F.paid + F.quizExistingPaid + F.otherPaid),
       warm: true, summary: true,
       note: 'every trial sold in the period. The two quiz rows below sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
       breakdown: [
-        { label: 'from net-new', pick: (p: SeriesPoint) => p.netNew, tot: F.paid,
+        { label: 'from net-new', pick: (p: SeriesPoint) => p.netNew, tot: sumB(p => p.netNew, F.paid),
           note: 'took the quiz, then bought, and had never paid us before. By QUIZ date, so a late converter restates the week they took it.' },
-        { label: 'from existing', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: F.quizExistingPaid,
+        { label: 'from existing', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: sumB(p => p.quizExistingPaid, F.quizExistingPaid),
           note: 'took the quiz and then bought, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
-        { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: F.otherPaid,
+        { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: sumB(p => p.otherPaid, F.otherPaid),
           note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows, so count × $4.99 always equals them.' },
       ],
     },
@@ -383,7 +392,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // which hid every lifetime conversion and made 13/17 read as 11/17.
       label: 'ALL CONVERSIONS',
       pick: (p: SeriesPoint) => p.billedAnnual,
-      tot: billedAll,
+      tot: sumB(p => p.billedAnnual, billedAll),
       warm: true, summary: true,
       note: 'trials that went on to pay a renewal, credited to the week of the trial that earned them. A $54.74 lifetime buyer is NOT counted here: they bought the library outright, so there is no renewal to come.',
     },
@@ -400,8 +409,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // rather than interrupting the time series at the start of it.
   const grid = `156px${buckets.length ? ` repeat(${buckets.length}, minmax(46px, 1fr))` : ''} 108px`
 
-  const rpAll = F.completed > 0 ? (F.paid / F.completed) * 100 : 0
-  const ffAll = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
   // Trial to annual, counted ONLY on trials whose bill date has passed. A trial
   // from last week has not failed to convert, it is not due, and counting it
   // would drag every recent column to zero and make the row worthless.
@@ -422,13 +429,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     breakdown?: { label: string; all: number; per: (p: SeriesPoint) => number; money?: boolean }[]
   }
   const allTrials = (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid
-  const allTrialsTot = F.paid + F.quizExistingPaid + F.otherPaid
+  const allTrialsTot = sumB(p => p.netNew + p.quizExistingPaid + p.otherPaid, F.paid + F.quizExistingPaid + F.otherPaid)
 
   // The two headline rates lead the table: they are the answer, the funnel
   // beneath them is the explanation.
   const topRows: RateRow[] = [
-    { label: 'Result-page CVR', all: rpAll, per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
-    { label: 'Full-funnel CVR', all: ffAll, per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
+    { label: 'Result-page CVR', all: step(sumB(p => p.netNew, F.paid), sumB(p => p.completed, F.completed)), per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (p.netNew / p.completed) * 100) : 0), heavy: false },
+    { label: 'Full-funnel CVR', all: step(sumB(p => p.netNew, F.paid), sumB(p => p.views, F.landing)), per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (p.netNew / p.views) * 100) : 0), heavy: true },
   ]
 
   const rateRows: RateRow[] = [
@@ -439,7 +446,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // have not reached their renewal date yet.
       label: 'TRIAL CVR', heavy: true,
       sub: 'trials that went on to pay a renewal, divided by ALL trials of that period. Recent periods read low because their trials are not due yet, which is the truth rather than a gap.',
-      all: allTrialsTot > 0 ? (billedAll / allTrialsTot) * 100 : 0,
+      all: allTrialsTot > 0 ? (sumB(p => p.billedAnnual, billedAll) / allTrialsTot) * 100 : 0,
       per: (p: SeriesPoint) => { const t = allTrials(p); return t > 0 ? Math.min(100, (p.billedAnnual / t) * 100) : 0 },
     },
     {
@@ -562,7 +569,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             {labelBucket(p.bucket, gran as Gran)}
           </span>
         ))}
-        <span style={{ ...head, ...totalCol, padding: '6px 8px' }}>All window</span>
+        <span style={{ ...head, ...totalCol, padding: '6px 8px' }}>Total shown</span>
       </div>
 
       {renderRates(topRows)}
