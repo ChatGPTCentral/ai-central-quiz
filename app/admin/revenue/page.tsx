@@ -24,6 +24,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import TrialState from '@/components/admin/TrialState.client'
+import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.client'
 
 /** The Stripe account these dashboard links point at. Not a secret: it is the
  *  account id that appears in every dashboard URL the owner already uses. */
@@ -46,9 +47,9 @@ const GREEN = '#2E7D32'
 const AMBER = '#B26A00'
 const RED = '#B00020'
 
-interface Era { era: number; name: string; starts_on: string; ends_on: string | null; notes: string | null }
+interface Era { era: number; code: string; name: string; starts_on: string; ends_on: string | null; notes: string | null; color: string; is_quiz_era: boolean }
 interface Row {
-  charge_id: string; person_key: string; customer_id: string | null; name: string | null; stage: string | null
+  charge_id: string; person_key: string; customer_id: string | null; name: string | null; stage: string | null; country: string | null; utm_source: string | null
   trial_at: string; trial_cents: number; era: number; attribution: string
   converted: boolean; due: boolean; converted_at: string | null; converted_cents: number | null
   gross_cents: number; lifetime_bundle: boolean; trial_refunded: boolean
@@ -67,10 +68,15 @@ function stateOf(r: Row): State {
 const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
   lapsed: 'Did not convert',
-  not_due: 'Not due yet',
+  not_due: 'Trialing',
   refunded: 'Refunded',
 }
 const STATE_COLOR: Record<State, string> = { converted: GREEN, lapsed: RED, not_due: AMBER, refunded: MUTE }
+
+const navChip: React.CSSProperties = {
+  padding: '6px 12px', fontSize: 11.5, fontWeight: 700,
+  border: '2px solid #1A1A1A', background: '#FFFDFA', color: '#1A1A1A', textDecoration: 'none',
+}
 
 const ATTR_LABEL: Record<string, string> = {
   quiz_net_new: 'Quiz, new customer',
@@ -91,7 +97,7 @@ function db() {
 async function load() {
   const c = db()
   const [eras, charges, sheet, overrides] = await Promise.all([
-    c.from('payment_eras').select('era, name, starts_on, ends_on, notes').order('era'),
+    c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
     c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
@@ -100,7 +106,7 @@ async function load() {
   for (let o = 0; o < 20_000; o += 1000) {
     const { data, error } = await c
       .from('trial_ledger')
-      .select('charge_id, person_key, customer_id, name, stage, trial_at, trial_cents, era, attribution, converted, due, converted_at, converted_cents, gross_cents, lifetime_bundle, trial_refunded, submission_id')
+      .select('charge_id, person_key, customer_id, name, stage, country, utm_source, trial_at, trial_cents, era, attribution, converted, due, converted_at, converted_cents, gross_cents, lifetime_bundle, trial_refunded, submission_id')
       .order('trial_at', { ascending: false })
       .range(o, o + 999)
     if (error || !data) break
@@ -181,7 +187,17 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     byEra.set(r.era, e)
   }
 
-  const quizEra = L.filter(r => r.era === 4)
+  // Never hardcode which era is the quiz one: merging two eras renumbered it
+  // once already. payment_eras carries the flag.
+  const quizEraNo = d.eras.find(e => e.is_quiz_era)?.era ?? -1
+  const quizEra = L.filter(r => r.era === quizEraNo)
+
+  // Chart series: one point per month since inception, with the era it fell in
+  // and what that cohort has earned.
+  const chartPoints: ChartPoint[] = Array.from(byMonth.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, v]) => ({ month: m, trials: v.t, gross: v.trial + v.conv, era: v.era }))
+  const chartEras = d.eras.map(e => ({ era: e.era, code: e.code, name: e.name, color: e.color }))
   const att = {
     net: quizEra.filter(r => r.attribution === 'quiz_net_new').length,
     existing: quizEra.filter(r => r.attribution === 'quiz_existing').length,
@@ -226,16 +242,23 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         all price against it.
       </p>
 
+      <nav className="flex flex-wrap" style={{ gap: 7, marginTop: 14 }}>
+        <a href="#eras" style={navChip}>1 &middot; Eras and totals</a>
+        <a href="#over-time" style={navChip}>2 &middot; Trials over time</a>
+        <a href="#trials" style={navChip}>3 &middot; Every trial and its status</a>
+        <a href="/admin/dashboard" style={{ ...navChip, background: '#FEF7E7' }}>Dashboard &rarr;</a>
+      </nav>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 13, marginTop: 20 }}>
         <Stat label="Gross, all time" value={usd0(d.grossAll)} sub={`${d.chargeCount.toLocaleString()} charges, refunds excluded`} />
         <Stat label="Trials, all time" value={L.length.toLocaleString()} sub="one per person per purchase" />
-        <Stat label="Converted" value={counts.converted.toLocaleString()} sub={`${pct(convDue, due)} of the ${due} that are due`} />
+        <Stat label="Converted" value={counts.converted.toLocaleString()} sub={`${pct(convDue, due)} of the ${due} past their renewal date`} />
         <Stat label="Trial cash" value={usd0(trialCash)} sub="the $3.99 and $4.99 charges" />
         <Stat label="Conversion cash" value={usd0(convCash)} sub="annuals and lifetimes that followed" />
       </div>
 
       {/* ERAS */}
-      <h2 style={{ fontSize: 15, fontWeight: 800, marginTop: 32, color: INK }}>The eras</h2>
+      <h2 id="eras" style={{ fontSize: 15, fontWeight: 800, marginTop: 34, color: INK, scrollMarginTop: 16 }}>1 &middot; Eras and totals</h2>
       <table style={{ width: '100%', marginTop: 10, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: `2px solid ${INK}` }}>
@@ -255,7 +278,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
             return (
               <tr key={e.era} style={{ borderBottom: `1px solid ${HAIR}` }}>
                 <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>
-                  {e.era}. {e.name}
+                  <span style={{ color: e.color }}>&#9632;</span> {e.code} &middot; {e.name}
                   {e.notes && <div style={{ fontSize: 10.5, color: MUTE, fontWeight: 400, marginTop: 2, maxWidth: 430, lineHeight: 1.4 }}>{e.notes}</div>}
                 </td>
                 <td style={{ ...td, textAlign: 'left', color: MUTE, fontSize: 11.5 }}>{e.starts_on} → {e.ends_on ?? 'now'}</td>
@@ -284,8 +307,12 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         <Stat label="Quiz share" value={pct(att.net + att.existing, quizEra.length)} sub={`${att.net + att.existing} of ${quizEra.length} trials since 5 Jul`} />
       </div>
 
-      {/* MONTHLY */}
-      <h2 style={{ fontSize: 15, fontWeight: 800, marginTop: 32, color: INK }}>Month by month</h2>
+      {/* SECTION 2 */}
+      <h2 id="over-time" style={{ fontSize: 15, fontWeight: 800, marginTop: 34, color: INK, scrollMarginTop: 16 }}>2 &middot; Trials over time</h2>
+      <div style={{ marginTop: 10 }}>
+        <RevenueChart points={chartPoints} eras={chartEras} />
+      </div>
+      <h3 style={{ fontSize: 13, fontWeight: 800, marginTop: 22, color: INK }}>The same months, as numbers</h3>
       <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4, maxWidth: 860, lineHeight: 1.6 }}>
         One row per month, on the date the TRIAL was bought. <strong style={{ color: INK }}>Trials</strong> is how many
         people started one. <strong style={{ color: INK }}>Due</strong> is how many of those are old enough to have been
@@ -334,11 +361,13 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         </tbody>
       </table>
 
-      {/* PEOPLE */}
-      <h2 style={{ fontSize: 15, fontWeight: 800, marginTop: 36, color: INK }}>Person by person</h2>
+      {/* SECTION 3 — the piece that matters most: the owner's CSV, live */}
+      <h2 id="trials" style={{ fontSize: 15, fontWeight: 800, marginTop: 38, color: INK, scrollMarginTop: 16 }}>3 &middot; Every trial and its status</h2>
       <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4, maxWidth: 860, lineHeight: 1.6 }}>
-        Every trial ever sold and what became of it. Each trial is in exactly one state, so the four counts below always
-        add up to {L.length.toLocaleString()}.
+        Every trial ever sold and what became of it, laid out like your trials spreadsheet: date, email, name, status,
+        channel, source, country, first payment, second payment, total. Status is editable and saves as you change it,
+        &ldquo;Auto&rdquo; means the charges decide. Each trial is in exactly one state, so the counts below always add up
+        to {L.length.toLocaleString()}.
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 12 }}>
         <a href={qs({ state: undefined })} style={chip(!fState)}>All {L.length}</a>
@@ -369,37 +398,32 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       <table style={{ width: '100%', marginTop: 8, borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: `2px solid ${INK}` }}>
-            <th style={{ ...th, textAlign: 'left' }}>Person</th>
-            <th style={{ ...th, textAlign: 'left' }}>Trial</th>
-            <th style={th}>Paid</th>
-            <th style={{ ...th, textAlign: 'left' }}>Source</th>
-            <th style={{ ...th, textAlign: 'left' }}>State</th>
-            <th style={{ ...th, textAlign: 'left' }}>Stripe</th>
-            <th style={{ ...th, textAlign: 'left' }}>Converted on</th>
-            <th style={th}>Then paid</th>
+            <th style={{ ...th, textAlign: 'left' }}>Trial date</th>
+            <th style={{ ...th, textAlign: 'left' }}>Email</th>
+            <th style={{ ...th, textAlign: 'left' }}>Name</th>
+            <th style={{ ...th, textAlign: 'left' }}>Status</th>
+            <th style={{ ...th, textAlign: 'left' }}>Channel</th>
+            <th style={{ ...th, textAlign: 'left' }}>UTM source</th>
+            <th style={{ ...th, textAlign: 'left' }}>Country</th>
+            <th style={th}>Payment 1</th>
+            <th style={{ ...th, textAlign: 'left' }}>Paid 2 on</th>
+            <th style={th}>Payment 2</th>
             <th style={th}>Total</th>
+            <th style={{ ...th, textAlign: 'left' }}>Stripe</th>
           </tr>
         </thead>
         <tbody>
           {people.map(r => {
             const st = stateOf(r)
+            const p2 = r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)
             return (
               <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}` }}>
-                <td style={{ ...td, textAlign: 'left' }}>
-                  <div style={{ fontWeight: 700 }}>{r.name || r.person_key}</div>
-                  {r.name && <div style={{ fontSize: 10.5, color: MUTE }}>{r.person_key}</div>}
-                </td>
-                <td style={{ ...td, textAlign: 'left', color: MUTE }}>
+                <td style={{ ...td, textAlign: 'left', color: MUTE, whiteSpace: 'nowrap' }}>
                   {r.trial_at.slice(0, 10)}
-                  <span style={{ marginLeft: 6, fontSize: 10 }}>era {r.era}</span>
+                  <span title={`Pricing era ${r.era}`} style={{ marginLeft: 5, fontSize: 9.5, color: MUTE }}>e{r.era}</span>
                 </td>
-                <td style={td}>
-                  ${(r.trial_cents / 100).toFixed(2)}
-                  {r.lifetime_bundle && <span title="Paid $54.74: the $4.99 trial and the $49.75 lifetime in one charge" style={{ marginLeft: 4, color: AMBER, fontWeight: 700 }}>+LT</span>}
-                </td>
-                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: r.attribution === 'not_quiz' ? MUTE : GREEN, fontWeight: r.attribution === 'not_quiz' ? 400 : 700 }}>
-                  {ATTR_LABEL[r.attribution] ?? r.attribution}
-                </td>
+                <td style={{ ...td, textAlign: 'left' }}>{r.person_key}</td>
+                <td style={{ ...td, textAlign: 'left', fontWeight: 700 }}>{r.name || '–'}</td>
                 <td style={{ ...td, textAlign: 'left' }}>
                   <TrialState
                     chargeId={r.charge_id}
@@ -409,6 +433,18 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
                     initial={d!.overrideBy.get(r.charge_id) ?? null}
                   />
                 </td>
+                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: r.attribution === 'not_quiz' ? MUTE : GREEN, fontWeight: r.attribution === 'not_quiz' ? 400 : 700 }}>
+                  {ATTR_LABEL[r.attribution] ?? r.attribution}
+                </td>
+                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: MUTE }}>{r.utm_source || '–'}</td>
+                <td style={{ ...td, textAlign: 'left', fontSize: 11.5, color: MUTE }}>{r.country || '–'}</td>
+                <td style={td}>
+                  ${(r.trial_cents / 100).toFixed(2)}
+                  {r.lifetime_bundle && <span title="One $54.74 charge: the $4.99 trial and the $49.75 lifetime together" style={{ marginLeft: 4, color: AMBER, fontWeight: 700 }}>+LT</span>}
+                </td>
+                <td style={{ ...td, textAlign: 'left', color: MUTE, whiteSpace: 'nowrap' }}>{r.converted_at ? r.converted_at.slice(0, 10) : '–'}</td>
+                <td style={td}>{r.converted ? `$${(p2 / 100).toFixed(2)}` : '–'}</td>
+                <td style={{ ...td, fontWeight: 700 }}>${(r.gross_cents / 100).toFixed(2)}</td>
                 <td style={{ ...td, textAlign: 'left', whiteSpace: 'nowrap' }}>
                   {r.customer_id ? (
                     <>
@@ -422,9 +458,6 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
                     </>
                   ) : <span style={{ color: MUTE, fontSize: 11 }}>–</span>}
                 </td>
-                <td style={{ ...td, textAlign: 'left', color: MUTE }}>{r.converted_at ? r.converted_at.slice(0, 10) : '–'}</td>
-                <td style={td}>{r.converted ? `$${((r.lifetime_bundle ? 4975 : (r.converted_cents ?? 0)) / 100).toFixed(2)}` : '–'}</td>
-                <td style={{ ...td, fontWeight: 700 }}>${(r.gross_cents / 100).toFixed(2)}</td>
               </tr>
             )
           })}
