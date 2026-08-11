@@ -302,6 +302,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   series: Series; gran: Gran | 'all'
   F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number }
   lifetimeSplits: number
+  /** People holding more than one paid trial. Every trial counts. */
   quizRepeatTrials: number
   preWindowAnnuals: number
 }) {
@@ -799,7 +800,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             + $49.75 lifetime option instead of the $59.75/year renewal) {lifetimeSplits === 1 ? 'is' : 'are'} split
             accordingly — the $4.99 sits in the trials row, the $49.75 in Other Revenue.</>
           )}
-          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person' : 'people'} subscribed twice — only their FIRST $4.99 counts as a trial here, the extras sit in Other Revenue, so trials revenue always equals people × $4.99.</>}
+          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person holds' : 'people hold'} more than one paid trial, and every one of them is counted: trials are GROSS, so somebody who bought twice shows as two. Trials revenue therefore equals trials × $4.99, not people × $4.99.</>}
           {preWindowAnnuals > 0 && (
             <> {preWindowAnnuals} × $59.75 (${(preWindowAnnuals * 59.75).toLocaleString(undefined, { maximumFractionDigits: 0 })}) belong
             to trial cohorts OLDER than this window (found via the trials sheet) and are not shown in any column — a recent week

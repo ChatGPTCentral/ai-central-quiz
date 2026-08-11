@@ -162,7 +162,8 @@ async function revenueCharges(): Promise<{
    *  they agreed by coincidence of two code paths, and every number in this
    *  project that was computed twice eventually disagreed. */
   netNewEmails: Set<string>
-  /** People who bought a trial more than once (duplicate subscriptions). */
+  /** People holding more than one paid trial. Owner's rule 2 and 5: they all
+   *  count, so this is a fact about the customer base, not a deduction. */
   quizRepeatTrials: number
   /** Every trial with the clock it sits on, whether its renewal date has
    *  passed, and whether it converted. The Trial→annual row is built from
@@ -187,13 +188,15 @@ async function revenueCharges(): Promise<{
   const { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails } =
     classifyLedger(ledger, charges, MIRROR_START_ISO)
 
-  // Duplicate subscriptions: people the ledger deduplicated away.
-  const { count: rawTrials } = await c
-    .from('stripe_charges')
-    .select('id', { count: 'exact', head: true })
-    .in('amount_cents', [399, 499, 5474])
-    .eq('refunded', false)
-  const quizRepeatTrials = Math.max(0, (rawTrials ?? 0) - ledger.length)
+  // People holding more than one paid trial. This used to be the count of
+  // trials the ledger threw away as duplicates; nothing is thrown away now
+  // (owner's rules 1, 2 and 5), so it is simply how many people bought twice.
+  const perPerson = new Map<string, number>()
+  for (const t of ledger) {
+    if (t.trial_refunded) continue
+    perPerson.set(t.person_key, (perPerson.get(t.person_key) || 0) + 1)
+  }
+  const quizRepeatTrials = Array.from(perPerson.values()).filter(n => n > 1).length
 
   return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, netNewEmails, trialPoints }
 }

@@ -26,6 +26,26 @@ exactly one of three buckets, and the dashboard shows all three:
 | Quiz, existing customer | had paid before, took quiz, then paid again | quiz date |
 | Not from the quiz | never took it, or took it after paying | charge date |
 
+## The charge rules (owner, 2026-08-11, standing until he changes them)
+
+These are not derivations, they are the definitions. Do not "improve" them.
+
+1. **ANY $4.99 charge IS a paid trial.** No exceptions, no deduplication.
+2. **A person may buy more than one paid trial.** All of them count.
+3. **A person may hold more than one yearly subscription.**
+4. **Other Revenue may contain no paid trial and no $59.75 subscription.** It
+   is the residual of legacy monthly and annual subscriptions, nothing else.
+5. **Trials are counted GROSS, everywhere.** Someone who bought two trials
+   shows as two, never as one person.
+
+Rule 5 kills the old 32-day "duplicate subscription" rule, which was hiding
+39 real trials and pushing their money into Other Revenue. Trials revenue is
+trials × $4.99, NOT people × $4.99.
+
+A renewal is still claimed by exactly one trial: trials and post-trial
+renewals are numbered in time order and paired 1:1. Before that, a person
+with two trials had both claim the same $59.75, double-counting $353.24.
+
 **Attribution is decided at CHARGE level, never from a person's aggregate.**
 A real $4.99 (or the $4.99 inside a $54.74 lifetime bundle) must land after
 their quiz. "They have a later charge" is not enough — a monthly renewal

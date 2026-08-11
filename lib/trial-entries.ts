@@ -42,6 +42,12 @@ export function bucketEnd(bucket: string, gran: Gran): string {
 //                 prices, lifetime halves, duplicate subscriptions. Charge clock.
 export type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annualQuiz' | 'annualNotQuiz' | 'other'
 
+/** The prices that ARE a paid trial. $54.74 is the $4.99 trial with the $49.75
+ *  lifetime bought alongside it; $3.99 was an earlier era's trial price. */
+export const TRIAL_PRICES = new Set([399, 499, 5474])
+/** The subscription price. Never Other Revenue. */
+export const ANNUAL_CENTS = 5975
+
 export type LedgerRow = {
   charge_id: string; person_key: string; trial_at: string; trial_cents: number; trial_refunded: boolean
   lifetime_bundle: boolean; attribution: string; quiz_completed_at: string | null
@@ -248,21 +254,49 @@ export function classifyLedger(
   // 2026-08-11 and could not tell a real misfiling from a known one, so now
   // each row says which it is.
   const peopleWithTrials = new Set(ledger.filter(t => !t.trial_refunded).map(t => t.person_key))
-  const TRIAL_PRICES = new Set([399, 499, 5474])
   for (const ch of charges) {
     if (ch.refunded) continue
     if (accounted.has(ch.id)) continue
     const who = ch.customer_email || ch.email || ch.customer_id || ''
-    const known = peopleWithTrials.has(who)
-    const why = TRIAL_PRICES.has(ch.amount_cents)
-      ? known
-        ? 'duplicate subscription: this person already has a trial, and only their first one counts'
-        : 'trial-priced charge with no trial row, usually a test-flagged person or an email we cannot match'
-      : ch.amount_cents >= 2000
-        ? known
-          ? 'a later renewal, beyond the trial it already paid for'
-          : 'renewal-sized charge from someone who never had a trial with us'
-        : 'neither a trial nor a renewal price'
+
+    // RULE 4 (owner, 2026-08-11): Other Revenue may contain no paid trial and
+    // no $59.75 subscription. It is the residual of legacy monthly and annual
+    // subscriptions, nothing else.
+    //
+    // The ledger currently leaves none of either behind, so neither branch
+    // below fires today. They exist so that the rule holds by construction
+    // rather than by luck: if a future charge slips past the ledger it lands
+    // in the right row and says out loud that it arrived by the back door,
+    // instead of quietly padding Other Revenue the way the old duplicate
+    // trials did.
+    if (TRIAL_PRICES.has(ch.amount_cents)) {
+      entries.push({
+        at: ch.charged_at, chargedAt: ch.charged_at, kind: 'notQuiz',
+        usd: (ch.amount_cents === 5474 ? 499 : ch.amount_cents) / 100,
+        chargeId: ch.id, personKey: who, name: ch.description ?? null,
+        customerId: ch.customer_id ?? null, submissionId: null,
+        why: 'a paid trial the ledger did not pick up, counted here because a trial is never Other Revenue',
+      })
+      if (ch.amount_cents === 5474) {
+        entries.push({
+          at: ch.charged_at, chargedAt: ch.charged_at, kind: 'other', usd: 49.75,
+          chargeId: `${ch.id}-lt`, personKey: who, name: ch.description ?? null,
+          customerId: ch.customer_id ?? null, submissionId: null,
+          why: 'the $49.75 lifetime half of a $54.74 bundle',
+        })
+      }
+      continue
+    }
+    if (ch.amount_cents === ANNUAL_CENTS) {
+      entries.push({
+        at: ch.charged_at, chargedAt: ch.charged_at, kind: 'annualNotQuiz', usd: ch.amount_cents / 100,
+        chargeId: ch.id, personKey: who, name: ch.description ?? null,
+        customerId: ch.customer_id ?? null, submissionId: null,
+        why: 'a $59.75 subscription with no trial claiming it, counted here because a renewal is never Other Revenue',
+      })
+      continue
+    }
+
     entries.push({
       at: ch.charged_at,
       chargedAt: ch.charged_at,
@@ -273,7 +307,9 @@ export function classifyLedger(
       name: ch.description ?? null,
       customerId: ch.customer_id ?? null,
       submissionId: null,
-      why,
+      why: peopleWithTrials.has(who)
+        ? 'a legacy subscription price from someone who also has a trial with us'
+        : 'a legacy monthly or annual subscription, from before the trial offer',
     })
   }
 
