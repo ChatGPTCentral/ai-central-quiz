@@ -68,10 +68,17 @@ const FAKE_FULL_NAMES = new Set<string>([
 ])
 
 // ── Fake single-token names (whole normalized name equals one) — hard-block ──
+//
+// Also matched against the COMPACT name (spaces stripped), which is how
+// "Anony Mous" is caught: splitting a placeholder across two tokens is the
+// commonest evasion, and the compact form gives it away.
 const FAKE_SINGLE_NAMES = new Set<string>([
   'test', 'testtest', 'testing', 'asdf', 'asdfasdf', 'asdfgh', 'asdfghjkl',
   'qwerty', 'qwertyuiop', 'zxcvbn', 'zxcvbnm', 'fake', 'fakename', 'noname',
   'foobar', 'loremipsum',
+  // Declaring yourself anonymous is not a name, however it is spelled or split.
+  'anonymous', 'anonimous', 'anonymus', 'anonymouse', 'anonym', 'anonyme',
+  'notelling', 'nomyname', 'notmyname', 'privateperson', 'nonevs', 'noneofyourbusiness',
 ])
 
 // ── Softer placeholder names (flag, never block) ────────────────────────────
@@ -170,14 +177,137 @@ function startsWithFakeName(nameCompact: string): boolean {
 }
 
 function hasRealNameToken(name: string): boolean {
-  return name.split(/[\s.]+/).some(tok => {
+  const toks = name.split(/[\s.]+/).filter(Boolean)
+  // Non-Latin scripts are not ours to score. Two characters of any other
+  // script is a complete name (李 明), whether written as one token or two.
+  if (name.replace(/[\x00-\x7F]/g, '').length >= 2) return true
+  // Two short tokens are a whole real name in a lot of the world: "Yu Ng",
+  // "Li Xu", "Vo Ha". The old rule demanded one token of three letters and
+  // rejected every one of them, which is a false positive on a real person.
+  const twoShort = toks.filter(t => t.replace(/[^A-Za-z]/g, '').length >= 2).length >= 2
+  return toks.some(tok => {
     const latin = tok.replace(/[^A-Za-z]/g, '')
     if (latin.length >= 3) return true
+    if (latin.length >= 2 && twoShort) return true
     // Non-Latin scripts carry more meaning per character: a two-character CJK
     // name is a complete, real name, so holding them to the Latin threshold
     // would reject real people. Anything outside ASCII gets the lower bar.
     return tok.replace(/[\x00-\x7F]/g, '').length >= 2
   })
+}
+
+// ── Is this token pronounceable? ────────────────────────────────────────────
+//
+// The rule the blocklists cannot express. "sdsf dsfdsf" is unmistakable junk
+// and matches nothing, because there is nothing to match: it is a hand on a
+// keyboard. What gives it away is that no part of it can be said out loud.
+//
+// y counts as a vowel (Bryn, Lynn) and so does w (Welsh Cwm, Bwlch), which
+// costs nothing: keyboard mashing rarely leans on w, and a false NEGATIVE is
+// always cheaper here than rejecting a real person.
+const VOWELISH = /[aeiouyw]/
+
+/** Letters that sit next to each other on one QWERTY row, e.g. "sd", "jk",
+ *  "cv". A two-letter first name is usually real (Ng, Mc, Di, Yu); a two-letter
+ *  first name with no vowel that is ALSO a keyboard neighbour is a mash. Both
+ *  conditions together, because either alone has real names in it. */
+function isKeyboardPair(s: string): boolean {
+  if (s.length !== 2) return false
+  return KEYBOARD_ROWS.some(row => {
+    const i = row.indexOf(s[0])
+    return i >= 0 && row[i + 1] === s[1]
+  })
+}
+
+/** A whole token that is a contiguous run along one keyboard row: "asdf",
+ *  "fghj", "poiu". FOUR characters is the floor, not three: "Yui" is a run
+ *  through qwertyuiop and also a real Japanese name, and a rule that rejects
+ *  Yui Aragaki to catch "qwe" is not worth having. The WHOLE token has to be
+ *  the run, so a name that merely contains one ("Trewin") is safe. */
+function isTokenKeyboardWalk(tok: string): boolean {
+  const s = tok.replace(/[^a-z0-9]/gi, '').toLowerCase()
+  if (s.length < 4) return false
+  return KEYBOARD_ROWS.some(row => row.includes(s))
+}
+
+/** A short string typed twice: "qweqwe", "dsfdsf", "asdfasdf".
+ *
+ *  The seed itself has to be junk, not merely repeated. Taktak is a real
+ *  surname and a real paying customer, so "a seed doubled" alone is not
+ *  evidence; a seed doubled where the seed cannot be pronounced or is a run
+ *  off the keyboard is. Coco, Lulu and Gigi are safe twice over: their seeds
+ *  are two letters and hold a vowel. */
+function isRepeatedSeed(s: string): boolean {
+  const t = s.replace(/[^a-z0-9]/gi, '').toLowerCase()
+  if (t.length < 6) return false
+  for (let seed = 3; seed <= Math.floor(t.length / 2); seed++) {
+    if (t.length % seed !== 0) continue
+    const head = t.slice(0, seed)
+    if (!new RegExp(`^(${head})+$`).test(t)) continue
+    if (!VOWELISH.test(head)) return true
+    if (KEYBOARD_ROWS.some(row => row.includes(head))) return true
+  }
+  return false
+}
+
+/**
+ * The name is a keyboard walk. One walking token inside an otherwise normal
+ * name is left alone unless it is long, because "Wert" is a real surname and a
+ * four-letter run in isolation is not enough to call someone a fake. Every
+ * token walking, or one walking for five characters, is.
+ */
+function isNameKeyboardWalk(name: string): boolean {
+  const toks = name.split(/[\s.]+/).filter(Boolean)
+  const walkers = toks.filter(isTokenKeyboardWalk)
+  if (!walkers.length) return false
+  return walkers.length === toks.length || walkers.some(t => t.replace(/[^a-z0-9]/gi, '').length >= 5)
+}
+
+/** A Latin token long enough to be a name but with nothing to pronounce in it.
+ *  Three letters is the floor: "Ng" and "Xu" are real, "sdf" is not. */
+function isUnpronounceable(tok: string): boolean {
+  const latin = tok.replace(/[^A-Za-z]/g, '')
+  if (latin.length < 3) return false
+  // Only judge tokens that are ENTIRELY Latin. A transliteration carrying
+  // accents or another script is not ours to score.
+  if (latin.length !== tok.replace(/[^A-Za-zÀ-ɏ]/g, '').length) return false
+  return !VOWELISH.test(latin)
+}
+
+/**
+ * The WHOLE name is unsayable, not merely one token of it.
+ *
+ * This is the rule that has to be held tightly, because names carry legal
+ * suffixes and honorifics that are pure consonants. Checked against every name
+ * ever submitted: judging one token at a time would have rejected thirty real
+ * paying customers, among them "Airgate Pty Ltd", "FACTOR Innsbruck GmbH",
+ * "Michael Kanehl PLLC" and "MRS R GRAY". One real word anywhere in the name
+ * makes it a name.
+ *
+ * The four-letter floor spares bare acronyms ("DCC", "PTS"), which are how
+ * plenty of small businesses write themselves.
+ */
+function isNameUnpronounceable(name: string): boolean {
+  const cands = name.split(/[\s.,]+/).filter(t => t.replace(/[^A-Za-z]/g, '').length >= 3)
+  if (!cands.length) return false
+  if (!cands.every(isUnpronounceable)) return false
+  return cands.some(t => t.replace(/[^A-Za-z]/g, '').length >= 4)
+}
+
+/**
+ * A first name that is a home-row pair: "sd iwanksi" (owner's example).
+ *
+ * SOFT, not a block. The same shape is how real customers write themselves:
+ * "VB Consulting" and "rt brownrigg jr" both paid us, and v-b and r-t are both
+ * keyboard neighbours. There is no test that separates those from "sd" without
+ * guessing, so this scores the lead instead of rejecting the person.
+ */
+function firstNameLooksMashed(name: string): boolean {
+  const raw = name.split(/[\s.]+/).filter(Boolean)[0] || ''
+  const first = raw.replace(/[^A-Za-z]/g, '')
+  if (first.length !== raw.replace(/[^A-Za-zÀ-ɏ]/g, '').length) return false
+  if (first.length !== 2) return false
+  return !VOWELISH.test(first) && isKeyboardPair(first)
 }
 
 export function assessLead(input: LeadInput): LeadAssessment {
@@ -204,6 +334,17 @@ export function assessLead(input: LeadInput): LeadAssessment {
       hard('name:keyboard_walk')
     } else if (isAllSameChar(nameCompact) && nameCompact.length >= 4) {
       hard('name:repeated_char')
+    } else if (isNameKeyboardWalk(name)) {
+      // A run off one keyboard row. The old check only looked at the whole
+      // compact name, which any repetition ("asdf asdf") breaks.
+      hard('name:keyboard_walk')
+    } else if (isRepeatedSeed(nameCompact) || name.split(/[\s.]+/).filter(Boolean).some(isRepeatedSeed)) {
+      // "qwe qweqwe", "jkl jkl" — typed once, then again.
+      hard('name:repeated_seed')
+    } else if (isNameUnpronounceable(name)) {
+      // "sdsf dsfdsf". Long enough to clear every length rule, matching no
+      // blocklist, and with nothing in it that can be said out loud.
+      hard('name:unpronounceable')
     } else if (!hasRealNameToken(name)) {
       // Initials-only: "R S", "b d", ". M", "3 3". The dominant real-world fake
       // and the one an exact-match blocklist can never catch, because there is
@@ -216,6 +357,7 @@ export function assessLead(input: LeadInput): LeadAssessment {
       hard('name:no_real_token')
     } else {
       // Softer signals — flag but keep.
+      if (firstNameLooksMashed(name)) soft('name:first_name_mash')
       if (isAllSameChar(nameCompact)) soft('name:repeated_char_short')
       if (name.replace(/[^a-z]/gi, '').length < 2) soft('name:too_short')
       const firstToken = name.split(' ')[0]
