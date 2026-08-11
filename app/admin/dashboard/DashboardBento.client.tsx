@@ -314,6 +314,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     /** "of which" rows: the parts this station is made of, rendered indented
      *  underneath it. They sum to the station, so the eye can check it. */
     breakdown?: { label: string; pick: (p: SeriesPoint) => number; tot: number; note?: string }[]
+    /** Render like the All Revenue row: it is a total, not a station. */
+    summary?: boolean
   }[] = [
     {
       label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: F.landing, warm: false,
@@ -346,7 +348,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       label: 'ALL TRIALS',
       pick: (p: SeriesPoint) => p.netNew + p.quizExistingPaid + p.otherPaid,
       tot: F.paid + F.quizExistingPaid + F.otherPaid,
-      warm: true,
+      warm: true, summary: true,
       note: 'every trial sold in the period. The two quiz rows below sit on the QUIZ clock and the third on the CHARGE clock, so this counts trials rather than one single instant.',
       breakdown: [
         { label: 'net-new (the north star)', pick: (p: SeriesPoint) => p.netNew, tot: F.paid,
@@ -365,7 +367,10 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // shrinks 21 day columns to unreadable slivers that never overflow, so the
   // scroll container had nothing to scroll. minmax gives day view a real
   // width and the wrapper's overflow-x takes over.
-  const grid = `156px 104px${buckets.length ? ` repeat(${buckets.length}, minmax(46px, 1fr))` : ''}`
+  // Label · one column per period · the row TOTAL last, because it is a sum
+  // of everything to its left and reads naturally at the end of the row
+  // rather than interrupting the time series at the start of it.
+  const grid = `156px${buckets.length ? ` repeat(${buckets.length}, minmax(46px, 1fr))` : ''} 108px`
 
   const rpAll = F.completed > 0 ? (F.paid / F.completed) * 100 : 0
   const ffAll = F.landing > 0 ? (F.paid / F.landing) * 100 : 0
@@ -432,12 +437,12 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       {/* header */}
       <div className="grid" style={{ gridTemplateColumns: grid, borderBottom: '1px solid #333333' }}>
         <span style={{ ...head, padding: '6px 0' }}>Station</span>
-        <span style={{ ...head, padding: '6px 8px 6px 0', textAlign: 'right' }}>All window</span>
         {buckets.map(p => (
           <span key={p.bucket} className="truncate" style={{ ...head, padding: '6px 4px', textAlign: 'center', borderLeft: `1px solid ${ROWHAIR}` }}>
             {labelBucket(p.bucket, gran as Gran)}
           </span>
         ))}
+        <span style={{ ...head, padding: '6px 8px 6px 6px', textAlign: 'right', borderLeft: `2px solid ${INK}` }}>All window</span>
       </div>
 
       {/* station rows */}
@@ -450,9 +455,16 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Checkout clicked'
         return (
           <div key={s.label}>
-            <div className="grid items-stretch" style={{ gridTemplateColumns: grid, borderBottom: s.out ? 'none' : `1px solid ${ROWHAIR}` }}>
-              <span className="flex items-center truncate" style={{ padding: '9px 8px 9px 0', fontSize: 10.5, fontWeight: 700, color: INK }}>{s.label}</span>
-              <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 0', fontSize: 11.5, fontWeight: 800, color: INK, ...tnum }}>{fmt(s.tot)}</span>
+            <div className="grid items-stretch" style={{
+              gridTemplateColumns: grid,
+              background: s.summary ? '#F3F8F3' : undefined,
+              borderTop: s.summary ? `2px solid ${INK}` : undefined,
+              borderBottom: s.out ? 'none' : `1px solid ${ROWHAIR}`,
+            }}>
+              <span className="flex items-center truncate" title={s.note}
+                style={{ padding: '9px 8px 9px 0', fontSize: s.summary ? 10 : 10.5, fontWeight: s.summary ? 800 : 700,
+                         textTransform: s.summary ? 'uppercase' : undefined, letterSpacing: s.summary ? '0.08em' : undefined,
+                         color: INK }}>{s.label}</span>
               {ns.map((n, i) => {
                 const cov = buckets[i].eventsCovered
                 const blind = fromEvents && cov === 'none'
@@ -464,11 +476,12 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                       : thin ? `${labelBucket(buckets[i].bucket, gran as Gran)} · ${fmt(n)}, UNDERSTATED — tracking started mid-period (9 Jul)`
                       : `${labelBucket(buckets[i].bucket, gran as Gran)}${buckets[i].partial ? ' · in progress' : ''} · ${fmt(n)}`
                     }
-                    style={{ padding: '9px 4px', fontSize: 10, fontWeight: 700, color: blind ? MUTE : INK, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
+                    style={{ padding: '9px 4px', fontSize: 10, fontWeight: s.summary ? 800 : 700, color: blind ? MUTE : INK, borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
                     {blind ? '–' : thin ? `${compact(n)}*` : compact(n)}
                   </span>
                 )
               })}
+              <span className="flex items-center justify-end" style={{ padding: '9px 8px 9px 6px', fontSize: 11.5, fontWeight: 800, color: INK, borderLeft: `2px solid ${INK}`, ...tnum }}>{fmt(s.tot)}</span>
             </div>
 
             {/* "Of which" — the parts this station is made of, indented so the
@@ -480,14 +493,14 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                   style={{ padding: '6px 8px 6px 16px', fontSize: 10, fontWeight: 700, color: '#4A4A4A' }}>
                   ↳ of which {b.label}
                 </span>
-                <span style={{ padding: '6px 8px 6px 0', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', ...tnum }}>
-                  {fmt(b.tot)}
-                </span>
                 {buckets.map(p => (
                   <span key={p.bucket} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 9.5, fontWeight: 700, color: '#4A4A4A', borderLeft: `1px solid ${ROWHAIR}`, ...tnum }}>
                     {compact(b.pick(p))}
                   </span>
                 ))}
+                <span style={{ padding: '6px 8px 6px 6px', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#4A4A4A', borderLeft: `2px solid ${INK}`, ...tnum }}>
+                  {fmt(b.tot)}
+                </span>
               </div>
             ))}
 
@@ -499,9 +512,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
               <div className="grid items-center" style={{ gridTemplateColumns: grid, borderBottom: `1px solid ${ROWHAIR}` }}>
                 <span className="truncate" style={{ padding: '5px 8px 6px 10px', fontSize: 9.5, fontWeight: 700, color: MUTE, letterSpacing: '0.02em' }}>
                   ↳ {s.out.label}
-                </span>
-                <span style={{ padding: '5px 8px 6px 0', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', ...tnum }}>
-                  {pctDisp(s.out.all)}
                 </span>
                 {buckets.map(p => {
                   // A rate whose numerator or denominator was never measured
@@ -526,6 +536,9 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                     </span>
                   )
                 })}
+                <span style={{ padding: '5px 8px 6px 6px', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: '#6B6B6B', borderLeft: `2px solid ${INK}`, ...tnum }}>
+                  {pctDisp(s.out.all)}
+                </span>
               </div>
             )}
           </div>
@@ -573,13 +586,6 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 </span>
               )}
             </span>
-            <span title={money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
-              const i = acc.findIndex(a => a[0] === c)
-              if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
-              return acc
-            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ padding: '9px 8px 9px 0', textAlign: 'right', fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
-              {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
-            </span>
             {buckets.map(p => {
               const v = rr.per(p)
               // Grayscale shading, and ONLY on the plain conversion-rate rows.
@@ -599,6 +605,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
                 </span>
               )
             })}
+            <span title={money ? arithOf(rr.all, rr.parts ? buckets.flatMap(rr.parts).reduce((acc, [c, n]) => {
+              const i = acc.findIndex(a => a[0] === c)
+              if (i >= 0) acc[i] = [c, acc[i][1] + n]; else acc.push([c, n])
+              return acc
+            }, [] as [number, number][]).sort((a, b) => b[0] - a[0]) : undefined) : undefined} style={{ padding: '9px 8px 9px 6px', textAlign: 'right', borderLeft: `2px solid ${INK}`, fontSize: 11.5, fontWeight: 800, color: money ? '#2E7D32' : '#B26A00', ...tnum }}>
+              {money ? usd(rr.all) : rr.count ? fmt(rr.all) : `${rr.all.toFixed(rr.heavy ? 2 : 1)}%`}
+            </span>
           </div>
         )
       })}
