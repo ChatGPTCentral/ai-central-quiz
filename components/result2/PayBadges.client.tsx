@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { sendEvent } from '@/lib/events-client'
+import { firePlacementView } from '@/components/CheckoutLink.client'
 import { useCheckout } from '@/components/checkout-context'
 
 // Express-pay row under the CTA. Two jobs: trust ("this is a normal, safe
@@ -62,6 +63,50 @@ export default function PayBadges({
     } catch { /* unsupported browser — leave the button off */ }
   }, [])
 
+  // THE IMPRESSION. This was missing, and it mattered more than it looks.
+  //
+  // PayBadges fired checkout_click but never placement_view, so
+  // v2_offer_stack_badges showed 13 clickers, 9 buyers and ZERO views: the
+  // best-converting button on the page, 69% of its clickers paying, and no way
+  // to tell whether that was because it is brilliant or because only thirteen
+  // people ever saw it. A click rate with no denominator cannot be compared
+  // with anything, which is exactly how the loud low-converting buttons kept
+  // winning the argument.
+  //
+  // Deduped per session by the same helper every other placement uses, so this
+  // number is comparable to theirs by construction rather than by luck.
+  const seen = useRef(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (seen.current) return
+    const el = boxRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      // No observer (old browser, or rendered without a host element): count it
+      // as seen rather than lose the impression. Undercounting views would
+      // inflate this placement's conversion rate, which is the error that
+      // matters here.
+      seen.current = true
+      firePlacementView(placement, submissionId)
+      return
+    }
+    const obs = new IntersectionObserver(
+      entries => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue
+          obs.disconnect()
+          if (!seen.current) { seen.current = true; firePlacementView(placement, submissionId) }
+          return
+        }
+      },
+      // Same 0.4 threshold as CheckoutLink: a placement counts as seen when
+      // it is properly on screen, not when one pixel grazes the fold.
+      { threshold: 0.4 },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placement])
+
   // wallet lands in props so the funnel can show which door people choose.
   const go = (wallet: string) => (e: React.MouseEvent) => {
     sendEvent('checkout_click', { props: { placement, wallet }, submissionId })
@@ -84,7 +129,7 @@ export default function PayBadges({
   }
 
   return (
-    <div className="flex flex-col items-center w-full" style={{ gap: 8 }}>
+    <div ref={boxRef} className="flex flex-col items-center w-full" style={{ gap: 8 }}>
       <div
         style={{
           display: 'grid',
