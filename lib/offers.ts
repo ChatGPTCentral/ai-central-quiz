@@ -59,9 +59,19 @@ export const LIFETIME_OFFER: Offer = {
 /**
  * Countries that get the lifetime instead of the trial.
  *
- * ISO-3166 alpha-2, matching the x-vercel-ip-country header. Keep this list
- * evidence-led: a country belongs here once its trials have stopped renewing,
- * not because it feels like a weak market.
+ * ISO-3166 alpha-2, matching the x-vercel-ip-country header.
+ *
+ * THE BAR FOR ADDING ONE, so this list stays evidence and not a hunch:
+ * a country belongs here when its DUE trials renew so much worse than the
+ * baseline that luck cannot explain it. Measured 2026-08-11 across 638 due
+ * trials, the baseline is 57.8%, and at that rate a run of SIX consecutive
+ * non-renewals is already a one-in-a-hundred event. So six is the threshold,
+ * and anything above it wants a look.
+ *
+ * On that test India is the only country that qualifies, and it is not close:
+ * 0 renewals from 43 due trials, where the next-worst candidates (Turkey 2/6,
+ * Kenya 2/5, Hungary 0/2) are all comfortably inside what chance produces.
+ * Do not add a country on a low percentage alone; check the count first.
  */
 export const LIFETIME_COUNTRIES = new Set<string>(['IN'])
 
