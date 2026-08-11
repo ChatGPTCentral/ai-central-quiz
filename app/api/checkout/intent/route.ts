@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
-import { lifetimePriceId } from '@/lib/offers'
+import { resolveLifetimePriceId } from '@/lib/offers-server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -73,8 +73,9 @@ export async function GET(req: NextRequest) {
     // ?offer=lifetime renders the wallet sheet at the lifetime amount. The
     // server still decides: an unconfigured lifetime price falls back to the
     // trial rather than quoting a number nothing can charge.
-    const wantLifetime = req.nextUrl.searchParams.get('offer') === 'lifetime' && !!lifetimePriceId()
-    const price = await stripe().prices.retrieve(wantLifetime ? lifetimePriceId()! : PRICE_ID)
+    const lifetimePrice = req.nextUrl.searchParams.get('offer') === 'lifetime' ? await resolveLifetimePriceId() : null
+    const wantLifetime = !!lifetimePrice
+    const price = await stripe().prices.retrieve(lifetimePrice ?? PRICE_ID)
     if (!price.unit_amount || !price.currency) {
       return NextResponse.json({ error: 'price_has_no_amount' }, { status: 500 })
     }
@@ -99,7 +100,8 @@ export async function POST(req: NextRequest) {
 
   // A lifetime sale only happens if the lifetime price is configured. The
   // client names an offer, never a price.
-  const lifetime = clean(body.offer) === 'lifetime' && !!lifetimePriceId()
+  const lifetimePrice = clean(body.offer) === 'lifetime' ? await resolveLifetimePriceId() : null
+  const lifetime = !!lifetimePrice
   metadata.offer = lifetime ? 'lifetime' : 'trial'
 
   try {
@@ -107,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     // Price is the source of truth for the amount. If someone edits the price
     // in Stripe, both checkout paths move together.
-    const price = await s.prices.retrieve(lifetime ? lifetimePriceId()! : PRICE_ID)
+    const price = await s.prices.retrieve(lifetimePrice ?? PRICE_ID)
     const amount = price.unit_amount
     const currency = price.currency
     if (!amount || amount <= 0 || !currency) {

@@ -14,7 +14,8 @@ import ExpenseEmail from '@/components/result2/ExpenseEmail.client'
 import { NextStageGap } from '@/components/result2/NextStageGap'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
-import { offerForCountry, lifetimePriceId, TRIAL_OFFER, LIFETIME_OFFER } from '@/lib/offers'
+import { offerForCountry, checkoutPathFor, TRIAL_OFFER, LIFETIME_OFFER } from '@/lib/offers'
+import { resolveLifetimePriceId } from '@/lib/offers-server'
 import { QUESTIONS_V2_MERGED as QUIZ_QUESTIONS } from '@/lib/questions-v2-merged'
 import { personaContent } from '@/lib/persona-content'
 import { readinessType, adopterTopPct } from '@/lib/readiness-type'
@@ -118,11 +119,6 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
 
 const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 
-// The lifetime payment link, for the countries where the trial never renews.
-// Distinct from the trial link because the static link is what people reach
-// when the modal fails, and a lifetime pitch must never hand off to a $4.99
-// subscription checkout.
-const STRIPE_LIFETIME_URL = process.env.NEXT_PUBLIC_LIFETIME_PAYMENT_URL || null
 
 // Design tokens (same handoff as v1)
 const INK = '#333333'
@@ -267,19 +263,19 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // whole page speaks in one offer's terms rather than putting lifetime copy
   // over a trial button.
   //
-  // Both gates must be open: the Stripe price has to exist AND the static
-  // fallback link has to exist, because a visitor whose modal fails is sent to
-  // that link and it must charge what the page promised. Either one missing
-  // and India simply sees the normal page, because a wrong charge is the only
-  // outcome that must be impossible. ?offer=lifetime previews it anywhere,
-  // ?offer=trial forces the normal page.
+  // ONE gate: does the lifetime price exist in Stripe. It is found by looking
+  // for an active one-time USD price at the lifetime amount on the library
+  // product, so creating it in Stripe is the only step, with no variable to
+  // set and no deploy to remember. If it is not there, India sees the ordinary
+  // page, because a wrong charge is the only outcome that must be impossible.
+  // ?offer=lifetime previews it anywhere, ?offer=trial forces the normal page.
   //
   // DECLARED HERE, above rawCheckoutUrl, because that line reads it. This page
   // has already shipped one temporal-dead-zone crash (digest 1002650819) that
   // tsc could not see.
   const visitorCountry = headers().get('x-vercel-ip-country') ?? undefined
   const offerParam = typeof searchParams.offer === 'string' ? searchParams.offer.trim().toLowerCase() : ''
-  const lifetimeReady = !!lifetimePriceId() && !!STRIPE_LIFETIME_URL
+  const lifetimeReady = !!(await resolveLifetimePriceId())
   const offer = offerParam === 'trial'
     ? TRIAL_OFFER
     : offerParam === 'lifetime' && lifetimeReady
@@ -289,8 +285,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // Every CTA on the page asks for the offer this visitor is being shown.
   const CTA = isLifetime ? CTA_LABEL_LIFETIME : CTA_LABEL
 
-  const rawCheckoutUrl = isLifetime && STRIPE_LIFETIME_URL
-    ? STRIPE_LIFETIME_URL
+  // A lifetime visitor never gets handed to a static buy.stripe.com link. Our
+  // own /checkout resolves the price from the offer server-side, so the
+  // fallback cannot charge something the page did not promise.
+  const rawCheckoutUrl = isLifetime
+    ? checkoutPathFor(offer, rowId)
     : endScreen?.ctaUrl ?? STRIPE_TRIAL_URL
   const checkoutUrl = (() => {
     if (!rowId || !/(^|\/\/)(buy\.stripe\.com)/.test(rawCheckoutUrl)) return rawCheckoutUrl

@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
-import { lifetimePriceId } from '@/lib/offers'
+import { resolveLifetimePriceId } from '@/lib/offers-server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -80,8 +80,9 @@ export async function POST(req: NextRequest) {
   // honoured: 'lifetime' is only real if the price is configured, and if it is
   // not we sell the trial rather than charge a lifetime price that does not
   // exist. The client cannot name a price, only an offer.
-  const lifetime = clean(body.offer) === 'lifetime' && !!lifetimePriceId()
-  const priceId = lifetime ? lifetimePriceId()! : PRICE_ID
+  const lifetimePrice = clean(body.offer) === 'lifetime' ? await resolveLifetimePriceId() : null
+  const lifetime = !!lifetimePrice
+  const priceId = lifetimePrice ?? PRICE_ID
   metadata.offer = lifetime ? 'lifetime' : 'trial'
 
   const customerEmail = await emailForSubmission(sub)

@@ -80,9 +80,16 @@ export function offerForCountry(country: string | null | undefined, lifetimeAvai
   return LIFETIME_COUNTRIES.has(cc) ? LIFETIME_OFFER : TRIAL_OFFER
 }
 
-/** Is the lifetime price configured? Server-side only. */
-export function lifetimePriceId(): string | null {
-  return process.env.STRIPE_LIFETIME_PRICE_ID?.trim() || null
+/** Where a visitor is sent when the embedded modal cannot load. Our own
+ *  checkout page, never a static Stripe link: the page resolves the price
+ *  server-side from the same offer, so the fallback cannot end up charging
+ *  something different from what the visitor was just promised. */
+export function checkoutPathFor(offer: Offer, submissionId?: string | null): string {
+  const p = new URLSearchParams()
+  if (offer.key !== 'trial') p.set('offer', offer.key)
+  if (submissionId) p.set('id', submissionId)
+  const qs = p.toString()
+  return `/checkout${qs ? `?${qs}` : ''}`
 }
 
 export function offerByKey(key: string | undefined | null): Offer {
