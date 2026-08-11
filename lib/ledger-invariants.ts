@@ -7,7 +7,9 @@
 // not a system, it is luck plus somebody's patience.
 //
 // Every check below is a query that takes milliseconds and answers a question
-// with a known right answer. They run on every Stripe sync and land in
+// with a known right answer. Six of them, and the last is the one that would
+// catch a bug nobody has thought of yet: every cent Stripe took must appear in
+// exactly one revenue line. They run on every Stripe sync and land in
 // `ledger_checks`, and the dashboard shows a red line when one fails. The
 // point is not that these particular bugs cannot recur; it is that a number
 // which stops adding up says so itself, on the hour, instead of waiting to be
@@ -135,7 +137,30 @@ export async function runLedgerChecks(c: SupabaseClient): Promise<CheckResult[]>
     add('no_charge_counted_twice', 'no charge is both a trial and a renewal', false, `check failed: ${msg(e)}`)
   }
 
-  // 5 ── The mirror is fresh. Every check above can pass on stale data and
+  // 5 ── THE IDENTITY. Do the six revenue lines add up to every cent Stripe
+  //      ever took? This is worth more than the four checks above put
+  //      together: they each catch a known shape of bug, this one catches any
+  //      rule that loses money or counts it twice, whatever shape it takes.
+  //      $83,032.55 on both sides the day it was written.
+  try {
+    const { data } = await c.from('ledger_identity').select('*').maybeSingle()
+    const d = data as Record<string, number> | null
+    if (!d) {
+      add('revenue_identity', 'the six revenue lines add up to every charge Stripe took', false, 'identity view returned nothing')
+    } else {
+      const lines = d.net_new_cents + d.existing_cents + d.not_quiz_cents
+        + d.won_quiz_cents + d.won_not_quiz_cents + d.lifetime_half_cents + d.residual_cents
+      const diff = lines - d.stripe_cents
+      add('revenue_identity', 'the six revenue lines add up to every charge Stripe took',
+        diff === 0,
+        `lines $${(lines / 100).toFixed(2)} vs Stripe $${(d.stripe_cents / 100).toFixed(2)}`
+          + (diff === 0 ? ', exact' : `, off by $${(diff / 100).toFixed(2)}`))
+    }
+  } catch (e) {
+    add('revenue_identity', 'the six revenue lines add up to every charge Stripe took', false, `check failed: ${msg(e)}`)
+  }
+
+  // 6 ── The mirror is fresh. Every check above can pass on stale data and
   //      still describe a world that no longer exists.
   try {
     const { data } = await c.from('stripe_charges').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle()
