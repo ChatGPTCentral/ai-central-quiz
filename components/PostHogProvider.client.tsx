@@ -83,6 +83,29 @@ export default function PostHogProvider() {
       // errors on /result", which is a number you cannot act on.
       capture_exceptions: true,
 
+      // DEAD CLICKS, WITH THE ELEMENT ATTACHED.
+      //
+      // This was off, and it is the single reason "which element is dead?" has
+      // been unanswerable. Clarity counts dead clicks per URL and its export
+      // API cannot say which element was clicked, so 150 dead clicks on
+      // /quiz-v2 was a number with no next step. PostHog captures a
+      // $dead_click carrying the elements chain, which turns the same number
+      // into a selector we can go and fix.
+      //
+      // A dead click is someone deciding to act and getting nothing back. It
+      // is the cheapest conversion loss there is, because the intent already
+      // exists and only the wiring is missing.
+      capture_dead_clicks: true,
+
+      // Rage clicks: the same signal, angrier. Both are cheap events, only
+      // fired when a person is already frustrated, so the volume is tiny.
+      rageclick: true,
+
+      // The DOM detail behind autocapture, which is what makes a dead click
+      // actionable rather than a tally. Without it every click reads as
+      // "something on this page".
+      capture_heatmaps: true,
+
       session_recording: {
         // NON-NEGOTIABLE. The quiz collects a name and an email, and the
         // checkout collects card details. Replay records the DOM, so without

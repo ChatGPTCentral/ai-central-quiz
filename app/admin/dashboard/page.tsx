@@ -18,6 +18,8 @@ import {
 } from '@/lib/trial-entries'
 import DashboardArea from './DashboardArea.client'
 import LedgerHealth from '@/components/admin/LedgerHealth'
+import UxHealth from '@/components/admin/UxHealth'
+import type { UxSignal } from '@/lib/ux-watch'
 import type { CheckResult } from '@/lib/ledger-invariants'
 import { type BentoRow, type FunnelEventCounts, type PlacementStat, type SeriesPoint, type Series } from './DashboardBento.client'
 
@@ -464,6 +466,7 @@ export default async function DashboardPage({
   // it passes; a red block above everything when it does not, because a wrong
   // number acted on is worse than no number.
   let health: { checks: CheckResult[] | null; ranAt: string | null } = { checks: null, ranAt: null }
+  let uxHealth: { signals: UxSignal[] | null; ranAt: string | null } = { signals: null, ranAt: null }
   try {
     const hUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
     const hKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
@@ -472,14 +475,21 @@ export default async function DashboardPage({
         auth: { persistSession: false, autoRefreshToken: false },
         global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
       })
-      const { data } = await hc.from('ledger_checks').select('ran_at, results').order('ran_at', { ascending: false }).limit(1).maybeSingle()
-      health = { checks: (data?.results ?? null) as CheckResult[] | null, ranAt: (data?.ran_at ?? null) as string | null }
+      const [led, ux] = await Promise.all([
+        hc.from('ledger_checks').select('ran_at, results').order('ran_at', { ascending: false }).limit(1).maybeSingle(),
+        hc.from('ux_checks').select('ran_at, signals').order('ran_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+      health = { checks: (led.data?.results ?? null) as CheckResult[] | null, ranAt: (led.data?.ran_at ?? null) as string | null }
+      uxHealth = { signals: (ux.data?.signals ?? null) as UxSignal[] | null, ranAt: (ux.data?.ran_at ?? null) as string | null }
     }
   } catch { /* health is a nice-to-have; it must never take the page down */ }
 
   return (
     <>
-    <div style={{ padding: '0 20px' }}><LedgerHealth checks={health.checks} ranAt={health.ranAt} /></div>
+    <div style={{ padding: '0 20px' }}>
+      <UxHealth signals={uxHealth.signals} ranAt={uxHealth.ranAt} />
+      <LedgerHealth checks={health.checks} ranAt={health.ranAt} />
+    </div>
     <DashboardArea
       rows={rows}
       sample={sample}
