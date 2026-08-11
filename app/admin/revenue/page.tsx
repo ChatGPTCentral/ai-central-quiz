@@ -20,7 +20,10 @@
 //   · a second trial within 32 days is a duplicate subscription, not a trial;
 //     a second trial a year later, in a new era, is a real second trial
 //   · a trial younger than 32 days is NOT DUE yet, so it never counts against
-//     a conversion rate
+//     a conversion rate — UNLESS it already converted, because a payment
+//     proves the bill date arrived (renewals land at day 30-31, so without
+//     that clause a conversion could sit outside the denominator on the very
+//     day it happened)
 
 import { createClient } from '@supabase/supabase-js'
 import TrialState from '@/components/admin/TrialState.client'
