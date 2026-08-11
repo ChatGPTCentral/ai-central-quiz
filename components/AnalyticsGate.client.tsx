@@ -52,6 +52,18 @@ function loadClarity(id: string) {
   const s = document.createElement('script')
   s.id = 'ms-clarity'
   s.async = true
+  // UNMASKS THE ERROR. Without this, anything thrown inside a cross-origin
+  // script reaches window.onerror as the string "Script error." with no
+  // message, no file, no line and no stack: the browser's deliberate privacy
+  // rule. /result logged 125 of those in a fortnight on the page where every
+  // sale happens, and there was no way to tell a harmless third-party warning
+  // from something breaking checkout.
+  //
+  // Safe because clarity.ms answers with Access-Control-Allow-Origin: *,
+  // checked before this was added. That check matters: on a CDN WITHOUT the
+  // header, crossOrigin makes the script fail to load entirely, so this would
+  // trade an unreadable error for no analytics at all.
+  s.crossOrigin = 'anonymous'
   s.src = `https://www.clarity.ms/tag/${id}`
   document.head.appendChild(s)
 }
@@ -69,6 +81,10 @@ function loadLinkedIn(partnerId: string) {
   const s = document.createElement('script')
   s.id = 'linkedin-insight'
   s.async = true
+  // Same reason as Clarity above, same check: licdn.com sends
+  // Access-Control-Allow-Origin: *. The Insight Tag is a likely suspect for
+  // the opaque errors, so making it speak is the point.
+  s.crossOrigin = 'anonymous'
   s.src = 'https://snap.licdn.com/li.lms-analytics/insight.min.js'
   document.head.appendChild(s)
 }
