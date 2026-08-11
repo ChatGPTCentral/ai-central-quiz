@@ -15,6 +15,8 @@
 // threshold, and enough detail to act without a second query. Anything over
 // threshold appears on the dashboard; everything else stays silent.
 
+import { hogql } from '@/lib/posthog-read'
+
 export interface UxSignal {
   key: string
   /** What was measured, in the words you would use to a person. */
@@ -160,22 +162,20 @@ export const UX_QUERIES: {
   },
 ]
 
-/** Run one HogQL query against PostHog. Returns rows, or throws. */
-export async function hogql(sql: string): Promise<any[]> {
-  const key = process.env.POSTHOG_PERSONAL_API_KEY
-  const project = process.env.POSTHOG_PROJECT_ID
-  if (!key || !project) throw new Error('POSTHOG_PERSONAL_API_KEY or POSTHOG_PROJECT_ID not set')
-  const host = process.env.POSTHOG_API_HOST || 'https://us.posthog.com'
-  const res = await fetch(`${host}/api/projects/${project}/query/`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: { kind: 'HogQLQuery', query: sql } }),
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
-  const d = await res.json()
-  const cols: string[] = d.columns ?? []
-  return (d.results ?? []).map((row: any[]) => Object.fromEntries(cols.map((c, i) => [c, row[i]])))
+/**
+ * Run one HogQL query. Uses the SHARED reader in lib/posthog-read.ts, which
+ * already owns the host and can discover the project id from the API key.
+ *
+ * The first draft of this file grew its own copy of that plumbing, with a
+ * different host default and a hard requirement on POSTHOG_PROJECT_ID — which
+ * is the exact failure posthog-read.ts was written to end, and its header says
+ * so. Duplicated plumbing diverges, every time, and a watcher that silently
+ * queried the wrong region would be worse than no watcher at all.
+ */
+async function rows(sql: string): Promise<any[]> {
+  const r = await hogql(sql)
+  if (r.error) throw new Error(r.error)
+  return r.rows.map(row => Object.fromEntries(r.columns.map((c, i) => [c, (row as unknown[])[i]])))
 }
 
 /**
@@ -186,8 +186,8 @@ export async function runUxWatch(): Promise<UxSignal[]> {
   const out: UxSignal[] = []
   for (const q of UX_QUERIES) {
     try {
-      const rows = await hogql(q.sql)
-      const { value, detail } = q.read(rows)
+      const r = await rows(q.sql)
+      const { value, detail } = q.read(r)
       out.push({ key: q.key, claim: q.claim, value, threshold: q.threshold, ok: value <= q.threshold, detail, severity: q.severity })
     } catch (e) {
       out.push({
