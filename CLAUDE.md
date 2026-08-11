@@ -107,6 +107,27 @@ Treat it the way a programmer treats the team board:
   Phases: `A` loops/measurement · `B` owned loop (nurture) · `C` conversion ·
   `D` paid loop · `OPS` · `FUTURE`.
 
+## What we know about buyers (measured 2026-08-11, n=74 vs 1,480)
+
+From `buyer_behaviour_lift` and `buyer_placement_quality`, both built on
+`funnel_events` + `trial_ledger`. NOT from PostHog, which sees a handful of
+buyers because identity there stays anonymous until someone is identified.
+
+- **Buyers engage MORE, not less.** Median 12 events against 8, 4.4 active
+  events against 1.6, and 3.3 minutes on site against 0.7. A PostHog reading
+  of "4.2 events vs 28.2" said the opposite; it was n=4 and wrong. Do not
+  repeat it.
+- **It happens in one visit.** ~1.2 sessions either way. Nobody goes away and
+  comes back to decide, so there is no considered-purchase window to nurture.
+- **They spend those minutes on the OFFER.** Every checkout event lifts hard
+  (checkout_click 93.2% vs 35.2%). Every diversion lifts for non-buyers: wheel
+  spin 2.7 vs 3.8, free win 1.4 vs 2.1, share 5.4 vs 6.2, exit rescue 4.1 vs
+  5.6. The page is not too long, it is too divided.
+- **The buttons that sell are nearly invisible.** v2_offer_stack_badges
+  converts 69% of its clickers, v2_study_plan 9%, but study_plan is seen by
+  1,129 people and badges by so few its impression was not even instrumented
+  until 2026-08-11.
+
 ## Conventions
 
 - Copy style: no em dashes, use commas.
