@@ -177,16 +177,13 @@ export const UX_QUERIES: {
     // busy, they bounced because the page did not hold them.
     threshold: 25,
     severity: 'warn',
-    sql: `SELECT replaceRegexpOne(toString(properties.$current_url), '\\?.*$', '') AS page, count() AS n
+    sql: `SELECT splitByChar('?', toString(properties.$current_url))[1] AS page, count() AS n
           FROM events
           WHERE event = '$pageview' AND timestamp > now() - INTERVAL 6 HOUR
             AND toString(properties.$current_url) NOT LIKE '%/admin%'
             AND properties.$session_id NOT IN (
               SELECT properties.$session_id FROM events
               WHERE timestamp > now() - INTERVAL 6 HOUR
-                -- PostHog events ONLY. quiz_start and checkout_click were in
-                -- this list and are ours, not PostHog's, so they filtered
-                -- nothing. $autocapture covers a real click either way.
                 AND event IN ('$autocapture', '$dead_click', '$rageclick')
             )
           GROUP BY page ORDER BY n DESC LIMIT 6`,
@@ -265,14 +262,10 @@ export const UX_QUERIES: {
     // PostHog captures web vitals for free and nobody has ever looked at them.
     threshold: 0,
     severity: 'warn',
-    sql: `SELECT replaceRegexpOne(toString(properties.$current_url), '\\?.*$', '') AS page,
+    sql: `SELECT splitByChar('?', toString(properties.$current_url))[1] AS page,
                  round(quantile(0.75)(toFloat(properties.$web_vitals_LCP_value)) / 1000, 2) AS lcp_s,
                  count() AS n
           FROM events
-          -- 24 HOURS, not 6. At 6 the HAVING floor below never filled, so this
-          -- check returned no rows, scored 0 and passed every single time.
-          -- Page speed does not change hourly; the window should match the
-          -- signal, not the schedule.
           WHERE event = '$web_vitals' AND timestamp > now() - INTERVAL 24 HOUR
             AND toString(properties.$current_url) NOT LIKE '%/admin%'
             AND toFloat(properties.$web_vitals_LCP_value) > 0

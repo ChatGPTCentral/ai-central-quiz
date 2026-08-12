@@ -43,7 +43,7 @@ export async function uxByPage(days = 7): Promise<{ rows: UxPageRow[]; snapshotD
       HAVING countIf(event IN ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click')) = 0
     )
     SELECT
-      replaceRegexpOne(toString(properties.$current_url), '\\\\?.*$', '') AS url,
+      splitByChar('?', toString(properties.$current_url))[1] AS url,
       uniqIf(properties.$session_id, event = '$pageview') AS sessions,
       countIf(event = '$rageclick') AS rage,
       countIf(event = '$dead_click') AS dead,
