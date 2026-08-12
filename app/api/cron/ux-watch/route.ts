@@ -28,11 +28,18 @@ function db() {
 }
 
 export async function GET(req: NextRequest) {
-  // Vercel cron sends its own header; a human can pass the cron secret.
-  const isCron = req.headers.get('x-vercel-cron') === '1'
+  // SAME CONTRACT AS EVERY OTHER CRON IN THIS REPO: Bearer CRON_SECRET.
+  //
+  // The first version of this checked for an x-vercel-cron header instead,
+  // which I invented rather than copied. It fired at 00:05:33 on 2026-08-12
+  // and returned 401 to Vercel's own scheduler, so the watcher built to catch
+  // silent failures spent its first night silently failing to run. Meanwhile
+  // pass-recovery and checkout-recovery, three files away, had the working
+  // pattern the whole time.
   const secret = process.env.CRON_SECRET
-  const authed = isCron || (!!secret && req.nextUrl.searchParams.get('secret') === secret)
-  if (!authed) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
 
   const signals = await runUxWatch()
   const failing = signals.filter(s => !s.ok)
