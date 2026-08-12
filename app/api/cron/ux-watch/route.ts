@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { runUxWatch } from '@/lib/ux-watch'
+import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -37,7 +38,12 @@ export async function GET(req: NextRequest) {
   // pass-recovery and checkout-recovery, three files away, had the working
   // pattern the whole time.
   const secret = process.env.CRON_SECRET
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
+  const fromCron = !!secret && req.headers.get('authorization') === `Bearer ${secret}`
+  // OR a signed-in admin, so this is never again six hours away from an
+  // answer. The schedule is for the machine; a person watching something break
+  // should be able to ask right now, the way the Sync Stripe button works.
+  const fromAdmin = await verifySessionCookie(req.cookies.get(ADMIN_COOKIE_NAME)?.value)
+  if (!fromCron && !fromAdmin) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
