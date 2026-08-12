@@ -33,6 +33,11 @@ const GRANS: Gran[] = ['day', 'week', 'month']
 
 type EventBuckets = Record<Gran, Record<string, { views: number; starts: number; checkout: number }>>
 
+/** One cohort cell of the per-person funnel. jLanded is people whose first
+ *  landing view fell in this bucket; jLandStarted is how many of THOSE went on
+ *  to start, whenever that happened. Rates from these cannot exceed 100%. */
+type JourneyCell = { jLanded: number; jLandStarted: number; jStarted: number; jStartCompleted: number; jCompleted: number; jCompletedClicked: number }
+
 /** Placement counts as they come off the events read, before the sales join.
  *  `clickerIds` are the submissions that clicked this button, which is what
  *  turns "gets clicked" into "gets paid" once the CRM rows are in hand. */
@@ -40,11 +45,12 @@ type RawPlacement = { placement: string; views: number; clicks: number; clickerI
 
 // Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
 // by day / week / month so the progression charts can toggle granularity.
-async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets }> {
+async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets; journeyBuckets: Record<Gran, Record<string, JourneyCell>> }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
-  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets }
+  const emptyJourneys: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
+  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jLandStarted: 0, jStarted: 0, jStartCompleted: 0, jCompleted: 0, jCompletedClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -67,6 +73,16 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   // started silently DROPPING the newest data: the read is ordered ascending,
   // so a truncated page loses the most recent events, and every funnel count
   // would have quietly frozen. It logs now instead of failing in silence.
+  // THE PER-PERSON FUNNEL. One entry per actor, holding the FIRST time they
+  // hit each stage. Every step rate is built from this, so a rate means "of
+  // the people who did A, how many went on to B", same person, timestamps in
+  // order. It replaces dividing one day's distinct quiz_starters by the same
+  // day's distinct landing-viewers — two unrelated populations, which is how
+  // the matrix printed a 111% step and 20 landings against 20 results
+  // (owner, 2026-08-12): a person arriving at /result from an email link was
+  // being credited to a landing page they never saw.
+  const journeys = new Map<string, { land?: number; start?: number; result?: number; click?: number }>()
+
   const MAX_EVENTS = 400_000
   const PAGE = 1000
   let truncated = true
@@ -83,6 +99,16 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
       // Skip rows with no identifier so counts aren't inflated to row totals.
       const who = r.anon_id || r.session_id
       if (!who) continue
+      const stage = r.event === 'quiz_view' ? 'land' as const
+        : r.event === 'quiz_start' ? 'start' as const
+        : r.event === 'result_view' ? 'result' as const
+        : r.event === 'checkout_click' ? 'click' as const : null
+      if (stage) {
+        const t = Date.parse(r.ts)
+        const j = journeys.get(who) || {}
+        const cur = j[stage]
+        if (cur === undefined || t < cur) { j[stage] = t; journeys.set(who, j) }
+      }
       const kind = r.event === 'quiz_view' ? 'views' : r.event === 'quiz_start' ? 'starts' : r.event === 'checkout_click' ? 'checkout' : null
       if (kind) { for (const g of GRANS) bump(g, bucketKey(r.ts, g), kind, who) }
       if (r.event === 'quiz_view') uniq.landing.add(who)
@@ -105,6 +131,39 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
     if (data.length < PAGE) { truncated = false; break }
   }
   if (truncated) console.warn(`[dashboard] event read hit the ${MAX_EVENTS} ceiling — funnel counts are UNDERSTATED and the newest events are missing`)
+
+  // Cohort semantics: a person belongs to the bucket of the ROOT event of
+  // each step. Someone who lands on Monday and starts on Tuesday counts in
+  // Monday's landed→started rate, because the question each cell answers is
+  // "of the people who arrived in this period, what became of them".
+  const emptyJourneyCell = (): JourneyCell => ({ jLanded: 0, jLandStarted: 0, jStarted: 0, jStartCompleted: 0, jCompleted: 0, jCompletedClicked: 0 })
+  const jBuckets: Record<Gran, Map<string, JourneyCell>> = { day: new Map(), week: new Map(), month: new Map() }
+  const jTotals = emptyJourneyCell()
+  const jAdd = (g: Gran, ts: number, f: (c: JourneyCell) => void) => {
+    const b = bucketKey(new Date(ts).toISOString(), g)
+    if (!b) return
+    const c = jBuckets[g].get(b) || emptyJourneyCell()
+    f(c); jBuckets[g].set(b, c)
+  }
+  for (const j of Array.from(journeys.values())) {
+    if (j.land !== undefined) {
+      const went = j.start !== undefined && j.start >= j.land
+      jTotals.jLanded++; if (went) jTotals.jLandStarted++
+      for (const g of GRANS) jAdd(g, j.land, c => { c.jLanded++; if (went) c.jLandStarted++ })
+    }
+    if (j.start !== undefined) {
+      const went = j.result !== undefined && j.result >= j.start
+      jTotals.jStarted++; if (went) jTotals.jStartCompleted++
+      for (const g of GRANS) jAdd(g, j.start, c => { c.jStarted++; if (went) c.jStartCompleted++ })
+    }
+    if (j.result !== undefined) {
+      const went = j.click !== undefined && j.click >= j.result
+      jTotals.jCompleted++; if (went) jTotals.jCompletedClicked++
+      for (const g of GRANS) jAdd(g, j.result, c => { c.jCompleted++; if (went) c.jCompletedClicked++ })
+    }
+  }
+  const journeyBuckets: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
+  for (const g of GRANS) for (const [b, c] of Array.from(jBuckets[g])) journeyBuckets[g][b] = c
   // When client instrumentation actually started. The quiz launched Jul 5 but
   // the first funnel_event is Jul 9, so the first days have NO event data at
   // all. Printing 0 there reads as "nobody visited", which is false and made
@@ -119,11 +178,12 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   for (const g of GRANS) for (const [bucket, s] of Array.from(ev[g])) eventBuckets[g][bucket] = { views: s.views.size, starts: s.starts.size, checkout: s.checkout.size }
   return {
     firstEventAt,
-    funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size },
+    funnel: { landing: uniq.landing.size, started: uniq.started.size, checkout: uniq.checkout.size, ...jTotals },
     placements: Array.from(pl.entries())
       .map(([placement, s]) => ({ placement, views: s.views.size, clicks: s.clicks.size, clickerIds: Array.from(s.buyers) }))
       .sort((a, b) => b.views - a.views || b.clicks - a.clicks),
     eventBuckets,
+    journeyBuckets,
   }
 }
 
@@ -217,7 +277,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets }
+  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jLandStarted: 0, jStarted: 0, jStartCompleted: 0, jCompleted: 0, jCompletedClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>> }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -415,7 +475,8 @@ export default async function DashboardPage({
     }
 
     const evb = events.eventBuckets[gran]
-    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Array.from(otherByBucket.keys()), ...Array.from(quizExistingByBucket.keys()), ...Array.from(revByBucket.keys())]))
+    const jvb = events.journeyBuckets[gran]
+    const keys = Array.from(new Set([...Array.from(subs.keys()), ...Object.keys(evb), ...Object.keys(jvb), ...Array.from(otherByBucket.keys()), ...Array.from(quizExistingByBucket.keys()), ...Array.from(revByBucket.keys())]))
       .filter(k => k >= launchBucket).sort()
     const cap = gran === 'day' ? 21 : gran === 'week' ? 12 : 12
     return keys.slice(-cap).map(bucket => ({
@@ -434,6 +495,12 @@ export default async function DashboardPage({
       starts: evb[bucket]?.starts || 0,
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
       checkout: evb[bucket]?.checkout || 0,
+      jLanded: jvb[bucket]?.jLanded || 0,
+      jLandStarted: jvb[bucket]?.jLandStarted || 0,
+      jStarted: jvb[bucket]?.jStarted || 0,
+      jStartCompleted: jvb[bucket]?.jStartCompleted || 0,
+      jCompleted: jvb[bucket]?.jCompleted || 0,
+      jCompletedClicked: jvb[bucket]?.jCompletedClicked || 0,
       netNew: netNewByBucket.get(bucket) || 0,     // from the ledger, quiz clock
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
       quizExistingPaid: quizExistingByBucket.get(bucket) || 0,

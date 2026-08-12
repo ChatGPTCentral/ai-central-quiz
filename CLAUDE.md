@@ -78,6 +78,13 @@ Rules that follow from it:
 - Adding a rule (a new price, a bundle, a refund case) means editing the
   ledger, once. If a fix needs touching two files to keep numbers equal, the
   architecture is wrong, not the numbers.
+- **A funnel step rate is "of the people who did A, how many then did B" —
+  same person, timestamps in order.** Never a ratio of two independent
+  head-counts: that method showed 111% steps and 20 landings against 20
+  results, and flattered landing→start by up to 30 points, because people
+  entering the quiz from email links were credited to a landing page they
+  never saw (caught by the owner, 2026-08-12). Rates are never clamped to
+  100: a wrong ratio must look wrong.
 
 ## The roadmap board is the source of truth
 

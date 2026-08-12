@@ -35,7 +35,15 @@ export interface BentoRow {
    *  another trial. netNew is a strict subset. */
   quizTrial: boolean
 }
-export interface FunnelEventCounts { landing: number; started: number; checkout: number }
+export interface FunnelEventCounts {
+  landing: number; started: number; checkout: number
+  /** Whole-window per-person funnel totals: jLanded people saw the landing
+   *  page, jLandStarted of THOSE went on to start, and so on. Same person,
+   *  timestamps in order, so a rate built from these cannot exceed 100%. */
+  jLanded: number; jLandStarted: number
+  jStarted: number; jStartCompleted: number
+  jCompleted: number; jCompletedClicked: number
+}
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
 export interface SeriesPoint {
   bucket: string
@@ -44,6 +52,14 @@ export interface SeriesPoint {
    *  data — 'none' renders "–" rather than a lying 0. */
   eventsCovered: 'none' | 'partial' | 'full'
   views: number; starts: number; checkout: number; completed: number
+  /** The per-person funnel, cohorted by the bucket of each step's ROOT event:
+   *  jLanded people first saw the landing page in this bucket, jLandStarted of
+   *  those went on to start whenever that happened. The step rates render from
+   *  THESE, never from ratios of independent head-counts — which is how this
+   *  matrix once printed a 111% step (owner, 2026-08-12). */
+  jLanded: number; jLandStarted: number
+  jStarted: number; jStartCompleted: number
+  jCompleted: number; jCompletedClicked: number
   netNew: number
   /** Trials the quiz cannot claim at all, bucketed on CHARGE date. */
   otherPaid: number
@@ -300,7 +316,8 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  `all` collapses to the single whole-window column. */
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
-  F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number }
+  F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
+       jLanded: number; jLandStarted: number; jStarted: number; jStartCompleted: number; jCompleted: number; jCompletedClicked: number }
   lifetimeSplits: number
   /** People holding more than one paid trial. Every trial counts. */
   quizRepeatTrials: number
@@ -338,11 +355,17 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const drillable = (on: boolean): React.CSSProperties =>
     on ? { cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 } : {}
 
-  // Step-to-step rate: the share of the PREVIOUS station that made it here.
-  // Clamped to 100 like the summary rows below — a step rate over 100% means
-  // the two stations are counted over different windows, not that more people
-  // arrived than left.
-  const step = (n: number, d: number) => (d > 0 ? Math.min(100, (n / d) * 100) : 0)
+  // Step-to-step rate for CROSS-SOURCE ratios (a ledger numerator over an
+  // event denominator). UNCLAMPED, deliberately: this used to Math.min(100,·),
+  // and that clamp is exactly how an impossible 111% survived on the dashboard
+  // reading as a plausible 100 — hiding the measurement bug the owner
+  // eventually caught in the raw numbers. If a ratio is wrong it must LOOK
+  // wrong.
+  const step = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0)
+  // Share of a per-person cohort that reached the next stage. Same person,
+  // ordered timestamps, so >100% is impossible by construction rather than by
+  // clamping.
+  const share = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0)
 
   // THE TOTAL COLUMN SUMS WHAT IS ON SCREEN, nothing more. It used to carry
   // the whole-window figure while the table showed only the last 12 periods,
@@ -382,15 +405,23 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   }[] = [
     {
       label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: sumB(p => p.views, F.landing), warm: false,
-      out: { label: 'landing → started', all: step(sumB(p => p.starts, F.started), sumB(p => p.views, F.landing)), per: p => step(p.starts, p.views) },
+      // "Of the people who first landed in this period, the share who went on
+      // to start" — the SAME people, whenever the start happened. The old rate
+      // divided this bucket's distinct starters by this bucket's distinct
+      // landing-viewers: two unrelated populations, inflated by everyone who
+      // entered the quiz without ever seeing the landing page.
+      out: { label: 'landed → then started', all: share(sumB(p => p.jLandStarted, F.jLandStarted), sumB(p => p.jLanded, F.jLanded)), per: p => share(p.jLandStarted, p.jLanded) },
     },
     {
       label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: sumB(p => p.starts, F.started), warm: false,
-      out: { label: 'started → completed', all: step(sumB(p => p.cleanCompleted, F.completed), sumB(p => p.starts, F.started)), per: p => step(p.cleanCompleted, p.starts) },
+      out: { label: 'started → then completed', all: share(sumB(p => p.jStartCompleted, F.jStartCompleted), sumB(p => p.jStarted, F.jStarted)), per: p => share(p.jStartCompleted, p.jStarted) },
     },
     {
+      // Station COUNT stays the submissions record count (one row per person,
+      // the real number of finishers). The step rate beneath tracks the same
+      // people from their result_view to a checkout click.
       label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: sumB(p => p.completed, F.completed), warm: false,
-      out: { label: 'completed → clicked', all: step(sumB(p => p.checkout, F.checkout), sumB(p => p.cleanCompleted, F.completed)), per: p => step(p.checkout, p.cleanCompleted) },
+      out: { label: 'completed → then clicked', all: share(sumB(p => p.jCompletedClicked, F.jCompletedClicked), sumB(p => p.jCompleted, F.jCompleted)), per: p => share(p.jCompletedClicked, p.jCompleted) },
     },
     {
       label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: sumB(p => p.checkout, F.checkout), warm: false,
@@ -485,8 +516,8 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   const quizEarned = (p: SeriesPoint) => p.netNew + p.quizExistingPaid
   const quizEarnedTot = sumB(quizEarned, F.paid + F.quizExistingPaid)
   const topRows: RateRow[] = [
-    { label: 'Result-page CVR', all: step(quizEarnedTot, sumB(p => p.completed, F.completed)), per: (p: SeriesPoint) => (p.completed > 0 ? Math.min(100, (quizEarned(p) / p.completed) * 100) : 0), heavy: false },
-    { label: 'Full-funnel CVR', all: step(quizEarnedTot, sumB(p => p.views, F.landing)), per: (p: SeriesPoint) => (p.views > 0 ? Math.min(100, (quizEarned(p) / p.views) * 100) : 0), heavy: true },
+    { label: 'Result-page CVR', all: step(quizEarnedTot, sumB(p => p.completed, F.completed)), per: (p: SeriesPoint) => (p.completed > 0 ? (quizEarned(p) / p.completed) * 100 : 0), heavy: false },
+    { label: 'Full-funnel CVR', all: step(quizEarnedTot, sumB(p => p.views, F.landing)), per: (p: SeriesPoint) => (p.views > 0 ? (quizEarned(p) / p.views) * 100 : 0), heavy: true },
   ]
 
   const rateRows: RateRow[] = [
@@ -498,7 +529,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       label: 'TRIAL CVR', heavy: true,
       sub: 'trials that went on to pay a renewal, divided by ALL trials of that period. Recent periods read low because their trials are not due yet, which is the truth rather than a gap.',
       all: allTrialsTot > 0 ? (sumB(p => p.billedAnnual, billedAll) / allTrialsTot) * 100 : 0,
-      per: (p: SeriesPoint) => { const t = allTrials(p); return t > 0 ? Math.min(100, (p.billedAnnual / t) * 100) : 0 },
+      per: (p: SeriesPoint) => { const t = allTrials(p); return t > 0 ? (p.billedAnnual / t) * 100 : 0 },
       // No window total. At any moment a large share of trials have not
       // reached their renewal date, so a single all-window rate is guaranteed
       // to understate and would be read as the real conversion rate (owner,
@@ -915,7 +946,13 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   //    count; paid is net-new. Completed + paid come from the SAME rows as every
   //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
-  const F = { landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout, paid: wholeNetNew, otherPaid, quizExistingPaid }
+  const F = {
+    landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout,
+    paid: wholeNetNew, otherPaid, quizExistingPaid,
+    jLanded: funnelEvents.jLanded, jLandStarted: funnelEvents.jLandStarted,
+    jStarted: funnelEvents.jStarted, jStartCompleted: funnelEvents.jStartCompleted,
+    jCompleted: funnelEvents.jCompleted, jCompletedClicked: funnelEvents.jCompletedClicked,
+  }
   const hasSeries = series.week.length > 0 || series.day.length > 0
 
   const bestCtr = placements.reduce<string | null>((best, p) => {
