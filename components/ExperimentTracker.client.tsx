@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { sendEvent } from '@/lib/events-client'
+import posthog from 'posthog-js'
 
 /**
  * Exposure beacon for experiment assignments (TrackView pattern).
@@ -43,15 +44,14 @@ export default function ExperimentTracker({
       // filters replays AND makes "did this arm convert" answerable in a
       // query, which a recording filter never could.
       try {
-        const w = window as unknown as {
-          clarity?: (cmd: string, k: string, v: string) => void
-          posthog?: { register?: (p: Record<string, unknown>) => void; capture?: (e: string, p?: Record<string, unknown>) => void }
-        }
+        const w = window as unknown as { clarity?: (cmd: string, k: string, v: string) => void }
         w.clarity?.('set', 'experiment', `${a.experimentKey}:${a.variantKey}`)
-        w.posthog?.register?.({ experiment: a.experimentKey, variant: a.variantKey })
-        // An explicit exposure event, so arm balance and arm conversion are
-        // both answerable from PostHog alone. The six-hour watcher reads this.
-        w.posthog?.capture?.('experiment_exposure', {
+        // posthog-js is a MODULE, not a window global. The first version of
+        // this reached for window.posthog, which posthog-js never sets, so
+        // optional chaining made it a silent no-op and experiment_exposure
+        // never reached PostHog at all. Verified by querying: zero events.
+        posthog.register({ experiment: a.experimentKey, variant: a.variantKey })
+        posthog.capture('experiment_exposure', {
           experiment: a.experimentKey,
           variant: a.variantKey,
           submissionId,

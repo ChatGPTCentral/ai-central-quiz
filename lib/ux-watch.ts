@@ -211,9 +211,10 @@ export const UX_QUERIES: {
     severity: 'warn',
     source: 'supabase',
     sql: `select
-            count(distinct case when event = 'checkout_click' then coalesce(submission_id::text, anon_id::text, session_id) end) as opened,
-            count(distinct case when event = 'express_pay_success' then coalesce(submission_id::text, anon_id::text, session_id) end) as paid
-          from funnel_events where ts >= now() - interval '6 hours'`,
+            (select count(distinct coalesce(submission_id::text, anon_id::text, session_id))
+               from funnel_events where event = 'checkout_click' and ts >= now() - interval '6 hours') as opened,
+            (select count(*) from trial_ledger
+               where not trial_refunded and trial_at >= now() - interval '6 hours') as paid`,
     read: rows => {
       const r = rows[0] || {}
       const opened = Number(r.opened || 0)
@@ -268,10 +269,14 @@ export const UX_QUERIES: {
                  round(quantile(0.75)(toFloat(properties.$web_vitals_LCP_value)) / 1000, 2) AS lcp_s,
                  count() AS n
           FROM events
-          WHERE event = '$web_vitals' AND timestamp > now() - INTERVAL 6 HOUR
+          -- 24 HOURS, not 6. At 6 the HAVING floor below never filled, so this
+          -- check returned no rows, scored 0 and passed every single time.
+          -- Page speed does not change hourly; the window should match the
+          -- signal, not the schedule.
+          WHERE event = '$web_vitals' AND timestamp > now() - INTERVAL 24 HOUR
             AND toString(properties.$current_url) NOT LIKE '%/admin%'
             AND toFloat(properties.$web_vitals_LCP_value) > 0
-          GROUP BY page HAVING count() >= 15 ORDER BY lcp_s DESC LIMIT 5`,
+          GROUP BY page HAVING count() >= 20 ORDER BY lcp_s DESC LIMIT 5`,
     read: rows => {
       // 2.5s is Google's "needs improvement" line; 4s is "poor". Judge on the
       // 75th percentile, which is what Core Web Vitals reports on, so one slow
