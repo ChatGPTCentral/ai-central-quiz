@@ -39,6 +39,13 @@ export const UX_QUERIES: {
   claim: string
   threshold: number
   severity: 'critical' | 'warn'
+  /** WHICH STORE THIS READS. Added 2026-08-12 after checkout_abandon was found
+   *  querying PostHog for `checkout_click`, an event that only exists in our
+   *  own funnel_events. PostHog does not error on an unknown event name, it
+   *  returns zero rows, so the check scored 0, sat under its threshold and
+   *  reported healthy forever. Naming the source makes that mistake visible in
+   *  the source rather than only in production. */
+  source?: 'posthog' | 'supabase'
   sql: string
   /** Turn rows into the number and the sentence a person reads. */
   read: (rows: any[]) => { value: number; detail: string }
@@ -177,7 +184,10 @@ export const UX_QUERIES: {
             AND properties.$session_id NOT IN (
               SELECT properties.$session_id FROM events
               WHERE timestamp > now() - INTERVAL 6 HOUR
-                AND event IN ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click')
+                -- PostHog events ONLY. quiz_start and checkout_click were in
+                -- this list and are ours, not PostHog's, so they filtered
+                -- nothing. $autocapture covers a real click either way.
+                AND event IN ('$autocapture', '$dead_click', '$rageclick')
             )
           GROUP BY page ORDER BY n DESC LIMIT 6`,
     read: rows => ({
@@ -190,22 +200,26 @@ export const UX_QUERIES: {
   {
     key: 'checkout_abandon',
     claim: 'people opened checkout and did not buy',
-    // WHY THEY BOUNCE, at the most expensive moment there is. A high number
-    // here with no errors beside it is a persuasion or a pricing problem; a
-    // high number WITH errors is a bug. The pairing is the diagnosis, which is
-    // why both live in the same six-hour report.
+    // WHY THIS READS SUPABASE. checkout_click is ours, fired by the result
+    // page into funnel_events. PostHog never sees it, so the PostHog version
+    // of this check returned "0 opened, 0 walked" every time and passed.
+    //
+    // A high number here with no errors beside it is a persuasion or pricing
+    // problem; a high number WITH errors is a bug. The pairing is the
+    // diagnosis, which is why both live in the same six-hour report.
     threshold: 12,
     severity: 'warn',
-    sql: `SELECT
-            uniqIf(properties.$session_id, event = 'checkout_click') AS opened,
-            uniqIf(properties.$session_id, event = '$pageview' AND toString(properties.$current_url) ILIKE '%/checkout/success%') AS paid
-          FROM events WHERE timestamp > now() - INTERVAL 6 HOUR`,
+    source: 'supabase',
+    sql: `select
+            count(distinct case when event = 'checkout_click' then coalesce(submission_id::text, anon_id::text, session_id) end) as opened,
+            count(distinct case when event = 'express_pay_success' then coalesce(submission_id::text, anon_id::text, session_id) end) as paid
+          from funnel_events where ts >= now() - interval '6 hours'`,
     read: rows => {
       const r = rows[0] || {}
       const opened = Number(r.opened || 0)
       const paid = Number(r.paid || 0)
       const lost = Math.max(0, opened - paid)
-      return { value: lost, detail: `${opened} opened checkout, ${paid} reached success, ${lost} walked` }
+      return { value: lost, detail: `${opened} opened checkout, ${paid} paid on page, ${lost} did not` }
     },
   },
   {
@@ -325,17 +339,31 @@ async function rows(sql: string): Promise<any[]> {
  * Ask every question. Never throws: a watcher that can break the job it runs
  * inside is a watcher somebody switches off.
  */
-export async function runUxWatch(): Promise<UxSignal[]> {
+export async function runUxWatch(sb?: { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> }): Promise<UxSignal[]> {
   const out: UxSignal[] = []
   for (const q of UX_QUERIES) {
     try {
+      if (q.source === 'supabase') {
+        if (!sb) throw new Error('no Supabase client passed for a supabase-sourced check')
+        const { data, error } = await sb.rpc('ux_watch_sql', { q: q.sql })
+        if (error) throw new Error(String((error as { message?: string }).message ?? error))
+        const r = (Array.isArray(data) ? data : [data]).filter(Boolean) as any[]
+        const { value, detail } = q.read(r)
+        out.push({ key: q.key, claim: q.claim, value, threshold: q.threshold, ok: value <= q.threshold, detail, severity: q.severity })
+        continue
+      }
       const r = await rows(q.sql)
       const { value, detail } = q.read(r)
       out.push({ key: q.key, claim: q.claim, value, threshold: q.threshold, ok: value <= q.threshold, detail, severity: q.severity })
     } catch (e) {
+      // A failed check reports NOT ok. It used to report ok:true with a
+      // "could not run" note, which renders as silence and reads as all-clear
+      // — the exact failure this watcher exists to prevent, sitting inside the
+      // watcher itself.
       out.push({
-        key: q.key, claim: q.claim, value: 0, threshold: q.threshold, ok: true,
-        detail: `could not run: ${e instanceof Error ? e.message : 'unknown'}`, severity: q.severity,
+        key: q.key, claim: q.claim, value: q.threshold + 1, threshold: q.threshold, ok: false,
+        detail: `CHECK FAILED, so this signal is unknown rather than fine: ${e instanceof Error ? e.message : 'unknown'}`,
+        severity: q.severity,
       })
     }
   }

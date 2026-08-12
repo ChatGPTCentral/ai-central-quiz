@@ -47,7 +47,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const signals = await runUxWatch()
+  // The client is passed in because some checks read funnel_events rather
+  // than PostHog. See the source field in lib/ux-watch.ts.
+  const signals = await runUxWatch(db() as unknown as Parameters<typeof runUxWatch>[0])
   const failing = signals.filter(s => !s.ok)
 
   try {
