@@ -42,7 +42,7 @@ export interface FunnelEventCounts {
    *  contained in the one before and the chain multiplies exactly. jDirect is
    *  everyone who entered the quiz or result without the landing page. */
   jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number
-  jDirect: number
+  jDirect: number; jDirectQuiz: number; jDirectResult: number
 }
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
 export interface SeriesPoint {
@@ -60,7 +60,7 @@ export interface SeriesPoint {
    *  a DIFFERENT population (owner, 2026-08-12) — counts and rates now come
    *  from one chain. */
   jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number
-  jDirect: number
+  jDirect: number; jDirectQuiz: number; jDirectResult: number
   netNew: number
   /** Trials the quiz cannot claim at all, bucketed on CHARGE date. */
   otherPaid: number
@@ -318,7 +318,7 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
   F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
-       jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number }
+       jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number; jDirectQuiz: number; jDirectResult: number }
   lifetimeSplits: number
   /** People holding more than one paid trial. Every trial counts. */
   quizRepeatTrials: number
@@ -434,7 +434,13 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // embeds, shared result URLs. Blending them into the chain above is
       // exactly what made 266 landings sit beside 216 "starters".
       label: 'Entered mid-funnel', pick: (p: SeriesPoint) => p.jDirect, tot: sumB(p => p.jDirect, F.jDirect), warm: false,
-      note: 'entered the quiz or a result page WITHOUT the landing page: email links, embeds, shared results. Kept out of the landing chain above so its numbers stay honest; their purchases still count in every trial row below.',
+      note: 'entered the quiz or a result page WITHOUT the landing page. Kept out of the landing chain above so its numbers stay honest; their purchases still count in every trial row below. The two lines beneath sum to it.',
+      breakdown: [
+        { label: 'at the quiz', pick: (p: SeriesPoint) => p.jDirectQuiz, tot: sumB(p => p.jDirectQuiz, F.jDirectQuiz),
+          note: 'first event was the quiz itself: campaign links that point at /quiz-v2, the homepage slider embed on thecentral.ai, LinkedIn buttons.' },
+        { label: 'at a result page', pick: (p: SeriesPoint) => p.jDirectResult, tot: sumB(p => p.jDirectResult, F.jDirectResult),
+          note: 'first event was someone\'s result page: recovery emails, shared passes, notification links. Includes untagged links, so treat spikes here with care.' },
+      ],
     },
     {
       // The funnel's terminal station: every trial sold, then what it is made
@@ -955,7 +961,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
     paid: wholeNetNew, otherPaid, quizExistingPaid,
     jLanded: funnelEvents.jLanded, jThenStarted: funnelEvents.jThenStarted,
     jThenCompleted: funnelEvents.jThenCompleted, jThenClicked: funnelEvents.jThenClicked,
-    jDirect: funnelEvents.jDirect,
+    jDirect: funnelEvents.jDirect, jDirectQuiz: funnelEvents.jDirectQuiz, jDirectResult: funnelEvents.jDirectResult,
   }
   const hasSeries = series.week.length > 0 || series.day.length > 0
 

@@ -36,7 +36,7 @@ type EventBuckets = Record<Gran, Record<string, { views: number; starts: number;
 /** One cohort cell of the per-person funnel. jLanded is people whose first
  *  landing view fell in this bucket; jLandStarted is how many of THOSE went on
  *  to start, whenever that happened. Rates from these cannot exceed 100%. */
-type JourneyCell = { jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number }
+type JourneyCell = { jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number; jDirectQuiz: number; jDirectResult: number }
 
 /** Placement counts as they come off the events read, before the sales join.
  *  `clickerIds` are the submissions that clicked this button, which is what
@@ -50,7 +50,7 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
   const emptyJourneys: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
-  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys }
+  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -140,7 +140,7 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   // People who enter the quiz WITHOUT the landing page (email links, embeds,
   // shared results) are real and are shown, but as their own row, never mixed
   // into the landing chain.
-  const emptyJourneyCell = (): JourneyCell => ({ jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0 })
+  const emptyJourneyCell = (): JourneyCell => ({ jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0 })
   const jBuckets: Record<Gran, Map<string, JourneyCell>> = { day: new Map(), week: new Map(), month: new Map() }
   const jTotals = emptyJourneyCell()
   const jAdd = (g: Gran, ts: number, f: (c: JourneyCell) => void) => {
@@ -171,9 +171,14 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
       })
     } else if (j.start !== undefined || j.result !== undefined) {
       // Entered mid-funnel: quiz or result reached with no landing view first.
-      const at = j.start !== undefined && (j.result === undefined || j.start <= j.result) ? j.start : j.result!
+      // WHERE they entered matters, because the two doors are different
+      // channels: quiz entry is campaign links and the homepage slider embed,
+      // result entry is recovery emails and shared passes.
+      const atQuiz = j.start !== undefined && (j.result === undefined || j.start <= j.result)
+      const at = atQuiz ? j.start! : j.result!
       jTotals.jDirect++
-      for (const g of GRANS) jAdd(g, at, c => { c.jDirect++ })
+      if (atQuiz) jTotals.jDirectQuiz++; else jTotals.jDirectResult++
+      for (const g of GRANS) jAdd(g, at, c => { c.jDirect++; if (atQuiz) c.jDirectQuiz++; else c.jDirectResult++ })
     }
   }
   const journeyBuckets: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
@@ -291,7 +296,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>> }
+  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>> }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -514,6 +519,8 @@ export default async function DashboardPage({
       jThenCompleted: jvb[bucket]?.jThenCompleted || 0,
       jThenClicked: jvb[bucket]?.jThenClicked || 0,
       jDirect: jvb[bucket]?.jDirect || 0,
+      jDirectQuiz: jvb[bucket]?.jDirectQuiz || 0,
+      jDirectResult: jvb[bucket]?.jDirectResult || 0,
       netNew: netNewByBucket.get(bucket) || 0,     // from the ledger, quiz clock
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
       quizExistingPaid: quizExistingByBucket.get(bucket) || 0,
