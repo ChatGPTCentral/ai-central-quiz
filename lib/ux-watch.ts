@@ -286,15 +286,21 @@ export const UX_QUERIES: {
   {
     key: 'experiment_health',
     claim: 'a running experiment is splitting unevenly',
-    // An experiment whose arms drift apart is not measuring what it thinks it
-    // is. Cheap to check, and the alternative is discovering it at the end
-    // when the result has to be thrown away.
+    // READS SUPABASE, not PostHog. Two attempts to make PostHog carry this
+    // both produced zero events: the first called window.posthog, which
+    // posthog-js never sets, and the second still never arrived. Meanwhile
+    // experiment_assignments has had the answer the whole time, written
+    // server-side by the assignment path itself.
+    //
+    // The lesson is the same one checkout_abandon taught: ask the store that
+    // owns the fact. An experiment assignment is our fact, not PostHog's.
     threshold: 0,
     severity: 'warn',
-    sql: `SELECT toString(properties.experiment) AS exp, toString(properties.variant) AS arm, uniq(properties.$session_id) AS people
-          FROM events
-          WHERE event = 'experiment_exposure' AND timestamp > now() - INTERVAL 24 HOUR
-          GROUP BY exp, arm ORDER BY exp, arm`,
+    source: 'supabase',
+    sql: `select experiment_key as exp, variant_key as arm, count(*) as people
+          from experiment_assignments
+          where last_exposure_at >= now() - interval '24 hours'
+          group by 1,2 order by 1,2`,
     read: rows => {
       if (!rows.length) return { value: 0, detail: 'no exposures in the last 24h' }
       const byExp = new Map<string, number[]>()
