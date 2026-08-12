@@ -37,12 +37,12 @@ export interface BentoRow {
 }
 export interface FunnelEventCounts {
   landing: number; started: number; checkout: number
-  /** Whole-window per-person funnel totals: jLanded people saw the landing
-   *  page, jLandStarted of THOSE went on to start, and so on. Same person,
-   *  timestamps in order, so a rate built from these cannot exceed 100%. */
-  jLanded: number; jLandStarted: number
-  jStarted: number; jStartCompleted: number
-  jCompleted: number; jCompletedClicked: number
+  /** Whole-window landing cohort: jLanded saw the landing page first;
+   *  jThenStarted..jThenClicked are SUBSETS of it, in order, so every count is
+   *  contained in the one before and the chain multiplies exactly. jDirect is
+   *  everyone who entered the quiz or result without the landing page. */
+  jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number
+  jDirect: number
 }
 export interface PlacementStat { placement: string; views: number; clicks: number; sales: number; revenue: number }
 export interface SeriesPoint {
@@ -52,14 +52,15 @@ export interface SeriesPoint {
    *  data — 'none' renders "–" rather than a lying 0. */
   eventsCovered: 'none' | 'partial' | 'full'
   views: number; starts: number; checkout: number; completed: number
-  /** The per-person funnel, cohorted by the bucket of each step's ROOT event:
-   *  jLanded people first saw the landing page in this bucket, jLandStarted of
-   *  those went on to start whenever that happened. The step rates render from
-   *  THESE, never from ratios of independent head-counts — which is how this
-   *  matrix once printed a 111% step (owner, 2026-08-12). */
-  jLanded: number; jLandStarted: number
-  jStarted: number; jStartCompleted: number
-  jCompleted: number; jCompletedClicked: number
+  /** The landing cohort of this bucket: jLanded people first saw the landing
+   *  page here; jThenStarted..jThenClicked are subsets of it in order, so the
+   *  column multiplies exactly and no rate can exceed 100%. jDirect entered
+   *  the quiz or result in this bucket without the landing page. This matrix
+   *  once printed a 111% step and 266 landings "56%" beside 216 starters from
+   *  a DIFFERENT population (owner, 2026-08-12) — counts and rates now come
+   *  from one chain. */
+  jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number
+  jDirect: number
   netNew: number
   /** Trials the quiz cannot claim at all, bucketed on CHARGE date. */
   otherPaid: number
@@ -317,7 +318,7 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
   F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
-       jLanded: number; jLandStarted: number; jStarted: number; jStartCompleted: number; jCompleted: number; jCompletedClicked: number }
+       jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number }
   lifetimeSplits: number
   /** People holding more than one paid trial. Every trial counts. */
   quizRepeatTrials: number
@@ -404,36 +405,36 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     summary?: boolean
   }[] = [
     {
-      label: 'Landing view', pick: (p: SeriesPoint) => p.views, tot: sumB(p => p.views, F.landing), warm: false,
-      // "Of the people who first landed in this period, the share who went on
-      // to start" — the SAME people, whenever the start happened. The old rate
-      // divided this bucket's distinct starters by this bucket's distinct
-      // landing-viewers: two unrelated populations, inflated by everyone who
-      // entered the quiz without ever seeing the landing page.
-      out: { label: 'landed → then started', all: share(sumB(p => p.jLandStarted, F.jLandStarted), sumB(p => p.jLanded, F.jLanded)), per: p => share(p.jLandStarted, p.jLanded) },
+      label: 'Landing view', pick: (p: SeriesPoint) => p.jLanded, tot: sumB(p => p.jLanded, F.jLanded), warm: false,
+      note: 'people whose FIRST landing-page visit fell in this period. Every row below it is a subset of these same people, so the column multiplies down exactly.',
+      out: { label: 'landed → then started', all: share(sumB(p => p.jThenStarted, F.jThenStarted), sumB(p => p.jLanded, F.jLanded)), per: p => share(p.jThenStarted, p.jLanded) },
     },
     {
-      label: 'Quiz started', pick: (p: SeriesPoint) => p.starts, tot: sumB(p => p.starts, F.started), warm: false,
-      out: { label: 'started → then completed', all: share(sumB(p => p.jStartCompleted, F.jStartCompleted), sumB(p => p.jStarted, F.jStarted)), per: p => share(p.jStartCompleted, p.jStarted) },
+      label: 'Quiz started', pick: (p: SeriesPoint) => p.jThenStarted, tot: sumB(p => p.jThenStarted, F.jThenStarted), warm: false,
+      note: 'of that landing cohort, the ones who went on to start, whenever that happened. People who started WITHOUT the landing page are in "Entered mid-funnel" below, never here.',
+      out: { label: 'started → then completed', all: share(sumB(p => p.jThenCompleted, F.jThenCompleted), sumB(p => p.jThenStarted, F.jThenStarted)), per: p => share(p.jThenCompleted, p.jThenStarted) },
     },
     {
-      // Station COUNT stays the submissions record count (one row per person,
-      // the real number of finishers). The step rate beneath tracks the same
-      // people from their result_view to a checkout click.
-      label: 'Quiz completed', pick: (p: SeriesPoint) => p.completed, tot: sumB(p => p.completed, F.completed), warm: false,
-      out: { label: 'completed → then clicked', all: share(sumB(p => p.jCompletedClicked, F.jCompletedClicked), sumB(p => p.jCompleted, F.jCompleted)), per: p => share(p.jCompletedClicked, p.jCompleted) },
+      label: 'Quiz completed', pick: (p: SeriesPoint) => p.jThenCompleted, tot: sumB(p => p.jThenCompleted, F.jThenCompleted), warm: false,
+      note: 'of those starters, the ones who reached their result page. The KPI boxes above still count ALL completions from the submissions table, which is why their totals are larger than this chain.',
+      out: { label: 'completed → then clicked', all: share(sumB(p => p.jThenClicked, F.jThenClicked), sumB(p => p.jThenCompleted, F.jThenCompleted)), per: p => share(p.jThenClicked, p.jThenCompleted) },
     },
     {
-      label: 'Checkout clicked', pick: (p: SeriesPoint) => p.checkout, tot: sumB(p => p.checkout, F.checkout), warm: false,
-      // The step out of checkout is measured against the QUIZ-earned trials
-      // only. The people who never took the quiz never passed through this
-      // station, so including them would inflate a rate with buyers the
-      // funnel never touched.
+      label: 'Checkout clicked', pick: (p: SeriesPoint) => p.jThenClicked, tot: sumB(p => p.jThenClicked, F.jThenClicked), warm: false,
+      note: 'of those finishers, the ones who clicked a buy button. Still the same people from the top of the column.',
       out: {
         label: 'clicked → trial (quiz)',
-        all: step(sumB(p => p.cleanNetNew + p.quizExistingPaid, F.paid + F.quizExistingPaid), sumB(p => p.checkout, F.checkout)),
-        per: p => step(p.cleanNetNew + p.quizExistingPaid, p.checkout),
+        all: step(sumB(p => p.cleanNetNew + p.quizExistingPaid, F.paid + F.quizExistingPaid), sumB(p => p.jThenClicked, F.jThenClicked)),
+        per: p => step(p.cleanNetNew + p.quizExistingPaid, p.jThenClicked),
       },
+    },
+    {
+      // The other door, shown and never blended: people who reached the quiz
+      // or a result page without the landing page at all — email links,
+      // embeds, shared result URLs. Blending them into the chain above is
+      // exactly what made 266 landings sit beside 216 "starters".
+      label: 'Entered mid-funnel', pick: (p: SeriesPoint) => p.jDirect, tot: sumB(p => p.jDirect, F.jDirect), warm: false,
+      note: 'entered the quiz or a result page WITHOUT the landing page: email links, embeds, shared results. Kept out of the landing chain above so its numbers stay honest; their purchases still count in every trial row below.',
     },
     {
       // The funnel's terminal station: every trial sold, then what it is made
@@ -704,7 +705,10 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         // there are none, so those cells must read "–" (not measured) rather
         // than 0 (measured as nobody) — the distinction the owner needed when
         // the launch-week column looked empty.
-        const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Checkout clicked'
+        // Every station in the chain is event-based now (the completed COUNT
+        // in the chain is result_view reached, not the submissions record), so
+        // all of them go blind before client tracking existed on 9 Jul.
+        const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Quiz completed' || s.label === 'Checkout clicked' || s.label === 'Entered mid-funnel'
         return (
           <div key={s.label}>
             <div className="grid items-stretch" style={{
@@ -949,9 +953,9 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   const F = {
     landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout,
     paid: wholeNetNew, otherPaid, quizExistingPaid,
-    jLanded: funnelEvents.jLanded, jLandStarted: funnelEvents.jLandStarted,
-    jStarted: funnelEvents.jStarted, jStartCompleted: funnelEvents.jStartCompleted,
-    jCompleted: funnelEvents.jCompleted, jCompletedClicked: funnelEvents.jCompletedClicked,
+    jLanded: funnelEvents.jLanded, jThenStarted: funnelEvents.jThenStarted,
+    jThenCompleted: funnelEvents.jThenCompleted, jThenClicked: funnelEvents.jThenClicked,
+    jDirect: funnelEvents.jDirect,
   }
   const hasSeries = series.week.length > 0 || series.day.length > 0
 
