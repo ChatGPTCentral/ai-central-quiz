@@ -215,6 +215,31 @@ export async function POST(req: NextRequest) {
     if (baErr) console.error('[submit] experiment assignment backfill failed:', baErr.message)
   }
 
+  // THE CAMERA ROW, WRITTEN WITH THE REGISTER ROW (owner's 100%-reporting
+  // demand, 2026-08-13). Client analytics can be ad-blocked; this endpoint
+  // cannot be, or the quiz would not have submitted at all. Logging the
+  // completion here, in the same request that writes the submission, makes
+  // register and camera agree on completions BY CONSTRUCTION for every
+  // submission from this deploy on — coverage stops being a percentage and
+  // becomes an invariant, and the register_coverage watcher check goes red
+  // if this row is ever missing. Test submissions are skipped because the
+  // register's reporting excludes them too. Written even when the internal
+  // cookie is set: the submission it mirrors is in the register regardless,
+  // and a camera that disagrees with the register is the bug, not the owner
+  // testing. The dashboard reads quiz_submit as "started and completed".
+  if (!isTest) {
+    const { error: camErr } = await c.from('funnel_events').insert({
+      event: 'quiz_submit',
+      anon_id: anonId && UUID_RE.test(anonId) ? anonId : null,
+      session_id: partialClientId,
+      submission_id: rowId,
+      path: '/quiz-v2',
+      utm_source: utmSource,
+      props: { source: 'server' },
+    })
+    if (camErr) console.error('[submit] camera row failed — register_coverage will flag it:', camErr.message)
+  }
+
   // Promote out of "In progress": a completed submission removes any matching
   // partial capture so it no longer shows in the in-progress admin section.
   // Cleared by email AND the quiz session's clientId, so a row whose email

@@ -308,6 +308,33 @@ export const UX_QUERIES: {
     },
   },
   {
+    key: 'register_coverage',
+    claim: 'a completed quiz is missing from the camera',
+    // THE 100% INVARIANT (owner, 2026-08-13: "i need 100% reporting"). Since
+    // the 2026-08-13 deploy, the submit endpoint writes a quiz_submit row
+    // into funnel_events in the same request that writes the submission, so
+    // every completion is on camera by construction. This check is the
+    // enforcement: any non-test submission older than ten minutes without its
+    // camera row means that guarantee broke, and that is a critical, not a
+    // curiosity. The greatest() floor keeps pre-deploy submissions out of the
+    // window on day one; after 24 hours it is inert.
+    threshold: 0,
+    severity: 'critical',
+    source: 'supabase',
+    sql: `select count(*) as missing from submissions s
+          where coalesce(s.is_test, false) = false
+            and s.quiz_completed_at >= greatest(now() - interval '24 hours', timestamp '2026-08-13 14:00+00')
+            and s.quiz_completed_at < now() - interval '10 minutes'
+            and not exists (
+              select 1 from funnel_events f
+              where f.submission_id = s.id and f.event = 'quiz_submit'
+            )`,
+    read: rows => {
+      const missing = Number((rows[0] || {}).missing || 0)
+      return { value: missing, detail: missing ? `${missing} completed quizzes in 24h have no server camera row — the submit endpoint's funnel insert is failing` : 'every completion on camera' }
+    },
+  },
+  {
     key: 'quiz_step_dropoff',
     claim: 'one quiz question is losing more people than the rest',
     // WHERE they bounce, to the question. A funnel that only reports its ends

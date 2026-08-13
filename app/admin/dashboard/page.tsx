@@ -112,9 +112,16 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
       // Skip rows with no identifier so counts aren't inflated to row totals.
       const who = r.anon_id || r.session_id
       if (!who) continue
+      // quiz_submit is the SERVER-side completion row, written by the submit
+      // endpoint in the same request as the submission itself (2026-08-13).
+      // It maps to the completion stage AND marks the start: submitting proves
+      // they started, even when every client event was blocked — without the
+      // start mark, a fully-blocked completer would file under door C as if
+      // they never took the quiz. min() keeps real client timestamps whenever
+      // those exist.
       const stage = r.event === 'quiz_view' ? 'land' as const
         : r.event === 'quiz_start' ? 'start' as const
-        : r.event === 'result_view' ? 'result' as const
+        : r.event === 'result_view' || r.event === 'quiz_submit' ? 'result' as const
         : r.event === 'checkout_click' ? 'click' as const : null
       if (stage) {
         let key = resolveKey(who)
@@ -146,6 +153,10 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
         const j = journeys.get(key) || {}
         const cur = j[stage]
         if (cur === undefined || t < cur) { j[stage] = t; journeys.set(key, j) }
+        if (r.event === 'quiz_submit' && (j.start === undefined || t < j.start)) {
+          j.start = t
+          journeys.set(key, j)
+        }
       }
       const kind = r.event === 'quiz_view' ? 'views' : r.event === 'quiz_start' ? 'starts' : r.event === 'checkout_click' ? 'checkout' : null
       if (kind) { for (const g of GRANS) bump(g, bucketKey(r.ts, g), kind, who) }

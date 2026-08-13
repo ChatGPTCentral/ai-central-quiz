@@ -889,10 +889,11 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           <div style={{ borderTop: `2px solid ${INK}`, background: '#FFFDFA', padding: '8px 10px', fontSize: 10, lineHeight: 1.6, color: '#4A4A4A' }}>
             <strong style={{ color: INK }}>Why two totals exist.</strong> The register (submissions table) has <strong style={{ color: INK }}>{fmt(register)}</strong> completed
             quizzes in this window; the camera (the chain above) watched <strong style={{ color: INK }}>{fmt(seen)}</strong> of them happen, {cov.toFixed(0)}% coverage.
-            Cross-device journeys are stitched by submission id, so the remaining gap is only: columns before Jul 9 (client tracking did not exist yet, 115
-            completions are permanently off camera) and about 5% of browsers that block events or died before the result fired. A window starting after
-            Jul 9 runs at ~94% coverage. Headcounts and the north-star CVR always come from the register; door rates always come from the camera. When
-            this coverage number moves sharply, suspect the tracking, not the traffic.
+            Cross-device journeys are stitched by submission id. Since Aug 13, the submit endpoint writes the completion onto the camera in the same
+            request that writes the register row, so from that day forward the two agree 100% by construction, ad blockers included, and the
+            register_coverage watcher turns red if a single completion is ever missing. What history keeps: columns before Jul 9 predate client tracking
+            entirely (115 completions permanently off camera), and Jul 9 to Aug 13 runs at ~94% (blocked browsers from before the server-side row
+            existed). Headcounts and the north-star CVR always come from the register; door rates come from the camera.
           </div>
         )
       })()}
