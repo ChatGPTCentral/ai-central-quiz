@@ -45,12 +45,12 @@ type RawPlacement = { placement: string; views: number; clicks: number; clickerI
 
 // Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
 // by day / week / month so the progression charts can toggle granularity.
-async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets; journeyBuckets: Record<Gran, Record<string, JourneyCell>>; completionSids: Set<string> }> {
+async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets; journeyBuckets: Record<Gran, Record<string, JourneyCell>>; completionSids: Set<string>; journeyOfSid: Map<string, { door: 'a' | 'b' | 'c'; landTs?: number }> }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
   const emptyJourneys: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
-  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys, completionSids: new Set<string>() }
+  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys, completionSids: new Set<string>(), journeyOfSid: new Map<string, { door: 'a' | 'b' | 'c'; landTs?: number }>() }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -254,6 +254,23 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   }
   const journeyBuckets: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
   for (const g of GRANS) for (const [b, c] of Array.from(jBuckets[g])) journeyBuckets[g][b] = c
+  // Which door each SUBMISSION's journey walked through — the register row's
+  // on-page decomposition ("those numbers are not on the matrix, how am i
+  // supposed to know", owner, 2026-08-13). Same journeys map and the same
+  // predicates as the door aggregation above, keyed by submission id so
+  // buildSeries can bucket the split on the REGISTER clock and the parts sum
+  // to the register row exactly, per column, on the page.
+  const journeyOfSid = new Map<string, { door: 'a' | 'b' | 'c'; landTs?: number }>()
+  for (const [sid, rawKey] of Array.from(sidToKey)) {
+    const j = journeys.get(resolveKey(rawKey))
+    if (!j) continue
+    const landedFirst = j.land !== undefined &&
+      (j.start === undefined || j.start >= j.land) &&
+      (j.start !== undefined || j.result === undefined || j.result >= j.land)
+    if (landedFirst) journeyOfSid.set(sid, { door: 'a', landTs: j.land })
+    else if (j.start !== undefined && (j.result === undefined || j.start <= j.result)) journeyOfSid.set(sid, { door: 'b' })
+    else if (j.result !== undefined) journeyOfSid.set(sid, { door: 'c' })
+  }
   // When client instrumentation actually started. The quiz launched Jul 5 but
   // the first funnel_event is Jul 9, so the first days have NO event data at
   // all. Printing 0 there reads as "nobody visited", which is false and made
@@ -275,6 +292,7 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
     eventBuckets,
     journeyBuckets,
     completionSids,
+    journeyOfSid,
   }
 }
 
@@ -368,7 +386,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>>, completionSids: new Set<string>() }
+  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>>, completionSids: new Set<string>(), journeyOfSid: new Map<string, { door: 'a' | 'b' | 'c'; landTs?: number }>() }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -479,7 +497,7 @@ export default async function DashboardPage({
     // numerator and denominator described different windows — a real
     // completion divided by views that were never recorded. Rates use these.
     const clean = new Map<string, { completed: number; netNew: number }>()
-    const subs = new Map<string, { completed: number; completedSeen: number; netNew: number; revenue: number; mature: number; billedAnnual: number }>()
+    const subs = new Map<string, { completed: number; completedSeen: number; viaASame: number; viaAOther: number; viaB: number; viaCOnly: number; netNew: number; revenue: number; mature: number; billedAnnual: number }>()
     for (const r of allRows) {
       // Same anchor as the KPIs above, so a person lands in the week they took
       // the quiz and the charts cannot disagree with the numbers beside them.
@@ -489,13 +507,25 @@ export default async function DashboardPage({
       if (!quizAt) continue
       const b = bucketKey(quizAt, gran)
       if (!b || b < launchBucket) continue
-      const e = subs.get(b) || { completed: 0, completedSeen: 0, netNew: 0, revenue: 0, mature: 0, billedAnnual: 0 }
+      const e = subs.get(b) || { completed: 0, completedSeen: 0, viaASame: 0, viaAOther: 0, viaB: 0, viaCOnly: 0, netNew: 0, revenue: 0, mature: 0, billedAnnual: 0 }
       e.completed++
       // Register-clocked camera coverage: this SUBMISSION either has a
       // completion event (result_view or server quiz_submit) or it does not.
       // Same bucket as the register row it describes, so seen + off-camera
       // always sums to completed, exactly, per column.
       if (events.completionSids.has(r.id)) e.completedSeen++
+      // The register row's on-page decomposition: which door this person's
+      // stitched journey walked through, bucketed HERE, on the register
+      // clock, so the four parts plus the off-camera remainder sum to
+      // `completed` exactly in every column. viaAOther = landed in a
+      // DIFFERENT column than they completed, the clock-skew case that makes
+      // door rows not sum into register columns.
+      const jc = events.journeyOfSid.get(r.id)
+      if (jc?.door === 'a') {
+        if (jc.landTs !== undefined && bucketKey(new Date(jc.landTs).toISOString(), gran) === b) e.viaASame++
+        else e.viaAOther++
+      } else if (jc?.door === 'b') e.viaB++
+      else if (jc?.door === 'c') e.viaCOnly++
       const chargeMs = r.stripeFirstChargeAt ? new Date(r.stripeFirstChargeAt).getTime() : null
       if (chargeMs !== null && chargeMs > new Date(quizAt).getTime()) {
         e.netNew++
@@ -591,6 +621,10 @@ export default async function DashboardPage({
       starts: evb[bucket]?.starts || 0,
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
       completedSeen: subs.get(bucket)?.completedSeen || 0,
+      completedViaASame: subs.get(bucket)?.viaASame || 0,
+      completedViaAOther: subs.get(bucket)?.viaAOther || 0,
+      completedViaB: subs.get(bucket)?.viaB || 0,
+      completedViaCOnly: subs.get(bucket)?.viaCOnly || 0,
       checkout: evb[bucket]?.checkout || 0,
       jLanded: jvb[bucket]?.jLanded || 0,
       jThenStarted: jvb[bucket]?.jThenStarted || 0,

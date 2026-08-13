@@ -53,6 +53,7 @@ export interface SeriesPoint {
    *  data — 'none' renders "–" rather than a lying 0. */
   eventsCovered: 'none' | 'partial' | 'full'
   views: number; starts: number; checkout: number; completed: number; completedSeen: number
+  completedViaASame: number; completedViaAOther: number; completedViaB: number; completedViaCOnly: number
   /** The landing cohort of this bucket: jLanded people first saw the landing
    *  page here; jThenStarted..jThenClicked are subsets of it in order, so the
    *  column multiplies exactly and no rate can exceed 100%. jDirect entered
@@ -319,7 +320,7 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  `all` collapses to the single whole-window column. */
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
-  F: { landing: number; started: number; completed: number; completedSeen: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
+  F: { landing: number; started: number; completed: number; completedSeen: number; completedViaASame: number; completedViaAOther: number; completedViaB: number; completedViaCOnly: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
        jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number; jDirectQuiz: number; jDirectResult: number
        bThenCompleted: number; bThenClicked: number; cThenClicked: number }
   lifetimeSplits: number
@@ -484,7 +485,26 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // which turns the dashboard red if a new completion is ever off camera.
       label: 'Completed a quiz · register', pick: (p: SeriesPoint) => p.completed,
       tot: sumB(p => p.completed, F.completed), warm: false, metric: 'completions',
-      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included. Click any cell to see every person in it, each labeled with the door they came through and which column holds their door count.',
+      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included. The five rows below are its exact makeup and always sum to it. Click any cell for the people themselves.',
+      // The exact makeup of every register cell, ON the matrix ("those
+      // numbers are not on the matrix how am i supposed to know", owner,
+      // 2026-08-13). Five parts, same journey map as the door rows, bucketed
+      // on the register clock, summing to the row above by construction —
+      // the fifth is the remainder, so the sum cannot drift even if a
+      // classification is ever wrong.
+      breakdown: [
+        { label: 'through door A, this column', pick: (p: SeriesPoint) => p.completedViaASame, tot: sumB(p => p.completedViaASame, F.completedViaASame),
+          note: 'landed AND completed in this column. Matches the door A chain above except for people who complete in a later column than they landed.' },
+        { label: 'through door A, another column', pick: (p: SeriesPoint) => p.completedViaAOther, tot: sumB(p => p.completedViaAOther, F.completedViaAOther),
+          note: 'completed here, landed in a different column — the clock-skew people. That other column\'s door A rows hold their journey.' },
+        { label: 'through door B', pick: (p: SeriesPoint) => p.completedViaB, tot: sumB(p => p.completedViaB, F.completedViaB),
+          note: 'straight into the quiz, no landing first. Door B\'s own rows count them by the column they ENTERED, which can differ from this one.' },
+        { label: 'only their result on camera', pick: (p: SeriesPoint) => p.completedViaCOnly, tot: sumB(p => p.completedViaCOnly, F.completedViaCOnly),
+          note: 'the camera saw their result page but no quiz events (blocked browsers, before the Aug 13 server row). They sit in door C\'s entered count.' },
+        { label: 'no completion on camera', pick: (p: SeriesPoint) => p.completed - p.completedViaASame - p.completedViaAOther - p.completedViaB - p.completedViaCOnly,
+          tot: sumB(p => p.completed - p.completedViaASame - p.completedViaAOther - p.completedViaB - p.completedViaCOnly, F.completed - F.completedViaASame - F.completedViaAOther - F.completedViaB - F.completedViaCOnly),
+          note: 'the register knows them, the camera has nothing: fully blocked browsers before Aug 13, and all of pre-Jul-9. Structurally zero for new completions — register_coverage goes red otherwise.' },
+      ],
     },
     {
       label: 'Clicked checkout · A+B+C', pick: (p: SeriesPoint) => p.jThenClicked + p.bThenClicked + p.cThenClicked,
@@ -1044,9 +1064,9 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
   const F = {
-    // completedSeen fallback is 0: F only fires with zero visible buckets,
-    // where every number on the page is degenerate anyway.
-    landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, completedSeen: 0, checkout: funnelEvents.checkout,
+    // completedSeen and the door-split fallbacks are 0: F only fires with zero
+    // visible buckets, where every number on the page is degenerate anyway.
+    landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, completedSeen: 0, completedViaASame: 0, completedViaAOther: 0, completedViaB: 0, completedViaCOnly: 0, checkout: funnelEvents.checkout,
     paid: wholeNetNew, otherPaid, quizExistingPaid,
     jLanded: funnelEvents.jLanded, jThenStarted: funnelEvents.jThenStarted,
     jThenCompleted: funnelEvents.jThenCompleted, jThenClicked: funnelEvents.jThenClicked,
