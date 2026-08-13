@@ -51,11 +51,17 @@ export async function POST(req: NextRequest) {
   const ok = await verifySessionCookie(req.cookies.get(ADMIN_COOKIE_NAME)?.value)
   if (!ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
-  let body: { customerId?: string; personKey?: string; chargeId?: string }
+  let body: { customerId?: string; personKey?: string; chargeId?: string; mode?: string }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'invalid body' }, { status: 400 }) }
   const customerId = (body.customerId || '').trim()
   const personKey = (body.personKey || '').trim() || null
   const chargeId = (body.chargeId || '').trim()
+  // 'charge' bills the payment method on file right now. 'invoice' is the
+  // fallback for people with nothing reusable on file (a one-time Link or
+  // wallet payment, common on beehiiv-era trials): the subscription is
+  // created with an emailed Stripe invoice they pay themselves — the same
+  // thing the Stripe dashboard offers on such customers.
+  const mode: 'charge' | 'invoice' = body.mode === 'invoice' ? 'invoice' : 'charge'
   if (!customerId.startsWith('cus_') || !chargeId) {
     return NextResponse.json({ error: 'customerId and chargeId are required' }, { status: 400 })
   }
@@ -107,24 +113,60 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `refused: this customer already has a ${live[0].status} subscription (${live[0].id}). They belong in "person already pays", not the retry list.` }, { status: 409 })
     }
 
-    // GUARD 2: a card to charge. Prefer the customer's default, fall back to
-    // their most recent saved card (the checkout saves it with
-    // setup_future_usage, so trial buyers normally have one).
     const customer = await stripe.customers.retrieve(customerId)
     if (customer.deleted) {
       await audit('charge_annual_refused', personKey, customerId, { reason: 'customer deleted', trial_charge_id: chargeId })
       return NextResponse.json({ error: 'refused: customer is deleted in Stripe' }, { status: 409 })
     }
+
+    // ── INVOICE MODE: no payment method needed. The subscription starts on
+    // an emailed Stripe invoice the person pays themselves, finalized and
+    // sent right now rather than on Stripe's one-hour timer. ──
+    if (mode === 'invoice') {
+      const sub = await stripe.subscriptions.create(
+        {
+          customer: customerId,
+          items: [{ price: plan.id }],
+          collection_method: 'send_invoice',
+          days_until_due: 7,
+          metadata: { source: 'admin_retry_button_invoice', trial_charge_id: chargeId, person_key: personKey ?? '' },
+        },
+        { idempotencyKey: `annual-retry-inv-${chargeId}` },
+      )
+      let invoiceSent = false
+      try {
+        const invId = typeof sub.latest_invoice === 'string' ? sub.latest_invoice : sub.latest_invoice?.id
+        if (invId) {
+          try { await stripe.invoices.finalizeInvoice(invId) } catch { /* already finalized is fine */ }
+          await stripe.invoices.sendInvoice(invId)
+          invoiceSent = true
+        }
+      } catch (e) {
+        console.error('[charge-annual] invoice send failed (Stripe will auto-send later):', e)
+      }
+      await audit('charge_annual_invoiced', personKey, customerId, { subscription: sub.id, status: sub.status, price: plan.id, plan_cents: plan.cents, invoice_sent: invoiceSent, trial_charge_id: chargeId })
+      return NextResponse.json({ ok: true, subscription: sub.id, status: sub.status, planCents: plan.cents, invoiced: true, invoiceSent })
+    }
+
+    // GUARD 2 (charge mode): something reusable to bill. The default payment
+    // method first, else any attached card, Link or PayPal (the checkout
+    // saves cards with setup_future_usage; Link riders often attach too), and
+    // a legacy default_source counts because the subscription create resolves
+    // it on its own. A one-time payment method from a past charge is NOT
+    // reusable and does not appear here — that is what invoice mode is for.
     let pm = typeof customer.invoice_settings?.default_payment_method === 'string'
       ? customer.invoice_settings.default_payment_method
       : customer.invoice_settings?.default_payment_method?.id ?? null
     if (!pm) {
-      const cards = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 1 })
-      pm = cards.data[0]?.id ?? null
+      const pms = await stripe.paymentMethods.list({ customer: customerId, limit: 10 })
+      const rank = (t: string) => (t === 'card' ? 0 : t === 'link' ? 1 : t === 'paypal' ? 2 : 9)
+      const usable = pms.data.filter(p => rank(p.type) < 9).sort((a, b) => rank(a.type) - rank(b.type))
+      pm = usable[0]?.id ?? null
     }
-    if (!pm) {
-      await audit('charge_annual_refused', personKey, customerId, { reason: 'no card on file', trial_charge_id: chargeId })
-      return NextResponse.json({ error: 'refused: no card on file for this customer' }, { status: 409 })
+    const hasLegacySource = !!customer.default_source
+    if (!pm && !hasLegacySource) {
+      await audit('charge_annual_refused', personKey, customerId, { reason: 'no reusable payment method', trial_charge_id: chargeId })
+      return NextResponse.json({ error: 'refused: no reusable payment method on file — their trial was paid with a one-time method, so there is nothing to bill. Email them a Stripe invoice instead.' }, { status: 409 })
     }
 
     // THE CHARGE. error_if_incomplete means a decline creates nothing at all;
@@ -133,7 +175,7 @@ export async function POST(req: NextRequest) {
       {
         customer: customerId,
         items: [{ price: plan.id }],
-        default_payment_method: pm,
+        ...(pm ? { default_payment_method: pm } : {}),
         payment_behavior: 'error_if_incomplete',
         metadata: { source: 'admin_retry_button', trial_charge_id: chargeId, person_key: personKey ?? '' },
       },

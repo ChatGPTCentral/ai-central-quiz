@@ -25,18 +25,20 @@ export default function ChargeAnnual({ customerId, personKey, chargeId, trialCen
   const [msg, setMsg] = useState('')
   const disarm = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fire = async () => {
+  const fire = async (mode: 'charge' | 'invoice' = 'charge') => {
     setPhase('busy')
     try {
       const res = await fetch('/api/admin/charge-annual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId, personKey, chargeId }),
+        body: JSON.stringify({ customerId, personKey, chargeId, mode }),
       })
       const j = await res.json().catch(() => ({}))
       if (res.ok && j.ok) {
         setPhase('done')
-        setMsg(`${j.subscription} · ${j.status}. Ledger updates at the next :20 sync.`)
+        setMsg(j.invoiced
+          ? `${j.subscription} · invoice ${j.invoiceSent ? 'emailed, due in 7 days' : 'created (Stripe emails it shortly)'}`
+          : `${j.subscription} · ${j.status}. Ledger updates at the next :20 sync.`)
       } else {
         setPhase('error')
         setMsg(String(j.error || `HTTP ${res.status}`))
@@ -47,10 +49,19 @@ export default function ChargeAnnual({ customerId, personKey, chargeId, trialCen
     }
   }
 
-  if (phase === 'done') return <span title={msg} style={{ fontSize: 10, color: GREEN, fontWeight: 800, whiteSpace: 'nowrap' }}>✓ subscribed · {msg.slice(0, 24)}…</span>
+  if (phase === 'done') return <span title={msg} style={{ fontSize: 10, color: GREEN, fontWeight: 800, whiteSpace: 'nowrap' }}>✓ {msg.slice(0, 44)}…</span>
   if (phase === 'error') return (
     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', whiteSpace: 'nowrap' }}>
-      <span title={msg} style={{ fontSize: 10, color: RED, fontWeight: 700, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>✕ {msg}</span>
+      <span title={msg} style={{ fontSize: 10, color: RED, fontWeight: 700, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>✕ {msg}</span>
+      {/* Nothing reusable to bill: offer the path the Stripe dashboard offers
+          on such customers — the subscription on an emailed invoice. */}
+      {msg.includes('no reusable payment method') && (
+        <button onClick={() => void fire('invoice')}
+          title={`Creates the ${planLabel}/year subscription with a Stripe invoice emailed to them, due in 7 days. They pay it themselves.`}
+          style={{ fontSize: 9.5, border: `2px solid ${INK}`, background: '#FFFDFA', fontWeight: 800, padding: '1px 6px', cursor: 'pointer' }}>
+          📧 Email invoice instead
+        </button>
+      )}
       <button onClick={() => { setPhase('idle'); setMsg('') }} style={{ fontSize: 9.5, border: `1px solid ${INK}`, background: '#FFFDFA', padding: '1px 6px', cursor: 'pointer' }}>retry</button>
     </span>
   )
