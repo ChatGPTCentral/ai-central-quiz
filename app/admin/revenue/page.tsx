@@ -282,8 +282,16 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   const fState = (searchParams.state || '') as State | ''
   const fEra = searchParams.era ? Number(searchParams.era) : 0
   const fAttr = searchParams.attr || ''
+  // India is EXCLUDED from this table by default (owner, 2026-08-13): their
+  // trials do not renew (0 of 43 measured, which is why India is sold the
+  // lifetime instead), so retrying annual charges there is noise at best.
+  // The toggle chip brings them back for the case-by-case look. Section 3
+  // only — the money sections above stay complete, excluding a country from
+  // revenue reporting would falsify it.
+  const includeIndia = searchParams.india === '1'
+  const L3 = includeIndia ? L : L.filter(r => r.country !== 'India')
   const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
-  const filtered = L.filter(r =>
+  const filtered = L3.filter(r =>
     (!fState || stateOf(r, personOutcome.has(r.person_key)) === fState) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr))
@@ -302,7 +310,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     }
   })
   const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0 }
-  for (const r of L) counts[stateOf(r, personOutcome.has(r.person_key))]++
+  for (const r of L3) counts[stateOf(r, personOutcome.has(r.person_key))]++
 
   // Per-person rollup for section 4. Built from the SAME ledger rows the table
   // above renders, never a second query: "how many trials does this person
@@ -335,7 +343,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
 
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
-    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, ...patch }
+    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, india: includeIndia ? '1' : undefined, ...patch }
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v)
     const s = p.toString()
     return `/admin/revenue${s ? `?${s}` : ''}`
@@ -432,10 +440,10 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         channel, source, country, first payment, second payment, total. Status is editable and saves as you change it,
         &ldquo;Auto&rdquo; means the charges decide. Drag any column header to move it, or × to remove it — the layout
         saves to your account, not to this browser. Each trial is in exactly one state, so the counts below always add up
-        to {L.length.toLocaleString()}.
+        to {L3.length.toLocaleString()}{includeIndia ? '' : ' (India hidden)'}.
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 12 }}>
-        <a href={qs({ state: undefined })} style={chip(!fState)}>All {L.length}</a>
+        <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
         {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded'] as State[]).map(s => (
           <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
             {STATE_LABEL[s]} {counts[s]}
@@ -451,6 +459,11 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         {Object.entries(ATTR_LABEL).map(([k, v]) => (
           <a key={k} href={qs({ attr: fAttr === k ? undefined : k })} style={chip(fAttr === k)}>{v}</a>
         ))}
+        <span style={{ width: 12 }} />
+        <a href={qs({ india: includeIndia ? undefined : '1' })} style={chip(includeIndia)}
+          title="India is hidden by default: 0 of 43 due trials there ever renewed, which is why India is sold the lifetime. Toggle to look case by case.">
+          {includeIndia ? 'India: shown' : `India: hidden (${L.length - L3.length})`}
+        </a>
       </div>
 
       <div style={{ fontSize: 11.5, color: MUTE, marginTop: 10 }}>

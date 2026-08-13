@@ -24,7 +24,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
-import { annualPriceId } from '@/lib/offers-server'
+import { annualPriceForTrialCents } from '@/lib/offers-server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -64,6 +64,20 @@ export async function POST(req: NextRequest) {
   if (!key) return NextResponse.json({ error: 'Stripe key missing' }, { status: 500 })
   const stripe = new Stripe(key, { apiVersion: '2026-04-22.dahlia', maxNetworkRetries: 1 })
 
+  // THE PLAN MATCH (owner, 2026-08-13): a $3.99 trial gets the $39.75/year
+  // plan, a $4.99 trial the $59.75/year plan. The price is chosen from the
+  // TRIAL CHARGE ON RECORD, read server-side — never from anything the client
+  // sends — because charging the wrong plan is the one outcome that must be
+  // impossible. 240 of the retry rows are $3.99 trials, so before this guard
+  // the button would have overcharged the majority of the list.
+  const { data: trialCharge } = await db().from('stripe_charges').select('amount_cents').eq('id', chargeId).maybeSingle()
+  const trialCents = Number(trialCharge?.amount_cents ?? 0)
+  const plan = annualPriceForTrialCents(trialCents)
+  if (!plan) {
+    await audit('charge_annual_refused', personKey, customerId, { reason: 'no annual plan mapped for this trial amount', trial_cents: trialCents, trial_charge_id: chargeId })
+    return NextResponse.json({ error: `refused: trial charge has amount ${trialCents} cents, which maps to no annual plan` }, { status: 409 })
+  }
+
   try {
     // GUARD 1: the retry list is people with ZERO subscriptions. If Stripe
     // says otherwise, this row is mis-segmented and the answer is no.
@@ -99,7 +113,7 @@ export async function POST(req: NextRequest) {
     const sub = await stripe.subscriptions.create(
       {
         customer: customerId,
-        items: [{ price: annualPriceId() }],
+        items: [{ price: plan.id }],
         default_payment_method: pm,
         payment_behavior: 'error_if_incomplete',
         metadata: { source: 'admin_retry_button', trial_charge_id: chargeId, person_key: personKey ?? '' },
@@ -107,8 +121,8 @@ export async function POST(req: NextRequest) {
       { idempotencyKey: `annual-retry-${chargeId}` },
     )
 
-    await audit('charge_annual_created', personKey, customerId, { subscription: sub.id, status: sub.status, price: annualPriceId(), trial_charge_id: chargeId })
-    return NextResponse.json({ ok: true, subscription: sub.id, status: sub.status })
+    await audit('charge_annual_created', personKey, customerId, { subscription: sub.id, status: sub.status, price: plan.id, plan_cents: plan.cents, trial_cents: trialCents, trial_charge_id: chargeId })
+    return NextResponse.json({ ok: true, subscription: sub.id, status: sub.status, planCents: plan.cents })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Stripe error'
     await audit('charge_annual_failed', personKey, customerId, { error: msg, trial_charge_id: chargeId })

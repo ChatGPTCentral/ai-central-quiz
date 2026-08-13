@@ -82,10 +82,11 @@ const ALL_COLUMNS: Col[] = [
           </span>
         )}
         {/* The one-click retry, ONLY on the true retry segment: lapsed, zero
-            subscriptions anywhere, and a Stripe customer to charge. The
-            server re-checks all of that before any money moves. */}
-        {r.derivedState === 'lapsed' && r.customer_id && (
-          <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} />
+            subscriptions anywhere, a Stripe customer to charge, and a trial
+            amount that maps to a plan ($3.99 → $39.75/yr, $4.99 → $59.75/yr).
+            The server re-checks all of it before any money moves. */}
+        {r.derivedState === 'lapsed' && r.customer_id && (r.trial_cents === 399 || r.trial_cents === 499) && (
+          <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} trialCents={r.trial_cents} />
         )}
       </span>
     ) },

@@ -11,11 +11,16 @@ const GREEN = '#2E7D32'
 const RED = '#B00020'
 const INK = '#1A1A1A'
 
-export default function ChargeAnnual({ customerId, personKey, chargeId }: {
+export default function ChargeAnnual({ customerId, personKey, chargeId, trialCents }: {
   customerId: string
   personKey: string
   chargeId: string
+  /** The trial's amount decides the plan: 399 → $39.75/yr, 499 → $59.75/yr.
+   *  Display only — the server re-reads the charge and picks the price
+   *  itself, so a stale prop can mislabel a button but never mischarge. */
+  trialCents: number
 }) {
+  const planLabel = trialCents === 399 ? '$39.75' : '$59.75'
   const [phase, setPhase] = useState<'idle' | 'armed' | 'busy' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
   const disarm = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -64,7 +69,7 @@ export default function ChargeAnnual({ customerId, personKey, chargeId }: {
           void fire()
         }
       }}
-      title={armed ? 'Second click charges the card on file, for real.' : 'Creates the $59.75/year subscription on this customer’s card on file. First click arms, second click charges.'}
+      title={armed ? 'Second click charges the card on file, for real.' : `Creates the ${planLabel}/year subscription (the plan matching their trial) on this customer’s card on file. First click arms, second click charges.`}
       style={{
         fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer',
         border: `2px solid ${armed ? RED : INK}`,
@@ -73,7 +78,7 @@ export default function ChargeAnnual({ customerId, personKey, chargeId }: {
         padding: '2px 8px',
       }}
     >
-      {armed ? 'Sure? Charge card on file' : 'Charge $59.75'}
+      {armed ? `Sure? Charge ${planLabel} to card on file` : `Charge ${planLabel}`}
     </button>
   )
 }

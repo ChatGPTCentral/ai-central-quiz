@@ -58,15 +58,22 @@ export function lifetimePriceIdSync(): string | null {
  * the trial rather than guessing.
  */
 /**
- * The $59.75/year price that live renewals actually use. Verified against
- * Stripe on 2026-08-13: the five most recent active subscriptions all carry
- * price_1TSKdgBLsgHOvWxyBBkoqoqS (product prod_SNEjXShn2LU06z). Several other
- * $59.75 prices exist on legacy products; the retry button must charge the
- * one the funnel charges, so it is named, with the env override winning.
+ * The annual prices that live renewals actually use, BY TRIAL PLAN.
+ * Owner's rule, 2026-08-13: a $3.99 trial belongs to the $39.75/year plan and
+ * a $4.99 trial to the $59.75/year plan. Both ids verified against live
+ * subscriptions the same day: the five most recent $59.75 actives all carry
+ * price_1TSKdg…, and a renewing $39.75 subscription (billed again 2026-08-13)
+ * carries price_1RSUGD…, both on product prod_SNEjXShn2LU06z. Several other
+ * prices at these amounts exist on legacy products and are NOT these.
+ * An unmapped trial amount returns null, and the caller must refuse:
+ * charging the wrong plan is the one outcome that must be impossible.
  */
 const DEFAULT_ANNUAL_PRICE = 'price_1TSKdgBLsgHOvWxyBBkoqoqS'
-export function annualPriceId(): string {
-  return process.env.STRIPE_ANNUAL_PRICE_ID?.trim() || DEFAULT_ANNUAL_PRICE
+const DEFAULT_ANNUAL_399_PRICE = 'price_1RSUGDBLsgHOvWxybWEikZKa'
+export function annualPriceForTrialCents(trialCents: number): { id: string; cents: number } | null {
+  if (trialCents === 499) return { id: process.env.STRIPE_ANNUAL_PRICE_ID?.trim() || DEFAULT_ANNUAL_PRICE, cents: 5975 }
+  if (trialCents === 399) return { id: process.env.STRIPE_ANNUAL_399_PRICE_ID?.trim() || DEFAULT_ANNUAL_399_PRICE, cents: 3975 }
+  return null
 }
 
 export async function resolveLifetimePriceId(): Promise<string | null> {
