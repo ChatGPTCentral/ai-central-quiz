@@ -49,10 +49,14 @@ export default function ChargeAnnual({ customerId, personKey, chargeId, trialCen
     }
   }
 
-  if (phase === 'done') return <span title={msg} style={{ fontSize: 10, color: GREEN, fontWeight: 800, whiteSpace: 'nowrap' }}>✓ {msg.slice(0, 44)}…</span>
+  // Results WRAP instead of truncating. The truncation hid the one message
+  // that explained everything (a Stripe key permission error), and the owner
+  // read the silence as "not going through" (2026-08-13). A money button's
+  // outcome is the last thing on this page allowed to be unreadable.
+  if (phase === 'done') return <span style={{ fontSize: 10, color: GREEN, fontWeight: 800, maxWidth: 360, display: 'inline-block', whiteSpace: 'normal', lineHeight: 1.45 }}>✓ {msg}</span>
   if (phase === 'error') return (
-    <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', whiteSpace: 'nowrap' }}>
-      <span title={msg} style={{ fontSize: 10, color: RED, fontWeight: 700, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>✕ {msg}</span>
+    <span style={{ display: 'inline-flex', gap: 5, alignItems: 'flex-start', whiteSpace: 'normal' }}>
+      <span style={{ fontSize: 10, color: RED, fontWeight: 700, maxWidth: 340, display: 'inline-block', whiteSpace: 'normal', lineHeight: 1.45 }}>✕ {msg}</span>
       {/* Nothing reusable to bill: offer the path the Stripe dashboard offers
           on such customers — the subscription on an emailed invoice. */}
       {msg.includes('no reusable payment method') && (
