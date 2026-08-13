@@ -265,10 +265,26 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     (!fState || stateOf(r) === fState) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr))
+  // A lapsed row for a person whose OTHER trial converted reads as a
+  // contradiction ("tom has a paid $59.75, hows that possible" — owner,
+  // 2026-08-13, and he was right to stop at it). The ledger is sound —
+  // verified same day: zero unclaimed pairable renewals, zero backwards
+  // pairings — and under the gross-trials rule each TRIAL carries its own
+  // state. But 20 such rows sat in the Did-not-convert filter saying nothing
+  // about the person's other outcome, and a display that withholds the fact
+  // that resolves its own apparent contradiction is indistinguishable from a
+  // wrong one. So the row now says it, inline, one line.
+  const personOutcome = new Map<string, string>()
+  for (const r of L) {
+    if (r.trial_refunded) continue
+    if (r.converted) personOutcome.set(r.person_key, `their ${r.trial_at.slice(0, 10)} trial converted on ${(r.converted_at || '').slice(0, 10)}`)
+    else if (r.lifetime_bundle && !personOutcome.has(r.person_key)) personOutcome.set(r.person_key, `they bought the lifetime outright on ${r.trial_at.slice(0, 10)}`)
+  }
   const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
     const st = stateOf(r)
     return {
+      personNote: st === 'lapsed' ? personOutcome.get(r.person_key) ?? null : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
       name: r.name, country: r.country, utm_source: r.utm_source,
       trial_at: r.trial_at, trial_cents: r.trial_cents, era: r.era, attribution: r.attribution,

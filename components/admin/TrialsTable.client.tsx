@@ -37,6 +37,9 @@ export interface TrialRow {
   derivedLabel: string
   derivedColor: string
   override: string | null
+  /** For a Did-not-convert row whose person converted on ANOTHER trial: the
+   *  one line that resolves the apparent contradiction. Null otherwise. */
+  personNote: string | null
 }
 
 const INK = '#1A1A1A'
@@ -68,7 +71,17 @@ const ALL_COLUMNS: Col[] = [
   { key: 'email', label: 'Email', align: 'left', cell: r => r.person_key },
   { key: 'name', label: 'Name', align: 'left', cell: r => <span style={{ fontWeight: 700 }}>{r.name || '–'}</span> },
   { key: 'status', label: 'Status', align: 'left',
-    cell: r => <TrialState chargeId={r.charge_id} derived={r.derivedState} derivedLabel={r.derivedLabel} derivedColor={r.derivedColor} initial={r.override} /> },
+    cell: r => (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+        <TrialState chargeId={r.charge_id} derived={r.derivedState} derivedLabel={r.derivedLabel} derivedColor={r.derivedColor} initial={r.override} />
+        {r.personNote && (
+          <span title={`This TRIAL did not convert, but the person did: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
+            style={{ fontSize: 10, color: GREEN, fontWeight: 700 }}>
+            ✓ person converted · {r.personNote}
+          </span>
+        )}
+      </span>
+    ) },
   { key: 'channel', label: 'Channel', align: 'left',
     cell: r => <span style={{ fontSize: 11.5, color: r.attribution === 'not_quiz' ? MUTE : GREEN, fontWeight: r.attribution === 'not_quiz' ? 400 : 700 }}>{ATTR_LABEL[r.attribution] ?? r.attribution}</span> },
   { key: 'utm', label: 'UTM source', align: 'left', cell: r => <span style={{ fontSize: 11.5, color: MUTE }}>{r.utm_source || '–'}</span> },
