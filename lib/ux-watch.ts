@@ -70,19 +70,63 @@ export const UX_QUERIES: {
     }),
   },
   {
-    key: 'dead_clicks',
-    claim: 'people clicked something that does nothing',
-    threshold: 15,
+    key: 'dead_clicks_sell',
+    claim: 'people clicked something dead on a page that sells',
+    // RECALIBRATED 2026-08-13, and split in two. The first version counted
+    // every dead click on the site against one threshold of 15 per six hours,
+    // and /quiz-v2 alone runs 30-90 in that window because its taps are
+    // ENGAGEMENT (see quiz_tap_noise below) — so the banner was red on every
+    // single run and red stopped meaning anything. This half watches the pages
+    // where a dead click IS friction: the landing, the result page, the pass.
+    //
+    // 24 HOURS, NOT 6. The failure this exists to catch is the unwired landing
+    // card: 169 dead clicks in a fortnight is ~12 a day, a rate a six-hour
+    // window can never separate from noise. A day of accumulation can. Post-fix
+    // baseline measured 2026-08-13: ~11 a day across / , /result, /calculating.
+    threshold: 20,
     severity: 'warn',
-    sql: `SELECT toString(properties.$current_url) AS url, coalesce(nullIf(toString(properties.$el_text), ''), '(no text)') AS el, count() AS n
+    // GROUPED BY PATH, NOT FULL URL. Every /result link is unique per person
+    // (name, score, id in the query string), so grouping by the raw URL split
+    // one page into hundreds of one-click groups — and since the value sums
+    // only the top 6 groups, the alarm undercounted the moment clicks spread
+    // across people. The old dead_clicks check had this same flaw, so its
+    // recorded 31-86 readings were floors, not totals.
+    sql: `SELECT splitByChar('?', toString(properties.$current_url))[1] AS url, coalesce(nullIf(toString(properties.$el_text), ''), '(no text)') AS el, count() AS n
           FROM events
-          WHERE event = '$dead_click' AND timestamp > now() - INTERVAL 6 HOUR
+          WHERE event = '$dead_click' AND timestamp > now() - INTERVAL 24 HOUR
             AND toString(properties.$current_url) NOT LIKE '%/admin%'
+            AND toString(properties.$current_url) NOT LIKE '%/quiz-v2%'
           GROUP BY url, el ORDER BY n DESC LIMIT 6`,
     read: rows => ({
       value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
       // The element is the whole point: a count per URL is a tally, a count per
       // element is a thing to go and wire up.
+      detail: rows.length
+        ? rows.map(r => `${r.n}× "${r.el}" on ${String(r.url || '').replace(/^https?:\/\/[^/]+/, '').split('?')[0]}`).join(' | ')
+        : 'none',
+    }),
+  },
+  {
+    key: 'quiz_tap_noise',
+    claim: 'quiz tap noise spiked far past its engagement baseline',
+    // Dead clicks on /quiz-v2 are NOT friction. The quiz auto-advances, people
+    // tap "next" and the answer text out of momentum, and the people who do it
+    // complete at 13.6% against 4.5% for those who do not (measured
+    // 2026-08-12). The true rate is ~390 a day (~100 per six hours on average,
+    // higher on send evenings; the 31-86 the old check reported was an
+    // undercount, see dead_clicks_sell). This alarms only far above that band,
+    // which is the shape a broken advance button would make;
+    // quiz_start_to_finish above is the critical backstop if the quiz truly
+    // stops moving.
+    threshold: 400,
+    severity: 'warn',
+    sql: `SELECT splitByChar('?', toString(properties.$current_url))[1] AS url, coalesce(nullIf(toString(properties.$el_text), ''), '(no text)') AS el, count() AS n
+          FROM events
+          WHERE event = '$dead_click' AND timestamp > now() - INTERVAL 6 HOUR
+            AND toString(properties.$current_url) LIKE '%/quiz-v2%'
+          GROUP BY url, el ORDER BY n DESC LIMIT 6`,
+    read: rows => ({
+      value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
       detail: rows.length
         ? rows.map(r => `${r.n}× "${r.el}" on ${String(r.url || '').replace(/^https?:\/\/[^/]+/, '').split('?')[0]}`).join(' | ')
         : 'none',
@@ -175,6 +219,11 @@ export const UX_QUERIES: {
     // a pageview whose session produced nothing else. Someone who lands, looks,
     // and leaves without a single interaction did not bounce because they were
     // busy, they bounced because the page did not hold them.
+    // Junk-link rescues are excluded (the jl=1 marker the middleware stamps on
+    // its redirect): someone who clicked the mangled )**_** newsletter link and
+    // was caught mid-fall arrives with zero intent, and their instant exit is
+    // the broken link's fault, not the landing page's. They are counted by
+    // junk_link_traffic below instead, where the fix they need can be named.
     threshold: 25,
     severity: 'warn',
     sql: `SELECT splitByChar('?', toString(properties.$current_url))[1] AS page, count() AS n
@@ -186,6 +235,11 @@ export const UX_QUERIES: {
               WHERE timestamp > now() - INTERVAL 6 HOUR
                 AND event IN ('$autocapture', '$dead_click', '$rageclick')
             )
+            AND properties.$session_id NOT IN (
+              SELECT properties.$session_id FROM events
+              WHERE timestamp > now() - INTERVAL 6 HOUR
+                AND toString(properties.$current_url) LIKE '%jl=1%'
+            )
           GROUP BY page ORDER BY n DESC LIMIT 6`,
     read: rows => ({
       value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
@@ -195,16 +249,49 @@ export const UX_QUERIES: {
     }),
   },
   {
+    key: 'junk_link_traffic',
+    claim: 'the mangled newsletter link is still costing visits',
+    // The middleware rescues punctuation-only paths like /)**_** to the
+    // landing page, stamped with jl=1. Rescue is damage control, not a fix:
+    // every one of these is a reader who clicked a broken link, arrived
+    // somewhere they did not choose, and near-always bounces. The actual fix
+    // is one edit the owner makes in beehiiv, to the newsletter header
+    // automation whose URL went out as [text](url)**_**. This stays red while
+    // the stream continues so that fix does not get forgotten.
+    threshold: 10,
+    severity: 'warn',
+    sql: `SELECT uniq(properties.$session_id) AS sessions, count() AS views
+          FROM events
+          WHERE event = '$pageview' AND timestamp > now() - INTERVAL 24 HOUR
+            AND toString(properties.$current_url) LIKE '%jl=1%'`,
+    read: rows => {
+      const r = rows[0] || {}
+      const sessions = Number(r.sessions || 0)
+      return {
+        value: sessions,
+        detail: sessions
+          ? `${sessions} sessions in 24h rescued from the )**_** link; the fix is the header link in the beehiiv automation`
+          : 'none',
+      }
+    },
+  },
+  {
     key: 'checkout_abandon',
-    claim: 'people opened checkout and did not buy',
+    claim: 'checkout took volume and converted nobody',
     // WHY THIS READS SUPABASE. checkout_click is ours, fired by the result
     // page into funnel_events. PostHog never sees it, so the PostHog version
     // of this check returned "0 opened, 0 walked" every time and passed.
     //
-    // A high number here with no errors beside it is a persuasion or pricing
-    // problem; a high number WITH errors is a bug. The pairing is the
-    // diagnosis, which is why both live in the same six-hour report.
-    threshold: 12,
+    // RECALIBRATED 2026-08-13. The first version alarmed at 12 non-buyers per
+    // six hours, which is not breakage, it is what selling looks like: the
+    // page's click→trial runs 12-25%, so a perfectly normal evening of 16
+    // opens and 3 sales lit the banner. The shape that means checkout is
+    // BROKEN is volume with zero conversions anywhere in it: at the observed
+    // ~14% buy rate, twenty opens without one sale happens by chance in ~5% of
+    // windows, and the typo'd-email failure of 2026-08-11 would have shown
+    // exactly this shape. Volume with SOME sales is persuasion, and persuasion
+    // is the dashboard's job, not an alarm's.
+    threshold: 0,
     severity: 'warn',
     source: 'supabase',
     sql: `select
@@ -216,8 +303,8 @@ export const UX_QUERIES: {
       const r = rows[0] || {}
       const opened = Number(r.opened || 0)
       const paid = Number(r.paid || 0)
-      const lost = Math.max(0, opened - paid)
-      return { value: lost, detail: `${opened} opened checkout, ${paid} paid on page, ${lost} did not` }
+      const broken = opened >= 20 && paid === 0
+      return { value: broken ? 1 : 0, detail: `${opened} opened checkout, ${paid} paid on page` }
     },
   },
   {

@@ -33,6 +33,13 @@ export async function middleware(req: NextRequest) {
   if (JUNK_PATH.test(pathname)) {
     const url = req.nextUrl.clone()
     url.pathname = '/'
+    // Marked so analytics can tell a rescued person from a chosen visit: these
+    // sessions bounce at the rate of people who never meant to be here, and
+    // unmarked they were drowning the landing page's quick-back signal (20-33
+    // of ~35 flagged in a 6h watcher window were "/"). The junk_link_traffic
+    // check counts them by this marker, which also keeps the case for fixing
+    // the beehiiv header link visible instead of silently absorbed.
+    url.searchParams.set('jl', '1')
     return NextResponse.redirect(url)
   }
 

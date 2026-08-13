@@ -145,6 +145,9 @@ buyers because identity there stays anonymous until someone is identified.
   `landing_fomo`.
 - Apollo credit spend always needs an explicit owner confirmation with the
   exact count first. Beehiiv sends stay draft/gated until the owner publishes.
+- The send-to-non-quiz-takers campaign (the ~94k) is the owner's to trigger,
+  on his timing (his instruction, 2026-08-13). Do not pitch it or ask about
+  it again; when he is ready he will say so.
 - A person's live result page: `/result?name=…&score=…&persona=…&stage=…&id=<submission uuid>`
   (helper: `personResultPath` in `lib/result-url.ts`); it re-fetches by `id`,
   so the link works anytime, from the notification email, the person record,
