@@ -45,12 +45,12 @@ type RawPlacement = { placement: string; views: number; clicks: number; clickerI
 
 // Funnel + placement events, all in the ONE launch window (since Jul 5), bucketed
 // by day / week / month so the progression charts can toggle granularity.
-async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets; journeyBuckets: Record<Gran, Record<string, JourneyCell>> }> {
+async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: FunnelEventCounts; placements: RawPlacement[]; eventBuckets: EventBuckets; journeyBuckets: Record<Gran, Record<string, JourneyCell>>; completionSids: Set<string> }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
   const emptyBuckets: EventBuckets = { day: {}, week: {}, month: {} }
   const emptyJourneys: Record<Gran, Record<string, JourneyCell>> = { day: {}, week: {}, month: {} }
-  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys }
+  const empty = { firstEventAt: null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: emptyBuckets, journeyBuckets: emptyJourneys, completionSids: new Set<string>() }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -95,6 +95,13 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   const sidToKey = new Map<string, string>()
   const aliasOf = new Map<string, string>()
   const resolveKey = (k: string) => { let x = k; while (aliasOf.has(x)) x = aliasOf.get(x)!; return x }
+  // Which SUBMISSIONS the camera saw complete (result_view or the server-side
+  // quiz_submit row). Register-clocked coverage is computed from this set, so
+  // the matrix can show the true register headcount with an exact on-camera /
+  // off-camera split per column — same clock, per-submission facts, sums by
+  // construction. This is what restores "the completions used to be correct"
+  // (owner, 2026-08-13) without giving back the broken blended rates.
+  const completionSids = new Set<string>()
 
   const MAX_EVENTS = 400_000
   const PAGE = 1000
@@ -112,6 +119,7 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
       // Skip rows with no identifier so counts aren't inflated to row totals.
       const who = r.anon_id || r.session_id
       if (!who) continue
+      if (r.submission_id && (r.event === 'result_view' || r.event === 'quiz_submit')) completionSids.add(r.submission_id)
       // quiz_submit is the SERVER-side completion row, written by the submit
       // endpoint in the same request as the submission itself (2026-08-13).
       // It maps to the completion stage AND marks the start: submitting proves
@@ -266,6 +274,7 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
       .sort((a, b) => b.views - a.views || b.clicks - a.clicks),
     eventBuckets,
     journeyBuckets,
+    completionSids,
   }
 }
 
@@ -359,7 +368,7 @@ export default async function DashboardPage({
 
   let error: string | null = null
   let allRows: Awaited<ReturnType<typeof filteredSubmissionsAll>> = []
-  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>> }
+  let events = { firstEventAt: null as string | null, funnel: { landing: 0, started: 0, checkout: 0, jLanded: 0, jThenStarted: 0, jThenCompleted: 0, jThenClicked: 0, jDirect: 0, jDirectQuiz: 0, jDirectResult: 0, bThenCompleted: 0, bThenClicked: 0, cThenClicked: 0 }, placements: [] as RawPlacement[], eventBuckets: { day: {}, week: {}, month: {} } as EventBuckets, journeyBuckets: { day: {}, week: {}, month: {} } as Record<Gran, Record<string, JourneyCell>>, completionSids: new Set<string>() }
   try {
     ;[allRows, events] = await Promise.all([filteredSubmissionsAll(filters), loadEventStats()])
   } catch (e) {
@@ -470,7 +479,7 @@ export default async function DashboardPage({
     // numerator and denominator described different windows — a real
     // completion divided by views that were never recorded. Rates use these.
     const clean = new Map<string, { completed: number; netNew: number }>()
-    const subs = new Map<string, { completed: number; netNew: number; revenue: number; mature: number; billedAnnual: number }>()
+    const subs = new Map<string, { completed: number; completedSeen: number; netNew: number; revenue: number; mature: number; billedAnnual: number }>()
     for (const r of allRows) {
       // Same anchor as the KPIs above, so a person lands in the week they took
       // the quiz and the charts cannot disagree with the numbers beside them.
@@ -480,8 +489,13 @@ export default async function DashboardPage({
       if (!quizAt) continue
       const b = bucketKey(quizAt, gran)
       if (!b || b < launchBucket) continue
-      const e = subs.get(b) || { completed: 0, netNew: 0, revenue: 0, mature: 0, billedAnnual: 0 }
+      const e = subs.get(b) || { completed: 0, completedSeen: 0, netNew: 0, revenue: 0, mature: 0, billedAnnual: 0 }
       e.completed++
+      // Register-clocked camera coverage: this SUBMISSION either has a
+      // completion event (result_view or server quiz_submit) or it does not.
+      // Same bucket as the register row it describes, so seen + off-camera
+      // always sums to completed, exactly, per column.
+      if (events.completionSids.has(r.id)) e.completedSeen++
       const chargeMs = r.stripeFirstChargeAt ? new Date(r.stripeFirstChargeAt).getTime() : null
       if (chargeMs !== null && chargeMs > new Date(quizAt).getTime()) {
         e.netNew++
@@ -576,6 +590,7 @@ export default async function DashboardPage({
       views: evb[bucket]?.views || 0,
       starts: evb[bucket]?.starts || 0,
       completed: subs.get(bucket)?.completed || 0, // submissions — consistent with the 489 funnel total
+      completedSeen: subs.get(bucket)?.completedSeen || 0,
       checkout: evb[bucket]?.checkout || 0,
       jLanded: jvb[bucket]?.jLanded || 0,
       jThenStarted: jvb[bucket]?.jThenStarted || 0,

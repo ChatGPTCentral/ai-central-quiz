@@ -52,7 +52,7 @@ export interface SeriesPoint {
    *  Jul 5 but the first funnel_event is Jul 9, so early buckets have no event
    *  data — 'none' renders "–" rather than a lying 0. */
   eventsCovered: 'none' | 'partial' | 'full'
-  views: number; starts: number; checkout: number; completed: number
+  views: number; starts: number; checkout: number; completed: number; completedSeen: number
   /** The landing cohort of this bucket: jLanded people first saw the landing
    *  page here; jThenStarted..jThenClicked are subsets of it in order, so the
    *  column multiplies exactly and no rate can exceed 100%. jDirect entered
@@ -319,7 +319,7 @@ const STEP_TAB_LABEL: Record<Gran | 'all', string> = { day: 'D', week: 'W', mont
  *  `all` collapses to the single whole-window column. */
 function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWindowAnnuals }: {
   series: Series; gran: Gran | 'all'
-  F: { landing: number; started: number; completed: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
+  F: { landing: number; started: number; completed: number; completedSeen: number; checkout: number; paid: number; otherPaid: number; quizExistingPaid: number
        jLanded: number; jThenStarted: number; jThenCompleted: number; jThenClicked: number; jDirect: number; jDirectQuiz: number; jDirectResult: number
        bThenCompleted: number; bThenClicked: number; cThenClicked: number }
   lifetimeSplits: number
@@ -462,14 +462,28 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       out: { label: 'entered → then clicked', all: share(sumB(p => p.cThenClicked, F.cThenClicked), sumB(p => p.jDirectResult, F.jDirectResult)), per: p => share(p.cThenClicked, p.jDirectResult) },
     },
     {
-      // THE BRIDGE ROWS. These two exist to answer the question the owner
-      // actually asks when reading this table: "the KPI says N quiz takers,
-      // where are they here?" They sum the doors, so the arithmetic the eye
-      // wants to do is done on the page instead of in the reader's head.
-      section: { title: 'All doors together', caption: 'the doors summed, then the outcomes. The footer below squares these against the submissions register.' },
-      label: 'Completed a quiz · A+B', pick: (p: SeriesPoint) => p.jThenCompleted + p.bThenCompleted,
-      tot: sumB(p => p.jThenCompleted + p.bThenCompleted, F.jThenCompleted + F.bThenCompleted), warm: false,
-      note: 'door A completions plus door B completions: every finish the camera saw. Compare with the register in the footer; door C has no quiz left to finish.',
+      // THE BRIDGE. This row is the REGISTER — the submissions table, the same
+      // source and clock as the KPI boxes, so it always matches "Total quiz
+      // takers" exactly and is never blind: since 2026-08-13 the server writes
+      // the completion with the submission itself, and before that the
+      // register never depended on the browser anyway. The breakdown is the
+      // camera's coverage of it, exact per column because all three rows sit
+      // on the register clock (quiz_completed_at). This restores what the
+      // owner rightly missed ("they used to be correct a couple of days
+      // ago"): the pre-door matrix counted completions from the register, the
+      // door rebuild silently swapped in the camera, and totals got
+      // undercounted to buy correct rates. Now both: register headcounts
+      // here, camera rates in the door chains above.
+      section: { title: 'All doors together', caption: 'the register headcount with its camera coverage, then clicks and outcomes. Counts add across doors, rates never do.' },
+      label: 'Completed a quiz · register', pick: (p: SeriesPoint) => p.completed,
+      tot: sumB(p => p.completed, F.completed), warm: false,
+      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included.',
+      breakdown: [
+        { label: 'on camera', pick: (p: SeriesPoint) => p.completedSeen, tot: sumB(p => p.completedSeen, F.completedSeen),
+          note: 'this submission has a completion event, client result_view or the server quiz_submit row. Since Aug 13 the server writes it with the submission itself, so every new completion is on camera.' },
+        { label: 'off camera', pick: (p: SeriesPoint) => p.completed - p.completedSeen, tot: sumB(p => p.completed - p.completedSeen, F.completed - F.completedSeen),
+          note: 'no completion event exists: all of pre-Jul-9 (tracking did not exist), blocked browsers before Aug 13. Structurally zero for new completions; register_coverage turns the dashboard red if not.' },
+      ],
     },
     {
       label: 'Clicked checkout · A+B+C', pick: (p: SeriesPoint) => p.jThenClicked + p.bThenClicked + p.cThenClicked,
@@ -750,7 +764,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         // all of them go blind before client tracking existed on 9 Jul.
         const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Quiz completed' || s.label === 'Checkout clicked'
           || s.label === 'Entered at the quiz' || s.label === 'Quiz entrants · completed' || s.label === 'Entered at a result page'
-          || s.label === 'Completed a quiz · A+B' || s.label === 'Clicked checkout · A+B+C'
+          || s.label === 'Clicked checkout · A+B+C'
         return (
           <div key={s.label}>
             {/* Door banner: the visual break that keeps three chains from
@@ -883,7 +897,10 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           (owner, 2026-08-13: 1,786 takers vs 1,179+279 in the matrix). */}
       {(() => {
         const register = sumB(p => p.completed, F.completed)
-        const seen = sumB(p => p.jThenCompleted + p.bThenCompleted, F.jThenCompleted + F.bThenCompleted)
+        // Register-clocked coverage: the SAME numbers as the bridge row's
+        // on-camera breakdown, so the footer can never disagree with the rows
+        // it explains.
+        const seen = sumB(p => p.completedSeen, F.completedSeen)
         const cov = register > 0 ? (seen / register) * 100 : 0
         return (
           <div style={{ borderTop: `2px solid ${INK}`, background: '#FFFDFA', padding: '8px 10px', fontSize: 10, lineHeight: 1.6, color: '#4A4A4A' }}>
@@ -1026,7 +1043,9 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
   //    KPI above (whole cohort, not the stage slice). Feeds the volume matrix. ──
   const wholeNetNew = rows.filter(r => r.netNew).length
   const F = {
-    landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, checkout: funnelEvents.checkout,
+    // completedSeen fallback is 0: F only fires with zero visible buckets,
+    // where every number on the page is degenerate anyway.
+    landing: funnelEvents.landing, started: funnelEvents.started, completed: rows.length, completedSeen: 0, checkout: funnelEvents.checkout,
     paid: wholeNetNew, otherPaid, quizExistingPaid,
     jLanded: funnelEvents.jLanded, jThenStarted: funnelEvents.jThenStarted,
     jThenCompleted: funnelEvents.jThenCompleted, jThenClicked: funnelEvents.jThenClicked,
