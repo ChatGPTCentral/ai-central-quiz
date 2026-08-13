@@ -212,7 +212,20 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   const firstName = (name || '').trim().split(/\s+/)[0] || ''
 
-  const segFields = await fetchSegmentFields(rowId)
+  // THREE independent reads, ONE round trip. They used to run in sequence,
+  // stacking Supabase + editor-config + Stripe latency into TTFB on a page
+  // whose p75 paint was 5.0s (watcher, 2026-08-13) — and at ~200 views/day the
+  // function is usually cold, so every serial hop lands on top of a cold
+  // start. Only resolveExperiments below genuinely depends on segFields; these
+  // three depend on nothing but the request.
+  const [segFields, liveConfig, lifetimeReady] = await Promise.all([
+    fetchSegmentFields(rowId),
+    getLivePublishedConfig('quiz-v2').catch(err => {
+      console.warn('[result-v2] failed to load editor endScreens, using defaults:', err)
+      return null
+    }),
+    resolveLifetimePriceId().then(id => !!id).catch(() => false),
+  ])
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
   // ONE effective rung drives the copy, the percentile and the gauge. They used
@@ -227,9 +240,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const p = (s: string) => withFirstName(withPersona(s, content.label), firstName)
 
   // Editor safety valve: honor a published end-screen's ctaUrl override.
+  // (liveConfig fetched above, in parallel with the submission row.)
   let endScreen: EndScreen | null = null
   try {
-    const liveConfig = await getLivePublishedConfig('quiz-v2')
     endScreen = pickEndScreen(liveConfig?.endScreens ?? [], {
       score,
       persona: persona ?? null,
@@ -238,7 +251,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       friction: segFields?.friction ?? null,
     })
   } catch (err) {
-    console.warn('[result-v2] failed to load editor endScreens, using defaults:', err)
+    console.warn('[result-v2] failed to pick an editor endScreen, using defaults:', err)
   }
   // Stamp the submission onto the payment link, so a sale can be credited back
   // to the quiz even when the buyer pays with a different email.
@@ -275,7 +288,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // tsc could not see.
   const visitorCountry = headers().get('x-vercel-ip-country') ?? undefined
   const offerParam = typeof searchParams.offer === 'string' ? searchParams.offer.trim().toLowerCase() : ''
-  const lifetimeReady = !!(await resolveLifetimePriceId())
+  // lifetimeReady resolved above, in the parallel read with segFields.
   const offer = offerParam === 'trial'
     ? TRIAL_OFFER
     : offerParam === 'lifetime' && lifetimeReady

@@ -66,6 +66,8 @@ function ReviewCard({ r }: { r: MarqueeReview }) {
         <img
           src={r.avatarUrl}
           alt=""
+          loading="lazy"
+          decoding="async"
           referrerPolicy="no-referrer"
           style={{ width: '100%', height: 136, objectFit: 'cover', objectPosition: 'center 25%', borderBottom: `2px solid ${INK}`, display: 'block', backgroundColor: '#FEF7E7' }}
         />

@@ -37,6 +37,8 @@ function DocCard({ d }: { d: Doc }) {
       <img
         src={cover(d.qf)}
         alt=""
+        loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
         style={{ width: '100%', height: 190, objectFit: 'cover', borderBottom: `2px solid ${INK}`, display: 'block', backgroundColor: CREAM }}
       />

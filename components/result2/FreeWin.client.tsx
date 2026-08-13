@@ -114,6 +114,8 @@ export default function FreeWinCard({
               <img
                 src={`https://img.tradepub.com/free/${tutorial.qf}/images/${tutorial.qf}c4.gif`}
                 alt=""
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
                 style={{ width: 96, height: 126, objectFit: 'cover', border: `2px solid ${INK}`, display: 'block', backgroundColor: CREAM, flexShrink: 0 }}
               />

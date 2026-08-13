@@ -179,6 +179,8 @@ export function StudyPlan({
             <img
               src={cover(t.qf)}
               alt=""
+              loading="lazy"
+              decoding="async"
               referrerPolicy="no-referrer"
               style={{
                 width: 58, height: 76, objectFit: 'cover', border: `2px solid ${INK}`, display: 'block',
