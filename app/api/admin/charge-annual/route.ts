@@ -78,6 +78,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `refused: trial charge has amount ${trialCents} cents, which maps to no annual plan` }, { status: 409 })
   }
 
+  // GUARD 0: the person must pay us NOTHING outside trial prices, anywhere —
+  // any customer id, any era. The subscription check below cannot see a
+  // lifetime (a one-time charge) or a legacy plan under an older customer id;
+  // rebert's April-2025 $49.87 lifetime with a July trial under a different
+  // customer id is exactly the case (owner, 2026-08-13). The mirror knows.
+  {
+    const nonTrial = '(399,499,5474)'
+    const [byCust, byEmail, byCustEmail] = await Promise.all([
+      db().from('stripe_charges').select('amount_cents, charged_at').eq('customer_id', customerId).eq('refunded', false).not('amount_cents', 'in', nonTrial).limit(1),
+      personKey ? db().from('stripe_charges').select('amount_cents, charged_at').ilike('email', personKey).eq('refunded', false).not('amount_cents', 'in', nonTrial).limit(1) : Promise.resolve({ data: [] }),
+      personKey ? db().from('stripe_charges').select('amount_cents, charged_at').ilike('customer_email', personKey).eq('refunded', false).not('amount_cents', 'in', nonTrial).limit(1) : Promise.resolve({ data: [] }),
+    ])
+    const other = (byCust.data?.[0] || byEmail.data?.[0] || byCustEmail.data?.[0]) as { amount_cents: number; charged_at: string } | undefined
+    if (other) {
+      await audit('charge_annual_refused', personKey, customerId, { reason: 'person already pays outside trial plans', other_cents: other.amount_cents, other_at: other.charged_at, trial_charge_id: chargeId })
+      return NextResponse.json({ error: `refused: this person already paid $${(other.amount_cents / 100).toFixed(2)} on ${other.charged_at.slice(0, 10)} outside the trial plans (lifetime or legacy subscription). They belong in "person already pays".` }, { status: 409 })
+    }
+  }
+
   try {
     // GUARD 1: the retry list is people with ZERO subscriptions. If Stripe
     // says otherwise, this row is mis-segmented and the answer is no.

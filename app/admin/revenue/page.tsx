@@ -122,7 +122,7 @@ async function load() {
   const c = db()
   const [eras, charges, lastSync, sheet, overrides, layout, mLayout, health] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
-    c.from('stripe_charges').select('amount_cents, refunded, charged_at').limit(20_000),
+    c.from('stripe_charges').select('amount_cents, refunded, charged_at, email, customer_email, customer_id').limit(20_000),
     c.from('stripe_charges').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
@@ -142,7 +142,26 @@ async function load() {
     if (data.length < 1000) break
   }
 
-  const chRows = (charges.data ?? []) as { amount_cents: number; refunded: boolean; charged_at: string }[]
+  const chRows = (charges.data ?? []) as { amount_cents: number; refunded: boolean; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }[]
+  // Every identity that has EVER paid us anything that is not a trial price —
+  // lifetimes at any amount, legacy monthly and annual subscriptions, the lot,
+  // on ANY of the person's Stripe customer ids. The ledger's converted and
+  // lifetime_bundle flags only see post-trial pairings and the $54.74 bundle;
+  // rebert (owner, 2026-08-13) bought a $49.87 lifetime in April 2025 under
+  // one customer id and a $3.99 trial in July under another, so the ledger
+  // called him lapsed while his profile rightly showed the lifetime. The
+  // retry list must be people who pay us NOTHING, so the test is money
+  // anywhere, not flags in one view. 29 rows across 27 people moved when
+  // this shipped.
+  const TRIAL_CENTS = new Set([399, 499, 5474])
+  const payingEmails = new Map<string, { cents: number; at: string }>()
+  const payingCustomers = new Set<string>()
+  for (const ch of chRows) {
+    if (ch.refunded || TRIAL_CENTS.has(ch.amount_cents)) continue
+    const em = (ch.email || ch.customer_email || '').toLowerCase().trim()
+    if (em && !payingEmails.has(em)) payingEmails.set(em, { cents: ch.amount_cents, at: ch.charged_at })
+    if (ch.customer_id) payingCustomers.add(ch.customer_id)
+  }
   const sheetByMonth = new Map<string, number>()
   for (const r of (sheet.data ?? []) as { trial_date: string }[]) {
     const m = r.trial_date.slice(0, 7)
@@ -163,6 +182,8 @@ async function load() {
     monthColOrder: mLay?.order ?? null,
     monthColHidden: mLay?.hidden ?? null,
     chargeRows: chRows,
+    payingEmails,
+    payingCustomers,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
@@ -279,6 +300,18 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     if (r.converted) personOutcome.set(r.person_key, `their ${r.trial_at.slice(0, 10)} trial converted on ${(r.converted_at || '').slice(0, 10)}`)
     else if (r.lifetime_bundle && !personOutcome.has(r.person_key)) personOutcome.set(r.person_key, `they bought the lifetime outright on ${r.trial_at.slice(0, 10)}`)
   }
+  // Off-ledger money: lifetimes bought BEFORE the trial, legacy monthly and
+  // annual subscribers, any customer id under the same email (rebert's
+  // $49.87 lifetime from April 2025). See the payingEmails build in load().
+  const paysOffLedger = (r: Row): string | null => {
+    if (personOutcome.has(r.person_key)) return null
+    const em = r.person_key.toLowerCase().trim()
+    const hit = d!.payingEmails.get(em)
+    if (hit) return `they paid $${(hit.cents / 100).toFixed(2)} on ${hit.at.slice(0, 10)}, outside the trial plans (a lifetime or legacy subscription)`
+    if (r.customer_id && d!.payingCustomers.has(r.customer_id)) return 'they hold a non-trial payment on this Stripe customer (lifetime or legacy subscription)'
+    return null
+  }
+  const personPays = (r: Row) => personOutcome.has(r.person_key) || paysOffLedger(r) !== null
   const fState = (searchParams.state || '') as State | ''
   const fEra = searchParams.era ? Number(searchParams.era) : 0
   const fAttr = searchParams.attr || ''
@@ -292,14 +325,14 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   const L3 = includeIndia ? L : L.filter(r => r.country !== 'India')
   const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
   const filtered = L3.filter(r =>
-    (!fState || stateOf(r, personOutcome.has(r.person_key)) === fState) &&
+    (!fState || stateOf(r, personPays(r)) === fState) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr))
   const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
-    const st = stateOf(r, personOutcome.has(r.person_key))
+    const st = stateOf(r, personPays(r))
     return {
-      personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? null : null,
+      personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? paysOffLedger(r) : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
       name: r.name, country: r.country, utm_source: r.utm_source,
       trial_at: r.trial_at, trial_cents: r.trial_cents, era: r.era, attribution: r.attribution,
@@ -310,7 +343,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     }
   })
   const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0 }
-  for (const r of L3) counts[stateOf(r, personOutcome.has(r.person_key))]++
+  for (const r of L3) counts[stateOf(r, personPays(r))]++
 
   // Per-person rollup for section 4. Built from the SAME ledger rows the table
   // above renders, never a second query: "how many trials does this person
