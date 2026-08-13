@@ -406,8 +406,15 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     breakdown?: { label: string; pick: (p: SeriesPoint) => number; tot: number; note?: string; metric?: string }[]
     /** Render like the All Revenue row: it is a total, not a station. */
     summary?: boolean
+    /** Starts a new door section: a full-width banner above this station.
+     *  The banner is what makes three separate chains READ as three separate
+     *  chains — without it they render as one long funnel and the reader
+     *  keeps trying to make the rows divide into each other (owner,
+     *  2026-08-13: "im still confused on how to easily read the whole thing"). */
+    section?: { title: string; caption: string }
   }[] = [
     {
+      section: { title: 'Door A · Cold, found the landing page', caption: 'ads, social, search. Four stations, each row a subset of the one above. The lever: landing experiments.' },
       label: 'Landing view', pick: (p: SeriesPoint) => p.jLanded, tot: sumB(p => p.jLanded, F.jLanded), warm: false,
       note: 'people whose FIRST landing-page visit fell in this period. Every row below it is a subset of these same people, so the column multiplies down exactly.',
       out: { label: 'landed → then started', all: share(sumB(p => p.jThenStarted, F.jThenStarted), sumB(p => p.jLanded, F.jLanded)), per: p => share(p.jThenStarted, p.jLanded) },
@@ -436,6 +443,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // straight into the quiz, no landing page. Its own multiplying chain,
       // never blended with the landing chain above: blending the doors is the
       // bug that produced 111% and 266-vs-216.
+      section: { title: 'Door B · Warm, straight into the quiz', caption: 'newsletter links, the homepage embed, LinkedIn. Never saw the landing page, so door A rates cannot apply. The lever: sends.' },
       label: 'Entered at the quiz', pick: (p: SeriesPoint) => p.jDirectQuiz, tot: sumB(p => p.jDirectQuiz, F.jDirectQuiz), warm: false,
       note: 'door B: reached the quiz with no landing view first — campaign links to /quiz-v2, the homepage slider embed (the single largest source, 401 people), LinkedIn buttons. The rate below tracks these same people.',
       out: { label: 'entered → then completed', all: share(sumB(p => p.bThenCompleted, F.bThenCompleted), sumB(p => p.jDirectQuiz, F.jDirectQuiz)), per: p => share(p.bThenCompleted, p.jDirectQuiz) },
@@ -448,9 +456,25 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     {
       // DOOR C: recovery emails, shared passes, notification links — straight
       // to a result page. Shortest chain: there is no quiz left to do.
+      section: { title: 'Door C · Returning, opened a result link', caption: 'recovery emails, shared passes, notification links. No quiz left to do. The lever: recovery and share loops.' },
       label: 'Entered at a result page', pick: (p: SeriesPoint) => p.jDirectResult, tot: sumB(p => p.jDirectResult, F.jDirectResult), warm: false,
       note: 'door C: first touch was someone\'s result page — recovery emails, shared passes, notification links. Includes untagged links; treat spikes with care.',
       out: { label: 'entered → then clicked', all: share(sumB(p => p.cThenClicked, F.cThenClicked), sumB(p => p.jDirectResult, F.jDirectResult)), per: p => share(p.cThenClicked, p.jDirectResult) },
+    },
+    {
+      // THE BRIDGE ROWS. These two exist to answer the question the owner
+      // actually asks when reading this table: "the KPI says N quiz takers,
+      // where are they here?" They sum the doors, so the arithmetic the eye
+      // wants to do is done on the page instead of in the reader's head.
+      section: { title: 'All doors together', caption: 'the doors summed, then the outcomes. The footer below squares these against the submissions register.' },
+      label: 'Completed a quiz · A+B', pick: (p: SeriesPoint) => p.jThenCompleted + p.bThenCompleted,
+      tot: sumB(p => p.jThenCompleted + p.bThenCompleted, F.jThenCompleted + F.bThenCompleted), warm: false,
+      note: 'door A completions plus door B completions: every finish the camera saw. Compare with the register in the footer; door C has no quiz left to finish.',
+    },
+    {
+      label: 'Clicked checkout · A+B+C', pick: (p: SeriesPoint) => p.jThenClicked + p.bThenClicked + p.cThenClicked,
+      tot: sumB(p => p.jThenClicked + p.bThenClicked + p.cThenClicked, F.jThenClicked + F.bThenClicked + F.cThenClicked), warm: false,
+      note: 'buy-button clickers from all three doors. The one place the doors are allowed to sum: counts add, rates never do.',
     },
     {
       // The funnel's terminal station: every trial sold, then what it is made
@@ -726,8 +750,17 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         // all of them go blind before client tracking existed on 9 Jul.
         const fromEvents = s.label === 'Landing view' || s.label === 'Quiz started' || s.label === 'Quiz completed' || s.label === 'Checkout clicked'
           || s.label === 'Entered at the quiz' || s.label === 'Quiz entrants · completed' || s.label === 'Entered at a result page'
+          || s.label === 'Completed a quiz · A+B' || s.label === 'Clicked checkout · A+B+C'
         return (
           <div key={s.label}>
+            {/* Door banner: the visual break that keeps three chains from
+                reading as one. Counts add across doors, rates never do. */}
+            {s.section && (
+              <div className="flex items-baseline gap-2.5" style={{ borderTop: `2px solid ${INK}`, background: '#F6EFDF', padding: '7px 8px 6px' }}>
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', color: INK, whiteSpace: 'nowrap' }}>{s.section.title}</span>
+                <span className="truncate" style={{ fontSize: 9.5, fontWeight: 500, color: '#6B6B6B' }}>{s.section.caption}</span>
+              </div>
+            )}
             <div className="grid items-stretch" style={{
               gridTemplateColumns: grid,
               background: s.summary ? '#F3F8F3' : undefined,
@@ -839,6 +872,29 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
 
       {renderRates(rateRows)}
 
+      {/* THE REGISTER vs THE CAMERA. The KPI boxes count quiz takers from the
+          submissions table (the record of who finished); the chain above
+          counts journeys the browser showed us (funnel_events, per device,
+          since Jul 9). These two can never be forced to match — 4 launch days
+          predate tracking, ~3% of browsers block events, and cross-device
+          finishers surface in door C — so the honest move is to reconcile
+          them on the page, with the coverage stated, instead of leaving the
+          reader to discover the gap and stop trusting the whole table
+          (owner, 2026-08-13: 1,786 takers vs 1,179+279 in the matrix). */}
+      {(() => {
+        const register = sumB(p => p.completed, F.completed)
+        const seen = sumB(p => p.jThenCompleted + p.bThenCompleted, F.jThenCompleted + F.bThenCompleted)
+        const cov = register > 0 ? (seen / register) * 100 : 0
+        return (
+          <div style={{ borderTop: `2px solid ${INK}`, background: '#FFFDFA', padding: '8px 10px', fontSize: 10, lineHeight: 1.6, color: '#4A4A4A' }}>
+            <strong style={{ color: INK }}>Why two totals exist.</strong> The register (submissions table) has <strong style={{ color: INK }}>{fmt(register)}</strong> completed
+            quizzes in this window; the camera (the chain above) watched <strong style={{ color: INK }}>{fmt(seen)}</strong> of them happen, {cov.toFixed(0)}% coverage.
+            The gap is structural, not an error: columns before Jul 9 predate client tracking, about 3% of browsers block events entirely, and people who
+            finish on a different device than they started show up in door C instead of a quiz chain. Headcounts and the north-star CVR always come from
+            the register; door rates always come from the camera. When this coverage number moves sharply, suspect the tracking, not the traffic.
+          </div>
+        )
+      })()}
 
       {/* The people-vs-charges reconciliation, stated where the confusion
           happens. On 2026-08-10 the owner saw Net-new paid 8 against 6×$4.99
