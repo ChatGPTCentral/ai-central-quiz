@@ -16,6 +16,7 @@ import TrialState from './TrialState.client'
 import { fmtDay } from '@/lib/dates'
 import { useColumnLayout } from './useColumnLayout'
 import ColumnsMenu from './ColumnsMenu.client'
+import ChargeAnnual from './ChargeAnnual.client'
 
 export interface TrialRow {
   charge_id: string
@@ -75,10 +76,16 @@ const ALL_COLUMNS: Col[] = [
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
         <TrialState chargeId={r.charge_id} derived={r.derivedState} derivedLabel={r.derivedLabel} derivedColor={r.derivedColor} initial={r.override} />
         {r.personNote && (
-          <span title={`This TRIAL did not convert, but the person did: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
+          <span title={`This TRIAL did not convert, but the person pays us: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
             style={{ fontSize: 10, color: GREEN, fontWeight: 700 }}>
-            ✓ person converted · {r.personNote}
+            ✓ {r.personNote}
           </span>
+        )}
+        {/* The one-click retry, ONLY on the true retry segment: lapsed, zero
+            subscriptions anywhere, and a Stripe customer to charge. The
+            server re-checks all of that before any money moves. */}
+        {r.derivedState === 'lapsed' && r.customer_id && (
+          <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} />
         )}
       </span>
     ) },

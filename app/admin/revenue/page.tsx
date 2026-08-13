@@ -66,26 +66,36 @@ interface Row {
   submission_id: string | null
 }
 
-/** The four states a trial can be in. This is the answer to "what happened to
- *  this person", and it is deliberately exhaustive: every trial is in exactly
- *  one of them, so the four counts always sum to the trial total. */
-type State = 'converted' | 'lifetime' | 'lapsed' | 'not_due' | 'refunded'
-function stateOf(r: Row): State {
+/** The states a trial can be in. Deliberately exhaustive: every trial is in
+ *  exactly one of them, so the counts always sum to the trial total.
+ *
+ *  'lapsed' SPLIT IN TWO, 2026-08-13, owner's operating rule: the
+ *  Did-not-convert segment is his RETRY-PAYMENTS worklist and must contain
+ *  only people with ZERO $59.75 subscriptions. A lapsed trial belonging to a
+ *  person who converted on another trial (tom, snedata) or bought the
+ *  lifetime (msfried) is a different case entirely — maybe a team seat,
+ *  maybe a double-buy, only he knows case by case — so it gets its own state
+ *  and stays out of the retry list. The per-row manual override dropdown
+ *  remains his case-by-case discretion on top. */
+type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded'
+function stateOf(r: Row, personPaysElsewhere: boolean): State {
   if (r.trial_refunded) return 'refunded'
   // A $54.74 buyer took the library outright: nothing left to renew, so they
   // are neither converted nor lapsed. Their own state, per the owner's rule.
   if (r.lifetime_bundle) return 'lifetime'
   if (r.converted) return 'converted'
-  return r.due ? 'lapsed' : 'not_due'
+  if (!r.due) return 'not_due'
+  return personPaysElsewhere ? 'lapsed_covered' : 'lapsed'
 }
 const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
   lifetime: 'Lifetime',
   lapsed: 'Did not convert',
+  lapsed_covered: 'Person already pays',
   not_due: 'Trialing',
   refunded: 'Refunded',
 }
-const STATE_COLOR: Record<State, string> = { converted: GREEN, lifetime: '#7E9BB5', lapsed: RED, not_due: AMBER, refunded: MUTE }
+const STATE_COLOR: Record<State, string> = { converted: GREEN, lifetime: '#7E9BB5', lapsed: RED, lapsed_covered: '#6B7FA3', not_due: AMBER, refunded: MUTE }
 
 const navChip: React.CSSProperties = {
   padding: '6px 12px', fontSize: 11.5, fontWeight: 700,
@@ -257,34 +267,31 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   }
 
   // ── People table, filtered by the query string ──────────────────────
-  const fState = (searchParams.state || '') as State | ''
-  const fEra = searchParams.era ? Number(searchParams.era) : 0
-  const fAttr = searchParams.attr || ''
-  const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
-  const filtered = L.filter(r =>
-    (!fState || stateOf(r) === fState) &&
-    (!fEra || r.era === fEra) &&
-    (!fAttr || r.attribution === fAttr))
-  // A lapsed row for a person whose OTHER trial converted reads as a
-  // contradiction ("tom has a paid $59.75, hows that possible" — owner,
-  // 2026-08-13, and he was right to stop at it). The ledger is sound —
-  // verified same day: zero unclaimed pairable renewals, zero backwards
-  // pairings — and under the gross-trials rule each TRIAL carries its own
-  // state. But 20 such rows sat in the Did-not-convert filter saying nothing
-  // about the person's other outcome, and a display that withholds the fact
-  // that resolves its own apparent contradiction is indistinguishable from a
-  // wrong one. So the row now says it, inline, one line.
+  // Which people pay us through ANOTHER trial (a conversion or a lifetime).
+  // Built from the SAME ledger rows, before any filtering, because both the
+  // state derivation and the row note read it. This is what keeps the
+  // Did-not-convert segment a clean retry worklist: a lapsed trial of a
+  // paying person files under "Person already pays" instead (tom, snedata,
+  // msfried — the three the owner caught on 2026-08-13).
   const personOutcome = new Map<string, string>()
   for (const r of L) {
     if (r.trial_refunded) continue
     if (r.converted) personOutcome.set(r.person_key, `their ${r.trial_at.slice(0, 10)} trial converted on ${(r.converted_at || '').slice(0, 10)}`)
     else if (r.lifetime_bundle && !personOutcome.has(r.person_key)) personOutcome.set(r.person_key, `they bought the lifetime outright on ${r.trial_at.slice(0, 10)}`)
   }
+  const fState = (searchParams.state || '') as State | ''
+  const fEra = searchParams.era ? Number(searchParams.era) : 0
+  const fAttr = searchParams.attr || ''
+  const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
+  const filtered = L.filter(r =>
+    (!fState || stateOf(r, personOutcome.has(r.person_key)) === fState) &&
+    (!fEra || r.era === fEra) &&
+    (!fAttr || r.attribution === fAttr))
   const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
-    const st = stateOf(r)
+    const st = stateOf(r, personOutcome.has(r.person_key))
     return {
-      personNote: st === 'lapsed' ? personOutcome.get(r.person_key) ?? null : null,
+      personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? null : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
       name: r.name, country: r.country, utm_source: r.utm_source,
       trial_at: r.trial_at, trial_cents: r.trial_cents, era: r.era, attribution: r.attribution,
@@ -294,8 +301,8 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       override: d!.overrideBy.get(r.charge_id) ?? null,
     }
   })
-  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, not_due: 0, refunded: 0 }
-  for (const r of L) counts[stateOf(r)]++
+  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0 }
+  for (const r of L) counts[stateOf(r, personOutcome.has(r.person_key))]++
 
   // Per-person rollup for section 4. Built from the SAME ledger rows the table
   // above renders, never a second query: "how many trials does this person
@@ -429,7 +436,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 12 }}>
         <a href={qs({ state: undefined })} style={chip(!fState)}>All {L.length}</a>
-        {(['converted', 'lifetime', 'lapsed', 'not_due', 'refunded'] as State[]).map(s => (
+        {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded'] as State[]).map(s => (
           <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
             {STATE_LABEL[s]} {counts[s]}
           </a>

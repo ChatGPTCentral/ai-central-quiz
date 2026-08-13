@@ -57,6 +57,18 @@ export function lifetimePriceIdSync(): string | null {
  * only outcome that must be impossible, so a lookup that fails falls back to
  * the trial rather than guessing.
  */
+/**
+ * The $59.75/year price that live renewals actually use. Verified against
+ * Stripe on 2026-08-13: the five most recent active subscriptions all carry
+ * price_1TSKdgBLsgHOvWxyBBkoqoqS (product prod_SNEjXShn2LU06z). Several other
+ * $59.75 prices exist on legacy products; the retry button must charge the
+ * one the funnel charges, so it is named, with the env override winning.
+ */
+const DEFAULT_ANNUAL_PRICE = 'price_1TSKdgBLsgHOvWxyBBkoqoqS'
+export function annualPriceId(): string {
+  return process.env.STRIPE_ANNUAL_PRICE_ID?.trim() || DEFAULT_ANNUAL_PRICE
+}
+
 export async function resolveLifetimePriceId(): Promise<string | null> {
   // The known price, which is the normal path and costs nothing.
   const named = lifetimePriceIdSync()
