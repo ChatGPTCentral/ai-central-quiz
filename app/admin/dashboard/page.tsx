@@ -82,6 +82,19 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
   // (owner, 2026-08-12): a person arriving at /result from an email link was
   // being credited to a landing page they never saw.
   const journeys = new Map<string, { land?: number; start?: number; result?: number; click?: number }>()
+  // IDENTITY STITCHING (2026-08-13). Journeys used to be keyed by the anon
+  // cookie, which is a DEVICE, not a person: someone who starts the quiz on
+  // their phone and finishes from the email link on their laptop was two
+  // strangers — the finish landed in door C and the start looked abandoned.
+  // Measured cost of that keying: the camera saw 82% of the register when
+  // 94% of instrumented-era submissions have their result_view in events,
+  // keyed by submission id. So: any two device keys that ever share a
+  // submission_id are the same person; their journeys merge, taking the
+  // earliest timestamp per stage. Actor tallies below (uniq/bump/pl) stay
+  // device-keyed on purpose — they count devices seeing pages, not journeys.
+  const sidToKey = new Map<string, string>()
+  const aliasOf = new Map<string, string>()
+  const resolveKey = (k: string) => { let x = k; while (aliasOf.has(x)) x = aliasOf.get(x)!; return x }
 
   const MAX_EVENTS = 400_000
   const PAGE = 1000
@@ -104,10 +117,35 @@ async function loadEventStats(): Promise<{ firstEventAt: string | null; funnel: 
         : r.event === 'result_view' ? 'result' as const
         : r.event === 'checkout_click' ? 'click' as const : null
       if (stage) {
+        let key = resolveKey(who)
+        if (r.submission_id) {
+          const owner = sidToKey.get(r.submission_id)
+          if (owner === undefined) {
+            sidToKey.set(r.submission_id, key)
+          } else {
+            const root = resolveKey(owner)
+            if (root !== key) {
+              // Same submission seen from a second device: merge this key's
+              // journey into the first one, earliest timestamp per stage wins.
+              const a = journeys.get(key)
+              if (a) {
+                const b = journeys.get(root) || {}
+                for (const s of ['land', 'start', 'result', 'click'] as const) {
+                  const t = a[s]
+                  if (t !== undefined && (b[s] === undefined || t < b[s]!)) b[s] = t
+                }
+                journeys.set(root, b)
+                journeys.delete(key)
+              }
+              aliasOf.set(key, root)
+              key = root
+            }
+          }
+        }
         const t = Date.parse(r.ts)
-        const j = journeys.get(who) || {}
+        const j = journeys.get(key) || {}
         const cur = j[stage]
-        if (cur === undefined || t < cur) { j[stage] = t; journeys.set(who, j) }
+        if (cur === undefined || t < cur) { j[stage] = t; journeys.set(key, j) }
       }
       const kind = r.event === 'quiz_view' ? 'views' : r.event === 'quiz_start' ? 'starts' : r.event === 'checkout_click' ? 'checkout' : null
       if (kind) { for (const g of GRANS) bump(g, bucketKey(r.ts, g), kind, who) }

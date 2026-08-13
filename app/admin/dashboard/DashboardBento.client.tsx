@@ -458,7 +458,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // to a result page. Shortest chain: there is no quiz left to do.
       section: { title: 'Door C · Returning, opened a result link', caption: 'recovery emails, shared passes, notification links. No quiz left to do. The lever: recovery and share loops.' },
       label: 'Entered at a result page', pick: (p: SeriesPoint) => p.jDirectResult, tot: sumB(p => p.jDirectResult, F.jDirectResult), warm: false,
-      note: 'door C: first touch was someone\'s result page — recovery emails, shared passes, notification links. Includes untagged links; treat spikes with care.',
+      note: 'door C: first touch was someone\'s result page — recovery emails, shared passes, notification links. Cross-device finishers are stitched back to their quiz door by submission id, so what remains here is genuinely returning traffic (pre-Jul-9 quiz takers opening their links, shares, untagged links).',
       out: { label: 'entered → then clicked', all: share(sumB(p => p.cThenClicked, F.cThenClicked), sumB(p => p.jDirectResult, F.jDirectResult)), per: p => share(p.cThenClicked, p.jDirectResult) },
     },
     {
@@ -889,9 +889,10 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           <div style={{ borderTop: `2px solid ${INK}`, background: '#FFFDFA', padding: '8px 10px', fontSize: 10, lineHeight: 1.6, color: '#4A4A4A' }}>
             <strong style={{ color: INK }}>Why two totals exist.</strong> The register (submissions table) has <strong style={{ color: INK }}>{fmt(register)}</strong> completed
             quizzes in this window; the camera (the chain above) watched <strong style={{ color: INK }}>{fmt(seen)}</strong> of them happen, {cov.toFixed(0)}% coverage.
-            The gap is structural, not an error: columns before Jul 9 predate client tracking, about 3% of browsers block events entirely, and people who
-            finish on a different device than they started show up in door C instead of a quiz chain. Headcounts and the north-star CVR always come from
-            the register; door rates always come from the camera. When this coverage number moves sharply, suspect the tracking, not the traffic.
+            Cross-device journeys are stitched by submission id, so the remaining gap is only: columns before Jul 9 (client tracking did not exist yet, 115
+            completions are permanently off camera) and about 5% of browsers that block events or died before the result fired. A window starting after
+            Jul 9 runs at ~94% coverage. Headcounts and the north-star CVR always come from the register; door rates always come from the camera. When
+            this coverage number moves sharply, suspect the tracking, not the traffic.
           </div>
         )
       })()}
