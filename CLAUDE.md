@@ -137,6 +137,15 @@ buyers because identity there stays anonymous until someone is identified.
 
 ## Conventions
 
+- **CARDINAL RULE (owner, 2026-08-13): numbers quoted to the owner are the
+  MATRIX's numbers.** The dashboard's own cells, on the dashboard's clocks and
+  definitions, or another screen he can open. Diagnostic SQL is for finding
+  causes, and before its result is quoted it must be reconciled to the cell it
+  explains; a number on a different clock or definition gets that said in the
+  same sentence ("35 by charge date; the matrix's column says 31 because four
+  restate to their quiz week"). He verifies against the screen, so a number he
+  cannot find on a screen is a number he cannot trust.
+
 - Copy style: no em dashes, use commas.
 - Develop on `claude/great-volta-PaEPx`; ship = ff-merge to `main`
   (Vercel auto-deploys). Verify on prod after every ship.
