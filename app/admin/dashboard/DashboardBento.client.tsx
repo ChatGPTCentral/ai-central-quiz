@@ -477,15 +477,14 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // undercounted to buy correct rates. Now both: register headcounts
       // here, camera rates in the door chains above.
       section: { title: 'All doors together', caption: 'the register headcount with its camera coverage, then clicks and outcomes. Counts add across doors, rates never do.' },
+      // The on-camera / off-camera split is NOT printed as rows (owner
+      // request, 2026-08-13): the register number is the one that matters,
+      // and coverage is a health fact, not a funnel fact. It lives in the
+      // footer sentence below and in the register_coverage watcher check,
+      // which turns the dashboard red if a new completion is ever off camera.
       label: 'Completed a quiz · register', pick: (p: SeriesPoint) => p.completed,
       tot: sumB(p => p.completed, F.completed), warm: false,
-      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included.',
-      breakdown: [
-        { label: 'on camera', pick: (p: SeriesPoint) => p.completedSeen, tot: sumB(p => p.completedSeen, F.completedSeen),
-          note: 'this submission has a completion event, client result_view or the server quiz_submit row. Since Aug 13 the server writes it with the submission itself, so every new completion is on camera.' },
-        { label: 'off camera', pick: (p: SeriesPoint) => p.completed - p.completedSeen, tot: sumB(p => p.completed - p.completedSeen, F.completed - F.completedSeen),
-          note: 'no completion event exists: all of pre-Jul-9 (tracking did not exist), blocked browsers before Aug 13. Structurally zero for new completions; register_coverage turns the dashboard red if not.' },
-      ],
+      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included. Camera coverage of these is stated in the footer.',
     },
     {
       label: 'Clicked checkout · A+B+C', pick: (p: SeriesPoint) => p.jThenClicked + p.bThenClicked + p.cThenClicked,
