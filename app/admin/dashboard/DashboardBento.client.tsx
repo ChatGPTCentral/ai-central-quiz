@@ -414,7 +414,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
     section?: { title: string; caption: string }
   }[] = [
     {
-      section: { title: 'Door A · Cold, found the landing page', caption: 'ads, social, search. Four stations, each row a subset of the one above. The lever: landing experiments.' },
+      section: { title: 'Door A · Cold, found the landing page', caption: 'ads, social, search. Each row a subset of the one above. Columns: the week they LANDED. The lever: landing experiments.' },
       label: 'Landing view', pick: (p: SeriesPoint) => p.jLanded, tot: sumB(p => p.jLanded, F.jLanded), warm: false,
       note: 'people whose FIRST landing-page visit fell in this period. Every row below it is a subset of these same people, so the column multiplies down exactly.',
       out: { label: 'landed → then started', all: share(sumB(p => p.jThenStarted, F.jThenStarted), sumB(p => p.jLanded, F.jLanded)), per: p => share(p.jThenStarted, p.jLanded) },
@@ -448,7 +448,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // dozen people jumps between 0% and 100% without meaning anything —
       // exactly the noise this table exists to remove. The whole-window rate
       // lives in each row's hover note instead.
-      section: { title: 'Door B · Warm, straight into the quiz', caption: 'newsletter links, the homepage embed, LinkedIn. Never saw the landing page, so door A rates cannot apply. The lever: sends.' },
+      section: { title: 'Door B · Warm, straight into the quiz', caption: 'newsletter links, the homepage embed, LinkedIn. Columns: the week they ENTERED. The lever: sends.' },
       label: 'Entered at the quiz', pick: (p: SeriesPoint) => p.jDirectQuiz, tot: sumB(p => p.jDirectQuiz, F.jDirectQuiz), warm: false,
       note: `door B: reached the quiz with no landing view first — campaign links to /quiz-v2, the homepage slider embed, LinkedIn buttons. Whole window, ${share(sumB(p => p.bThenCompleted, F.bThenCompleted), sumB(p => p.jDirectQuiz, F.jDirectQuiz)).toFixed(1)}% of them go on to complete; weekly rates are hidden because the populations are too small to read.`,
     },
@@ -476,15 +476,15 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // door rebuild silently swapped in the camera, and totals got
       // undercounted to buy correct rates. Now both: register headcounts
       // here, camera rates in the door chains above.
-      section: { title: 'All doors together', caption: 'the register headcount with its camera coverage, then clicks and outcomes. Counts add across doors, rates never do.' },
+      section: { title: 'All doors together', caption: 'Columns: the week they COMPLETED — a different clock than the doors above, so door rows do not sum into these 1:1. Click any cell for its exact makeup.' },
       // The on-camera / off-camera split is NOT printed as rows (owner
       // request, 2026-08-13): the register number is the one that matters,
       // and coverage is a health fact, not a funnel fact. It lives in the
       // footer sentence below and in the register_coverage watcher check,
       // which turns the dashboard red if a new completion is ever off camera.
       label: 'Completed a quiz · register', pick: (p: SeriesPoint) => p.completed,
-      tot: sumB(p => p.completed, F.completed), warm: false,
-      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included. Camera coverage of these is stated in the footer.',
+      tot: sumB(p => p.completed, F.completed), warm: false, metric: 'completions',
+      note: 'every completed quiz from the submissions table, the record of who finished — the same number the KPI counts. Never blind, pre-Jul-9 included. Click any cell to see every person in it, each labeled with the door they came through and which column holds their door count.',
     },
     {
       label: 'Clicked checkout · A+B+C', pick: (p: SeriesPoint) => p.jThenClicked + p.bThenClicked + p.cThenClicked,

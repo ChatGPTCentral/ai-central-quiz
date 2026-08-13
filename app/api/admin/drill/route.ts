@@ -126,6 +126,55 @@ export async function GET(req: NextRequest) {
             : `renewed on ${(t.convertedAt || '').slice(0, 10)}`,
         }))
         break
+      case 'completions': {
+        // The register row: every completed quiz from submissions, bucketed by
+        // quiz_completed_at with the same bucketKey the cell used, so the
+        // drawer count always equals the cell. Each row is annotated with the
+        // door its stitched journey walked through and WHERE that journey is
+        // counted — including the clock-skew case (landed in an earlier week,
+        // so that week's door A column holds the completion) that makes door
+        // rows not sum into register columns. The door label is derived here
+        // from the same submission-id stitching the loader uses; the COUNT is
+        // exact by construction, the label is the explanation.
+        money = false
+        const q = `select s.id, s.quiz_completed_at as at, s.name, s.email, e.land_t, e.start_t, e.result_t
+from submissions s
+left join (
+  select l.sid,
+    min(f.ts) filter (where f.event = 'quiz_view') as land_t,
+    min(f.ts) filter (where f.event in ('quiz_start','quiz_submit')) as start_t,
+    min(f.ts) filter (where f.event in ('result_view','quiz_submit')) as result_t
+  from (
+    select distinct f2.submission_id as sid, f2.anon_id
+    from funnel_events f2
+    where f2.anon_id is not null and f2.submission_id is not null
+  ) l
+  join funnel_events f on f.anon_id = l.anon_id
+  group by l.sid
+) e on e.sid = s.id
+where s.quiz_completed_at >= '2026-07-05' and not coalesce(s.is_test, false)`
+        const { data, error } = await db().rpc('ux_watch_sql', { q })
+        if (error) throw new Error(String((error as { message?: string }).message ?? error))
+        const list = (Array.isArray(data) ? data : []) as { id: string; at: string; name: string | null; email: string | null; land_t: string | null; start_t: string | null; result_t: string | null }[]
+        rows = list.filter(r => r.at && inWindow(r.at)).map(r => {
+          const first = r.start_t ?? r.result_t
+          let why: string
+          if (!r.land_t && !r.start_t && !r.result_t) {
+            why = 'off camera: the browser sent no events (blocker era, before the Aug 13 server row)'
+          } else if (r.land_t && first && r.land_t <= first) {
+            const skew = bucketKey(r.land_t, gran) !== bucketKey(r.at, gran)
+            why = `door A: landed ${r.land_t.slice(0, 10)}${skew ? ' — that period’s door A column holds this completion' : ''}`
+          } else if (r.start_t) {
+            why = r.land_t
+              ? 'door B: started the quiz first, touched the landing page only after'
+              : `door B: straight into the quiz on ${r.start_t.slice(0, 10)}, no landing view`
+          } else {
+            why = 'door C shape: the camera saw only their result page, the quiz events were blocked'
+          }
+          return { chargeId: r.id, personKey: r.email || '(no email)', name: r.name, customerId: null, submissionId: r.id, at: r.at, chargedAt: r.at, usd: null, why }
+        })
+        break
+      }
       default:
         return NextResponse.json({ error: `unknown metric ${metric}` }, { status: 400 })
     }
