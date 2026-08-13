@@ -443,23 +443,25 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
       // straight into the quiz, no landing page. Its own multiplying chain,
       // never blended with the landing chain above: blending the doors is the
       // bug that produced 111% and 266-vs-216.
+      // Doors B and C show COUNTS only, no weekly rate rows (owner request,
+      // 2026-08-13): their weekly populations are small, and a rate over a
+      // dozen people jumps between 0% and 100% without meaning anything —
+      // exactly the noise this table exists to remove. The whole-window rate
+      // lives in each row's hover note instead.
       section: { title: 'Door B · Warm, straight into the quiz', caption: 'newsletter links, the homepage embed, LinkedIn. Never saw the landing page, so door A rates cannot apply. The lever: sends.' },
       label: 'Entered at the quiz', pick: (p: SeriesPoint) => p.jDirectQuiz, tot: sumB(p => p.jDirectQuiz, F.jDirectQuiz), warm: false,
-      note: 'door B: reached the quiz with no landing view first — campaign links to /quiz-v2, the homepage slider embed (the single largest source, 401 people), LinkedIn buttons. The rate below tracks these same people.',
-      out: { label: 'entered → then completed', all: share(sumB(p => p.bThenCompleted, F.bThenCompleted), sumB(p => p.jDirectQuiz, F.jDirectQuiz)), per: p => share(p.bThenCompleted, p.jDirectQuiz) },
+      note: `door B: reached the quiz with no landing view first — campaign links to /quiz-v2, the homepage slider embed, LinkedIn buttons. Whole window, ${share(sumB(p => p.bThenCompleted, F.bThenCompleted), sumB(p => p.jDirectQuiz, F.jDirectQuiz)).toFixed(1)}% of them go on to complete; weekly rates are hidden because the populations are too small to read.`,
     },
     {
       label: 'Quiz entrants · completed', pick: (p: SeriesPoint) => p.bThenCompleted, tot: sumB(p => p.bThenCompleted, F.bThenCompleted), warm: false,
-      note: 'of the door-B entrants, those who reached their result page. Subset of the row above.',
-      out: { label: 'completed → then clicked', all: share(sumB(p => p.bThenClicked, F.bThenClicked), sumB(p => p.bThenCompleted, F.bThenCompleted)), per: p => share(p.bThenClicked, p.bThenCompleted) },
+      note: `of the door-B entrants, those who reached their result page. Subset of the row above. Whole window, ${share(sumB(p => p.bThenClicked, F.bThenClicked), sumB(p => p.bThenCompleted, F.bThenCompleted)).toFixed(1)}% of these go on to click checkout.`,
     },
     {
       // DOOR C: recovery emails, shared passes, notification links — straight
       // to a result page. Shortest chain: there is no quiz left to do.
       section: { title: 'Door C · Returning, opened a result link', caption: 'recovery emails, shared passes, notification links. No quiz left to do. The lever: recovery and share loops.' },
       label: 'Entered at a result page', pick: (p: SeriesPoint) => p.jDirectResult, tot: sumB(p => p.jDirectResult, F.jDirectResult), warm: false,
-      note: 'door C: first touch was someone\'s result page — recovery emails, shared passes, notification links. Cross-device finishers are stitched back to their quiz door by submission id, so what remains here is genuinely returning traffic (pre-Jul-9 quiz takers opening their links, shares, untagged links).',
-      out: { label: 'entered → then clicked', all: share(sumB(p => p.cThenClicked, F.cThenClicked), sumB(p => p.jDirectResult, F.jDirectResult)), per: p => share(p.cThenClicked, p.jDirectResult) },
+      note: `door C: first touch was someone's result page — recovery emails, shared passes, notification links. Cross-device finishers are stitched back to their quiz door by submission id, so what remains here is genuinely returning traffic. Whole window, ${share(sumB(p => p.cThenClicked, F.cThenClicked), sumB(p => p.jDirectResult, F.jDirectResult)).toFixed(1)}% of them click checkout; weekly rates are hidden, the populations are too small to read.`,
     },
     {
       // THE BRIDGE. This row is the REGISTER — the submissions table, the same
