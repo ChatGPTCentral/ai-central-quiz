@@ -99,8 +99,10 @@ export async function GET(req: NextRequest) {
   const results: (BanditRunResult | { experimentKey: string; action: string; reason: string })[] = []
   for (const row of running || []) {
     try {
-      // 1. Per-variant guardrail + Thompson reallocation.
-      results.push(await runBanditForExperiment(row, 'bandit_cron'))
+      // 1. Per-variant guardrail + Thompson reallocation, batched by LEADS:
+      // the cron fires every 15 minutes but only reallocates an experiment
+      // once 10 new people have been exposed since its last reallocation.
+      results.push(await runBanditForExperiment(row, 'bandit_cron', { minNewExposures: 10 }))
 
       // 2. Experiment-wide 7-day health check.
       const win = await windowCounts(row.key)

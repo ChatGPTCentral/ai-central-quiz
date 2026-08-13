@@ -792,6 +792,22 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             {videoTourSection}
           </>
         ) : !videoFirst ? (
+          stripped ? (
+            // The buyer-thesis arm, completed 2026-08-13: not just fewer
+            // diversions but the OFFER FIRST. The stack with its badges — the
+            // element whose clickers buy at 69%, seen by almost nobody in the
+            // default order — becomes the first thing after the hero, and the
+            // study plan (whose clickers buy at 9%) is demoted below it. One
+            // coherent candidate for one recorded thesis: buyers spend their
+            // minutes on the offer, and the page was too divided.
+            <>
+              {offerSection(false)}
+              {studyPlanSection}
+              <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
+              {reviewsSection}
+              {videoTourSection}
+            </>
+          ) : (
           // The winner of result_sellfirst_v1, now the default page.
           <>
             {studyPlanSection}
@@ -800,6 +816,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             {reviewsSection}
             {videoTourSection}
           </>
+          )
         ) : (
           <>
             {offerSection(true)}

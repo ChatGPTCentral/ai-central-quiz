@@ -150,7 +150,7 @@ export interface BanditRunResult {
  * Only the `weight` field of approved variants is ever mutated — variant
  * copy is untouchable from this code path by construction.
  */
-export async function runBanditForExperiment(row: ExperimentRow, trigger: string): Promise<BanditRunResult> {
+export async function runBanditForExperiment(row: ExperimentRow, trigger: string, opts?: { minNewExposures?: number }): Promise<BanditRunResult> {
   const c = client()
   const key = String(row.key)
   const results = await experimentResults(row)
@@ -191,6 +191,30 @@ export async function runBanditForExperiment(row: ExperimentRow, trigger: string
       return { experimentKey: key, action: 'reallocated', reason: 'guardrail zeroed a losing variant', weights: Object.fromEntries(variants.map(v => [v.key, v.weight])) }
     }
     return { experimentKey: key, action: 'held', reason: row.bandit_enabled ? `exposure floor not met (need ${minExp}/variant)` : 'bandit disabled' }
+  }
+
+  // 2.5 The every-N-leads gate (owner's spec, 2026-08-13: "optimized and
+  // dynamically adjusted every 10 new leads recording"). The cron now fires
+  // every 15 minutes, but a reallocation only happens once enough NEW people
+  // have been exposed since the last one — the batch, not the clock, is the
+  // cadence. The guardrail above deliberately runs on every pass regardless:
+  // a clearly-losing arm should not get to keep losing while a batch fills.
+  if (opts?.minNewExposures && opts.minNewExposures > 0) {
+    const { data: lastAlloc } = await c
+      .from('experiment_weight_history')
+      .select('results_snapshot')
+      .eq('experiment_key', key)
+      .order('ran_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (lastAlloc?.results_snapshot) {
+      const snap = lastAlloc.results_snapshot as Record<string, { exposures?: number }>
+      const lastTotal = Object.values(snap).reduce((a, s) => a + Number(s?.exposures ?? 0), 0)
+      const nowTotal = results.reduce((a, r) => a + r.exposures, 0)
+      if (nowTotal - lastTotal < opts.minNewExposures) {
+        return { experimentKey: key, action: 'held', reason: `${nowTotal - lastTotal} new leads since last reallocation, waiting for ${opts.minNewExposures}` }
+      }
+    }
   }
 
   // 3. Thompson reallocation among approved variants only.
