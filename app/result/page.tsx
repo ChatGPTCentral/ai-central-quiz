@@ -11,7 +11,6 @@ import { StageGauge } from '@/components/result2/StageGauge'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
 import ExpenseEmail from '@/components/result2/ExpenseEmail.client'
-import { NextStageGap } from '@/components/result2/NextStageGap'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
 import { offerForCountry, checkoutPathFor, TRIAL_OFFER, LIFETIME_OFFER } from '@/lib/offers'
@@ -581,17 +580,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </div>
         )}
 
-        {/* The gap, before the offer, because it is the REASON for the offer.
-            What it costs them (above) → what is missing (here) → what it costs
-            to fix (below). Renders nothing for people at the top of the ladder
-            or for rows from before depth_actions existed. */}
-        <NextStageGap
-          depthActions={segFields?.depth_actions ?? null}
-          nextStageLabel={nextStage?.label ?? null}
-          checkoutUrl={checkoutUrl}
-          submissionId={rowId}
-          ctaLabel={CTA}
-        />
+        {/* NextStageGap REMOVED 2026-08-13 after four measured days. It sat
+            here, above the study plan, and it did two things: multiplied
+            study-plan checkout clicks 2.5x (9/day to 22/day while offer_bar
+            sat flat at 8.3/day, the same-page control) and added zero trials
+            (5.0/day before, 4.9 after). Curiosity clicks, not buyers — and
+            they cost us the meaning of the clicked→trial rate, which fell
+            34% to 8% purely by denominator. The component still exists; if
+            the gap idea returns it comes through the experiment queue with a
+            control, not straight onto the page that sells. */}
 
         {withVideo && videoBlock(true)}
 
