@@ -308,6 +308,34 @@ export const UX_QUERIES: {
     },
   },
   {
+    key: 'conversion_drought',
+    claim: 'a full day of checkout traffic produced zero quiz-earned trials',
+    // Born 2026-08-15. On Aug 14 — a send day, normal traffic, 30 clickers,
+    // 36 payment forms served, zero technical errors anywhere — the quiz
+    // earned NOTHING, and nobody knew until the owner felt it a day later.
+    // checkout_abandon only alarms at 20+ opens with zero paid in six hours,
+    // a shape a slow-bleed day never makes. This is the day-scale version:
+    // real checkout volume with a zero on the north-star stream is a
+    // CRITICAL, whatever the cause turns out to be, because a day of it is
+    // gone before anyone looks at a weekly number.
+    threshold: 0,
+    severity: 'critical',
+    source: 'supabase',
+    sql: `select
+            (select count(distinct coalesce(anon_id::text, session_id)) from funnel_events
+               where event = 'checkout_click' and ts >= now() - interval '24 hours') as clickers,
+            (select count(*) from trial_ledger
+               where not trial_refunded and attribution in ('quiz_net_new', 'quiz_existing')
+                 and trial_at >= now() - interval '24 hours') as quiz_trials`,
+    read: rows => {
+      const r = rows[0] || {}
+      const clickers = Number(r.clickers || 0)
+      const quizTrials = Number(r.quiz_trials || 0)
+      const drought = clickers >= 25 && quizTrials === 0
+      return { value: drought ? 1 : 0, detail: `${clickers} checkout clickers in 24h, ${quizTrials} quiz-earned trials` }
+    },
+  },
+  {
     key: 'register_coverage',
     claim: 'a completed quiz is missing from the camera',
     // THE 100% INVARIANT (owner, 2026-08-13: "i need 100% reporting"). Since
