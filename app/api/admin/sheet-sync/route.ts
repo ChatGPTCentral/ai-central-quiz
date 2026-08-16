@@ -183,7 +183,19 @@ export async function GET(req: NextRequest) {
     written += Math.min(500, out.length - i)
   }
 
-  return NextResponse.json({ ok: true, rowsInSheet: rows.length - headerIdx - 1, written, syncedAt: new Date().toISOString() })
+  // The owner's sheet judgments become trial state overrides, so a row he
+  // marks Cancel or Dispute in the SHEET leaves the retry list here too
+  // (go@digits.live, 2026-08-16). The function refreshes sheet-imported
+  // overrides and never touches hand-set ones; "No Payment" is deliberately
+  // not imported, it is his label for the retry audience itself.
+  let statusOverrides: number | null = null
+  {
+    const { data, error } = await c.rpc('import_sheet_status_overrides')
+    if (error) console.error('[sheet-sync] status override import failed:', error.message)
+    else statusOverrides = Number(data ?? 0)
+  }
+
+  return NextResponse.json({ ok: true, rowsInSheet: rows.length - headerIdx - 1, written, statusOverrides, syncedAt: new Date().toISOString() })
 }
 
 /** Save the published-CSV URL. */
