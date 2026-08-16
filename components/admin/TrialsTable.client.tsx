@@ -85,7 +85,7 @@ const ALL_COLUMNS: Col[] = [
             subscriptions anywhere, a Stripe customer to charge, and a trial
             amount that maps to a plan ($3.99 → $39.75/yr, $4.99 → $59.75/yr).
             The server re-checks all of it before any money moves. */}
-        {r.derivedState === 'lapsed' && r.customer_id && (r.trial_cents === 399 || r.trial_cents === 499) && (
+        {r.derivedState === 'lapsed' && !r.override && r.customer_id && (r.trial_cents === 399 || r.trial_cents === 499) && (
           <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} trialCents={r.trial_cents} />
         )}
       </span>

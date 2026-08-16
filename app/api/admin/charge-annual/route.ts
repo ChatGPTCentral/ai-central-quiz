@@ -84,6 +84,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `refused: trial charge has amount ${trialCents} cents, which maps to no annual plan` }, { status: 409 })
   }
 
+  // GUARD -1: a hand-set state on this trial means a human already judged it
+  // (refunded, dispute, hold, whatever it says). The button is for untouched
+  // rows only; charging past a manual judgment is how a disputed customer
+  // gets charged again (owner, 2026-08-16).
+  {
+    const { data: ov } = await db().from('trial_state_overrides').select('state').eq('charge_id', chargeId).maybeSingle()
+    if (ov?.state && ov.state !== 'auto') {
+      await audit('charge_annual_refused', personKey, customerId, { reason: 'manual state override', override: ov.state, trial_charge_id: chargeId })
+      return NextResponse.json({ error: `refused: this trial is hand-marked "${ov.state}". The button only touches rows without a manual judgment.` }, { status: 409 })
+    }
+  }
+
   // GUARD 0: the person must pay us NOTHING outside trial prices, anywhere —
   // any customer id, any era. The subscription check below cannot see a
   // lifetime (a one-time charge) or a legacy plan under an older customer id;

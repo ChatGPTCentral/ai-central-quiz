@@ -77,7 +77,7 @@ interface Row {
  *  maybe a double-buy, only he knows case by case — so it gets its own state
  *  and stays out of the retry list. The per-row manual override dropdown
  *  remains his case-by-case discretion on top. */
-type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded'
+type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'manual'
 function stateOf(r: Row, personPaysElsewhere: boolean): State {
   if (r.trial_refunded) return 'refunded'
   // A $54.74 buyer took the library outright: nothing left to renew, so they
@@ -93,9 +93,31 @@ const STATE_LABEL: Record<State, string> = {
   lapsed: 'Did not convert',
   lapsed_covered: 'Person already pays',
   not_due: 'Trialing',
-  refunded: 'Refunded',
+  refunded: 'Refunded / disputed',
+  manual: 'Set aside by hand',
 }
-const STATE_COLOR: Record<State, string> = { converted: GREEN, lifetime: '#7E9BB5', lapsed: RED, lapsed_covered: '#6B7FA3', not_due: AMBER, refunded: MUTE }
+const STATE_COLOR: Record<State, string> = { converted: GREEN, lifetime: '#7E9BB5', lapsed: RED, lapsed_covered: '#6B7FA3', not_due: AMBER, refunded: MUTE, manual: '#8A7A5C' }
+
+/** THE MANUAL OVERRIDE WINS EVERYWHERE (owner, 2026-08-16: refunded and
+ *  disputed people were sitting in the retry filter). The dropdown's state is
+ *  a human judgment, and the filter used to ignore it, reading only the
+ *  derived state — so a row hand-marked "dispute" still filed under Did not
+ *  convert and even wore a charge button. Overrides now map into effective
+ *  buckets: money-came-back states join Refunded/disputed, paying states join
+ *  Converted or Lifetime, and hold/cancel/no_payment get their own
+ *  "Set aside by hand" bucket. A row with ANY override can never be lapsed,
+ *  which means it can never be in the retry list and never chargeable. */
+const OVERRIDE_BUCKET: Record<string, State> = {
+  yearly_subscriber: 'converted',
+  recovered: 'converted',
+  lifetime: 'lifetime',
+  refunded: 'refunded',
+  dispute: 'refunded',
+  deleted: 'refunded',
+  hold: 'manual',
+  cancel: 'manual',
+  no_payment: 'manual',
+}
 
 const navChip: React.CSSProperties = {
   padding: '6px 12px', fontSize: 11.5, fontWeight: 700,
@@ -312,6 +334,13 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
     return null
   }
   const personPays = (r: Row) => personOutcome.has(r.person_key) || paysOffLedger(r) !== null
+  // Effective state: the hand-set override when one exists, the derived state
+  // otherwise. Every filter, count and button decision below uses THIS.
+  const effState = (r: Row): State => {
+    const ov = d!.overrideBy.get(r.charge_id)
+    if (ov && ov !== 'auto') return OVERRIDE_BUCKET[ov] ?? 'manual'
+    return stateOf(r, personPays(r))
+  }
   const fState = (searchParams.state || '') as State | ''
   const fEra = searchParams.era ? Number(searchParams.era) : 0
   const fAttr = searchParams.attr || ''
@@ -325,12 +354,12 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   const L3 = includeIndia ? L : L.filter(r => r.country !== 'India')
   const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
   const filtered = L3.filter(r =>
-    (!fState || stateOf(r, personPays(r)) === fState) &&
+    (!fState || effState(r) === fState) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr))
   const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
-    const st = stateOf(r, personPays(r))
+    const st = effState(r)
     return {
       personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? paysOffLedger(r) : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
@@ -342,8 +371,8 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       override: d!.overrideBy.get(r.charge_id) ?? null,
     }
   })
-  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0 }
-  for (const r of L3) counts[stateOf(r, personPays(r))]++
+  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0, manual: 0 }
+  for (const r of L3) counts[effState(r)]++
 
   // Per-person rollup for section 4. Built from the SAME ledger rows the table
   // above renders, never a second query: "how many trials does this person
@@ -477,7 +506,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 12 }}>
         <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
-        {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded'] as State[]).map(s => (
+        {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded', 'manual'] as State[]).map(s => (
           <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
             {STATE_LABEL[s]} {counts[s]}
           </a>
