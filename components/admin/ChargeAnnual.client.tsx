@@ -57,9 +57,10 @@ export default function ChargeAnnual({ customerId, personKey, chargeId, trialCen
   if (phase === 'error') return (
     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'flex-start', whiteSpace: 'normal' }}>
       <span style={{ fontSize: 10, color: RED, fontWeight: 700, maxWidth: 340, display: 'inline-block', whiteSpace: 'normal', lineHeight: 1.45 }}>✕ {msg}</span>
-      {/* Nothing reusable to bill: offer the path the Stripe dashboard offers
-          on such customers — the subscription on an emailed invoice. */}
-      {msg.includes('no reusable payment method') && (
+      {/* Two cases earn the invoice fallback: nothing reusable on file, and a
+          DECLINED card — the hosted invoice page accepts a fresh card, so a
+          dead card is a reason to invoice, not a dead end. */}
+      {(msg.includes('no reusable payment method') || msg.toLowerCase().includes('declined')) && (
         <button onClick={() => void fire('invoice')}
           title={`Creates the ${planLabel}/year subscription with a Stripe invoice emailed to them, due in 7 days. They pay it themselves.`}
           style={{ fontSize: 9.5, border: `2px solid ${INK}`, background: '#FFFDFA', fontWeight: 800, padding: '1px 6px', cursor: 'pointer' }}>
