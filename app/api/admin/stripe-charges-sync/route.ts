@@ -96,8 +96,11 @@ export async function GET(req: NextRequest) {
   // could not fetch, instead of dying or pretending zeros are data.
   const refundByCharge = new Map<string, number>()
   const disputeByCharge = new Map<string, { lost: number; any: boolean }>()
-  let refundsError: string | null = null
-  let disputesError: string | null = null
+  // An object, not two lets: the closures below mutate these, and TypeScript
+  // narrows a captured let to its initializer at the read site (it cannot see
+  // that Promise.all ran the closure), which turned the response line into a
+  // type error that a masked build check then let through to main.
+  const fetchErrors: { refunds: string | null; disputes: string | null } = { refunds: null, disputes: null }
 
   const fetchRefunds = async () => {
     try {
@@ -114,8 +117,8 @@ export async function GET(req: NextRequest) {
         if (!after) break
       }
     } catch (e) {
-      refundsError = e instanceof Error ? e.message : String(e)
-      console.error('[stripe-charges-sync] refunds fetch failed:', refundsError)
+      fetchErrors.refunds = e instanceof Error ? e.message : String(e)
+      console.error('[stripe-charges-sync] refunds fetch failed:', fetchErrors.refunds)
     }
   }
   const fetchDisputes = async () => {
@@ -136,8 +139,8 @@ export async function GET(req: NextRequest) {
         if (!after) break
       }
     } catch (e) {
-      disputesError = e instanceof Error ? e.message : String(e)
-      console.error('[stripe-charges-sync] disputes fetch failed:', disputesError)
+      fetchErrors.disputes = e instanceof Error ? e.message : String(e)
+      console.error('[stripe-charges-sync] disputes fetch failed:', fetchErrors.disputes)
     }
   }
 
@@ -245,8 +248,8 @@ export async function GET(req: NextRequest) {
     disputesLostUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.lost, 0) / 100,
     checksPassed: failed.length === 0,
     checks,
-    ...(refundsError ? { REFUNDS_NOT_FETCHED: `the key likely lacks Refunds read scope: ${refundsError.slice(0, 200)}` } : {}),
-    ...(disputesError ? { DISPUTES_NOT_FETCHED: `the key likely lacks Disputes read scope: ${disputesError.slice(0, 200)}` } : {}),
+    ...(fetchErrors.refunds ? { REFUNDS_NOT_FETCHED: `the key likely lacks Refunds read scope: ${fetchErrors.refunds.slice(0, 200)}` } : {}),
+    ...(fetchErrors.disputes ? { DISPUTES_NOT_FETCHED: `the key likely lacks Disputes read scope: ${fetchErrors.disputes.slice(0, 200)}` } : {}),
     ...(truncated ? { WARNING: 'page ceiling hit — the mirror is INCOMPLETE' } : {}),
   })
 }
