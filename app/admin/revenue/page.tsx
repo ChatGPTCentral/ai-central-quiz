@@ -31,6 +31,7 @@ import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.c
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import MonthsTable, { type MonthRow, type MonthTotals } from '@/components/admin/MonthsTable.client'
 import MultiTrialTable, { type MultiTrialRow } from '@/components/admin/MultiTrialTable.client'
+import RecoveryQueue, { type RecoveryRow } from '@/components/admin/RecoveryQueue.client'
 import { fmtDay, fmtMonth } from '@/lib/dates'
 import SyncCharges from '@/components/admin/SyncCharges.client'
 import LedgerHealth from '@/components/admin/LedgerHealth'
@@ -211,6 +212,16 @@ async function load() {
   for (const o of (overrides.data ?? []) as { charge_id: string; state: string }[]) {
     overrideBy.set(o.charge_id, o.state)
   }
+  // Every charge-button attempt ever made, newest first, for the recovery
+  // queue's last-tried ordering. Small table, but paged on principle.
+  type AdminAction = { at: string; action: string; person_key: string | null; detail: Record<string, unknown> | null }
+  const adminActions: AdminAction[] = []
+  for (let o = 0; o < 10_000; o += 1000) {
+    const { data, error } = await c.from('admin_actions').select('at, action, person_key, detail').order('at', { ascending: false }).range(o, o + 999)
+    if (error || !data) break
+    adminActions.push(...(data as AdminAction[]))
+    if (data.length < 1000) break
+  }
   return {
     eras: (eras.data ?? []) as Era[],
     ledger,
@@ -222,6 +233,7 @@ async function load() {
     chargeRows: chRows,
     payingEmails,
     payingCustomers,
+    adminActions,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
@@ -402,6 +414,53 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   })
   const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0, manual: 0 }
   for (const r of L3) counts[effState(r)]++
+
+  // ── Section 5 · the recovery queue ─────────────────────────────────────
+  // One row per PERSON (a two-trial person is one debt, not two buttons; the
+  // already-pays guard would block the second charge anyway), annotated with
+  // their last attempt from the audit trail. adminActions arrives newest
+  // first, so the first row seen per person IS their latest attempt.
+  const lastAttemptByPerson = new Map<string, { at: string; outcome: string }>()
+  let recoveredCount = 0
+  let invoicedCount = 0
+  for (const a of d.adminActions) {
+    if (a.action === 'charge_annual_created') recoveredCount++
+    if (a.action === 'charge_annual_invoiced') invoicedCount++
+    const pk = (a.person_key || '').toLowerCase()
+    if (!pk || lastAttemptByPerson.has(pk)) continue
+    const det = (a.detail || {}) as Record<string, unknown>
+    const outcome =
+      a.action === 'charge_annual_created' ? `created ${String(det.subscription ?? '')}`
+      : a.action === 'charge_annual_invoiced' ? `invoiced ${String(det.subscription ?? '')}`
+      : a.action === 'charge_annual_refused' ? `refused: ${String(det.reason ?? '')}`
+      : `failed: ${String(det.error ?? '').slice(0, 80)}`
+    lastAttemptByPerson.set(pk, { at: a.at, outcome })
+  }
+  const queueByPerson = new Map<string, RecoveryRow>()
+  for (const r of L3) {
+    if (effState(r) !== 'lapsed' || !r.customer_id || (r.trial_cents !== 399 && r.trial_cents !== 499)) continue
+    const pk = r.person_key.toLowerCase()
+    const ex = queueByPerson.get(pk)
+    if (!ex) {
+      const la = lastAttemptByPerson.get(pk)
+      queueByPerson.set(pk, {
+        personKey: r.person_key, name: r.name, chargeId: r.charge_id, customerId: r.customer_id,
+        trialCents: r.trial_cents, trialAt: r.trial_at, trialCount: 1,
+        lastAt: la?.at ?? null, lastOutcome: la?.outcome ?? null,
+      })
+    } else {
+      ex.trialCount++
+      if (r.trial_at > ex.trialAt) {
+        ex.trialAt = r.trial_at; ex.chargeId = r.charge_id; ex.trialCents = r.trial_cents; ex.customerId = r.customer_id
+      }
+    }
+  }
+  const recoveryRows = Array.from(queueByPerson.values()).sort((a, b) => {
+    if (!a.lastAt && !b.lastAt) return a.trialAt.localeCompare(b.trialAt)
+    if (!a.lastAt) return -1
+    if (!b.lastAt) return 1
+    return a.lastAt.localeCompare(b.lastAt)
+  })
 
   // Per-person rollup for section 4. Built from the SAME ledger rows the table
   // above renders, never a second query: "how many trials does this person
@@ -585,6 +644,20 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
           Only possible to see since trials started counting gross: the old
           rule threw the second one away, so this whole section was a blind
           spot with money in it. */}
+      {/* SECTION 5 (rendered between 3 and 4 by owner priority) — the retry
+          list as a worked QUEUE. Never-attempted first, oldest debt first;
+          then longest-since-last-try. Fed by the admin_actions audit trail,
+          so every click anywhere updates the ordering here. */}
+      <h2 id="recovery" style={{ fontSize: 15, fontWeight: 800, marginTop: 38, color: INK, scrollMarginTop: 16 }}>5 &middot; Revenue recovery queue</h2>
+      <p style={{ fontSize: 12.5, color: MUTE, marginTop: 6, lineHeight: 1.55, maxWidth: 820 }}>
+        One row per person, only true retry candidates: lapsed by the charges, no money from them anywhere, no judgment
+        from you or the sheet, a Stripe customer to bill, non-India, outside the no-card era. Fresh people float to the
+        top (oldest trial first); attempted people sink and resurface by how long ago the last try was. A charge failure
+        always offers the emailed invoice — declined and 3DS-challenged cards can pay a hosted invoice with a fresh card,
+        which a merchant-initiated charge can never do.
+      </p>
+      <RecoveryQueue rows={recoveryRows} recovered={recoveredCount} invoiced={invoicedCount} />
+
       <h2 id="multi" style={{ fontSize: 15, fontWeight: 800, marginTop: 38, color: INK, scrollMarginTop: 16 }}>4 &middot; Customers with more than one trial</h2>
       <p style={{ fontSize: 12.5, color: MUTE, marginTop: 6, lineHeight: 1.55, maxWidth: 780 }}>
         Every $4.99 is a paid trial and a person may buy several, so somebody with two trials should end up with
