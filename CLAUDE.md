@@ -43,7 +43,15 @@ These are not derivations, they are the definitions. Do not "improve" them.
    (rule 5); MONEY is net. The mirror carries `amount_refunded_cents` and
    `dispute_lost_cents`, refreshed hourly from Stripe's own Refund and
    Dispute endpoints (never from fields on the charge object; the 2026 API
-   dropped them).
+   dropped them). Net is still NOT the Stripe home screen's "Net volume":
+   that also subtracts Stripe's fees, and the account settles in TWO
+   currencies — cards in USD, the 2024→Jul-2025 PayPal/invoice era (1,147
+   charges) into a EUR balance at market × 0.98 — so `settled_cents` and
+   `fee_cents` in the mirror are cents of `settled_currency`, never blindly
+   dollars. Revenue numbers stay face-USD per charge; only the revenue
+   page's take-home bridge converts, valuing each euro flow at its own
+   day's rate (how Stripe's home counts; a today's-rate conversion misses
+   by thousands).
 
 Rule 5 kills the old 32-day "duplicate subscription" rule, which was hiding
 39 real trials and pushing their money into Other Revenue. Trials revenue is
