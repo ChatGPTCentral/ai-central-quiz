@@ -15,6 +15,7 @@ export interface Row {
   charge_id: string; person_key: string; customer_id: string | null; name: string | null; stage: string | null; country: string | null; utm_source: string | null
   trial_at: string; trial_cents: number; era: number; attribution: string
   converted: boolean; due: boolean; converted_at: string | null; converted_cents: number | null
+  converted_charge_id: string | null; quiz_completed_at: string | null
   gross_cents: number; lifetime_bundle: boolean; trial_refunded: boolean
   submission_id: string | null
 }
@@ -81,7 +82,9 @@ export function db() {
 }
 
 export type AdminAction = { at: string; action: string; person_key: string | null; detail: Record<string, unknown> | null }
-export type ChargeLite = { amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; dispute_lost_cents: number; dispute_fee_cents: number; dispute_open_cents: number; fee_cents: number; settled_cents: number | null; settled_currency: string | null; bt_exchange_rate: number | null; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
+/** Superset of the classifier's ChargeRow, so classifyLedger can consume the
+ *  SAME rows every total is computed from — one read, one truth. */
+export type ChargeLite = { id: string; description: string | null; amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; dispute_lost_cents: number; dispute_fee_cents: number; dispute_open_cents: number; fee_cents: number; settled_cents: number | null; settled_currency: string | null; bt_exchange_rate: number | null; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
 
 export async function loadRevenueData() {
   const c = db()
@@ -99,8 +102,9 @@ export async function loadRevenueData() {
   for (let o = 0; o < 20_000; o += 1000) {
     const { data, error } = await c
       .from('trial_ledger')
-      .select('charge_id, person_key, customer_id, name, stage, country, utm_source, trial_at, trial_cents, era, attribution, converted, due, converted_at, converted_cents, gross_cents, lifetime_bundle, trial_refunded, submission_id')
+      .select('charge_id, person_key, customer_id, name, stage, country, utm_source, trial_at, trial_cents, era, attribution, converted, due, converted_at, converted_cents, converted_charge_id, quiz_completed_at, gross_cents, lifetime_bundle, trial_refunded, submission_id')
       .order('trial_at', { ascending: false })
+      .order('charge_id', { ascending: true })
       .range(o, o + 999)
     if (error || !data) break
     ledger.push(...(data as Row[]))
@@ -108,13 +112,19 @@ export async function loadRevenueData() {
   }
 
   // PAGED, never one-shot: a single response caps at 1,000 rows and the
-  // table holds ~3,000 charges.
+  // table holds ~3,000 charges. Ordered by (charged_at, id) so pagination is
+  // deterministic even on timestamp ties, and read ONCE: the classifier and
+  // every total on the revenue screens consume THIS list, because two reads
+  // of a table the hourly sync rewrites can straddle the write and disagree
+  // by a phantom penny difference (seen live 2026-08-17, a red identity of
+  // $15.41 that no data state could explain).
   const chRows: ChargeLite[] = []
   for (let o = 0; o < 30_000; o += 1000) {
     const { data, error } = await c
       .from('stripe_charges')
-      .select('amount_cents, refunded, amount_refunded_cents, disputed, dispute_lost_cents, dispute_fee_cents, dispute_open_cents, fee_cents, settled_cents, settled_currency, bt_exchange_rate, charged_at, email, customer_email, customer_id')
+      .select('id, description, amount_cents, refunded, amount_refunded_cents, disputed, dispute_lost_cents, dispute_fee_cents, dispute_open_cents, fee_cents, settled_cents, settled_currency, bt_exchange_rate, charged_at, email, customer_email, customer_id')
       .order('charged_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(o, o + 999)
     if (error || !data) break
     chRows.push(...(data as ChargeLite[]))

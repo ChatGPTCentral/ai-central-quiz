@@ -28,8 +28,8 @@ import SyncCharges from '@/components/admin/SyncCharges.client'
 import LedgerHealth from '@/components/admin/LedgerHealth'
 import type { CheckResult } from '@/lib/ledger-invariants'
 import { fmtDay } from '@/lib/dates'
-import { loadRevenueData, db } from '@/lib/revenue-shared'
-import { classifyLedger, loadLedgerAndCharges, keptUsdCents, eurAvgRate } from '@/lib/trial-entries'
+import { loadRevenueData } from '@/lib/revenue-shared'
+import { classifyLedger, keptUsdCents, eurAvgRate } from '@/lib/trial-entries'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -67,10 +67,12 @@ export default async function RevenuePage() {
   try {
     d = await loadRevenueData()
     // The SAME classification the matrix sums, over the whole account
-    // history. loadLedgerAndCharges brings the charge shape classifyLedger
-    // pairs on; passing the epoch start makes every era in-window.
-    const { ledger, charges } = await loadLedgerAndCharges(db(), '2023-01-01')
-    entries = classifyLedger(ledger, charges, '2023-01-01').entries as { kind: string; at: string; usd: number }[]
+    // history — computed from the SAME single read as every other number on
+    // this page. Never a second fetch: the hourly sync's chunked upsert can
+    // land between two reads of the charge table, and the identity would
+    // then compare two different worlds (a red $15.41 no data state could
+    // explain, 2026-08-17). Epoch start makes every era in-window.
+    entries = classifyLedger(d.ledger, d.chargeRows, '2023-01-01').entries as { kind: string; at: string; usd: number }[]
   } catch (e) { err = e instanceof Error ? e.message : String(e) }
   if (err || !d) {
     return <div style={{ padding: 26 }}><h1 style={{ fontWeight: 800, fontSize: 24 }}>Revenue</h1><p style={{ color: RED }}>{err}</p></div>

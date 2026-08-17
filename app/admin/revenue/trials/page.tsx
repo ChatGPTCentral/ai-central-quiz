@@ -8,10 +8,10 @@
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import { fmtDay } from '@/lib/dates'
 import {
-  loadRevenueData, buildStateMachinery, inNoCardEra, db,
+  loadRevenueData, buildStateMachinery, inNoCardEra,
   STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State,
 } from '@/lib/revenue-shared'
-import { classifyLedger, loadLedgerAndCharges } from '@/lib/trial-entries'
+import { classifyLedger } from '@/lib/trial-entries'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -38,9 +38,10 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const convertedIdBy = new Map<string, string | null>()
   try {
     d = await loadRevenueData()
-    const { ledger: fullLedger, charges } = await loadLedgerAndCharges(db(), '2023-01-01')
-    for (const t of fullLedger) convertedIdBy.set(t.charge_id, t.converted_charge_id ?? null)
-    for (const e of classifyLedger(fullLedger, charges, '2023-01-01').entries) {
+    // Classified from the SAME single read as everything else on the page
+    // (a second fetch can straddle the hourly sync's upsert and disagree).
+    for (const t of d.ledger) convertedIdBy.set(t.charge_id, t.converted_charge_id ?? null)
+    for (const e of classifyLedger(d.ledger, d.chargeRows, '2023-01-01').entries) {
       netByCharge.set(e.chargeId, (netByCharge.get(e.chargeId) ?? 0) + e.usd)
     }
   } catch (e) { err = e instanceof Error ? e.message : String(e) }

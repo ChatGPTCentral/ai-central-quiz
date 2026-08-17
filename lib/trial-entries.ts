@@ -419,7 +419,10 @@ export function classifyLedger(
   // those below zero, so the matrix must too — whatever each charge's own
   // emissions could not absorb lands here as a negative entry, and the
   // kinds-sum equals the kept-money total to the penny, by construction.
+  const swept = new Set<string>()
   for (const ch of charges) {
+    if (swept.has(ch.id)) continue
+    swept.add(ch.id)
     const d = dInit.get(ch.id) ?? 0
     const left = deductionLeft.get(ch.id) ?? 0
     const consumed = d - left
