@@ -17,6 +17,10 @@
       "schedule": "20 * * * *"
     },
     {
+      "path": "/api/cron/renewal-reminder",
+      "schedule": "10 8 * * *"
+    },
+    {
       "path": "/api/admin/posthog-sync",
       "schedule": "45 6 * * *"
     },
