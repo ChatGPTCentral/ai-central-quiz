@@ -59,10 +59,11 @@ export type LedgerRow = {
 
 export type ChargeRow = {
   id: string; amount_cents: number; charged_at: string; refunded: boolean
+  amount_refunded_cents?: number | null; dispute_lost_cents?: number | null
   email?: string | null; customer_email?: string | null; customer_id?: string | null; description?: string | null
 }
 
-export const CHARGE_SELECT = 'id, amount_cents, charged_at, refunded, email, customer_email, customer_id, description'
+export const CHARGE_SELECT = 'id, amount_cents, charged_at, refunded, amount_refunded_cents, dispute_lost_cents, email, customer_email, customer_id, description'
 
 /** One classified dollar amount, carrying WHO it came from and WHY it is
  *  here, so the same object can be summed into a cell or listed in a drawer. */
@@ -179,6 +180,26 @@ export function classifyLedger(
   const chargeCents = new Map<string, number>()
   for (const ch of charges) chargeCents.set(ch.id, ch.amount_cents)
 
+  // NET, NOT GROSS (owner's rule, 2026-08-17: "the numbers on the matrix or
+  // the revenue page must only be the net"). Every entry a charge emits is
+  // reduced by that charge's refunds and lost disputes, consumed in emission
+  // order, so every sum built from entries — matrix rows, revenue columns,
+  // drill drawers — is net by construction. Classification still MATCHES on
+  // gross (a partially refunded $4.99 is still a trial); only the money it
+  // contributes is netted.
+  const deductionLeft = new Map<string, number>()
+  for (const ch of charges) {
+    const d = Math.min(ch.amount_cents, (ch.amount_refunded_cents ?? 0) + (ch.dispute_lost_cents ?? 0))
+    if (d > 0) deductionLeft.set(ch.id, d)
+  }
+  const netCents = (chargeId: string, grossCents: number): number => {
+    const left = deductionLeft.get(chargeId)
+    if (!left) return grossCents
+    const take = Math.min(left, grossCents)
+    deductionLeft.set(chargeId, left - take)
+    return grossCents - take
+  }
+
   for (const t of ledger) {
     if (t.lifetime_bundle) lifetimeSplits++
     // A quiz-earned trial restates to the week the person took the quiz; the
@@ -214,7 +235,7 @@ export function classifyLedger(
         if (t.attribution === 'quiz_net_new') netNewEmails.add(t.person_key)
         else if (t.attribution === 'quiz_existing') quizExistingEmails.add(t.person_key)
       }
-      const usd = t.trial_cents / 100
+      const usd = netCents(t.charge_id, t.trial_cents) / 100
       if (t.attribution === 'quiz_net_new') {
         entries.push({ ...who, at: anchor, chargedAt: t.trial_at, kind: 'net', usd, why: 'trial, quiz earned it from a new customer' })
       } else if (t.attribution === 'quiz_existing') {
@@ -234,7 +255,7 @@ export function classifyLedger(
     // the $4.99 half belongs with the trials, the $49.75 half is Other
     // Revenue. Gate on the charge amount, never on stamps or flags.
     if (!t.trial_refunded && chargeCents.get(t.charge_id) === 5474) {
-      entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, chargeId: `${t.charge_id}-lt`, kind: 'other', usd: 49.75, why: 'the $49.75 lifetime half of a $54.74 bundle' })
+      entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, chargeId: `${t.charge_id}-lt`, kind: 'other', usd: netCents(t.charge_id, 4975) / 100, why: 'the $49.75 lifetime half of a $54.74 bundle' })
     }
 
     // A conversion entry needs a real, SEPARATE converted charge: a bundle
@@ -253,7 +274,7 @@ export function classifyLedger(
           chargedAt: t.converted_at,
           chargeId: t.converted_charge_id,
           kind: quizEarned ? 'annualQuiz' : 'annualNotQuiz',
-          usd: t.converted_cents / 100,
+          usd: netCents(t.converted_charge_id, t.converted_cents) / 100,
           why: quizEarned
             ? 'renewal of a trial the quiz earned, credited to that trial'
             : 'renewal of a trial the quiz never touched',
@@ -289,14 +310,14 @@ export function classifyLedger(
     if (TRIAL_PRICES.has(ch.amount_cents)) {
       entries.push({
         at: ch.charged_at, chargedAt: ch.charged_at, kind: 'notQuiz',
-        usd: (ch.amount_cents === 5474 ? 499 : ch.amount_cents) / 100,
+        usd: netCents(ch.id, ch.amount_cents === 5474 ? 499 : ch.amount_cents) / 100,
         chargeId: ch.id, personKey: who, name: ch.description ?? null,
         customerId: ch.customer_id ?? null, submissionId: null,
         why: 'a paid trial the ledger did not pick up, counted here because a trial is never Other Revenue',
       })
       if (ch.amount_cents === 5474) {
         entries.push({
-          at: ch.charged_at, chargedAt: ch.charged_at, kind: 'other', usd: 49.75,
+          at: ch.charged_at, chargedAt: ch.charged_at, kind: 'other', usd: netCents(ch.id, 4975) / 100,
           chargeId: `${ch.id}-lt`, personKey: who, name: ch.description ?? null,
           customerId: ch.customer_id ?? null, submissionId: null,
           why: 'the $49.75 lifetime half of a $54.74 bundle',
@@ -306,7 +327,7 @@ export function classifyLedger(
     }
     if (ch.amount_cents === ANNUAL_CENTS) {
       entries.push({
-        at: ch.charged_at, chargedAt: ch.charged_at, kind: 'annualNotQuiz', usd: ch.amount_cents / 100,
+        at: ch.charged_at, chargedAt: ch.charged_at, kind: 'annualNotQuiz', usd: netCents(ch.id, ch.amount_cents) / 100,
         chargeId: ch.id, personKey: who, name: ch.description ?? null,
         customerId: ch.customer_id ?? null, submissionId: null,
         why: 'a $59.75 subscription with no trial claiming it, counted here because a renewal is never Other Revenue',
@@ -318,7 +339,7 @@ export function classifyLedger(
       at: ch.charged_at,
       chargedAt: ch.charged_at,
       kind: 'other',
-      usd: ch.amount_cents / 100,
+      usd: netCents(ch.id, ch.amount_cents) / 100,
       chargeId: ch.id,
       personKey: who,
       name: ch.description ?? null,

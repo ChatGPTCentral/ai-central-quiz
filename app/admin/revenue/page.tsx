@@ -108,8 +108,10 @@ export default async function RevenuePage() {
     grand.trialsQuiz += m.trialsQuiz; grand.trialsNot += m.trialsNot; grand.wonQuiz += m.wonQuiz
     grand.wonNot += m.wonNot; grand.other += m.other; grand.total += m.total
   }
-  // THE IDENTITY, on screen: classified total vs raw Stripe, to the penny.
-  const identityOk = Math.abs(grand.total - d.grossAll) < 0.005
+  // THE IDENTITY, on screen: classified total vs NET (gross of successful
+  // charges minus refunds minus lost disputes), to the penny. Net is the
+  // owner's display rule for every money number (2026-08-17).
+  const identityOk = Math.abs(grand.total - d.netAll) < 0.005
 
   // Chart: per-month gross from the SAME entries (penny-perfect by
   // construction), trials count and era from the ledger.
@@ -146,8 +148,9 @@ export default async function RevenuePage() {
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Revenue</h1>
       <p style={{ fontSize: 13.5, color: MUTE, marginTop: 6, maxWidth: 820, lineHeight: 1.55 }}>
         Every charge since {fmtDay(d.firstCharge)}, {d.chargeCount.toLocaleString()} of them, classified into the same six
-        kinds the dashboard&rsquo;s matrix sums — same source, same clocks, two displays. Quiz-earned money sits in the
-        month of the QUIZ; everything else in the month of the charge.
+        kinds the dashboard&rsquo;s matrix sums — same source, same clocks, two displays. <strong style={{ color: INK }}>All
+        money is NET</strong>: refunds and lost disputes are already subtracted, per charge, before any sum. Quiz-earned
+        money sits in the month of the QUIZ; everything else in the month of the charge.
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 12 }}>
         <SyncCharges lastSyncedAt={d.lastSyncedAt} />
@@ -223,8 +226,8 @@ export default async function RevenuePage() {
           until the hourly ledger checks say why. */}
       <p style={{ fontSize: 11.5, marginTop: 8, fontWeight: 700, color: identityOk ? GREEN : RED }}>
         {identityOk
-          ? `✓ Internally penny-perfect: the five kinds sum to ${usd(grand.total)}, equal to the mirror's gross of successful charges (${usd(d.grossAll)}).`
-          : `✕ IDENTITY BROKEN: kinds sum to ${usd(grand.total)} but the mirror holds ${usd(d.grossAll)} — trust nothing above until the ledger checks explain the difference.`}
+          ? `✓ Penny-perfect NET: the five kinds sum to ${usd(grand.total)}, equal to the mirror's net (gross ${usd(d.grossAll)} − refunds − lost disputes = ${usd(d.netAll)}).`
+          : `✕ IDENTITY BROKEN: kinds sum to ${usd(grand.total)} but the mirror's net is ${usd(d.netAll)} — trust nothing above until the ledger checks explain the difference.`}
       </p>
       {/* THE BRIDGE to the number the owner can see in Stripe itself. Our
           gross counts successful charges; Stripe's "Net volume" nets out

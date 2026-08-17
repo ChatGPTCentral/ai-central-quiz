@@ -526,7 +526,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         { label: 'from existing', pick: (p: SeriesPoint) => p.quizExistingPaid, tot: sumB(p => p.quizExistingPaid, F.quizExistingPaid), metric: 'trials_existing',
           note: 'took the quiz and then bought, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
         { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: sumB(p => p.otherPaid, F.otherPaid), metric: 'trials_notquiz',
-          note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows, so count × $4.99 always equals them.' },
+          note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows. Counts are gross; money is NET of refunds and lost disputes, so a refunded trial keeps its count while its dollars leave the money rows.' },
       ],
     },
     {

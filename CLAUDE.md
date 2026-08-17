@@ -37,6 +37,13 @@ These are not derivations, they are the definitions. Do not "improve" them.
    is the residual of legacy monthly and annual subscriptions, nothing else.
 5. **Trials are counted GROSS, everywhere.** Someone who bought two trials
    shows as two, never as one person.
+6. **Money is displayed NET, everywhere** (owner, 2026-08-17): every dollar
+   figure on the matrix and the revenue screens has refunds and lost disputes
+   already subtracted, per charge, inside classifyLedger. COUNTS stay gross
+   (rule 5); MONEY is net. The mirror carries `amount_refunded_cents` and
+   `dispute_lost_cents`, refreshed hourly from Stripe's own Refund and
+   Dispute endpoints (never from fields on the charge object; the 2026 API
+   dropped them).
 
 Rule 5 kills the old 32-day "duplicate subscription" rule, which was hiding
 39 real trials and pushing their money into Other Revenue. Trials revenue is

@@ -166,6 +166,9 @@ export async function loadRevenueData() {
     monthColHidden: mLay?.hidden ?? null,
     chargeRows: chRows,
     grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
+    // THE display total (owner's rule, 2026-08-17): net of refunds and lost
+    // disputes. Every money number shown anywhere must sum to this.
+    netAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + Math.max(0, r.amount_cents - (r.amount_refunded_cents || 0) - (r.dispute_lost_cents || 0)), 0) / 100,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
     sheetByMonth,
