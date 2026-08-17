@@ -32,7 +32,9 @@ export interface TrialRow {
   converted: boolean
   converted_at: string | null
   converted_cents: number | null
-  gross_cents: number
+  /** NET dollars this trial actually kept (rule 6): trial + lifetime half +
+   *  claimed renewal, refunds and lost disputes out, from the classifier. */
+  net_cents: number
   lifetime_bundle: boolean
   derivedState: string
   derivedLabel: string
@@ -101,7 +103,8 @@ const ALL_COLUMNS: Col[] = [
     // The lifetime half is shown on Payment 1 as +LT, not here: this column is
     // the RENEWAL, and a lifetime buyer has no renewal coming.
     cell: r => (r.converted ? `$${((r.converted_cents ?? 0) / 100).toFixed(2)}` : '–') },
-  { key: 'total', label: 'Total', align: 'right', cell: r => <span style={{ fontWeight: 700 }}>${(r.gross_cents / 100).toFixed(2)}</span> },
+  { key: 'total', label: 'Total', align: 'right',
+    cell: r => <span style={{ fontWeight: 700 }} title="Net money kept from this trial (payments minus any refund or lost dispute) — a refunded trial totals $0.00 while its payments stay listed.">${(r.net_cents / 100).toFixed(2)}</span> },
   { key: 'stripe', label: 'Stripe', align: 'left',
     cell: r => r.customer_id ? (
       <span style={{ whiteSpace: 'nowrap' }}>

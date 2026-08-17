@@ -8,9 +8,10 @@
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import { fmtDay } from '@/lib/dates'
 import {
-  loadRevenueData, buildStateMachinery, inNoCardEra,
+  loadRevenueData, buildStateMachinery, inNoCardEra, db,
   STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State,
 } from '@/lib/revenue-shared'
+import { classifyLedger, loadLedgerAndCharges } from '@/lib/trial-entries'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -27,9 +28,30 @@ const navChip: React.CSSProperties = {
 export default async function TrialsPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   let d: Awaited<ReturnType<typeof loadRevenueData>> | null = null
   let err: string | null = null
-  try { d = await loadRevenueData() } catch (e) { err = e instanceof Error ? e.message : String(e) }
+  // NET money per trial (rule 6): the Total column sums the classifier's
+  // netted emissions for the trial's own charge, its lifetime half, and its
+  // claimed renewal — the same entries the money page and the matrix sum,
+  // so this column can never disagree with them. The ledger's gross_cents
+  // is deliberately not displayed anywhere (owner, 2026-08-17, twice:
+  // "i only want to see the NET MONEY not the GROSS").
+  const netByCharge = new Map<string, number>()
+  const convertedIdBy = new Map<string, string | null>()
+  try {
+    d = await loadRevenueData()
+    const { ledger: fullLedger, charges } = await loadLedgerAndCharges(db(), '2023-01-01')
+    for (const t of fullLedger) convertedIdBy.set(t.charge_id, t.converted_charge_id ?? null)
+    for (const e of classifyLedger(fullLedger, charges, '2023-01-01').entries) {
+      netByCharge.set(e.chargeId, (netByCharge.get(e.chargeId) ?? 0) + e.usd)
+    }
+  } catch (e) { err = e instanceof Error ? e.message : String(e) }
   if (err || !d) {
     return <div style={{ padding: 26 }}><h1 style={{ fontWeight: 800, fontSize: 24 }}>Trials</h1><p style={{ color: '#B00020' }}>{err}</p></div>
+  }
+  const netOf = (chargeId: string): number => {
+    const cid = convertedIdBy.get(chargeId)
+    return (netByCharge.get(chargeId) ?? 0)
+      + (netByCharge.get(`${chargeId}-lt`) ?? 0)
+      + (cid && cid !== chargeId ? netByCharge.get(cid) ?? 0 : 0)
   }
 
   const L = d.ledger
@@ -59,7 +81,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
       name: r.name, country: r.country, utm_source: r.utm_source,
       trial_at: r.trial_at, trial_cents: r.trial_cents, era: r.era, attribution: r.attribution,
       converted: r.converted, converted_at: r.converted_at, converted_cents: r.converted_cents,
-      gross_cents: r.gross_cents, lifetime_bundle: r.lifetime_bundle,
+      net_cents: Math.round(netOf(r.charge_id) * 100), lifetime_bundle: r.lifetime_bundle,
       derivedState: st, derivedLabel: STATE_LABEL[st], derivedColor: STATE_COLOR[st],
       override: d!.overrideBy.get(r.charge_id) ?? null,
     }

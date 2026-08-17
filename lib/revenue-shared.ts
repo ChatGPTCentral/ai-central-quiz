@@ -184,6 +184,10 @@ export async function loadRevenueData() {
         const usdOpen = usdRows.reduce((a, r) => a + (r.dispute_open_cents || 0), 0)
         let eurNetEur = 0
         let eurNetUsdEquiv = 0
+        let eurRevenueNetEur = 0
+        let eurFees = 0
+        let eurDisputeFees = 0
+        let eurOpenEur = 0
         for (const r of eurRows) {
           // Money that left the balance again, in the charge's own currency:
           // refunds, lost disputes, and open-dispute withholdings.
@@ -192,6 +196,13 @@ export async function loadRevenueData() {
           const net = (r.settled_cents ?? 0) - (r.fee_cents || 0) - (r.dispute_fee_cents || 0) - Math.round(faceOut * faceRate)
           eurNetEur += net
           eurNetUsdEquiv += net / ((r.bt_exchange_rate || avgRate) / 0.98)
+          // The slice's rule-6 net (refunds and lost disputes out, fees NOT):
+          // the number the take-home chain STARTS from, so the page never
+          // has to print a gross figure (owner, 2026-08-17, twice).
+          eurRevenueNetEur += (r.settled_cents ?? 0) - Math.round(((r.amount_refunded_cents || 0) + (r.dispute_lost_cents || 0)) * faceRate)
+          eurFees += r.fee_cents || 0
+          eurDisputeFees += r.dispute_fee_cents || 0
+          eurOpenEur += Math.round((r.dispute_open_cents || 0) * faceRate)
         }
         const usdNet = usdGross - usdFees - usdDisputeFees - usdRefunds - usdLost - usdOpen
         return {
@@ -202,8 +213,14 @@ export async function loadRevenueData() {
           usdLost: usdLost / 100,
           usdOpen: usdOpen / 100,
           usdNet: usdNet / 100,
+          // The dollar slice's rule-6 net, the chain's net-first start.
+          usdRevenueNet: (usdGross - usdRefunds - usdLost) / 100,
           eurNetEur: eurNetEur / 100,
           eurNetUsdEquiv: eurNetUsdEquiv / 100,
+          eurRevenueNetEur: eurRevenueNetEur / 100,
+          eurFees: eurFees / 100,
+          eurDisputeFees: eurDisputeFees / 100,
+          eurOpenEur: eurOpenEur / 100,
           totalUsdEquiv: (usdNet + eurNetUsdEquiv) / 100,
           eurCharges: eurRows.length,
         }

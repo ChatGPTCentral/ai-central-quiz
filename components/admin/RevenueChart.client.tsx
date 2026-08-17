@@ -18,7 +18,7 @@ import { fmtMonth, fmtMonthShort } from '@/lib/dates'
 export interface ChartPoint {
   month: string          // YYYY-MM
   trials: number
-  gross: number          // dollars produced by that month's cohort
+  money: number          // NET dollars produced by that month's cohort (rule 6)
   era: number
 }
 export interface ChartEra { era: number; code: string; name: string; color: string }
@@ -35,7 +35,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
 
   // Cumulative earnings, running left to right.
   let run = 0
-  const cum = points.map(p => (run += p.gross))
+  const cum = points.map(p => (run += p.money))
   const maxTrials = Math.max(...points.map(p => p.trials), 1)
   const maxCum = Math.max(...cum, 1)
 
@@ -80,7 +80,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
                 x={x(i) + 1} y={yBar(p.trials)} width={Math.max(1, bw - 2)} height={PADT + plotH - yBar(p.trials)}
                 fill={colorOf(p.era)} opacity={hover === null || hover === i ? 0.95 : 0.45}
                 onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-            <title>{`${fmtMonth(p.month)} · ${p.trials} trials · ${usd(p.gross)} earned`}</title>
+            <title>{`${fmtMonth(p.month)} · ${p.trials} trials · ${usd(p.money)} earned`}</title>
           </rect>
         ))}
 
@@ -106,7 +106,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
         {h ? (
           <>
             <strong>{fmtMonth(h.month)}</strong> · era {codeOf(h.era)} · <strong>{h.trials}</strong> trials ·
-            {' '}{usd(h.gross)} earned by that cohort · {usd(cum[hover!])} cumulative
+            {' '}{usd(h.money)} earned by that cohort · {usd(cum[hover!])} cumulative
           </>
         ) : 'hover a month for its numbers'}
       </div>
