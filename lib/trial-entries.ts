@@ -60,10 +60,62 @@ export type LedgerRow = {
 export type ChargeRow = {
   id: string; amount_cents: number; charged_at: string; refunded: boolean
   amount_refunded_cents?: number | null; dispute_lost_cents?: number | null
+  dispute_open_cents?: number | null; dispute_fee_cents?: number | null; fee_cents?: number | null
+  settled_cents?: number | null; settled_currency?: string | null; bt_exchange_rate?: number | null
   email?: string | null; customer_email?: string | null; customer_id?: string | null; description?: string | null
 }
 
-export const CHARGE_SELECT = 'id, amount_cents, charged_at, refunded, amount_refunded_cents, dispute_lost_cents, email, customer_email, customer_id, description'
+export const CHARGE_SELECT = 'id, amount_cents, charged_at, refunded, amount_refunded_cents, dispute_lost_cents, dispute_open_cents, dispute_fee_cents, fee_cents, settled_cents, settled_currency, bt_exchange_rate, email, customer_email, customer_id, description'
+
+/** Charge-weighted average USD→EUR settlement rate across the euro era: the
+ *  fallback for the rare euro-settled charge with no conversion of its own
+ *  (one native-€250 charge). */
+export function eurAvgRate(
+  charges: Pick<ChargeRow, 'settled_currency' | 'bt_exchange_rate' | 'settled_cents' | 'amount_cents'>[],
+): number {
+  let settled = 0
+  let amount = 0
+  for (const ch of charges) {
+    if (ch.settled_currency === 'eur' && ch.bt_exchange_rate) {
+      settled += ch.settled_cents ?? 0
+      amount += ch.amount_cents
+    }
+  }
+  return amount > 0 ? settled / amount : 1
+}
+
+/** THE money a charge actually kept, in day-rate USD cents. This is the
+ *  owner's NET (2026-08-17, stated three times, the third: "net is 77K not
+ *  83"): what remains after refunds, lost disputes, open-dispute
+ *  withholdings, and Stripe's processing and dispute fees, with euro-settled
+ *  charges (the 2024→Jul-2025 PayPal/invoice era) valued at the dollar rate
+ *  of their own day (bt_exchange_rate carries Stripe's 2% conversion fee, so
+ *  market ≈ rate / 0.98). Per charge this is exactly what the Stripe home
+ *  screen's "Net volume" sums, so every display built from it can be
+ *  verified against a screen the owner already has. NEGATIVE IS REAL: a
+ *  fully refunded charge kept minus-its-fee (Stripe held the fee), and a
+ *  lost dispute costs the fee plus the $15 penalty on top of the
+ *  clawed-back money — Stripe's Net volume counts those below zero and so
+ *  does every display built from this.
+ *
+ *  ONE FORMULA, imported everywhere money is summed (classifier pool,
+ *  revenue loader, era table). If a new deduction ever appears, it is added
+ *  HERE, once. Before the first fee-aware sync the fee and settlement
+ *  columns are zero/null and this degrades to refunds + lost disputes. */
+export function keptUsdCents(
+  ch: Pick<ChargeRow, 'amount_cents' | 'settled_cents' | 'settled_currency' | 'bt_exchange_rate' | 'fee_cents' | 'dispute_fee_cents' | 'amount_refunded_cents' | 'dispute_lost_cents' | 'dispute_open_cents'>,
+  avgRate: number,
+): number {
+  const outFace = (ch.amount_refunded_cents ?? 0) + (ch.dispute_lost_cents ?? 0) + (ch.dispute_open_cents ?? 0)
+  const fees = (ch.fee_cents ?? 0) + (ch.dispute_fee_cents ?? 0)
+  if (ch.settled_currency === 'eur') {
+    // Everything in euros first (fees are euro cents on these rows; refunds
+    // convert at the charge's own rate), then to USD at that day's market.
+    const eurNet = (ch.settled_cents ?? ch.amount_cents) - fees - Math.round(outFace * (ch.bt_exchange_rate || 1))
+    return Math.round(eurNet / ((ch.bt_exchange_rate || avgRate) / 0.98))
+  }
+  return ch.amount_cents - fees - outFace
+}
 
 /** One classified dollar amount, carrying WHO it came from and WHY it is
  *  here, so the same object can be summed into a cell or listed in a drawer. */
@@ -180,19 +232,28 @@ export function classifyLedger(
   const chargeCents = new Map<string, number>()
   for (const ch of charges) chargeCents.set(ch.id, ch.amount_cents)
 
-  // NET, NOT GROSS (owner's rule, 2026-08-17: "the numbers on the matrix or
-  // the revenue page must only be the net"). Every entry a charge emits is
-  // reduced by that charge's refunds and lost disputes, consumed in emission
-  // order, so every sum built from entries — matrix rows, revenue columns,
-  // drill drawers — is net by construction. Classification still MATCHES on
-  // gross (a partially refunded $4.99 is still a trial); only the money it
-  // contributes is netted.
+  // NET = KEPT (owner's rule, 2026-08-17, final form: "net is 77K not 83").
+  // Every entry a charge emits is reduced down to what the charge actually
+  // banked — refunds, lost disputes, open-dispute withholdings, Stripe's
+  // fees, and the euro era's day-rate conversion, via the ONE keptUsdCents
+  // formula — consumed in emission order, so every sum built from entries
+  // (matrix rows, revenue columns, drill drawers, per-trial totals) is the
+  // same net the owner's Stripe home screen shows, by construction.
+  // Classification still MATCHES on face amounts (a partially refunded
+  // $4.99 is still a trial); only the money it contributes is netted.
+  const avgRate = eurAvgRate(charges)
   const deductionLeft = new Map<string, number>()
+  const dInit = new Map<string, number>()
+  // Face cents each charge actually emitted through netCents, so the sweep
+  // at the end can reconcile every charge to its true kept money.
+  const emittedGross = new Map<string, number>()
   for (const ch of charges) {
-    const d = Math.min(ch.amount_cents, (ch.amount_refunded_cents ?? 0) + (ch.dispute_lost_cents ?? 0))
+    const d = ch.amount_cents - keptUsdCents(ch, avgRate)
+    dInit.set(ch.id, d)
     if (d > 0) deductionLeft.set(ch.id, d)
   }
   const netCents = (chargeId: string, grossCents: number): number => {
+    emittedGross.set(chargeId, (emittedGross.get(chargeId) ?? 0) + grossCents)
     const left = deductionLeft.get(chargeId)
     if (!left) return grossCents
     const take = Math.min(left, grossCents)
@@ -348,6 +409,36 @@ export function classifyLedger(
       why: peopleWithTrials.has(who)
         ? 'a legacy subscription price from someone who also has a trial with us'
         : 'a legacy monthly or annual subscription, from before the trial offer',
+    })
+  }
+
+  // THE NEGATIVE TAIL. netCents floors every emission at zero, but some
+  // charges kept LESS than nothing: Stripe holds the processing fee on a
+  // fully refunded charge, and a lost dispute costs the fee plus the $15
+  // penalty on top of the clawed-back money. Stripe's Net volume counts
+  // those below zero, so the matrix must too — whatever each charge's own
+  // emissions could not absorb lands here as a negative entry, and the
+  // kinds-sum equals the kept-money total to the penny, by construction.
+  for (const ch of charges) {
+    const d = dInit.get(ch.id) ?? 0
+    const left = deductionLeft.get(ch.id) ?? 0
+    const consumed = d - left
+    const emitted = (emittedGross.get(ch.id) ?? 0) - consumed
+    const residual = (ch.amount_cents - d) - emitted
+    if (residual === 0) continue
+    // A refunded-flagged charge with NO deduction detail (missing refund
+    // data) must not sneak its face value back in as "kept": skip positive
+    // residues on never-emitted refunded charges, the pre-detail behavior.
+    if (residual > 0 && ch.refunded && (emittedGross.get(ch.id) ?? 0) === 0) continue
+    const disputed = (ch.dispute_lost_cents ?? 0) > 0 || (ch.dispute_fee_cents ?? 0) !== 0
+    entries.push({
+      at: ch.charged_at, chargedAt: ch.charged_at, kind: 'other', usd: residual / 100,
+      chargeId: `${ch.id}-cost`,
+      personKey: (ch.customer_email || ch.email || ch.customer_id || 'unknown').toLowerCase(),
+      name: ch.description ?? null, customerId: ch.customer_id ?? null, submissionId: null,
+      why: disputed
+        ? 'what a lost or open dispute costs beyond the clawed-back charge: Stripe’s fee stays kept and the $15 dispute penalty comes on top'
+        : 'Stripe kept its processing fee when this charge was refunded',
     })
   }
 

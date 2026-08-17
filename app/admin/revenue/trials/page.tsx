@@ -51,7 +51,10 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
     const cid = convertedIdBy.get(chargeId)
     return (netByCharge.get(chargeId) ?? 0)
       + (netByCharge.get(`${chargeId}-lt`) ?? 0)
-      + (cid && cid !== chargeId ? netByCharge.get(cid) ?? 0 : 0)
+      + (netByCharge.get(`${chargeId}-cost`) ?? 0)
+      + (cid && cid !== chargeId
+        ? (netByCharge.get(cid) ?? 0) + (netByCharge.get(`${cid}-cost`) ?? 0)
+        : 0)
   }
 
   const L = d.ledger

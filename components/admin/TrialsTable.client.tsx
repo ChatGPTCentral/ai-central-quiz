@@ -32,8 +32,9 @@ export interface TrialRow {
   converted: boolean
   converted_at: string | null
   converted_cents: number | null
-  /** NET dollars this trial actually kept (rule 6): trial + lifetime half +
-   *  claimed renewal, refunds and lost disputes out, from the classifier. */
+  /** NET dollars this trial actually kept (rule 6, final form): trial +
+   *  lifetime half + claimed renewal, with refunds, disputes, and Stripe's
+   *  fees out, from the classifier's one keptUsdCents formula. */
   net_cents: number
   lifetime_bundle: boolean
   derivedState: string
@@ -104,7 +105,7 @@ const ALL_COLUMNS: Col[] = [
     // the RENEWAL, and a lifetime buyer has no renewal coming.
     cell: r => (r.converted ? `$${((r.converted_cents ?? 0) / 100).toFixed(2)}` : '–') },
   { key: 'total', label: 'Total', align: 'right',
-    cell: r => <span style={{ fontWeight: 700 }} title="Net money kept from this trial (payments minus any refund or lost dispute) — a refunded trial totals $0.00 while its payments stay listed.">${(r.net_cents / 100).toFixed(2)}</span> },
+    cell: r => <span style={{ fontWeight: 700 }} title="Net money actually kept from this trial: payments minus refunds, disputes, and Stripe's fees — a refunded trial totals $0.00 while its payments stay listed.">${(r.net_cents / 100).toFixed(2)}</span> },
   { key: 'stripe', label: 'Stripe', align: 'left',
     cell: r => r.customer_id ? (
       <span style={{ whiteSpace: 'nowrap' }}>

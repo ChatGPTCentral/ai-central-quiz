@@ -29,7 +29,7 @@ import LedgerHealth from '@/components/admin/LedgerHealth'
 import type { CheckResult } from '@/lib/ledger-invariants'
 import { fmtDay } from '@/lib/dates'
 import { loadRevenueData, db } from '@/lib/revenue-shared'
-import { classifyLedger, loadLedgerAndCharges } from '@/lib/trial-entries'
+import { classifyLedger, loadLedgerAndCharges, keptUsdCents, eurAvgRate } from '@/lib/trial-entries'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -41,9 +41,9 @@ const LATTE = '#FEF7E7'
 const GREEN = '#2E7D32'
 const RED = '#B00020'
 
-const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const usd0 = (n: number) => `$${Math.round(n).toLocaleString()}`
-const eur = (n: number) => `€${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const usd = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const usd0 = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`
+const eur = (n: number) => `${n < 0 ? '−' : ''}€${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pct = (n: number, d: number) => (d > 0 ? `${((100 * n) / d).toFixed(1)}%` : '–')
 
 const navChip: React.CSSProperties = {
@@ -125,14 +125,14 @@ export default async function RevenuePage() {
   const chartEras = d.eras.map(e => ({ era: e.era, code: e.code, name: e.name, color: e.color }))
 
   // Era summary: counts from the ledger, all-revenue per era from charges —
-  // NET per charge (rule 6), the same formula as the account total, so the
-  // era column sums to the identity line's number.
+  // kept-money NET per charge through the ONE formula (rule 6, final form),
+  // so the era column sums to the identity line's number.
+  const eraAvgRate = eurAvgRate(d.chargeRows)
   const eraCash = new Map<number, number>()
   for (const ch of d.chargeRows) {
-    if (ch.refunded) continue
     const day = ch.charged_at.slice(0, 10)
     const e = d.eras.find(x => day >= x.starts_on && (!x.ends_on || day <= x.ends_on))
-    if (e) eraCash.set(e.era, (eraCash.get(e.era) ?? 0) + Math.max(0, ch.amount_cents - (ch.amount_refunded_cents || 0) - (ch.dispute_lost_cents || 0)) / 100)
+    if (e) eraCash.set(e.era, (eraCash.get(e.era) ?? 0) + keptUsdCents(ch, eraAvgRate) / 100)
   }
   const byEra = new Map<number, { t: number; cdue: number; due: number }>()
   for (const r of L) {
@@ -152,7 +152,9 @@ export default async function RevenuePage() {
       <p style={{ fontSize: 13.5, color: MUTE, marginTop: 6, maxWidth: 820, lineHeight: 1.55 }}>
         Every charge since {fmtDay(d.firstCharge)}, {d.chargeCount.toLocaleString()} of them, classified into the same six
         kinds the dashboard&rsquo;s matrix sums — same source, same clocks, two displays. <strong style={{ color: INK }}>All
-        money is NET</strong>: refunds and lost disputes are already subtracted, per charge, before any sum. Quiz-earned
+        money is NET, meaning what the bank actually kept</strong>: refunds, lost disputes, money withheld on open disputes,
+        and Stripe&rsquo;s own fees are already out of every figure, per charge, and the euro-settled era is counted at each
+        day&rsquo;s dollar rate — the same net your Stripe home screen calls Net volume. Quiz-earned
         money sits in the month of the QUIZ; everything else in the month of the charge.
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 12 }}>
@@ -169,7 +171,7 @@ export default async function RevenuePage() {
 
       <h2 style={{ fontSize: 15, fontWeight: 800, marginTop: 26, color: INK }}>The same months, as money that sums</h2>
       <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4, maxWidth: 880, lineHeight: 1.6 }}>
-        Five money columns, one per kind, and they PARTITION the total: every non-refunded dollar the account ever took
+        Five money columns, one per kind, and they PARTITION the total: every dollar the account actually kept
         is in exactly one, so each row sums across and the bottom row sums down to the account. Counts are trial counts
         (quiz-earned per the ledger); Due and Converted count only trials whose bill date has passed; Sheet is your
         spreadsheet&rsquo;s count of that month, for reconciliation.
@@ -226,14 +228,14 @@ export default async function RevenuePage() {
       </div>
       {/* THE PENNY PROOF. If this line is ever red, the classification and
           the raw account disagree and NOTHING above it should be trusted
-          until the hourly ledger checks say why. NO GROSS FIGURE RENDERS
-          HERE (owner, twice, 2026-08-17: "i only want to see the NET MONEY
-          not the GROSS") — the check still compares against the mirror's
-          net, it just doesn't print the gross it was derived from. */}
+          until the hourly ledger checks say why. NET here is the owner's
+          final definition (2026-08-17, "net is 77K not 83"): money the bank
+          kept, after refunds, disputes, AND Stripe's cut — the Stripe home
+          screen's own Net volume. No gross figure renders here. */}
       <p style={{ fontSize: 11.5, marginTop: 8, fontWeight: 700, color: identityOk ? GREEN : RED }}>
         {identityOk
-          ? `✓ Penny-perfect NET: the five kinds sum to ${usd(grand.total)} — the account's net to the penny, every refund and lost dispute already out of every cell.`
-          : `✕ IDENTITY BROKEN: kinds sum to ${usd(grand.total)} but the mirror's net is ${usd(d.netAll)} — trust nothing above until the ledger checks explain the difference.`}
+          ? `✓ Penny-perfect NET: the five kinds sum to ${usd(grand.total)} — money actually kept, after refunds, disputes, and Stripe's cut: the same net your Stripe home screen shows.`
+          : `✕ IDENTITY BROKEN: kinds sum to ${usd(grand.total)} but the mirror's kept-money total is ${usd(d.netAll)} — trust nothing above until the ledger checks explain the difference.`}
       </p>
       {/* THE BRIDGE to the number the owner can see in Stripe itself: his
           home screen's "Net volume" additionally subtracts Stripe's fees and
@@ -243,17 +245,17 @@ export default async function RevenuePage() {
           volume $77,464.56"). NET-FIRST, NO GROSS FIGURES: every chain here
           starts from a net number (owner, 2026-08-17, twice). */}
       {(() => {
-        // Refunds on charges still counted in the sum (a FULLY refunded
-        // charge already contributes $0), plus disputes actually LOST —
-        // the two subtractions rule-6 net is made of.
-        const partialRefunds = d!.chargeRows.filter(c => !c.refunded).reduce((a, c) => a + (c.amount_refunded_cents || 0), 0) / 100
-        const disputesLost = d!.chargeRows.filter(c => !c.refunded).reduce((a, c) => a + (c.dispute_lost_cents || 0), 0) / 100
+        // Every subtraction the kept-money net is made of, itemized so the
+        // headline can be checked without any pre-fee or gross figure ever
+        // rendering (owner, 2026-08-17: "net is 77K not 83").
+        const refundsAll = d!.chargeRows.reduce((a, c) => a + (c.amount_refunded_cents || 0), 0) / 100
+        const lostAll = d!.chargeRows.reduce((a, c) => a + (c.dispute_lost_cents || 0), 0) / 100
         const hasDetail = d!.chargeRows.some(c => (c.amount_refunded_cents || 0) > 0 || c.disputed)
         if (!hasDetail) {
           return (
             <p style={{ fontSize: 11, color: MUTE, marginTop: 4, lineHeight: 1.5 }}>
-              Stripe&rsquo;s own <strong style={{ color: INK }}>Net volume</strong> additionally nets out refunds and lost disputes.
-              Refund detail lands with the next hourly sync (:20); the bridge to Stripe&rsquo;s home screen renders here from then on.
+              Refund, dispute, and fee detail lands with the next hourly sync (:20); the itemized subtractions render here
+              from then on.
             </p>
           )
         }
@@ -261,37 +263,34 @@ export default async function RevenuePage() {
           <div style={{ fontSize: 11, color: MUTE, marginTop: 4, lineHeight: 1.6 }}>
             <p>
               <strong style={{ color: INK }}>Already out of every number above:</strong>{' '}
-              {usd(partialRefunds)} refunded on kept charges and {usd(disputesLost)} lost to disputes, subtracted per charge;
-              fully refunded charges count $0. Nothing on this page is gross.
+              {usd(refundsAll)} refunds and {usd(lostAll)} lost disputes
+              {d!.takeHome && (
+                <>
+                  ; Stripe&rsquo;s processing fees ({usd(d!.takeHome.usdFees)} dollar-side, {eur(d!.takeHome.eurFees)} on the
+                  euro era) and dispute fees ({usd(d!.takeHome.usdDisputeFees)} and {eur(d!.takeHome.eurDisputeFees)})
+                  {d!.takeHome.usdOpen + d!.takeHome.eurOpenEur >= 0.005 && (
+                    <>; {usd(d!.takeHome.usdOpen)} withheld on disputes still open, returned here the day they are won</>
+                  )}
+                  ; and the euro-settled era ({d!.takeHome.eurCharges.toLocaleString()} PayPal and invoice charges through
+                  Jul 2025) counted at each charge&rsquo;s own day rate, not face value
+                </>
+              )}
+              . Nothing on this page is gross, and nothing is before Stripe&rsquo;s cut. A lost dispute counts BELOW zero
+              (fee plus the $15 penalty, on top of the clawed-back money) and a refunded charge&rsquo;s kept fee counts
+              against us — exactly as Stripe counts them.
             </p>
-            {d!.takeHome ? (
-              <>
-                <p style={{ marginTop: 3 }}>
-                  <strong style={{ color: INK }}>The bridge to Stripe&rsquo;s home screen:</strong>{' '}
-                  its <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s own cut (the cost of collecting, not revenue lost), and this
-                  account settles in TWO currencies: cards settle in dollars, while the PayPal and invoice era through Jul 2025
-                  ({d!.takeHome.eurCharges.toLocaleString()} charges) settled in euros at the day&rsquo;s rate.
-                </p>
-                <p style={{ marginTop: 2 }}>
-                  Dollar-settled: net {usd(d!.takeHome.usdRevenueNet)} − processing fees {usd(d!.takeHome.usdFees)} −
-                  dispute fees {usd(d!.takeHome.usdDisputeFees)}
-                  {d!.takeHome.usdOpen >= 0.005 && <> − {usd(d!.takeHome.usdOpen)} withheld on disputes still open</>} ={' '}
-                  <strong style={{ color: INK }}>{usd(d!.takeHome.usdNet)}</strong>.
-                  Euro-settled: net {eur(d!.takeHome.eurRevenueNetEur)} − fees {eur(d!.takeHome.eurFees)} − dispute fees {eur(d!.takeHome.eurDisputeFees)}
-                  {d!.takeHome.eurOpenEur >= 0.005 && <> − {eur(d!.takeHome.eurOpenEur)} withheld on disputes still open</>} ={' '}
-                  <strong style={{ color: INK }}>{eur(d!.takeHome.eurNetEur)}</strong>, worth {usd(d!.takeHome.eurNetUsdEquiv)} at
-                  the rates of the days the money moved, which is how Stripe counts it. Together:{' '}
-                  <strong style={{ color: INK }}>{usd(d!.takeHome.totalUsdEquiv)}</strong>, the figure to compare with Net volume on the Stripe home
-                  screen. It will sit within a few dollars of it, never to the penny: Stripe rounds each day&rsquo;s
-                  rate its own way, and the euro slice re-values slightly as the market moves on dispute days.
-                </p>
-              </>
-            ) : (
-              <p style={{ marginTop: 3 }}>
-                Stripe&rsquo;s home-screen <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s fees.
-                Fee and settlement detail lands with the next hourly sync (:20); the take-home line renders here from then on.
-              </p>
-            )}
+            <p style={{ marginTop: 2 }}>
+              {d!.takeHome ? (
+                <>
+                  <strong style={{ color: INK }}>Check it against Stripe:</strong> the home screen&rsquo;s{' '}
+                  <strong style={{ color: INK }}>Net volume</strong> is this same figure and sits within a few dozen dollars of{' '}
+                  <strong style={{ color: INK }}>{usd(d!.netAll)}</strong> — the only difference left is that Stripe rounds
+                  each day&rsquo;s euro rate its own way.
+                </>
+              ) : (
+                <>Until the fee sync lands, the figures above are net of refunds and disputes only.</>
+              )}
+            </p>
           </div>
         )
       })()}

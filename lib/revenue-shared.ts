@@ -8,6 +8,7 @@
 // the disease this project keeps being treated for.
 
 import { createClient } from '@supabase/supabase-js'
+import { keptUsdCents, eurAvgRate } from '@/lib/trial-entries'
 
 export interface Era { era: number; code: string; name: string; starts_on: string; ends_on: string | null; notes: string | null; color: string; is_quiz_era: boolean }
 export interface Row {
@@ -154,9 +155,20 @@ export async function loadRevenueData() {
   const mLay = (mLayout.data?.value ?? null) as { order?: string[]; hidden?: string[] } | null
 
   const grossAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100
-  // THE display total (owner's rule, 2026-08-17): net of refunds and lost
-  // disputes. Every money number shown anywhere must sum to this.
-  const netAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + Math.max(0, r.amount_cents - (r.amount_refunded_cents || 0) - (r.dispute_lost_cents || 0)), 0) / 100
+  // THE display total (owner's rule, 2026-08-17, final form: "net is 77K
+  // not 83"): what the account actually KEPT — refunds, lost disputes,
+  // open-dispute withholdings, Stripe's fees all out, euro era at day
+  // rates — per charge through the ONE keptUsdCents formula the classifier
+  // also nets with, so every money number shown anywhere sums to this and
+  // to the Stripe home screen's Net volume within rounding.
+  const avgRateAll = eurAvgRate(chRows)
+  const netAll = chRows.reduce((a, r) => {
+    const k = keptUsdCents(r, avgRateAll)
+    // Mirror the classifier's guard: a refunded-flagged charge with missing
+    // refund detail must not count its face value as kept money.
+    if (r.refunded && k > 0) return a
+    return a + k
+  }, 0) / 100
   // TAKE-HOME, split by SETTLEMENT currency. Discovered 2026-08-17: card
   // charges settle into the USD balance, but the 2024 → Jul-2025 PayPal and
   // invoice era settled 1,147 charges into a EUR balance, so their

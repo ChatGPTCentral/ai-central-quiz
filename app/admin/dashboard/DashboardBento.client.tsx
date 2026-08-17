@@ -948,7 +948,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
             + $49.75 lifetime option instead of the $59.75/year renewal) {lifetimeSplits === 1 ? 'is' : 'are'} split
             accordingly — the $4.99 sits in the trials row, the $49.75 in Other Revenue.</>
           )}
-          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person holds' : 'people hold'} more than one paid trial, and every one of them is counted: trial COUNTS are gross, so somebody who bought twice shows as two, while every money row stays net of refunds per charge.</>}
+          {quizRepeatTrials > 0 && <> {quizRepeatTrials} {quizRepeatTrials === 1 ? 'person holds' : 'people hold'} more than one paid trial, and every one of them is counted: trial COUNTS are gross, so somebody who bought twice shows as two, while every money row is net — what the bank kept after refunds, disputes, and Stripe&rsquo;s fees.</>}
           {preWindowAnnuals > 0 && (
             <> {preWindowAnnuals} yearly renewal{preWindowAnnuals === 1 ? '' : 's'} belong
             to trial cohorts OLDER than this window (found via the trials sheet) and are not shown in any column — a recent week

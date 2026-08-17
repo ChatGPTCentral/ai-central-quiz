@@ -37,21 +37,28 @@ These are not derivations, they are the definitions. Do not "improve" them.
    is the residual of legacy monthly and annual subscriptions, nothing else.
 5. **Trials are counted GROSS, everywhere.** Someone who bought two trials
    shows as two, never as one person.
-6. **Money is displayed NET, everywhere** (owner, 2026-08-17): every dollar
-   figure on the matrix and the revenue screens has refunds and lost disputes
-   already subtracted, per charge, inside classifyLedger. COUNTS stay gross
-   (rule 5); MONEY is net. The mirror carries `amount_refunded_cents` and
-   `dispute_lost_cents`, refreshed hourly from Stripe's own Refund and
-   Dispute endpoints (never from fields on the charge object; the 2026 API
-   dropped them). Net is still NOT the Stripe home screen's "Net volume":
-   that also subtracts Stripe's fees, and the account settles in TWO
-   currencies — cards in USD, the 2024→Jul-2025 PayPal/invoice era (1,147
-   charges) into a EUR balance at market × 0.98 — so `settled_cents` and
-   `fee_cents` in the mirror are cents of `settled_currency`, never blindly
-   dollars. Revenue numbers stay face-USD per charge; only the revenue
-   page's take-home bridge converts, valuing each euro flow at its own
-   day's rate (how Stripe's home counts; a today's-rate conversion misses
-   by thousands).
+6. **Money is displayed NET, everywhere — and NET means WHAT THE BANK KEPT**
+   (owner, 2026-08-17, stated three times, the third: "net is 77K not 83").
+   Every money figure on the matrix and the revenue screens is the charge's
+   kept money in day-rate USD: refunds, lost disputes, open-dispute
+   withholdings, and Stripe's processing and dispute fees ALL subtracted,
+   per charge, inside `keptUsdCents()` (lib/trial-entries.ts) — the ONE
+   formula the classifier, the revenue loader, and the era table share. It
+   matches the Stripe home screen's "Net volume" within rounding, which is
+   the point: a number the owner cannot find on a Stripe screen is a number
+   he cannot verify. "Net of refunds but before fees" ($83k-style) renders
+   NOWHERE. COUNTS stay gross (rule 5); money can go BELOW zero per charge
+   (a lost dispute costs its fee plus the $15 penalty; a refunded charge's
+   fee stays kept by Stripe) — the classifier emits those as negative
+   "-cost" entries so kinds-sum stays penny-equal to kept money.
+   Settlement is two-currency: cards settle USD; the
+   2024→Jul-2025 PayPal/invoice era (1,147 charges) settled into a EUR
+   balance at market × 0.98, so `settled_cents` and `fee_cents` are cents
+   of `settled_currency`, and euro-era money converts at each charge's own
+   day rate via `bt_exchange_rate` (a today's-rate conversion misses by
+   thousands). All of it refreshed hourly from Stripe's Refund and Dispute
+   endpoints plus the expanded balance transaction (never from fields on
+   the charge object; the 2026 API dropped them).
 
 Rule 5 kills the old 32-day "duplicate subscription" rule, which was hiding
 39 real trials and pushing their money into Other Revenue. Trials revenue is

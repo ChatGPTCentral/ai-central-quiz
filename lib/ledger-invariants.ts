@@ -151,9 +151,9 @@ export async function runLedgerChecks(c: SupabaseClient): Promise<CheckResult[]>
       const lines = d.net_new_cents + d.existing_cents + d.not_quiz_cents
         + d.won_quiz_cents + d.won_not_quiz_cents + d.lifetime_half_cents + d.residual_cents
       const diff = lines - d.stripe_cents
-      add('revenue_identity', 'the six revenue lines add up to every charge Stripe took',
+      add('revenue_identity', 'the six revenue lines account for every charge Stripe took',
         diff === 0,
-        `lines $${(lines / 100).toFixed(2)} vs Stripe $${(d.stripe_cents / 100).toFixed(2)}`
+        `at face value, before Stripe's cut: lines $${(lines / 100).toFixed(2)} vs Stripe $${(d.stripe_cents / 100).toFixed(2)}`
           + (diff === 0 ? ', exact' : `, off by $${(diff / 100).toFixed(2)}`))
     }
   } catch (e) {

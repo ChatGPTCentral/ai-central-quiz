@@ -50,7 +50,7 @@ export default function RevenueChart({ points, eras }: { points: ChartPoint[]; e
   const linePts = cum.map((v, i) => `${x(i) + bw / 2},${yCum(v)}`).join(' ')
   const areaPts = `${PADL + bw / 2},${PADT + plotH} ${linePts} ${x(points.length - 1) + bw / 2},${PADT + plotH}`
 
-  const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
+  const usd = (n: number) => `${n < 0 ? '−' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`
   const h = hover !== null ? points[hover] : null
 
   return (
