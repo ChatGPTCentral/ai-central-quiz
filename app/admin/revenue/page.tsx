@@ -142,9 +142,8 @@ function db() {
 
 async function load() {
   const c = db()
-  const [eras, charges, lastSync, sheet, overrides, layout, mLayout, health] = await Promise.all([
+  const [eras, lastSync, sheet, overrides, layout, mLayout, health] = await Promise.all([
     c.from('payment_eras').select('era, code, name, starts_on, ends_on, notes, color, is_quiz_era').order('era'),
-    c.from('stripe_charges').select('amount_cents, refunded, charged_at, email, customer_email, customer_id').limit(20_000),
     c.from('stripe_charges').select('synced_at').order('synced_at', { ascending: false }).limit(1).maybeSingle(),
     c.from('sheet_trials').select('trial_date').not('trial_date', 'is', null).limit(5000),
     c.from('trial_state_overrides').select('charge_id, state').limit(20_000),
@@ -164,7 +163,24 @@ async function load() {
     if (data.length < 1000) break
   }
 
-  const chRows = (charges.data ?? []) as { amount_cents: number; refunded: boolean; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }[]
+  // PAGED, never one-shot. A single PostgREST response caps at 1,000 rows
+  // whatever .limit() asks for, and the table holds ~3,000 charges — the
+  // one-shot version silently built this page's "who already paid us" map
+  // from a third of the book, which is how wendywillitts' Feb-2025 lifetime
+  // went unseen while her trial wore a charge button (owner, 2026-08-16).
+  // Same failure class, same fix, as the dashboard's event reader.
+  type ChargeRow = { amount_cents: number; refunded: boolean; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
+  const chRows: ChargeRow[] = []
+  for (let o = 0; o < 30_000; o += 1000) {
+    const { data, error } = await c
+      .from('stripe_charges')
+      .select('amount_cents, refunded, charged_at, email, customer_email, customer_id')
+      .order('charged_at', { ascending: true })
+      .range(o, o + 999)
+    if (error || !data) break
+    chRows.push(...(data as ChargeRow[]))
+    if (data.length < 1000) break
+  }
   // Every identity that has EVER paid us anything that is not a trial price —
   // lifetimes at any amount, legacy monthly and annual subscriptions, the lot,
   // on ANY of the person's Stripe customer ids. The ledger's converted and
