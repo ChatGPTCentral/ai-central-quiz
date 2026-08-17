@@ -73,9 +73,64 @@ export async function GET(req: NextRequest) {
     refunded: boolean
     amount_refunded_cents: number
     disputed: boolean
+    dispute_lost_cents: number
     description: string | null
     synced_at: string
   }
+
+  // Refunds and disputes come from their OWN endpoints. The pinned 2026 API
+  // version stopped exposing amount_refunded on the charge object — two
+  // charges Stripe itself flags refunded synced with 0 refund detail
+  // (caught 2026-08-17) — and dispute OUTCOMES were never on it anyway.
+  // Refund and Dispute objects are version-stable, carry their charge id,
+  // and the dispute status lets the bridge subtract only LOST disputes,
+  // which is exactly what Stripe's own Net volume subtracts.
+  //
+  // Both fetches degrade gracefully: if the restricted key lacks the Refunds
+  // or Disputes read scope, the sync still mirrors charges and SAYS what it
+  // could not fetch, instead of dying or pretending zeros are data.
+  const refundByCharge = new Map<string, number>()
+  const disputeByCharge = new Map<string, { lost: number; any: boolean }>()
+  let refundsError: string | null = null
+  let disputesError: string | null = null
+  try {
+    let after: string | undefined
+    for (let p = 0; p < 40; p++) {
+      const page = await stripe.refunds.list({ limit: 100, ...(after ? { starting_after: after } : {}) })
+      for (const r of page.data) {
+        if (r.status === 'failed' || r.status === 'canceled') continue
+        const chId = typeof r.charge === 'string' ? r.charge : r.charge?.id
+        if (chId) refundByCharge.set(chId, (refundByCharge.get(chId) ?? 0) + (r.amount ?? 0))
+      }
+      if (!page.has_more) break
+      after = page.data[page.data.length - 1]?.id
+      if (!after) break
+    }
+  } catch (e) {
+    refundsError = e instanceof Error ? e.message : String(e)
+    console.error('[stripe-charges-sync] refunds fetch failed:', refundsError)
+  }
+  try {
+    let after: string | undefined
+    for (let p = 0; p < 20; p++) {
+      const page = await stripe.disputes.list({ limit: 100, ...(after ? { starting_after: after } : {}) })
+      for (const dp of page.data) {
+        const chId = typeof dp.charge === 'string' ? dp.charge : dp.charge?.id
+        if (!chId) continue
+        const cur = disputeByCharge.get(chId) ?? { lost: 0, any: false }
+        cur.any = true
+        if (dp.status === 'lost') cur.lost += dp.amount ?? 0
+        disputeByCharge.set(chId, cur)
+      }
+      if (!page.has_more) break
+      after = page.data[page.data.length - 1]?.id
+      if (!after) break
+    }
+  } catch (e) {
+    disputesError = e instanceof Error ? e.message : String(e)
+    console.error('[stripe-charges-sync] disputes fetch failed:', disputesError)
+  }
+
   const rows: Row[] = []
   let pages = 0
   let startingAfter: string | undefined
@@ -110,8 +165,9 @@ export async function GET(req: NextRequest) {
           ? ch.customer.email?.toLowerCase() ?? null
           : null),
         refunded: ch.refunded === true,
-        amount_refunded_cents: ch.amount_refunded ?? 0,
-        disputed: ch.disputed === true,
+        amount_refunded_cents: refundByCharge.get(ch.id) ?? 0,
+        disputed: disputeByCharge.get(ch.id)?.any === true,
+        dispute_lost_cents: disputeByCharge.get(ch.id)?.lost ?? 0,
         description: ch.description ?? null,
         synced_at: new Date().toISOString(),
       })
@@ -148,13 +204,17 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    since: MIRROR_START_ISO,
+    since: 'account inception (full-history walk)',
     pages,
     charges: rows.length,
     written,
     refunded: rows.filter(r => r.refunded).length,
+    refundDetailUsd: Array.from(refundByCharge.values()).reduce((a, b) => a + b, 0) / 100,
+    disputesLostUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.lost, 0) / 100,
     checksPassed: failed.length === 0,
     checks,
+    ...(refundsError ? { REFUNDS_NOT_FETCHED: `the key likely lacks Refunds read scope: ${refundsError.slice(0, 200)}` } : {}),
+    ...(disputesError ? { DISPUTES_NOT_FETCHED: `the key likely lacks Disputes read scope: ${disputesError.slice(0, 200)}` } : {}),
     ...(truncated ? { WARNING: 'page ceiling hit — the mirror is INCOMPLETE' } : {}),
   })
 }

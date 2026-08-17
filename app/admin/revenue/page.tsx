@@ -232,24 +232,27 @@ export default async function RevenuePage() {
           other so they can be compared without a conversation (owner,
           2026-08-16: "you say 83k but Stripe says Net volume $77,464.56"). */}
       {(() => {
+        // Refunds on charges still counted in our gross (a FULLY refunded
+        // charge is already excluded from it), plus disputes actually LOST —
+        // which is exactly what Stripe's Net volume subtracts.
         const partialRefunds = d!.chargeRows.filter(c => !c.refunded).reduce((a, c) => a + (c.amount_refunded_cents || 0), 0) / 100
-        const disputedUsd = d!.chargeRows.filter(c => c.disputed && !c.refunded).reduce((a, c) => a + c.amount_cents - (c.amount_refunded_cents || 0), 0) / 100
+        const disputesLost = d!.chargeRows.filter(c => !c.refunded).reduce((a, c) => a + (c.dispute_lost_cents || 0), 0) / 100
         const hasDetail = d!.chargeRows.some(c => (c.amount_refunded_cents || 0) > 0 || c.disputed)
         if (!hasDetail) {
           return (
             <p style={{ fontSize: 11, color: MUTE, marginTop: 4, lineHeight: 1.5 }}>
-              Stripe&rsquo;s own <strong style={{ color: INK }}>Net volume</strong> additionally nets out refunds and disputes.
+              Stripe&rsquo;s own <strong style={{ color: INK }}>Net volume</strong> additionally nets out refunds and lost disputes.
               Refund detail lands with the next hourly sync (:20); the gross → net bridge will render here from then on.
             </p>
           )
         }
-        const netOurs = d!.grossAll - partialRefunds - disputedUsd
+        const netOurs = d!.grossAll - partialRefunds - disputesLost
         return (
           <p style={{ fontSize: 11, color: MUTE, marginTop: 4, lineHeight: 1.6 }}>
             <strong style={{ color: INK }}>The bridge to Stripe&rsquo;s Net volume:</strong>{' '}
-            gross of successful charges {usd(d!.grossAll)} − refunds on them {usd(partialRefunds)} − disputed {usd(disputedUsd)} ={' '}
+            gross of successful charges {usd(d!.grossAll)} − refunds on them {usd(partialRefunds)} − disputes lost {usd(disputesLost)} ={' '}
             <strong style={{ color: INK }}>{usd(netOurs)}</strong>. Compare that with the Net volume figure on your Stripe home —
-            any residue is currency conversion (one €250 charge counts at face value here) and dispute outcomes Stripe nets differently.
+            any residue is currency conversion (one €250 charge counts at face value here) and timing on disputes still open.
           </p>
         )
       })()}
