@@ -76,11 +76,18 @@ export async function GET(req: NextRequest) {
     email: string | null
     customer_email: string | null
     refunded: boolean
-    amount_refunded_cents: number
-    disputed: boolean
-    dispute_lost_cents: number
     description: string | null
     synced_at: string
+    // Detail columns are OPTIONAL: each is written only when the endpoint
+    // that owns it answered this run, so a degraded run can never overwrite
+    // good detail with zeros (see the rows assembly below).
+    amount_refunded_cents?: number
+    disputed?: boolean
+    dispute_lost_cents?: number
+    dispute_fee_cents?: number
+    dispute_open_cents?: number
+    fee_cents?: number
+    settled_cents?: number | null
   }
 
   // Refunds and disputes come from their OWN endpoints. The pinned 2026 API
@@ -95,12 +102,18 @@ export async function GET(req: NextRequest) {
   // or Disputes read scope, the sync still mirrors charges and SAYS what it
   // could not fetch, instead of dying or pretending zeros are data.
   const refundByCharge = new Map<string, number>()
-  const disputeByCharge = new Map<string, { lost: number; any: boolean }>()
+  // Per disputed charge: amount lost, whether any dispute exists, net dispute
+  // FEES from the dispute's own balance transactions ($15 taken at dispute,
+  // returned if won — summing bt.fee handles both sides), and the amount
+  // currently WITHHELD on disputes still open. The last two exist so the
+  // revenue page can reconcile Stripe's home-screen Net volume, which
+  // subtracts fees and open-dispute money that rule-6 net deliberately keeps.
+  const disputeByCharge = new Map<string, { lost: number; any: boolean; fee: number; open: number }>()
   // An object, not two lets: the closures below mutate these, and TypeScript
   // narrows a captured let to its initializer at the read site (it cannot see
   // that Promise.all ran the closure), which turned the response line into a
   // type error that a masked build check then let through to main.
-  const fetchErrors: { refunds: string | null; disputes: string | null } = { refunds: null, disputes: null }
+  const fetchErrors: { refunds: string | null; disputes: string | null; balanceTxn: string | null } = { refunds: null, disputes: null, balanceTxn: null }
 
   const fetchRefunds = async () => {
     try {
@@ -129,9 +142,14 @@ export async function GET(req: NextRequest) {
         for (const dp of page.data) {
           const chId = typeof dp.charge === 'string' ? dp.charge : dp.charge?.id
           if (!chId) continue
-          const cur = disputeByCharge.get(chId) ?? { lost: 0, any: false }
+          const cur = disputeByCharge.get(chId) ?? { lost: 0, any: false, fee: 0, open: 0 }
           cur.any = true
           if (dp.status === 'lost') cur.lost += dp.amount ?? 0
+          // needs_response / under_review are the statuses where the money is
+          // withdrawn but the outcome is not final; warning_* inquiries move
+          // no funds. Won and lost are final and covered elsewhere.
+          if (dp.status === 'needs_response' || dp.status === 'under_review') cur.open += dp.amount ?? 0
+          for (const bt of dp.balance_transactions ?? []) cur.fee += bt.fee ?? 0
           disputeByCharge.set(chId, cur)
         }
         if (!page.has_more) break
@@ -146,9 +164,17 @@ export async function GET(req: NextRequest) {
 
   // The charges walk collects snapshots; rows are assembled AFTER all three
   // fetches complete, because refund and dispute amounts join by charge id.
-  type Snap = { id: string; amount: number; currency: string; created: number; customerId: string | null; email: string | null; customerEmail: string | null; refunded: boolean; description: string | null }
+  type Snap = { id: string; amount: number; currency: string; created: number; customerId: string | null; email: string | null; customerEmail: string | null; refunded: boolean; description: string | null; feeCents: number | null; settledCents: number | null }
   const snaps: Snap[] = []
   let pages = 0
+
+  // Whether the balance-transaction expand worked. It carries the exact
+  // Stripe fee and the exact USD the charge SETTLED for (face value for USD
+  // charges, the converted amount for the EUR/INR ones that face-value
+  // summing gets wrong). If the restricted key lacks the Balance
+  // transactions read scope the walk falls back to charges alone, says so in
+  // the response, and the fee columns are left untouched in the mirror.
+  let btOk = true
 
   // 120-page ceiling = 12,000 charges. The full-history walk pages over ALL
   // charge attempts (failed ones included, filtered below), so the ceiling
@@ -161,15 +187,31 @@ export async function GET(req: NextRequest) {
       // Expand the customer: the CHARGE's billing email and the CUSTOMER's
       // email are frequently different, and attribution matches on email, so
       // storing only one of them loses people.
-      const page = await stripe.charges.list({
-        created: { gte: sinceEpoch },
-        limit: 100,
-        expand: ['data.customer'],
-        ...(startingAfter ? { starting_after: startingAfter } : {}),
-      })
+      let page: Stripe.ApiList<Stripe.Charge>
+      try {
+        page = await stripe.charges.list({
+          created: { gte: sinceEpoch },
+          limit: 100,
+          expand: btOk ? ['data.customer', 'data.balance_transaction'] : ['data.customer'],
+          ...(startingAfter ? { starting_after: startingAfter } : {}),
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (btOk && /balance_transaction|permission|scope/i.test(msg)) {
+          // Retry the SAME page without the expand, once, and remember: a key
+          // without the Balance scope must degrade to a charges-only sync,
+          // not die with zero rows written.
+          btOk = false
+          fetchErrors.balanceTxn = msg
+          console.error('[stripe-charges-sync] balance_transaction expand unavailable:', msg)
+          continue
+        }
+        throw e
+      }
       pages++
       for (const ch of page.data) {
         if (ch.status !== 'succeeded') continue
+        const bt = typeof ch.balance_transaction === 'object' && ch.balance_transaction ? ch.balance_transaction : null
         snaps.push({
           id: ch.id,
           amount: ch.amount,
@@ -182,6 +224,8 @@ export async function GET(req: NextRequest) {
             : null),
           refunded: ch.refunded === true,
           description: ch.description ?? null,
+          feeCents: bt ? bt.fee : null,
+          settledCents: bt ? bt.amount : null,
         })
       }
       if (!page.has_more) break
@@ -197,6 +241,12 @@ export async function GET(req: NextRequest) {
   const truncated = pages >= 120
 
   const syncStamp = new Date().toISOString()
+  // Detail columns are written ONLY when their endpoint answered this run.
+  // Before this guard, a transient refunds or disputes failure upserted the
+  // defaults over every previously good value, silently lifting net by the
+  // whole refund total until the next clean run. The conditions are per-run
+  // constants, so every row in a chunk carries the same keys (PostgREST
+  // requires uniform keys in a bulk upsert).
   const rows: Row[] = snaps.map(s => ({
     id: s.id,
     amount_cents: s.amount,
@@ -206,11 +256,18 @@ export async function GET(req: NextRequest) {
     email: s.email,
     customer_email: s.customerEmail,
     refunded: s.refunded,
-    amount_refunded_cents: refundByCharge.get(s.id) ?? 0,
-    disputed: disputeByCharge.get(s.id)?.any === true,
-    dispute_lost_cents: disputeByCharge.get(s.id)?.lost ?? 0,
     description: s.description,
     synced_at: syncStamp,
+    ...(fetchErrors.refunds ? {} : { amount_refunded_cents: refundByCharge.get(s.id) ?? 0 }),
+    ...(fetchErrors.disputes
+      ? {}
+      : {
+          disputed: disputeByCharge.get(s.id)?.any === true,
+          dispute_lost_cents: disputeByCharge.get(s.id)?.lost ?? 0,
+          dispute_fee_cents: disputeByCharge.get(s.id)?.fee ?? 0,
+          dispute_open_cents: disputeByCharge.get(s.id)?.open ?? 0,
+        }),
+    ...(btOk ? { fee_cents: s.feeCents ?? 0, settled_cents: s.settledCents } : {}),
   }))
 
   const c = sb()
@@ -246,10 +303,15 @@ export async function GET(req: NextRequest) {
     refunded: rows.filter(r => r.refunded).length,
     refundDetailUsd: Array.from(refundByCharge.values()).reduce((a, b) => a + b, 0) / 100,
     disputesLostUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.lost, 0) / 100,
+    disputesOpenUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.open, 0) / 100,
+    disputeFeesUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.fee, 0) / 100,
+    processingFeesUsd: btOk ? snaps.reduce((a, s) => a + (s.feeCents ?? 0), 0) / 100 : null,
+    settledUsd: btOk ? snaps.reduce((a, s) => a + (s.settledCents ?? s.amount), 0) / 100 : null,
     checksPassed: failed.length === 0,
     checks,
     ...(fetchErrors.refunds ? { REFUNDS_NOT_FETCHED: `the key likely lacks Refunds read scope: ${fetchErrors.refunds.slice(0, 200)}` } : {}),
     ...(fetchErrors.disputes ? { DISPUTES_NOT_FETCHED: `the key likely lacks Disputes read scope: ${fetchErrors.disputes.slice(0, 200)}` } : {}),
+    ...(fetchErrors.balanceTxn ? { FEES_NOT_FETCHED: `the key likely lacks Balance transactions read scope: ${fetchErrors.balanceTxn.slice(0, 200)}` } : {}),
     ...(truncated ? { WARNING: 'page ceiling hit — the mirror is INCOMPLETE' } : {}),
   })
 }

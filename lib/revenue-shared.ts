@@ -80,7 +80,7 @@ export function db() {
 }
 
 export type AdminAction = { at: string; action: string; person_key: string | null; detail: Record<string, unknown> | null }
-export type ChargeLite = { amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; dispute_lost_cents: number; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
+export type ChargeLite = { amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; dispute_lost_cents: number; dispute_fee_cents: number; dispute_open_cents: number; fee_cents: number; settled_cents: number | null; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
 
 export async function loadRevenueData() {
   const c = db()
@@ -112,7 +112,7 @@ export async function loadRevenueData() {
   for (let o = 0; o < 30_000; o += 1000) {
     const { data, error } = await c
       .from('stripe_charges')
-      .select('amount_cents, refunded, amount_refunded_cents, disputed, dispute_lost_cents, charged_at, email, customer_email, customer_id')
+      .select('amount_cents, refunded, amount_refunded_cents, disputed, dispute_lost_cents, dispute_fee_cents, dispute_open_cents, fee_cents, settled_cents, charged_at, email, customer_email, customer_id')
       .order('charged_at', { ascending: true })
       .range(o, o + 999)
     if (error || !data) break
@@ -153,6 +153,24 @@ export async function loadRevenueData() {
   const lay = (layout.data?.value ?? null) as { order?: string[]; hidden?: string[] } | null
   const mLay = (mLayout.data?.value ?? null) as { order?: string[]; hidden?: string[] } | null
 
+  const grossAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100
+  // THE display total (owner's rule, 2026-08-17): net of refunds and lost
+  // disputes. Every money number shown anywhere must sum to this.
+  const netAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + Math.max(0, r.amount_cents - (r.amount_refunded_cents || 0) - (r.dispute_lost_cents || 0)), 0) / 100
+  // Stripe's cut, for the take-home line that reconciles the Stripe home
+  // screen's "Net volume" (= gross − fees − refunds − disputes). Processing
+  // fees sum over ALL charges, refunded ones included: Stripe keeps the fee
+  // when a charge is refunded. FX delta is what non-USD charges actually
+  // settled for in USD minus their face value (a €250 charge is not $250.00).
+  const feesAll = chRows.reduce((a, r) => a + (r.fee_cents || 0), 0) / 100
+  const disputeFeesAll = chRows.reduce((a, r) => a + (r.dispute_fee_cents || 0), 0) / 100
+  const disputeOpenAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + (r.dispute_open_cents || 0), 0) / 100
+  const fxDeltaAll = chRows.filter(r => !r.refunded && r.settled_cents !== null && r.settled_cents !== undefined).reduce((a, r) => a + ((r.settled_cents as number) - r.amount_cents), 0) / 100
+  // Gate: before the first fee-aware sync every fee_cents is 0 and the
+  // take-home line would be a lie. Any real sync has thousands of fee rows.
+  const feesKnown = chRows.some(r => (r.fee_cents || 0) > 0)
+  const takeHomeAll = netAll + fxDeltaAll - feesAll - disputeFeesAll - disputeOpenAll
+
   return {
     eras: (eras.data ?? []) as Era[],
     ledger,
@@ -165,10 +183,14 @@ export async function loadRevenueData() {
     monthColOrder: mLay?.order ?? null,
     monthColHidden: mLay?.hidden ?? null,
     chargeRows: chRows,
-    grossAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + r.amount_cents, 0) / 100,
-    // THE display total (owner's rule, 2026-08-17): net of refunds and lost
-    // disputes. Every money number shown anywhere must sum to this.
-    netAll: chRows.filter(r => !r.refunded).reduce((a, r) => a + Math.max(0, r.amount_cents - (r.amount_refunded_cents || 0) - (r.dispute_lost_cents || 0)), 0) / 100,
+    grossAll,
+    netAll,
+    feesAll,
+    disputeFeesAll,
+    disputeOpenAll,
+    fxDeltaAll,
+    feesKnown,
+    takeHomeAll,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
     sheetByMonth,

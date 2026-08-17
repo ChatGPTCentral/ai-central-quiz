@@ -251,12 +251,29 @@ export default async function RevenuePage() {
         }
         const netOurs = d!.grossAll - partialRefunds - disputesLost
         return (
-          <p style={{ fontSize: 11, color: MUTE, marginTop: 4, lineHeight: 1.6 }}>
-            <strong style={{ color: INK }}>The bridge to Stripe&rsquo;s Net volume:</strong>{' '}
-            gross of successful charges {usd(d!.grossAll)} − refunds on them {usd(partialRefunds)} − disputes lost {usd(disputesLost)} ={' '}
-            <strong style={{ color: INK }}>{usd(netOurs)}</strong>. Compare that with the Net volume figure on your Stripe home —
-            any residue is currency conversion (one €250 charge counts at face value here) and timing on disputes still open.
-          </p>
+          <div style={{ fontSize: 11, color: MUTE, marginTop: 4, lineHeight: 1.6 }}>
+            <p>
+              <strong style={{ color: INK }}>How net is built:</strong>{' '}
+              gross of successful charges {usd(d!.grossAll)} − refunds on them {usd(partialRefunds)} − disputes lost {usd(disputesLost)} ={' '}
+              <strong style={{ color: INK }}>{usd(netOurs)}</strong>, the total every number above sums to.
+            </p>
+            {d!.feesKnown ? (
+              <p style={{ marginTop: 3 }}>
+                <strong style={{ color: INK }}>The bridge to Stripe&rsquo;s home screen:</strong>{' '}
+                its <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s own cut, which is not revenue lost, it is the cost of collecting it:
+                net {usd(d!.netAll)}
+                {Math.abs(d!.fxDeltaAll) >= 0.005 && <> {d!.fxDeltaAll < 0 ? '−' : '+'} {usd(Math.abs(d!.fxDeltaAll))} currency conversion (non-USD charges at what they actually settled for in USD)</>}
+                {' '}− processing fees {usd(d!.feesAll)} − dispute fees {usd(d!.disputeFeesAll)}
+                {d!.disputeOpenAll >= 0.005 && <> − {usd(d!.disputeOpenAll)} withheld on disputes still open</>} ={' '}
+                <strong style={{ color: INK }}>{usd(d!.takeHomeAll)}</strong> take-home, the figure to compare with Net volume on the Stripe home screen.
+              </p>
+            ) : (
+              <p style={{ marginTop: 3 }}>
+                Stripe&rsquo;s home-screen <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s fees.
+                Fee detail lands with the next hourly sync (:20); the take-home line renders here from then on.
+              </p>
+            )}
+          </div>
         )
       })()}
 
