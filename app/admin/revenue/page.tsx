@@ -351,12 +351,25 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
   // only — the money sections above stay complete, excluding a country from
   // revenue reporting would falsify it.
   const includeIndia = searchParams.india === '1'
-  const L3 = includeIndia ? L : L.filter(r => r.country !== 'India')
+  // The no-recurring-card era (owner, 2026-08-16): trials sold 2025-05-25 to
+  // 2025-06-21 went through a flow that saved no card, so they can never be
+  // one-click charged and only waste clicks in this table. Hidden by default,
+  // toggle to inspect. The LEDGER keeps them — 26 trials, 3 of which did
+  // convert anyway (recovered by hand back then) — because charges are the
+  // record of record and the money sections must stay complete.
+  const NO_CARD_ERA_START = '2025-05-25'
+  const NO_CARD_ERA_END = '2025-06-21'
+  const inNoCardEra = (r: Row) => { const d = r.trial_at.slice(0, 10); return d >= NO_CARD_ERA_START && d <= NO_CARD_ERA_END }
+  const includeNoCard = searchParams.nocard === '1'
+  const L3 = L.filter(r => (includeIndia || r.country !== 'India') && (includeNoCard || !inNoCardEra(r)))
+  // Email search over the visible table (q matches email or name).
+  const q = (searchParams.q || '').trim().toLowerCase()
   const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
   const filtered = L3.filter(r =>
     (!fState || effState(r) === fState) &&
     (!fEra || r.era === fEra) &&
-    (!fAttr || r.attribution === fAttr))
+    (!fAttr || r.attribution === fAttr) &&
+    (!q || r.person_key.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q)))
   const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
     const st = effState(r)
@@ -405,7 +418,7 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
 
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
-    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, india: includeIndia ? '1' : undefined, ...patch }
+    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, india: includeIndia ? '1' : undefined, nocard: includeNoCard ? '1' : undefined, q: q || undefined, ...patch }
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v)
     const s = p.toString()
     return `/admin/revenue${s ? `?${s}` : ''}`
@@ -524,8 +537,23 @@ export default async function RevenuePage({ searchParams }: { searchParams: Reco
         <span style={{ width: 12 }} />
         <a href={qs({ india: includeIndia ? undefined : '1' })} style={chip(includeIndia)}
           title="India is hidden by default: 0 of 43 due trials there ever renewed, which is why India is sold the lifetime. Toggle to look case by case.">
-          {includeIndia ? 'India: shown' : `India: hidden (${L.length - L3.length})`}
+          {includeIndia ? 'India: shown' : 'India: hidden'}
         </a>
+        <a href={qs({ nocard: includeNoCard ? undefined : '1' })} style={chip(includeNoCard)}
+          title="Trials sold 2025-05-25 to 2025-06-21 went through a flow that saved no card: they can never be one-click charged. 26 trials, 3 of which converted anyway. The ledger and money sections keep them; this table hides them.">
+          {includeNoCard ? 'No-card era: shown' : 'No-card era: hidden'}
+        </a>
+        <form method="get" action="/admin/revenue#trials" style={{ display: 'inline-flex', gap: 5, marginLeft: 12 }}>
+          {fState && <input type="hidden" name="state" value={fState} />}
+          {fEra ? <input type="hidden" name="era" value={String(fEra)} /> : null}
+          {fAttr && <input type="hidden" name="attr" value={fAttr} />}
+          {includeIndia && <input type="hidden" name="india" value="1" />}
+          {includeNoCard && <input type="hidden" name="nocard" value="1" />}
+          <input name="q" defaultValue={q} placeholder="search email or name…"
+            style={{ border: '2px solid #1A1A1A', background: '#FFFDFA', fontSize: 11.5, padding: '5px 9px', width: 190 }} />
+          <button type="submit" style={{ border: '2px solid #1A1A1A', background: '#1A1A1A', color: '#FEF7E7', fontSize: 11, fontWeight: 700, padding: '5px 10px', cursor: 'pointer' }}>Search</button>
+          {q && <a href={qs({ q: undefined })} style={{ ...navChip, padding: '5px 9px', fontSize: 11 }}>×</a>}
+        </form>
       </div>
 
       <div style={{ fontSize: 11.5, color: MUTE, marginTop: 10 }}>
