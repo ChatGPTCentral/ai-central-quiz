@@ -174,6 +174,10 @@ export function classifyLedger(
   let preWindowAnnuals = 0
   const accounted = new Set<string>()
   const mirrorStart = `${mirrorStartIso}T00:00:00Z`
+  // The real amount behind each charge id: bundle emission is gated on the
+  // CHARGE being $54.74, never on ledger stamps (see below).
+  const chargeCents = new Map<string, number>()
+  for (const ch of charges) chargeCents.set(ch.id, ch.amount_cents)
 
   for (const t of ledger) {
     if (t.lifetime_bundle) lifetimeSplits++
@@ -220,21 +224,34 @@ export function classifyLedger(
       }
     }
 
-    if (t.converted_at && t.converted_cents) {
-      if (t.converted_charge_id) accounted.add(t.converted_charge_id)
-      if (t.lifetime_bundle) {
-        // A lifetime is NOT an annual. Owner's rule, stated twice: the $4.99
-        // half of a $54.74 bundle belongs with the trials, the $49.75 half is
-        // Other Revenue. Won trials means $59.75 renewals, full stop.
-        entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, kind: 'other', usd: 49.75, why: 'the $49.75 lifetime half of a $54.74 bundle' })
-      } else if (anchor < mirrorStart) {
+    // The $49.75 half of a $54.74 bundle exists the moment the CHARGE does,
+    // whether or not the view ever stamped a conversion. This used to live
+    // inside the converted_at gate below, and 27 unstamped bundles were
+    // dropping their halves ($1,343.25) with no rescue possible: the trial
+    // row had already claimed the charge, so the residual never saw it.
+    // Caught by the on-page identity line the day it shipped (owner,
+    // 2026-08-16). A lifetime is NOT an annual — owner's rule, stated twice:
+    // the $4.99 half belongs with the trials, the $49.75 half is Other
+    // Revenue. Gate on the charge amount, never on stamps or flags.
+    if (!t.trial_refunded && chargeCents.get(t.charge_id) === 5474) {
+      entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, chargeId: `${t.charge_id}-lt`, kind: 'other', usd: 49.75, why: 'the $49.75 lifetime half of a $54.74 bundle' })
+    }
+
+    // A conversion entry needs a real, SEPARATE converted charge: a bundle
+    // whose "conversion" is its own purchase already emitted its half above,
+    // and a flag on a row must never replace the actual money (one
+    // bundle-flagged row with a genuine $59.75 renewal was emitting $49.75
+    // in its place — a quiet $10 identity leak).
+    if (t.converted_at && t.converted_cents && t.converted_charge_id && t.converted_charge_id !== t.charge_id) {
+      accounted.add(t.converted_charge_id)
+      if (anchor < mirrorStart) {
         preWindowAnnuals++
       } else {
         entries.push({
           ...who,
           at: anchor,
           chargedAt: t.converted_at,
-          chargeId: t.converted_charge_id || t.charge_id,
+          chargeId: t.converted_charge_id,
           kind: quizEarned ? 'annualQuiz' : 'annualNotQuiz',
           usd: t.converted_cents / 100,
           why: quizEarned
