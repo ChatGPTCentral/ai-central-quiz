@@ -80,7 +80,7 @@ export function db() {
 }
 
 export type AdminAction = { at: string; action: string; person_key: string | null; detail: Record<string, unknown> | null }
-export type ChargeLite = { amount_cents: number; refunded: boolean; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
+export type ChargeLite = { amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
 
 export async function loadRevenueData() {
   const c = db()
@@ -112,7 +112,7 @@ export async function loadRevenueData() {
   for (let o = 0; o < 30_000; o += 1000) {
     const { data, error } = await c
       .from('stripe_charges')
-      .select('amount_cents, refunded, charged_at, email, customer_email, customer_id')
+      .select('amount_cents, refunded, amount_refunded_cents, disputed, charged_at, email, customer_email, customer_id')
       .order('charged_at', { ascending: true })
       .range(o, o + 999)
     if (error || !data) break

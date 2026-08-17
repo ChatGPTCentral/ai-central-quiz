@@ -51,10 +51,16 @@ export async function GET(req: NextRequest) {
   if (!stripeKey) return NextResponse.json({ error: 'STRIPE_SECRET_KEY not set' }, { status: 500 })
   const stripe = new Stripe(stripeKey, { apiVersion: '2026-04-22.dahlia', maxNetworkRetries: 2 })
 
-  // Monday of launch week, not launch day: the week-gran matrix column that
-  // contains launch day starts Jun 29, and a mirror starting Jul 5 made that
-  // column silently incomplete.
-  const sinceEpoch = Math.floor(Date.parse(`${MIRROR_START_ISO}T00:00:00Z`) / 1000)
+  // FULL HISTORY, every run (2026-08-16). It used to walk only since the
+  // mirror start (Jun 29), which froze the refund state of everything older:
+  // the deep history arrived via a one-time backfill, so an old charge
+  // refunded last week kept reading as paid, and partial refund amounts were
+  // never captured at all. That is how the page said $83,760.56 while the
+  // owner's Stripe screen said Net volume $77,464.56 with no bridge between
+  // them. ~3,000 charges is ~30 pages — well under the ceiling; revisit only
+  // if volume makes this slow.
+  const sinceEpoch = 0
+  void MIRROR_START_ISO
 
   type Row = {
     id: string
@@ -65,6 +71,8 @@ export async function GET(req: NextRequest) {
     email: string | null
     customer_email: string | null
     refunded: boolean
+    amount_refunded_cents: number
+    disputed: boolean
     description: string | null
     synced_at: string
   }
@@ -72,10 +80,12 @@ export async function GET(req: NextRequest) {
   let pages = 0
   let startingAfter: string | undefined
 
-  // 50-page ceiling = 5,000 charges. Far above current volume; if it is ever
-  // hit, the sync is INCOMPLETE and says so in the response rather than
-  // quietly serving a truncated mirror.
-  while (pages < 50) {
+  // 120-page ceiling = 12,000 charges. The full-history walk pages over ALL
+  // charge attempts (failed ones included, filtered below), so the ceiling
+  // sits far above the succeeded count; if it is ever hit, the sync is
+  // INCOMPLETE and says so in the response rather than quietly serving a
+  // truncated mirror.
+  while (pages < 120) {
     // Expand the customer: the CHARGE's billing email and the CUSTOMER's email
     // are frequently different (one Aug 7 sale bills as angiesmucker@… while
     // the Stripe customer is admin@nexusbusinesssolutions.net), and attribution
@@ -100,6 +110,8 @@ export async function GET(req: NextRequest) {
           ? ch.customer.email?.toLowerCase() ?? null
           : null),
         refunded: ch.refunded === true,
+        amount_refunded_cents: ch.amount_refunded ?? 0,
+        disputed: ch.disputed === true,
         description: ch.description ?? null,
         synced_at: new Date().toISOString(),
       })
@@ -108,7 +120,7 @@ export async function GET(req: NextRequest) {
     startingAfter = page.data[page.data.length - 1]?.id
     if (!startingAfter) break
   }
-  const truncated = pages >= 50
+  const truncated = pages >= 120
 
   const c = sb()
   let written = 0
