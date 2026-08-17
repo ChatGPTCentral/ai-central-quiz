@@ -32,6 +32,13 @@ const AMBER = '#B26A00'
 
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
 
+// SEARCH, not the customer page (owner, 2026-08-16): one person can hold
+// several Stripe customer accounts, and a link to one of them hides the
+// others. The dashboard search on their email surfaces every account,
+// charge and subscription they touch.
+const stripeSearch = (email: string) =>
+  `https://dashboard.stripe.com/acct_1O98fMBLsgHOvWxy/search?query=${encodeURIComponent(email)}&search_context_id=org_6THkEV3mGRXxyqwRC3UJ6wy&type=organization`
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '9px 13px' }}>
@@ -69,6 +76,11 @@ export default function RecoveryQueue({ rows, recovered, invoiced }: { rows: Rec
                 <td style={{ padding: '8px 10px' }}>
                   <span style={{ fontWeight: 700 }}>{r.name || '–'}</span>
                   <span style={{ color: MUTE, marginLeft: 6, fontSize: 11 }}>{r.personKey}</span>
+                  <a href={stripeSearch(r.personKey)} target="_blank" rel="noopener noreferrer"
+                    title="Stripe search on this email — shows every customer account, charge and subscription they hold, not just one."
+                    style={{ marginLeft: 7, fontSize: 10.5, fontWeight: 700, color: '#0A66C2', textDecoration: 'none' }}>
+                    profile ↗
+                  </a>
                   {r.trialCount > 1 && (
                     <span title="This person holds more than one open trial. One subscription settles the person; the already-pays guard blocks any second charge automatically." style={{ marginLeft: 6, fontSize: 10, color: AMBER, fontWeight: 700 }}>
                       ×{r.trialCount} trials
