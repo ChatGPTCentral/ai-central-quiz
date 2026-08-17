@@ -170,6 +170,29 @@ export const UX_QUERIES: {
     }),
   },
   {
+    key: 'opaque_errors',
+    claim: 'opaque cross-origin errors are storming',
+    // The named_exceptions check EXCLUDES bare "Script error." on purpose: it
+    // is unactionable noise from scripts we do not inject (in-app browsers,
+    // mostly), running ~11 on a send day since the crossorigin fix made our
+    // own tags readable. But that exclusion is a blind spot at storm scale:
+    // the Aug 9 burst was 148 of exactly these in one day, most from a
+    // handful of Android in-app sessions, and every other check would sleep
+    // through a repeat. This alarms only at storm scale; the trickle stays
+    // filtered. Added 2026-08-16 after the PostHog weekly digest showed the
+    // opaque class still alive at 66/week while the watcher reported none.
+    threshold: 40,
+    severity: 'warn',
+    sql: `SELECT count() AS n
+          FROM events
+          WHERE event = '$exception' AND timestamp > now() - INTERVAL 6 HOUR
+            AND toString(properties.$exception_values) ILIKE '%Script error%'`,
+    read: rows => {
+      const n = Number((rows[0] || {}).n || 0)
+      return { value: n, detail: n ? `${n} opaque cross-origin errors in 6h — in-app browser storm shape` : 'none' }
+    },
+  },
+  {
     key: 'dead_ends',
     claim: 'people landed on a page that does not exist',
     threshold: 3,
