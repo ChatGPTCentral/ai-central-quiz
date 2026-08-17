@@ -25,6 +25,8 @@ export function OfferStack({
   ctaLabel,
   expressPay,
   offer = TRIAL_OFFER,
+  lead = 'classic',
+  guarantee = 'block',
 }: {
   checkoutUrl: string
   submissionId?: string
@@ -36,6 +38,16 @@ export function OfferStack({
   /** Optional one-tap wallet element, injected by the page so this stays a
    *  server component. Null when the flag is off or no wallet is available. */
   expressPay?: React.ReactNode
+  /** result_page_v3 'research' arm (research play #5): 'duration' leads with
+   *  the 4 weeks — the trial length beats 46% of the market's sub-4-day
+   *  trials (RevenueCat, 115k apps) and we never said so — plus ONE checkable
+   *  anchor. 'classic' is today's price-led block, byte-identical. */
+  lead?: 'classic' | 'duration'
+  /** research play #7: 'oneline' compresses the risk-reversal box to a single
+   *  falsifiable promise at the button — risk reversal works at the moment of
+   *  fear, not as ambient chrome. 'block' is today's shield box, unchanged.
+   *  The promise is real: reply-to-cancel is how support actually works. */
+  guarantee?: 'block' | 'oneline'
 }) {
   const items = [
     { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
@@ -66,35 +78,57 @@ export function OfferStack({
       </div>
 
       {/* the price, anchored by arithmetic rather than a made-up RRP */}
-      <div className="flex flex-wrap items-baseline" style={{ gap: 10, padding: '16px 26px 4px' }}>
-        <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', color: RICH, lineHeight: 1 }}>{offer.price}</span>
-        <span style={{ fontSize: 14.5, color: BODY, fontWeight: 300 }}>{offer.oneTime ? 'once, and it is yours' : 'for your first 4 weeks'}</span>
-      </div>
-      <p style={{ padding: '6px 26px 0', margin: 0, fontSize: 13, color: MUTE, lineHeight: 1.5 }}>
-        {offer.oneTime ? (
-          <>That is <strong style={{ color: RICH, fontWeight: 700 }}>about four cents per tutorial</strong>, paid once.
-          No renewal, no yearly charge, nothing to cancel. The library is yours and every update lands in it.</>
-        ) : (
-          <>That is <strong style={{ color: RICH, fontWeight: 700 }}>less than half a cent per tutorial</strong>. After 4 weeks it is
-          $59.75/year, about $4.98 a month, and we email you before it renews.</>
-        )}
-      </p>
+      {lead === 'duration' && !offer.oneTime ? (
+        <>
+          <div style={{ padding: '16px 26px 0' }}>
+            <span className="block" style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: RICH, lineHeight: 1.15 }}>
+              4 full weeks of everything — {offer.price}
+            </span>
+            <span className="block mt-1" style={{ fontSize: 14, color: BODY, fontWeight: 300 }}>
+              Most trials give you 7 days. You get 28 — long enough to actually change how you work.
+            </span>
+          </div>
+          <p style={{ padding: '8px 26px 0', margin: 0, fontSize: 13, color: MUTE, lineHeight: 1.5 }}>
+            The 4-week track alone matches what a $49 course covers elsewhere, and it comes with the other 1,200
+            tutorials attached. After your 4 weeks it is $59.75/year, about $4.98 a month, and we email you before it
+            renews.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-baseline" style={{ gap: 10, padding: '16px 26px 4px' }}>
+            <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', color: RICH, lineHeight: 1 }}>{offer.price}</span>
+            <span style={{ fontSize: 14.5, color: BODY, fontWeight: 300 }}>{offer.oneTime ? 'once, and it is yours' : 'for your first 4 weeks'}</span>
+          </div>
+          <p style={{ padding: '6px 26px 0', margin: 0, fontSize: 13, color: MUTE, lineHeight: 1.5 }}>
+            {offer.oneTime ? (
+              <>That is <strong style={{ color: RICH, fontWeight: 700 }}>about four cents per tutorial</strong>, paid once.
+              No renewal, no yearly charge, nothing to cancel. The library is yours and every update lands in it.</>
+            ) : (
+              <>That is <strong style={{ color: RICH, fontWeight: 700 }}>less than half a cent per tutorial</strong>. After 4 weeks it is
+              $59.75/year, about $4.98 a month, and we email you before it renews.</>
+            )}
+          </p>
+        </>
+      )}
 
       {/* risk reversal — the objection is the renewal, so answer it at the button */}
-      <div style={{ margin: '16px 26px 0', padding: '13px 15px', backgroundColor: CREAM, border: `2px solid ${INK}` }}>
-        <div className="flex" style={{ gap: 10 }}>
-          <span aria-hidden style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
-          <div>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>{offer.oneTime ? 'Nothing to cancel' : 'Covered both ways'}</div>
-            <div className="mt-1" style={{ fontSize: 12.5, color: BODY, fontWeight: 300, lineHeight: 1.5 }}>
-              {offer.oneTime
-                ? 'There is no subscription here, so there is nothing to remember and nothing to cancel. '
-                : 'Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account. Plus a 30-day money-back guarantee: '}
-              {offer.guarantee}
+      {guarantee === 'block' && (
+        <div style={{ margin: '16px 26px 0', padding: '13px 15px', backgroundColor: CREAM, border: `2px solid ${INK}` }}>
+          <div className="flex" style={{ gap: 10 }}>
+            <span aria-hidden style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>{offer.oneTime ? 'Nothing to cancel' : 'Covered both ways'}</div>
+              <div className="mt-1" style={{ fontSize: 12.5, color: BODY, fontWeight: 300, lineHeight: 1.5 }}>
+                {offer.oneTime
+                  ? 'There is no subscription here, so there is nothing to remember and nothing to cancel. '
+                  : 'Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account. Plus a 30-day money-back guarantee: '}
+                {offer.guarantee}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-col items-center" style={{ padding: '20px 26px 24px', gap: 10 }}>
         {/* One-tap wallets, above the button. Renders nothing at all unless the
@@ -111,6 +145,11 @@ export function OfferStack({
           <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 17, height: 56, padding: '0 26px' }}>{ctaLabel}</span>
           <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 56, height: 56, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 17 }} aria-hidden>↗</span>
         </CheckoutLink>
+        {guarantee === 'oneline' && !offer.oneTime && (
+          <p style={{ margin: 0, fontSize: 12.5, color: BODY, fontWeight: 500, textAlign: 'center', maxWidth: 420 }}>
+            Not useful? Reply to any of our emails within your 4 weeks and we refund the $4.99. No forms, no questions.
+          </p>
+        )}
         <PayBadges fallbackUrl={checkoutUrl} submissionId={submissionId} placement="v2_offer_stack_badges" />
       </div>
     </div>

@@ -26,6 +26,7 @@ import CheckoutLink from '@/components/CheckoutLink.client'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
+import { AnswerEcho, buildEchoLines } from '@/components/result2/AnswerEcho'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
@@ -75,6 +76,9 @@ interface SegFields {
   /** Raw depth picks, CSV. The ladder's top rungs are earned by three of
    *  these, so this is what makes the gap to the next stage computable. */
   depth_actions?: string | null
+  /** CSV of work areas, human-readable values ("Marketing, Consulting") —
+   *  the answer-echo pitch (result_page_v3) quotes the first one back. */
+  work_area?: string | null
 }
 
 // Their own answer, quoted back. Nobody argues with a number they chose
@@ -109,7 +113,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
   })
     const { data } = await c
       .from('submissions')
-      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for, depth_actions')
+      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for, depth_actions, work_area')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -429,6 +433,19 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     previewVar.includes('strip') ||
     assignments.some(a => a.experimentKey === 'result_strip_v1' && a.variantKey === 'stripped')
 
+  // ── result_page_v3 · the research arm ───────────────────────────────
+  // The research fleet's three result-surface plays as ONE big-swing variant
+  // (2026-08-17): the answer-echo pitch (their own answers mapped to named
+  // tutorials — Noar 2007, 57-study meta-analysis), the duration-led offer
+  // lead (28 days beats the market's 7, RevenueCat 115k apps), and the
+  // guarantee compressed to one falsifiable line at the button. Judged on
+  // net_new_paid — a click lift with a pay collapse is a loss here, the
+  // study-plan nudge already taught this page that. ?xv=research previews
+  // without recording an exposure.
+  const researchPage =
+    previewVar.includes('research') ||
+    assignments.some(a => a.experimentKey === 'result_page_v3' && a.variantKey === 'research')
+
   // ── One-tap wallets (Express Checkout Element) ───────────────────────
   // 64% of payment intents are canceled — people open the hosted form and
   // leave. This skips the form entirely.
@@ -561,23 +578,51 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
   // The offer. `withVideo` is the whole experiment in one flag: control puts
   // the 4-minute video in front of the price, the challenger does not.
+  //
+  // result_page_v3: the research arm opens with the answer-echo pitch instead
+  // of the generic headline — but ONLY when at least two real echoes exist
+  // (an echo of answers nobody gave is fake personalization, and one line
+  // reads as mail merge). Sparse rows fall back to the control pitch, so the
+  // arm degrades to control rather than to something worse.
+  const echoLines = buildEchoLines(
+    {
+      workArea: segFields?.work_area ?? null,
+      hoursLost: segFields?.hours_lost ?? null,
+      hoursWouldUseFor: segFields?.hours_would_use_for ? (HOURS_FOR_LABEL[segFields.hours_would_use_for] ?? null) : null,
+      aiTools: segFields?.ai_tools ?? null,
+      stageClassName: rung.className,
+    },
+    stageKey,
+  )
+  const echoOn = researchPage && echoLines.length >= 2
   const offerSection = (withVideo: boolean) => (
     <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
       <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
         <Eyebrow>The unfair advantage</Eyebrow>
-        <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-          Wanna climb to the top 1%? Here&rsquo;s how
-        </h2>
-        <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
-          Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
-        </p>
+        {echoOn ? (
+          <>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+              You told us {echoLines.length === 2 ? 'two' : echoLines.length === 3 ? 'three' : 'four'} things. Here&rsquo;s the plan they add up to
+            </h2>
+            <AnswerEcho lines={echoLines} stageClassName={rung.className} />
+          </>
+        ) : (
+          <>
+            <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
+              Wanna climb to the top 1%? Here&rsquo;s how
+            </h2>
+            <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
+              Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
+            </p>
 
-        {/* Their own answer, quoted back. Renders only for people who
-            answered the cost question (NULL on pre-launch rows). */}
-        {cost && (
-          <div className="mt-6" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
-            <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
-          </div>
+            {/* Their own answer, quoted back. Renders only for people who
+                answered the cost question (NULL on pre-launch rows). */}
+            {cost && (
+              <div className="mt-6" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
+                <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
+              </div>
+            )}
+          </>
         )}
 
         {/* NextStageGap REMOVED 2026-08-13 after four measured days. It sat
@@ -599,6 +644,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           rungClassName={rung.className}
           ctaLabel={ov('offerCard.ctaLabel', CTA)}
           expressPay={expressPayEl}
+          lead={researchPage ? 'duration' : 'classic'}
+          guarantee={researchPage ? 'oneline' : 'block'}
         />
 
         {/* Directly under the price, because that is the exact moment the
