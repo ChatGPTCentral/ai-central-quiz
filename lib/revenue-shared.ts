@@ -80,7 +80,7 @@ export function db() {
 }
 
 export type AdminAction = { at: string; action: string; person_key: string | null; detail: Record<string, unknown> | null }
-export type ChargeLite = { amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; dispute_lost_cents: number; dispute_fee_cents: number; dispute_open_cents: number; fee_cents: number; settled_cents: number | null; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
+export type ChargeLite = { amount_cents: number; refunded: boolean; amount_refunded_cents: number; disputed: boolean; dispute_lost_cents: number; dispute_fee_cents: number; dispute_open_cents: number; fee_cents: number; settled_cents: number | null; settled_currency: string | null; bt_exchange_rate: number | null; charged_at: string; email: string | null; customer_email: string | null; customer_id: string | null }
 
 export async function loadRevenueData() {
   const c = db()
@@ -112,7 +112,7 @@ export async function loadRevenueData() {
   for (let o = 0; o < 30_000; o += 1000) {
     const { data, error } = await c
       .from('stripe_charges')
-      .select('amount_cents, refunded, amount_refunded_cents, disputed, dispute_lost_cents, dispute_fee_cents, dispute_open_cents, fee_cents, settled_cents, charged_at, email, customer_email, customer_id')
+      .select('amount_cents, refunded, amount_refunded_cents, disputed, dispute_lost_cents, dispute_fee_cents, dispute_open_cents, fee_cents, settled_cents, settled_currency, bt_exchange_rate, charged_at, email, customer_email, customer_id')
       .order('charged_at', { ascending: true })
       .range(o, o + 999)
     if (error || !data) break
@@ -157,19 +157,58 @@ export async function loadRevenueData() {
   // THE display total (owner's rule, 2026-08-17): net of refunds and lost
   // disputes. Every money number shown anywhere must sum to this.
   const netAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + Math.max(0, r.amount_cents - (r.amount_refunded_cents || 0) - (r.dispute_lost_cents || 0)), 0) / 100
-  // Stripe's cut, for the take-home line that reconciles the Stripe home
-  // screen's "Net volume" (= gross − fees − refunds − disputes). Processing
-  // fees sum over ALL charges, refunded ones included: Stripe keeps the fee
-  // when a charge is refunded. FX delta is what non-USD charges actually
-  // settled for in USD minus their face value (a €250 charge is not $250.00).
-  const feesAll = chRows.reduce((a, r) => a + (r.fee_cents || 0), 0) / 100
-  const disputeFeesAll = chRows.reduce((a, r) => a + (r.dispute_fee_cents || 0), 0) / 100
-  const disputeOpenAll = chRows.filter(r => !r.refunded).reduce((a, r) => a + (r.dispute_open_cents || 0), 0) / 100
-  const fxDeltaAll = chRows.filter(r => !r.refunded && r.settled_cents !== null && r.settled_cents !== undefined).reduce((a, r) => a + ((r.settled_cents as number) - r.amount_cents), 0) / 100
-  // Gate: before the first fee-aware sync every fee_cents is 0 and the
-  // take-home line would be a lie. Any real sync has thousands of fee rows.
-  const feesKnown = chRows.some(r => (r.fee_cents || 0) > 0)
-  const takeHomeAll = netAll + fxDeltaAll - feesAll - disputeFeesAll - disputeOpenAll
+  // TAKE-HOME, split by SETTLEMENT currency. Discovered 2026-08-17: card
+  // charges settle into the USD balance, but the 2024 → Jul-2025 PayPal and
+  // invoice era settled 1,147 charges into a EUR balance, so their
+  // settled_cents / fee_cents / dispute_fee_cents are EURO cents. The first
+  // version summed the two as one dollar number; the currencies stay
+  // separate here. The USD-equivalent values each euro flow at ITS OWN
+  // DAY's market rate (bt_exchange_rate carries Stripe's 2% conversion fee,
+  // so market ≈ rate / 0.98) — which is how Stripe's own home screen
+  // counts, verified against the owner's screen to ~$200 on $77k while
+  // today's-rate conversion missed by $2,300.
+  const settleKnown = chRows.some(r => !!r.settled_currency)
+  const takeHome = settleKnown
+    ? (() => {
+        const usdRows = chRows.filter(r => r.settled_currency !== 'eur')
+        const eurRows = chRows.filter(r => r.settled_currency === 'eur')
+        const rated = eurRows.filter(r => r.bt_exchange_rate)
+        // Charge-weighted average settlement rate: the fallback for the rare
+        // native-EUR charge that never converted (one €250 charge).
+        const avgRate = rated.length ? rated.reduce((a, r) => a + (r.settled_cents ?? 0), 0) / rated.reduce((a, r) => a + r.amount_cents, 0) : 1
+        const usdGross = usdRows.reduce((a, r) => a + r.amount_cents, 0)
+        const usdFees = usdRows.reduce((a, r) => a + (r.fee_cents || 0), 0)
+        const usdDisputeFees = usdRows.reduce((a, r) => a + (r.dispute_fee_cents || 0), 0)
+        const usdRefunds = usdRows.reduce((a, r) => a + (r.amount_refunded_cents || 0), 0)
+        const usdLost = usdRows.reduce((a, r) => a + (r.dispute_lost_cents || 0), 0)
+        const usdOpen = usdRows.reduce((a, r) => a + (r.dispute_open_cents || 0), 0)
+        let eurNetEur = 0
+        let eurNetUsdEquiv = 0
+        for (const r of eurRows) {
+          // Money that left the balance again, in the charge's own currency:
+          // refunds, lost disputes, and open-dispute withholdings.
+          const faceOut = (r.amount_refunded_cents || 0) + (r.dispute_lost_cents || 0) + (r.dispute_open_cents || 0)
+          const faceRate = r.bt_exchange_rate || 1
+          const net = (r.settled_cents ?? 0) - (r.fee_cents || 0) - (r.dispute_fee_cents || 0) - Math.round(faceOut * faceRate)
+          eurNetEur += net
+          eurNetUsdEquiv += net / ((r.bt_exchange_rate || avgRate) / 0.98)
+        }
+        const usdNet = usdGross - usdFees - usdDisputeFees - usdRefunds - usdLost - usdOpen
+        return {
+          usdGross: usdGross / 100,
+          usdFees: usdFees / 100,
+          usdDisputeFees: usdDisputeFees / 100,
+          usdRefunds: usdRefunds / 100,
+          usdLost: usdLost / 100,
+          usdOpen: usdOpen / 100,
+          usdNet: usdNet / 100,
+          eurNetEur: eurNetEur / 100,
+          eurNetUsdEquiv: eurNetUsdEquiv / 100,
+          totalUsdEquiv: (usdNet + eurNetUsdEquiv) / 100,
+          eurCharges: eurRows.length,
+        }
+      })()
+    : null
 
   return {
     eras: (eras.data ?? []) as Era[],
@@ -185,12 +224,7 @@ export async function loadRevenueData() {
     chargeRows: chRows,
     grossAll,
     netAll,
-    feesAll,
-    disputeFeesAll,
-    disputeOpenAll,
-    fxDeltaAll,
-    feesKnown,
-    takeHomeAll,
+    takeHome,
     chargeCount: chRows.length,
     firstCharge: chRows.reduce((a, r) => (a && a < r.charged_at ? a : r.charged_at), ''),
     sheetByMonth,

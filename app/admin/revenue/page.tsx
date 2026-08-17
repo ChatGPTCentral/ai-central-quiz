@@ -43,6 +43,7 @@ const RED = '#B00020'
 
 const usd = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const usd0 = (n: number) => `$${Math.round(n).toLocaleString()}`
+const eur = (n: number) => `€${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pct = (n: number, d: number) => (d > 0 ? `${((100 * n) / d).toFixed(1)}%` : '–')
 
 const navChip: React.CSSProperties = {
@@ -257,20 +258,30 @@ export default async function RevenuePage() {
               gross of successful charges {usd(d!.grossAll)} − refunds on them {usd(partialRefunds)} − disputes lost {usd(disputesLost)} ={' '}
               <strong style={{ color: INK }}>{usd(netOurs)}</strong>, the total every number above sums to.
             </p>
-            {d!.feesKnown ? (
-              <p style={{ marginTop: 3 }}>
-                <strong style={{ color: INK }}>The bridge to Stripe&rsquo;s home screen:</strong>{' '}
-                its <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s own cut, which is not revenue lost, it is the cost of collecting it:
-                net {usd(d!.netAll)}
-                {Math.abs(d!.fxDeltaAll) >= 0.005 && <> {d!.fxDeltaAll < 0 ? '−' : '+'} {usd(Math.abs(d!.fxDeltaAll))} currency conversion (non-USD charges at what they actually settled for in USD)</>}
-                {' '}− processing fees {usd(d!.feesAll)} − dispute fees {usd(d!.disputeFeesAll)}
-                {d!.disputeOpenAll >= 0.005 && <> − {usd(d!.disputeOpenAll)} withheld on disputes still open</>} ={' '}
-                <strong style={{ color: INK }}>{usd(d!.takeHomeAll)}</strong> take-home, the figure to compare with Net volume on the Stripe home screen.
-              </p>
+            {d!.takeHome ? (
+              <>
+                <p style={{ marginTop: 3 }}>
+                  <strong style={{ color: INK }}>The bridge to Stripe&rsquo;s home screen:</strong>{' '}
+                  its <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s own cut (the cost of collecting, not revenue lost), and this
+                  account settles in TWO currencies: cards settle in dollars, while the PayPal and invoice era through Jul 2025
+                  ({d!.takeHome.eurCharges.toLocaleString()} charges) settled in euros at the day&rsquo;s rate.
+                </p>
+                <p style={{ marginTop: 2 }}>
+                  Dollar-settled: gross {usd(d!.takeHome.usdGross)} (refunded charges included) − processing fees {usd(d!.takeHome.usdFees)} −
+                  dispute fees {usd(d!.takeHome.usdDisputeFees)} − refunds {usd(d!.takeHome.usdRefunds)} − disputes lost {usd(d!.takeHome.usdLost)}
+                  {d!.takeHome.usdOpen >= 0.005 && <> − {usd(d!.takeHome.usdOpen)} withheld on disputes still open</>} ={' '}
+                  <strong style={{ color: INK }}>{usd(d!.takeHome.usdNet)}</strong>.
+                  Euro-settled, same arithmetic: <strong style={{ color: INK }}>{eur(d!.takeHome.eurNetEur)}</strong>, worth {usd(d!.takeHome.eurNetUsdEquiv)} at
+                  the rates of the days the money moved, which is how Stripe counts it. Together:{' '}
+                  <strong style={{ color: INK }}>{usd(d!.takeHome.totalUsdEquiv)}</strong>, the figure to compare with Net volume on the Stripe home
+                  screen. It will sit within a couple hundred dollars of it, never to the penny: Stripe rounds each day&rsquo;s
+                  rate its own way, and the euro slice re-values slightly as the market moves on dispute days.
+                </p>
+              </>
             ) : (
               <p style={{ marginTop: 3 }}>
                 Stripe&rsquo;s home-screen <strong style={{ color: INK }}>Net volume</strong> additionally subtracts Stripe&rsquo;s fees.
-                Fee detail lands with the next hourly sync (:20); the take-home line renders here from then on.
+                Fee and settlement detail lands with the next hourly sync (:20); the take-home line renders here from then on.
               </p>
             )}
           </div>

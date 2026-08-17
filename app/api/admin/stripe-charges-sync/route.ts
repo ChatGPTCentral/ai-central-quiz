@@ -88,6 +88,8 @@ export async function GET(req: NextRequest) {
     dispute_open_cents?: number
     fee_cents?: number
     settled_cents?: number | null
+    settled_currency?: string | null
+    bt_exchange_rate?: number | null
   }
 
   // Refunds and disputes come from their OWN endpoints. The pinned 2026 API
@@ -164,16 +166,21 @@ export async function GET(req: NextRequest) {
 
   // The charges walk collects snapshots; rows are assembled AFTER all three
   // fetches complete, because refund and dispute amounts join by charge id.
-  type Snap = { id: string; amount: number; currency: string; created: number; customerId: string | null; email: string | null; customerEmail: string | null; refunded: boolean; description: string | null; feeCents: number | null; settledCents: number | null }
+  type Snap = { id: string; amount: number; currency: string; created: number; customerId: string | null; email: string | null; customerEmail: string | null; refunded: boolean; description: string | null; feeCents: number | null; settledCents: number | null; settledCurrency: string | null; btExchangeRate: number | null }
   const snaps: Snap[] = []
   let pages = 0
 
   // Whether the balance-transaction expand worked. It carries the exact
-  // Stripe fee and the exact USD the charge SETTLED for (face value for USD
-  // charges, the converted amount for the EUR/INR ones that face-value
-  // summing gets wrong). If the restricted key lacks the Balance
-  // transactions read scope the walk falls back to charges alone, says so in
-  // the response, and the fee columns are left untouched in the mirror.
+  // Stripe fee and what the charge SETTLED for — IN THE BALANCE'S OWN
+  // CURRENCY, which on this account is NOT always USD: card charges settle
+  // in USD, but the 2024 → Jul-2025 PayPal/invoice era settled 1,147 charges
+  // into a EUR balance at market × 0.98 (found 2026-08-17 when USD charges
+  // appeared to settle at 83–92 cents on the dollar, drifting with the day —
+  // an exchange rate, not a fee). settled_cents and fee_cents are therefore
+  // cents OF settled_currency, and any USD reading of them must convert via
+  // bt_exchange_rate. If the restricted key lacks the Balance transactions
+  // read scope the walk falls back to charges alone, says so in the
+  // response, and the fee columns are left untouched in the mirror.
   let btOk = true
 
   // 120-page ceiling = 12,000 charges. The full-history walk pages over ALL
@@ -226,6 +233,8 @@ export async function GET(req: NextRequest) {
           description: ch.description ?? null,
           feeCents: bt ? bt.fee : null,
           settledCents: bt ? bt.amount : null,
+          settledCurrency: bt ? bt.currency : null,
+          btExchangeRate: bt ? bt.exchange_rate ?? null : null,
         })
       }
       if (!page.has_more) break
@@ -267,7 +276,7 @@ export async function GET(req: NextRequest) {
           dispute_fee_cents: disputeByCharge.get(s.id)?.fee ?? 0,
           dispute_open_cents: disputeByCharge.get(s.id)?.open ?? 0,
         }),
-    ...(btOk ? { fee_cents: s.feeCents ?? 0, settled_cents: s.settledCents } : {}),
+    ...(btOk ? { fee_cents: s.feeCents ?? 0, settled_cents: s.settledCents, settled_currency: s.settledCurrency, bt_exchange_rate: s.btExchangeRate } : {}),
   }))
 
   const c = sb()
@@ -304,9 +313,25 @@ export async function GET(req: NextRequest) {
     refundDetailUsd: Array.from(refundByCharge.values()).reduce((a, b) => a + b, 0) / 100,
     disputesLostUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.lost, 0) / 100,
     disputesOpenUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.open, 0) / 100,
-    disputeFeesUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.fee, 0) / 100,
-    processingFeesUsd: btOk ? snaps.reduce((a, s) => a + (s.feeCents ?? 0), 0) / 100 : null,
-    settledUsd: btOk ? snaps.reduce((a, s) => a + (s.settledCents ?? s.amount), 0) / 100 : null,
+    // Settlement is multi-currency (see the btOk comment), so fees and
+    // settled totals are reported per settlement currency, never mushed.
+    ...(btOk
+      ? {
+          settledByCurrency: Object.fromEntries(
+            Array.from(
+              snaps.reduce((m, s) => {
+                const cur = s.settledCurrency ?? 'unknown'
+                const e = m.get(cur) ?? { settled: 0, fees: 0, n: 0 }
+                e.settled += s.settledCents ?? 0
+                e.fees += s.feeCents ?? 0
+                e.n++
+                m.set(cur, e)
+                return m
+              }, new Map<string, { settled: number; fees: number; n: number }>()),
+            ).map(([cur, e]) => [cur, { settled: e.settled / 100, fees: e.fees / 100, charges: e.n }]),
+          ),
+        }
+      : {}),
     checksPassed: failed.length === 0,
     checks,
     ...(fetchErrors.refunds ? { REFUNDS_NOT_FETCHED: `the key likely lacks Refunds read scope: ${fetchErrors.refunds.slice(0, 200)}` } : {}),
