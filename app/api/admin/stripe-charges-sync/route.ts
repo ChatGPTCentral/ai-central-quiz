@@ -24,7 +24,12 @@ import { runLedgerChecks, recordLedgerChecks } from '@/lib/ledger-invariants'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+// 300, not 120: the full-history walk plus the refunds and disputes fetches
+// blew the old cap and the gateway answered 504 with zero rows written (the
+// owner's manual sync, 2026-08-17). The three fetches also run in parallel
+// now, so wall time is the charges walk alone, but the ceiling stays high
+// because a timeout here fails silent-ish and stale.
+export const maxDuration = 300
 
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -93,90 +98,117 @@ export async function GET(req: NextRequest) {
   const disputeByCharge = new Map<string, { lost: number; any: boolean }>()
   let refundsError: string | null = null
   let disputesError: string | null = null
-  try {
-    let after: string | undefined
-    for (let p = 0; p < 40; p++) {
-      const page = await stripe.refunds.list({ limit: 100, ...(after ? { starting_after: after } : {}) })
-      for (const r of page.data) {
-        if (r.status === 'failed' || r.status === 'canceled') continue
-        const chId = typeof r.charge === 'string' ? r.charge : r.charge?.id
-        if (chId) refundByCharge.set(chId, (refundByCharge.get(chId) ?? 0) + (r.amount ?? 0))
+
+  const fetchRefunds = async () => {
+    try {
+      let after: string | undefined
+      for (let p = 0; p < 40; p++) {
+        const page = await stripe.refunds.list({ limit: 100, ...(after ? { starting_after: after } : {}) })
+        for (const r of page.data) {
+          if (r.status === 'failed' || r.status === 'canceled') continue
+          const chId = typeof r.charge === 'string' ? r.charge : r.charge?.id
+          if (chId) refundByCharge.set(chId, (refundByCharge.get(chId) ?? 0) + (r.amount ?? 0))
+        }
+        if (!page.has_more) break
+        after = page.data[page.data.length - 1]?.id
+        if (!after) break
       }
-      if (!page.has_more) break
-      after = page.data[page.data.length - 1]?.id
-      if (!after) break
+    } catch (e) {
+      refundsError = e instanceof Error ? e.message : String(e)
+      console.error('[stripe-charges-sync] refunds fetch failed:', refundsError)
     }
-  } catch (e) {
-    refundsError = e instanceof Error ? e.message : String(e)
-    console.error('[stripe-charges-sync] refunds fetch failed:', refundsError)
   }
-  try {
-    let after: string | undefined
-    for (let p = 0; p < 20; p++) {
-      const page = await stripe.disputes.list({ limit: 100, ...(after ? { starting_after: after } : {}) })
-      for (const dp of page.data) {
-        const chId = typeof dp.charge === 'string' ? dp.charge : dp.charge?.id
-        if (!chId) continue
-        const cur = disputeByCharge.get(chId) ?? { lost: 0, any: false }
-        cur.any = true
-        if (dp.status === 'lost') cur.lost += dp.amount ?? 0
-        disputeByCharge.set(chId, cur)
+  const fetchDisputes = async () => {
+    try {
+      let after: string | undefined
+      for (let p = 0; p < 20; p++) {
+        const page = await stripe.disputes.list({ limit: 100, ...(after ? { starting_after: after } : {}) })
+        for (const dp of page.data) {
+          const chId = typeof dp.charge === 'string' ? dp.charge : dp.charge?.id
+          if (!chId) continue
+          const cur = disputeByCharge.get(chId) ?? { lost: 0, any: false }
+          cur.any = true
+          if (dp.status === 'lost') cur.lost += dp.amount ?? 0
+          disputeByCharge.set(chId, cur)
+        }
+        if (!page.has_more) break
+        after = page.data[page.data.length - 1]?.id
+        if (!after) break
       }
-      if (!page.has_more) break
-      after = page.data[page.data.length - 1]?.id
-      if (!after) break
+    } catch (e) {
+      disputesError = e instanceof Error ? e.message : String(e)
+      console.error('[stripe-charges-sync] disputes fetch failed:', disputesError)
     }
-  } catch (e) {
-    disputesError = e instanceof Error ? e.message : String(e)
-    console.error('[stripe-charges-sync] disputes fetch failed:', disputesError)
   }
 
-  const rows: Row[] = []
+  // The charges walk collects snapshots; rows are assembled AFTER all three
+  // fetches complete, because refund and dispute amounts join by charge id.
+  type Snap = { id: string; amount: number; currency: string; created: number; customerId: string | null; email: string | null; customerEmail: string | null; refunded: boolean; description: string | null }
+  const snaps: Snap[] = []
   let pages = 0
-  let startingAfter: string | undefined
 
   // 120-page ceiling = 12,000 charges. The full-history walk pages over ALL
   // charge attempts (failed ones included, filtered below), so the ceiling
   // sits far above the succeeded count; if it is ever hit, the sync is
   // INCOMPLETE and says so in the response rather than quietly serving a
   // truncated mirror.
-  while (pages < 120) {
-    // Expand the customer: the CHARGE's billing email and the CUSTOMER's email
-    // are frequently different (one Aug 7 sale bills as angiesmucker@… while
-    // the Stripe customer is admin@nexusbusinesssolutions.net), and attribution
-    // matches on email, so storing only one of them loses people.
-    const page = await stripe.charges.list({
-      created: { gte: sinceEpoch },
-      limit: 100,
-      expand: ['data.customer'],
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    })
-    pages++
-    for (const ch of page.data) {
-      if (ch.status !== 'succeeded') continue
-      rows.push({
-        id: ch.id,
-        amount_cents: ch.amount,
-        currency: ch.currency,
-        charged_at: new Date(ch.created * 1000).toISOString(),
-        customer_id: typeof ch.customer === 'string' ? ch.customer : ch.customer?.id ?? null,
-        email: (ch.billing_details?.email || ch.receipt_email || null)?.toLowerCase() ?? null,
-        customer_email: (typeof ch.customer === 'object' && ch.customer && !ch.customer.deleted
-          ? ch.customer.email?.toLowerCase() ?? null
-          : null),
-        refunded: ch.refunded === true,
-        amount_refunded_cents: refundByCharge.get(ch.id) ?? 0,
-        disputed: disputeByCharge.get(ch.id)?.any === true,
-        dispute_lost_cents: disputeByCharge.get(ch.id)?.lost ?? 0,
-        description: ch.description ?? null,
-        synced_at: new Date().toISOString(),
+  const fetchCharges = async () => {
+    let startingAfter: string | undefined
+    while (pages < 120) {
+      // Expand the customer: the CHARGE's billing email and the CUSTOMER's
+      // email are frequently different, and attribution matches on email, so
+      // storing only one of them loses people.
+      const page = await stripe.charges.list({
+        created: { gte: sinceEpoch },
+        limit: 100,
+        expand: ['data.customer'],
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
       })
+      pages++
+      for (const ch of page.data) {
+        if (ch.status !== 'succeeded') continue
+        snaps.push({
+          id: ch.id,
+          amount: ch.amount,
+          currency: ch.currency,
+          created: ch.created,
+          customerId: typeof ch.customer === 'string' ? ch.customer : ch.customer?.id ?? null,
+          email: (ch.billing_details?.email || ch.receipt_email || null)?.toLowerCase() ?? null,
+          customerEmail: (typeof ch.customer === 'object' && ch.customer && !ch.customer.deleted
+            ? ch.customer.email?.toLowerCase() ?? null
+            : null),
+          refunded: ch.refunded === true,
+          description: ch.description ?? null,
+        })
+      }
+      if (!page.has_more) break
+      startingAfter = page.data[page.data.length - 1]?.id
+      if (!startingAfter) break
     }
-    if (!page.has_more) break
-    startingAfter = page.data[page.data.length - 1]?.id
-    if (!startingAfter) break
   }
+
+  // IN PARALLEL: the three endpoints are independent, and running them in
+  // sequence is what pushed the old 120s cap into a 504. Wall time is now the
+  // charges walk alone.
+  await Promise.all([fetchCharges(), fetchRefunds(), fetchDisputes()])
   const truncated = pages >= 120
+
+  const syncStamp = new Date().toISOString()
+  const rows: Row[] = snaps.map(s => ({
+    id: s.id,
+    amount_cents: s.amount,
+    currency: s.currency,
+    charged_at: new Date(s.created * 1000).toISOString(),
+    customer_id: s.customerId,
+    email: s.email,
+    customer_email: s.customerEmail,
+    refunded: s.refunded,
+    amount_refunded_cents: refundByCharge.get(s.id) ?? 0,
+    disputed: disputeByCharge.get(s.id)?.any === true,
+    dispute_lost_cents: disputeByCharge.get(s.id)?.lost ?? 0,
+    description: s.description,
+    synced_at: syncStamp,
+  }))
 
   const c = sb()
   let written = 0
