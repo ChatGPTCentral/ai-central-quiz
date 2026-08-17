@@ -1,4 +1,7 @@
-import { planForStage } from '@/components/result2/StudyPlan'
+// From the plain data module, NEVER from StudyPlan.tsx: that file is 'use
+// client', and importing a function across that boundary hands the server a
+// client-reference proxy that throws at call time (the 2026-08-17 outage).
+import { planForStage } from '@/lib/study-plan-data'
 
 // The answer-echo pitch — result_page_v3's `research` arm, research play #2.
 //

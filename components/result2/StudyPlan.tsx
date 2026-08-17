@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { planForStage, type PlanItem } from '@/lib/study-plan-data'
 import CheckoutLink from '@/components/CheckoutLink.client'
 import FreeStepLink from '@/components/result2/FreeStepLink.client'
 
@@ -30,42 +31,7 @@ const CREAM = '#FEF7E7'
 const FULVOUS = '#E48715'
 const GREEN = '#2D6A26'
 
-export interface PlanItem { qf: string; title: string; desc: string; link: string }
-
-const TP = (qf: string, sr: 'oc' | 'pp' = 'pp') =>
-  sr === 'oc'
-    ? `https://gptcentral.tradepub.com/c/pubRD.mpl?secure=1&sr=oc&_t=oc:&qf=${qf}`
-    : `https://gptcentral.tradepub.com/c/pubRD.mpl?secure=1&sr=pp&_t=pp:&qf=${qf}&ch=`
-
-// Early band (S0-S2): foundations → daily practice.
-// EXPORTED (with DEEP_PLAN and planForStage) because the answer-echo offer
-// (result_page_v3) names tutorials in the pitch, and the names it uses must
-// be THESE, the ones the study plan actually renders — one source, so the
-// pitch can never promise a tutorial the page does not deliver.
-export const EARLY_PLAN: PlanItem[] = [
-  { qf: 'w_aice27', title: 'Claude Setup Guide: Make Claude 10x Smarter in 5 Steps', desc: 'Set up your daily AI workspace the right way, 15 minutes', link: TP('w_aice27') },
-  { qf: 'w_chau136', title: 'How To Instantly Create Stunning Presentations With AI', desc: 'Your first visible win: decks that used to take a day, in minutes', link: TP('w_chau136', 'oc') },
-  { qf: 'w_chau185', title: 'Copywriting Prompts with ChatGPT: Create Better Copy, Faster', desc: 'Write instructions AI can’t misread, emails, posts, briefs', link: TP('w_chau185', 'oc') },
-  { qf: 'w_aice33', title: 'How to Learn 80 Percent of Any Skill in One Week Using NotebookLM', desc: 'Turn any topic into a personal crash course', link: TP('w_aice33') },
-  { qf: 'w_chau290', title: 'The Complete ChatGPT Mastery Guide for AI Productivity', desc: 'The consolidation week: from tips to a daily system', link: TP('w_chau290') },
-]
-
-// Deep band (S3-S5): systematize → ship.
-export const DEEP_PLAN: PlanItem[] = [
-  { qf: 'w_chau288', title: 'Official GPT-5.2 Prompting Guide From OpenAI', desc: 'The reference the top 2% actually prompt from', link: TP('w_chau288') },
-  { qf: 'w_aice24', title: 'How to Set Up Claude Cowork in 8 Steps: From Chaos to Mastery', desc: 'Agents doing real work while you handle the human parts', link: TP('w_aice24') },
-  { qf: 'w_aice25', title: '13 Free Courses from Anthropic: Complete Claude & AI Fluency Training', desc: 'Formalize what you know, fill the gaps you don’t see', link: TP('w_aice25') },
-  { qf: 'w_chau287', title: '10 ChatGPT Prompts for Consultants Using AI', desc: 'Client-grade outputs: analysis, reporting, strategy', link: TP('w_chau287') },
-  { qf: 'w_defa10445', title: 'The Complete Free AI Learning Library: Master ChatGPT, Claude, Gemini & More', desc: 'The full map: every tool, ranked by what it’s for', link: TP('w_defa10445') },
-]
-
 const cover = (qf: string) => `https://img.tradepub.com/free/${qf}/images/${qf}c4.gif`
-
-/** The band split, in one exported place: S3+ gets the deep plan. */
-export function planForStage(stageKey?: string | null): PlanItem[] {
-  const deep = stageKey === 'S3_practitioner' || stageKey === 'S4_power_user' || stageKey === 'S5_builder'
-  return deep ? DEEP_PLAN : EARLY_PLAN
-}
 
 /** Progress rail — the game-y bit that makes the wall visible. */
 function Progress({ unlocked, total }: { unlocked: number; total: number }) {
