@@ -169,6 +169,9 @@ buyers because identity there stays anonymous until someone is identified.
   cannot find on a screen is a number he cannot trust.
 
 - Copy style: no em dashes, use commas.
+- NEVER show the question count before the quiz starts (owner, 2026-08-18,
+  from prior testing: when people know the length they do not start).
+  In-quiz progress counters are fine; the entry surfaces are not.
 - Develop on `claude/great-volta-PaEPx`; ship = ff-merge to `main`
   (Vercel auto-deploys). Verify on prod after every ship.
 - New client events must be allowlisted in `app/api/events/route.ts`.
