@@ -16,6 +16,15 @@ the quiz** (owner's definition, restated 2026-08-10):
 Each trial bills **$59.75/year one month later**, so maximizing this maximizes
 paid customers and their LTV.
 
+**THE BAR (owner, 2026-08-18): 10+ trials a day. Below that is failure.**
+The `daily_benchmark` watcher check meters yesterday against it on the
+matrix's own clocks, red until cleared. Two standing consequences: a
+concluded experiment's surface never idles (the next queued play ships the
+same day), and every retrain cycle must ship or conclude something aimed at
+the bar. The measured decomposition: on-page CVR at the research ceiling
+(~6.3%) needs ~160 landings/day for 10 trials; landings are the owner's
+lever, CVR is Claude's.
+
 **NOT** this metric: people who paid without ever taking the quiz, or who took
 it only after paying. Renewals are not trials. Every trial therefore falls in
 exactly one of three buckets, and the dashboard shows all three:
