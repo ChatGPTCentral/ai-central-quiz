@@ -156,6 +156,15 @@ export async function GET(req: NextRequest) {
   }
 
   const c = sb()
+
+  // Cohort assignment rides this cron (owner's instrument, 2026-08-18):
+  // every 100 landers in arrival order becomes a numbered cohort, and the
+  // per-cohort stage rates drive each retrain cycle. Idempotent and cheap;
+  // a failure here must never block the bandit pass.
+  try { await c.rpc('assign_funnel_cohorts', { batch_size: 100 }) } catch (e) {
+    console.error('[bandit-cron] cohort assignment failed:', e)
+  }
+
   const { data: running, error } = await c.from('experiments').select('*').eq('status', 'running')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

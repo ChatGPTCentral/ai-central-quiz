@@ -359,6 +359,46 @@ export const UX_QUERIES: {
     },
   },
   {
+    key: 'cohort_regression',
+    claim: 'the newest cohort of 100 landers lost a funnel stage',
+    // The owner's cohort instrument (2026-08-18): every 100 landers is a
+    // numbered cohort, and the retrain cycle steers by which STAGE moved.
+    // This check compares the latest CLOSED cohort against the trailing ten:
+    // a stage rate 20+ points under its baseline, or a zero-trial cohort
+    // against a baseline that averages 2+, names the stage out loud so the
+    // cycle aims at the right seam instead of the loudest anecdote.
+    threshold: 0,
+    severity: 'warn',
+    source: 'supabase',
+    sql: `select cohort_n, landed, started, completed, clicked, trials
+          from funnel_cohort_stats where landed >= 100
+          order by cohort_n desc limit 11`,
+    read: rows => {
+      if (!rows || rows.length < 4) return { value: 0, detail: 'not enough closed cohorts yet' }
+      const rate = (a: number, b: number) => (b > 0 ? (100 * a) / b : 0)
+      const latest = rows[0]
+      const base = rows.slice(1)
+      const avg = (f: (r: Record<string, unknown>) => number) => base.reduce((s, r) => s + f(r as Record<string, unknown>), 0) / base.length
+      const stages: [string, number, number][] = [
+        ['land→start', rate(Number(latest.started), Number(latest.landed)), avg(r => rate(Number(r.started), Number(r.landed)))],
+        ['start→complete', rate(Number(latest.completed), Number(latest.started)), avg(r => rate(Number(r.completed), Number(r.started)))],
+        ['complete→click', rate(Number(latest.clicked), Number(latest.completed)), avg(r => rate(Number(r.clicked), Number(r.completed)))],
+      ]
+      const drops = stages.filter(([, now, was]) => was - now >= 20)
+      const trialsNow = Number(latest.trials)
+      const trialsAvg = avg(r => Number(r.trials))
+      const dry = trialsNow === 0 && trialsAvg >= 2
+      const parts = drops.map(([n, now, was]) => `${n} ${now.toFixed(0)}% vs ${was.toFixed(0)}% baseline`)
+      if (dry) parts.push(`0 trials vs ${trialsAvg.toFixed(1)} baseline`)
+      return {
+        value: drops.length > 0 || dry ? 1 : 0,
+        detail: parts.length
+          ? `cohort ${latest.cohort_n}: ${parts.join('; ')}`
+          : `cohort ${latest.cohort_n} within baseline (start ${stages[0][1].toFixed(0)}%, complete ${stages[1][1].toFixed(0)}%, click ${stages[2][1].toFixed(0)}%, ${trialsNow} trials)`,
+      }
+    },
+  },
+  {
     key: 'daily_benchmark',
     claim: "yesterday missed the owner's bar of 10 trials a day",
     // THE BAR (owner, 2026-08-18: "your benchmark must be over 10 conversions
