@@ -60,6 +60,13 @@ export default async function HomePage({
   // layout that does NOT have this button.
   const secondaryCta = overrides['landing.secondaryCta'] === 'quiz' ? 'quiz' : 'share'
 
+  // entry_microcopy_v1 (research play #6): the effort line under both CTAs.
+  // Control is today's copy, verbatim, as the fallback — the variant swaps in
+  // a concrete question count and a reader-exclusive frame via the same
+  // override map secondaryCta uses. Copy-only: no new code paths, fails open
+  // to today's line on any resolution error.
+  const effortNote = overrides['landing.effortNote'] ?? 'free, no card, 40 seconds'
+
   return (
     <div
       className="relative min-h-[100dvh] lg:h-[100dvh] lg:overflow-hidden flex flex-col"
@@ -103,7 +110,7 @@ export default async function HomePage({
             </svg>
             see where I rank
           </Link>
-          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10, marginBottom: 18 }}>free, no card, 40 seconds</p>
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10, marginBottom: 18 }}>{effortNote}</p>
           <p style={{ fontSize: 16, fontWeight: 300, lineHeight: 1.5, color: '#4A4A4A', marginBottom: 22 }}>
             Take the quiz to get your <strong style={{ color: INK, fontWeight: 600 }}>AI Readiness Type</strong> and
             see exactly where you land versus everyone else, then a plan to climb
@@ -237,7 +244,7 @@ export default async function HomePage({
               </span>
             </Link>
             <p className="mt-3" style={{ fontSize: 12.5, color: MUTE }}>
-              free, no card, 40 seconds
+              {effortNote}
             </p>
 
             {/* Survey time + completions count — social-proof strip, hard-edge restyle. */}
