@@ -419,6 +419,30 @@ export function classifyLedger(
   // those below zero, so the matrix must too — whatever each charge's own
   // emissions could not absorb lands here as a negative entry, and the
   // kinds-sum equals the kept-money total to the penny, by construction.
+  // Each residual lands in the KIND ITS CHARGE BELONGS TO, never dumped
+  // into Other Revenue. The first version put every cost in 'other', which
+  // filled the owner's Other Revenue drill with "Subscription creation"
+  // rows that were really the dispute costs of CONVERTED trials (caught by
+  // the owner, 2026-08-18) — and rule 4 says Other may hold no trial and no
+  // subscription, their costs included.
+  const trialKindByCharge = new Map<string, RevKind>()
+  const renewalKindByCharge = new Map<string, RevKind>()
+  for (const t of ledger) {
+    trialKindByCharge.set(t.charge_id,
+      t.attribution === 'quiz_net_new' ? 'net' : t.attribution === 'quiz_existing' ? 'quizExisting' : 'notQuiz')
+    if (t.converted_charge_id && t.converted_charge_id !== t.charge_id) {
+      renewalKindByCharge.set(t.converted_charge_id, isQuizEarned(t.attribution) ? 'annualQuiz' : 'annualNotQuiz')
+    }
+  }
+  const residualKind = (ch: ChargeRow): RevKind => {
+    const asRenewal = renewalKindByCharge.get(ch.id)
+    if (asRenewal) return asRenewal
+    const asTrial = trialKindByCharge.get(ch.id)
+    if (asTrial) return asTrial
+    if (TRIAL_PRICES.has(ch.amount_cents)) return 'notQuiz'
+    if (ch.amount_cents === ANNUAL_CENTS) return 'annualNotQuiz'
+    return 'other'
+  }
   const swept = new Set<string>()
   for (const ch of charges) {
     if (swept.has(ch.id)) continue
@@ -435,7 +459,7 @@ export function classifyLedger(
     if (residual > 0 && ch.refunded && (emittedGross.get(ch.id) ?? 0) === 0) continue
     const disputed = (ch.dispute_lost_cents ?? 0) > 0 || (ch.dispute_fee_cents ?? 0) !== 0
     entries.push({
-      at: ch.charged_at, chargedAt: ch.charged_at, kind: 'other', usd: residual / 100,
+      at: ch.charged_at, chargedAt: ch.charged_at, kind: residualKind(ch), usd: residual / 100,
       chargeId: `${ch.id}-cost`,
       personKey: (ch.customer_email || ch.email || ch.customer_id || 'unknown').toLowerCase(),
       name: ch.description ?? null, customerId: ch.customer_id ?? null, submissionId: null,
