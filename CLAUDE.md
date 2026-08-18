@@ -40,6 +40,18 @@ exactly one of three buckets, and the dashboard shows all three:
 These are not derivations, they are the definitions. Do not "improve" them.
 
 1. **ANY $4.99 charge IS a paid trial.** No exceptions, no deduplication.
+   Since 2026-08-18, $14.95 is also a trial price: the FOUNDING WINDOW
+   (owner's Option B) gives quiz completers 12 hours at $4.99, enforced
+   server-side by lib/founding-window.ts in BOTH checkout paths, then the
+   $14.95 list price genuinely charges. The deadline is real or it does not
+   render, that is the whole point. Flag lives in app_settings
+   'founding_window' (flips live, no deploy). Emails hold the $4.99 rate
+   through their own static links, deliberately. TWO LAWS from the launch:
+   a list price must be one a real person could rationally pay (a
+   fictitious anchor is banned, $29.99 was refused), and any new price must
+   be scanned against charge history first ($7.99 was a legacy monthly
+   price; adding it swallowed 248 old charges into the ledger for four
+   minutes before the no-op check caught it).
 2. **A person may buy more than one paid trial.** All of them count.
 3. **A person may hold more than one yearly subscription.**
 4. **Other Revenue may contain no paid trial and no $59.75 subscription.** It
