@@ -741,6 +741,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       utmRef={typeof searchParams.utm_ref === 'string' ? searchParams.utm_ref : undefined}
       fallbackUrl={checkoutUrl}
     >
+      {/* Speed pass 2026-08-18: warm the two third-party origins the page
+          will hit on scroll (React hoists these into <head>). Stripe's script
+          now lazy-loads near the wallet row, so the preconnect shaves its
+          handshake without paying its parse cost at startup. */}
+      <link rel="preconnect" href="https://js.stripe.com" />
+      <link rel="preconnect" href="https://img.tradepub.com" />
       <TrackView event="result_view" props={{ pageVariant: 'v4', stage: stageKey, persona, submissionId: rowId }} />
       <ClarityTag submissionId={rowId} variant="v4" />
       <ExperimentTracker assignments={assignments} submissionId={rowId} />

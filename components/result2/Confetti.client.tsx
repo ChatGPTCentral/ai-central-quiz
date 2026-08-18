@@ -84,8 +84,24 @@ export default function Confetti({ onLoad = false }: { onLoad?: boolean }) {
     if (onLoad) {
       if (fired.current) return
       fired.current = true
-      const t = setTimeout(fireOnce, 350)
-      return () => clearTimeout(t)
+      // OUT OF THE LCP WINDOW (speed pass, 2026-08-18). The load burst used
+      // to fire at +350ms: a full-viewport canvas and 170 animated particles
+      // exactly while a mid-range phone is still parsing, hydrating, and
+      // painting the hero — on the page whose p75 LCP the watcher flagged at
+      // 4.83s. The celebration now waits for a quiet main thread and fires
+      // no earlier than +1.8s, which is past LCP for most real visits and
+      // imperceptible to the person (the page is still "just loaded").
+      let idleId: number | undefined
+      const t = setTimeout(() => {
+        const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback
+        if (ric) idleId = ric(fireOnce, { timeout: 1500 })
+        else fireOnce()
+      }, 1800)
+      return () => {
+        clearTimeout(t)
+        const cic = (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback
+        if (idleId !== undefined && cic) cic(idleId)
+      }
     }
 
     const el = ref.current

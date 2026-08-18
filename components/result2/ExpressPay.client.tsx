@@ -53,11 +53,38 @@ export default function ExpressPay({
 
   useEffect(() => {
     if (mounted.current || !PK) return
-    mounted.current = true
     let dead = false
     let elements: StripeElements | null = null
 
-    ;(async () => {
+    // LAZY STRIPE (speed pass, 2026-08-18). This effect used to start
+    // immediately on mount, which meant EVERY result viewer downloaded and
+    // parsed js.stripe.com/v3 (~a quarter megabyte of third-party script)
+    // plus a price fetch at page load, to draw wallet buttons that sit below
+    // the fold on mobile — squarely inside the LCP window the watcher
+    // flagged at 4.83s p75. The init now starts when the row comes within
+    // 600px of the viewport (ready before eyes arrive; fires immediately
+    // when the row is already on screen, so desktop above-fold behavior is
+    // unchanged), with an 8s idle fallback for browsers without observers
+    // and visitors who never scroll.
+    const start = () => {
+      if (mounted.current || dead) return
+      mounted.current = true
+      run()
+    }
+    let obs: IntersectionObserver | null = null
+    let fallback: ReturnType<typeof setTimeout> | null = null
+    if (host.current && typeof IntersectionObserver !== 'undefined') {
+      obs = new IntersectionObserver(
+        entries => { if (entries.some(e => e.isIntersecting)) { obs?.disconnect(); start() } },
+        { rootMargin: '600px' },
+      )
+      obs.observe(host.current)
+      fallback = setTimeout(start, 8000)
+    } else {
+      start()
+    }
+
+    async function run() {
       try {
         const stripe = await getStripe()
         if (!stripe || dead || !host.current) return
@@ -161,16 +188,23 @@ export default function ExpressPay({
         // Silent by design: the normal CTA is right there and still works.
         console.warn('[express-pay] unavailable:', e)
       }
-    })()
+    }
 
-    return () => { dead = true }
+    return () => {
+      dead = true
+      obs?.disconnect()
+      if (fallback) clearTimeout(fallback)
+    }
   }, [submissionId, anonId, utmSource, utmRef, placement])
 
   if (!PK) return null
 
   return (
-    <div style={{ width: '100%', maxWidth: 470, display: ready ? 'block' : 'none' }}>
-      <div ref={host} />
+    // Always rendered: an element inside display:none never intersects, and
+    // the whole lazy-init above hangs off this node being observable. The
+    // 1px sentinel is invisible; the row grows when the wallets mount.
+    <div style={{ width: '100%', maxWidth: 470 }}>
+      <div ref={host} style={ready ? undefined : { minHeight: 1 }} />
       {err && (
         <p style={{ marginTop: 8, fontSize: 12, color: '#B00020', textAlign: 'center' }}>
           {err} You can still use the button above.
