@@ -27,6 +27,7 @@ export function OfferStack({
   offer = TRIAL_OFFER,
   lead = 'classic',
   guarantee = 'block',
+  windowNote = null,
 }: {
   checkoutUrl: string
   submissionId?: string
@@ -48,6 +49,10 @@ export function OfferStack({
    *  fear, not as ambient chrome. 'block' is today's shield box, unchanged.
    *  The promise is real: reply-to-cancel is how support actually works. */
   guarantee?: 'block' | 'oneline'
+  /** The founding window's one TRUE urgency line ("Your founding rate: $4.99
+   *  for the next N hours"), server-computed from the person's own deadline
+   *  and enforced by both checkout routes. Null renders nothing. */
+  windowNote?: string | null
 }) {
   const items = [
     { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
@@ -112,6 +117,12 @@ export function OfferStack({
         </>
       )}
 
+      {windowNote && (
+        <p style={{ padding: '10px 26px 0', margin: 0, fontSize: 13, color: FULVOUS, fontWeight: 700 }}>
+          {windowNote}
+        </p>
+      )}
+
       {/* risk reversal — the objection is the renewal, so answer it at the button */}
       {guarantee === 'block' && (
         <div style={{ margin: '16px 26px 0', padding: '13px 15px', backgroundColor: CREAM, border: `2px solid ${INK}` }}>
@@ -147,7 +158,7 @@ export function OfferStack({
         </CheckoutLink>
         {guarantee === 'oneline' && !offer.oneTime && (
           <p style={{ margin: 0, fontSize: 12.5, color: BODY, fontWeight: 500, textAlign: 'center', maxWidth: 420 }}>
-            Not useful? Reply to any of our emails within your 4 weeks and we refund the $4.99. No forms, no questions.
+            Not useful? Reply to any of our emails within your 4 weeks and we refund the {offer.price}. No forms, no questions.
           </p>
         )}
         <PayBadges fallbackUrl={checkoutUrl} submissionId={submissionId} placement="v2_offer_stack_badges" />

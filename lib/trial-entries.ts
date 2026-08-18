@@ -43,8 +43,10 @@ export function bucketEnd(bucket: string, gran: Gran): string {
 export type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annualQuiz' | 'annualNotQuiz' | 'other'
 
 /** The prices that ARE a paid trial. $54.74 is the $4.99 trial with the $49.75
- *  lifetime bought alongside it; $3.99 was an earlier era's trial price. */
-export const TRIAL_PRICES = new Set([399, 499, 5474])
+ *  lifetime bought alongside it; $3.99 was an earlier era's trial price;
+ *  $14.95 is the founding-window LIST price (2026-08-18) charged after a
+ *  person's personal $4.99 window expires. */
+export const TRIAL_PRICES = new Set([399, 499, 1495, 5474])
 /** The subscription price. Never Other Revenue. */
 export const ANNUAL_CENTS = 5975
 

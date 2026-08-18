@@ -27,6 +27,7 @@ import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { AnswerEcho, buildEchoLines } from '@/components/result2/AnswerEcho'
+import { foundingWindowState, hoursLeft } from '@/lib/founding-window'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
@@ -292,11 +293,30 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const visitorCountry = headers().get('x-vercel-ip-country') ?? undefined
   const offerParam = typeof searchParams.offer === 'string' ? searchParams.offer.trim().toLowerCase() : ''
   // lifetimeReady resolved above, in the parallel read with segFields.
-  const offer = offerParam === 'trial'
+  const baseOffer = offerParam === 'trial'
     ? TRIAL_OFFER
     : offerParam === 'lifetime' && lifetimeReady
       ? LIFETIME_OFFER
       : offerForCountry(visitorCountry, lifetimeReady)
+
+  // ── The founding window (owner, 2026-08-18; INERT until app_settings
+  // flips 'founding_window'.enabled). Completing the quiz earns a personal
+  // 12-hour $4.99 rate; after it this person's trial genuinely costs the
+  // list price, enforced by BOTH checkout routes from the same submission
+  // timestamp this page reads — display and charge cannot disagree.
+  // Lifetime (India) is untouched. ?fw=expired previews the post-window
+  // DISPLAY only; what anyone is charged never depends on the preview.
+  const fwPreview = typeof searchParams.fw === 'string' ? searchParams.fw.trim() : ''
+  let fw = baseOffer.key === 'trial' ? await foundingWindowState(rowId, baseOffer.cents) : null
+  if (fw && fwPreview === 'expired') fw = { ...fw, enabled: true, valid: false, amountCents: fw.listCents }
+  const offer = fw && fw.enabled && !fw.valid
+    ? { ...baseOffer, price: `$${(fw.listCents / 100).toFixed(2)}`, cents: fw.listCents }
+    : baseOffer
+  // The one TRUE urgency line this page is allowed: a personal deadline that
+  // the checkout actually enforces.
+  const windowNote = fw && fw.enabled && fw.valid && fw.expiresAt
+    ? `Your founding rate: ${baseOffer.price} for the next ${hoursLeft(fw.expiresAt)} hours. After that, new members pay $${(fw.listCents / 100).toFixed(2)}.`
+    : null
   const isLifetime = offer.key === 'lifetime'
   // Every CTA on the page asks for the offer this visitor is being shown.
   const CTA = isLifetime ? CTA_LABEL_LIFETIME : CTA_LABEL
@@ -646,6 +666,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           expressPay={expressPayEl}
           lead={researchPage ? 'duration' : 'classic'}
           guarantee={researchPage ? 'oneline' : 'block'}
+          windowNote={windowNote}
         />
 
         {/* Directly under the price, because that is the exact moment the
@@ -660,6 +681,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               stageLabel={rung.className}
               hoursLost={segFields?.hours_lost ?? null}
               submissionId={rowId}
+              priceLabel={offer.price}
             />
           </div>
         )}

@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { resolveLifetimePriceId } from '@/lib/offers-server'
+import { foundingWindowState } from '@/lib/founding-window'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -104,10 +105,34 @@ export async function POST(req: NextRequest) {
   const customerEmail = await emailForSubmission(sub)
 
   try {
-    const session = await stripe().checkout.sessions.create({
+    const s = stripe()
+    // Founding window (inert until app_settings flips it): past a person's
+    // window the trial charges the LIST price. price_data reuses the SAME
+    // product as the founding price, so the downstream chain (Memberstack,
+    // day-28 subscription on the saved card) sees one product either way,
+    // and the amount is decided server-side from the submission's own
+    // timestamp — the enforcement that makes the personal deadline real.
+    type SessionParams = NonNullable<Parameters<Stripe['checkout']['sessions']['create']>[0]>
+    let lineItem: NonNullable<SessionParams['line_items']>[number] = { price: priceId, quantity: 1 }
+    if (!lifetime) {
+      const trialPrice = await s.prices.retrieve(PRICE_ID)
+      const w = await foundingWindowState(sub, trialPrice.unit_amount ?? 499)
+      if (w.enabled) metadata.founding = w.valid ? 'window' : 'list'
+      if (w.enabled && !w.valid && trialPrice.unit_amount && w.amountCents !== trialPrice.unit_amount) {
+        lineItem = {
+          price_data: {
+            currency: trialPrice.currency,
+            unit_amount: w.amountCents,
+            product: typeof trialPrice.product === 'string' ? trialPrice.product : trialPrice.product?.id ?? '',
+          },
+          quantity: 1,
+        }
+      }
+    }
+    const session = await s.checkout.sessions.create({
       ui_mode: 'embedded_page',
       mode: 'payment',
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [lineItem],
       customer_creation: 'always',
       ...(customerEmail ? { customer_email: customerEmail } : {}),
       // A lifetime buyer has nothing coming, so the card is NOT saved for

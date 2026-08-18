@@ -134,7 +134,7 @@ export async function loadRevenueData() {
   // Every identity that has EVER paid anything that is not a trial price —
   // lifetimes at any amount, legacy monthly and annual subscriptions, on any
   // of the person's Stripe customer ids (rebert, wendy).
-  const TRIAL_CENTS = new Set([399, 499, 5474])
+  const TRIAL_CENTS = new Set([399, 499, 1495, 5474])
   const payingEmails = new Map<string, { cents: number; at: string }>()
   const payingCustomers = new Set<string>()
   for (const ch of chRows) {

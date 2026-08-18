@@ -27,7 +27,7 @@ const TRIAL_PROMISES = [
   },
   {
     t: '30 days, money back',
-    d: 'If the library is not useful to you, reply to any of our emails inside 30 days and we return the $4.99. No form, no reason needed.',
+    d: 'If the library is not useful to you, reply to any of our emails inside 30 days and we return the PRICE_TOKEN. No form, no reason needed.',
   },
   {
     t: 'Full access from minute one',
@@ -80,7 +80,13 @@ export function RiskFree({
   ctaLabel: string
   offer?: Offer
 }) {
-  const PROMISES = offer.oneTime ? LIFETIME_PROMISES : TRIAL_PROMISES
+  // The refund line names the price this visitor actually pays: with the
+  // founding window enabled that can be the list price, and a guarantee that
+  // names the wrong amount is worse than no guarantee.
+  const PROMISES = (offer.oneTime ? LIFETIME_PROMISES : TRIAL_PROMISES).map(pr => ({
+    ...pr,
+    d: pr.d.replace('PRICE_TOKEN', offer.price),
+  }))
   return (
     <section
       style={{ borderTop: `3px solid ${INK}`, backgroundColor: PAPER }}

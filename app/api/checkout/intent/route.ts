@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { resolveLifetimePriceId } from '@/lib/offers-server'
+import { foundingWindowState } from '@/lib/founding-window'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -95,9 +96,19 @@ export async function GET(req: NextRequest) {
     if (!price.unit_amount || !price.currency) {
       return NextResponse.json({ error: 'price_has_no_amount' }, { status: 500 })
     }
+    // The founding window (inert until app_settings flips it): the TRIAL
+    // amount is per-person once enabled, so the wallet sheet quotes the same
+    // number POST will charge — and per-person quotes must never be CDN-cached.
+    const w = wantLifetime
+      ? null
+      : await foundingWindowState(req.nextUrl.searchParams.get('submissionId'), price.unit_amount)
+    const amount = w ? w.amountCents : price.unit_amount
     return NextResponse.json(
-      { amount: price.unit_amount, currency: price.currency, offer: wantLifetime ? 'lifetime' : 'trial' },
-      { headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' } },
+      {
+        amount, currency: price.currency, offer: wantLifetime ? 'lifetime' : 'trial',
+        ...(w && w.enabled ? { foundingWindow: { valid: w.valid, expiresAt: w.expiresAt, listCents: w.listCents } } : {}),
+      },
+      { headers: { 'Cache-Control': w && w.enabled ? 'no-store' : 'public, s-maxage=600, stale-while-revalidate=3600' } },
     )
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'price_failed' }, { status: 500 })
@@ -123,14 +134,20 @@ export async function POST(req: NextRequest) {
   try {
     const s = stripe()
 
-    // Price is the source of truth for the amount. If someone edits the price
-    // in Stripe, both checkout paths move together.
+    // Price is the source of truth for the FOUNDING amount. If someone edits
+    // the price in Stripe, both checkout paths move together. The founding
+    // window (inert until app_settings flips it) can replace the trial amount
+    // with the list price — computed HERE, server-side, from the submission's
+    // own timestamp, which is what makes the personal deadline real.
     const price = await s.prices.retrieve(lifetimePrice ?? PRICE_ID)
-    const amount = price.unit_amount
+    const baseAmount = price.unit_amount
     const currency = price.currency
-    if (!amount || amount <= 0 || !currency) {
+    if (!baseAmount || baseAmount <= 0 || !currency) {
       return NextResponse.json({ error: 'price_has_no_amount' }, { status: 500 })
     }
+    const w = lifetime ? null : await foundingWindowState(sub, baseAmount)
+    const amount = w ? w.amountCents : baseAmount
+    if (w && w.enabled) metadata.founding = w.valid ? 'window' : 'list'
 
     // The Customer is not optional. Without one the card cannot be charged
     // off-session on day 28 and the subscription silently never happens.

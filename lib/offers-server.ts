@@ -72,6 +72,9 @@ const DEFAULT_ANNUAL_PRICE = 'price_1TSKdgBLsgHOvWxyBBkoqoqS'
 const DEFAULT_ANNUAL_399_PRICE = 'price_1RSUGDBLsgHOvWxybWEikZKa'
 export function annualPriceForTrialCents(trialCents: number): { id: string; cents: number } | null {
   if (trialCents === 499) return { id: process.env.STRIPE_ANNUAL_PRICE_ID?.trim() || DEFAULT_ANNUAL_PRICE, cents: 5975 }
+  // Founding-window list-price trials ($14.95, 2026-08-18) renew at the same
+  // $59.75 annual as the $4.99 founding rate: one product, two entry prices.
+  if (trialCents === 1495) return { id: process.env.STRIPE_ANNUAL_PRICE_ID?.trim() || DEFAULT_ANNUAL_PRICE, cents: 5975 }
   if (trialCents === 399) return { id: process.env.STRIPE_ANNUAL_399_PRICE_ID?.trim() || DEFAULT_ANNUAL_399_PRICE, cents: 3975 }
   return null
 }

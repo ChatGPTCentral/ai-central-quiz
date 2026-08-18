@@ -27,7 +27,7 @@ export interface CheckResult {
   detail: string
 }
 
-const TRIAL_PRICES = [399, 499, 5474]
+const TRIAL_PRICES = [399, 499, 1495, 5474]
 const ANNUAL = 5975
 
 /** Count rows matching a PostgREST filter, without pulling them. */

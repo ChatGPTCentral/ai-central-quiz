@@ -81,10 +81,12 @@ export default function ExpenseEmail({
   stageLabel,
   hoursLost,
   submissionId,
+  priceLabel = '$4.99',
 }: {
   stageLabel?: string | null
   hoursLost?: number | null
   submissionId?: string
+  priceLabel?: string
 }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -211,7 +213,7 @@ export default function ExpenseEmail({
           </div>
 
           <p style={{ fontSize: 12, color: MUTE, marginTop: 10, lineHeight: 1.45 }}>
-            Start the trial first if you like. It is $4.99 for four weeks and the yearly charge only lands after that, so the approval has time to come back.
+            Start the trial first if you like. It is {priceLabel} for four weeks and the yearly charge only lands after that, so the approval has time to come back.
           </p>
         </div>
       )}

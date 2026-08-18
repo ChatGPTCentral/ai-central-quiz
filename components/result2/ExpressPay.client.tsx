@@ -95,7 +95,9 @@ export default function ExpressPay({
         // that would break the renewal lookup. So we fetch the price (a cached
         // read that writes nothing) and only create the intent when someone
         // actually taps to pay.
-        const priceRes = await fetch(`/api/checkout/intent?offer=${encodeURIComponent(offer)}`)
+        // submissionId rides along so the founding window (when enabled) can
+        // quote THIS person's price — the same number POST will charge.
+        const priceRes = await fetch(`/api/checkout/intent?offer=${encodeURIComponent(offer)}${submissionId ? `&submissionId=${encodeURIComponent(submissionId)}` : ''}`)
         if (!priceRes.ok) throw new Error(`price ${priceRes.status}`)
         const { amount, currency } = await priceRes.json()
         if (!amount || dead || !host.current) return
