@@ -154,6 +154,16 @@ export default function CheckoutModalProvider({
               <button ref={closeBtn} type="button" onClick={doClose} aria-label="Close" className="ac-cox">×</button>
             </div>
             <div className="ac-cobody">
+              <EmbeddedCheckout submissionId={submissionId} anonId={anonId} utmSource={utmSource} utmRef={utmRef} offer={offer.key} />
+              {/* BELOW THE FORM, deliberately (owner, 2026-08-19: "the boxes
+                  inside the checkout make it even hard to check out"). This
+                  block used to sit ABOVE the payment element for every non-US
+                  visitor: three rows of text between the click and the card
+                  fields, which on a phone pushed the fields out of the first
+                  screen of a 92vh modal. The answers it gives (currency, when
+                  the annual bills, the guarantee) are worth having — they are
+                  answers to real objections — but they belong beside the
+                  decision, not in front of the form. */}
               {showTrust && (
                 <div className="ac-cotrust">
                   {localPrice(country!, offer.cents / 100) && (
@@ -176,7 +186,6 @@ export default function CheckoutModalProvider({
                   </div>
                 </div>
               )}
-              <EmbeddedCheckout submissionId={submissionId} anonId={anonId} utmSource={utmSource} utmRef={utmRef} offer={offer.key} />
               <div className="ac-cofallback">
                 <a
                   href={fallbackUrl}
@@ -200,9 +209,9 @@ export default function CheckoutModalProvider({
               color: #1A1A1A; cursor: pointer; padding: 2px 6px; }
             .ac-cox:focus-visible { outline: 2px solid #E48715; outline-offset: 2px; }
             .ac-cobody { padding: 18px 16px 20px; }
-            .ac-cotrust { border: 2px solid #1A1A1A; background: #FEF7E7; padding: 10px 12px; margin-bottom: 14px;
-              display: flex; flex-direction: column; gap: 7px; }
-            .ac-cotrustrow { display: flex; gap: 8px; font-size: 12px; line-height: 1.45; color: #333333; }
+            .ac-cotrust { border-top: 1px solid #E8E2D4; padding: 12px 2px 0; margin-top: 14px;
+              display: flex; flex-direction: column; gap: 6px; }
+            .ac-cotrustrow { display: flex; gap: 8px; font-size: 11.5px; line-height: 1.4; color: #6B6B6B; }
             .ac-cotrustrow strong { font-weight: 800; color: #1A1A1A; }
             .ac-cofallback { margin-top: 14px; text-align: center; }
             .ac-cofallback a { font-size: 12px; color: #8A8A8A; text-decoration: underline; }
