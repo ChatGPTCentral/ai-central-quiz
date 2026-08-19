@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/experiment-relay",
       "schedule": "40 * * * *"
+    },
+    {
+      "path": "/api/cron/evolve",
+      "schedule": "25 * * * *"
     }
   ]
 }

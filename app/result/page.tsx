@@ -28,6 +28,7 @@ import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { AnswerEcho, buildEchoLines } from '@/components/result2/AnswerEcho'
 import { foundingWindowState, hoursLeft, isHeldRateSource } from '@/lib/founding-window'
+import { pickIndividual, EVO_KEY, db as evoDb, type Individual } from '@/lib/evolution'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
@@ -464,6 +465,26 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     previewVar.includes('strip') ||
     assignments.some(a => a.experimentKey === 'result_strip_v1' && a.variantKey === 'stripped')
 
+  // ── EVOLUTION (owner, 2026-08-19) ───────────────────────────────────
+  // The page this person sees is an INDIVIDUAL drawn from the live
+  // population: one allele per slot, chosen deterministically from their
+  // anon id so their whole visit is attributable to one genome. Fitness is
+  // pooled per allele by the evolution cron; see lib/evolution.ts for why
+  // gene-level pooling is the only version of this that works at our
+  // traffic. ?g=<individual-id> previews one without recording anything.
+  let individual: Individual | null = null
+  let population: Individual[] = []
+  try {
+    const { data } = await evoDb().from('page_individuals')
+      .select('id, genome, generation, weight, retired_at, note').is('retired_at', null)
+    population = (data ?? []) as Individual[]
+    const forced = typeof searchParams.g === 'string' ? searchParams.g.trim() : ''
+    individual = forced
+      ? population.find(p => p.id === forced) ?? null
+      : pickIndividual(population, anonId)
+  } catch { /* no population: every gene falls back to today's page */ }
+  const gene = (slot: string, fallback: string) => (individual?.genome?.[slot] as string | undefined) ?? fallback
+
   // ── result_page_v3 · the research arm ───────────────────────────────
   // The research fleet's three result-surface plays as ONE big-swing variant
   // (2026-08-17): the answer-echo pitch (their own answers mapped to named
@@ -529,6 +550,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // and lets both run at once on full traffic instead of queueing, which
   // matters a lot at ~21 exposures per arm per day.
   const aspirational =
+    gene('hero', 'standard') === 'aspirational' ||
     revealPreview ||
     previewVar.includes('aspirational') ||
     assignments.some(a => a.experimentKey === 'result_aspirational_v1' && a.variantKey === 'aspirational')
@@ -626,7 +648,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     },
     stageKey,
   )
-  const echoOn = researchPage && echoLines.length >= 2
+  // Genes decide these now; the old experiment flags remain as fallbacks so
+  // an empty population serves exactly today's page.
+  const echoOn = (gene('pitch', researchPage ? 'echo' : 'generic') === 'echo') && echoLines.length >= 2
   const offerSection = (withVideo: boolean) => (
     // id + scrollMarginTop so /admin/compare can point both frames straight
     // at the part that differs (owner, 2026-08-19: the two pages looked
@@ -679,8 +703,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           rungClassName={rung.className}
           ctaLabel={ov('offerCard.ctaLabel', CTA)}
           expressPay={expressPayEl}
-          lead={researchPage ? 'duration' : 'classic'}
-          guarantee={researchPage ? 'oneline' : 'block'}
+          lead={gene('offerLead', researchPage ? 'duration' : 'price') === 'duration' ? 'duration' : 'classic'}
+          guarantee={gene('guarantee', researchPage ? 'oneline' : 'block') === 'oneline' ? 'oneline' : 'block'}
           windowNote={windowNote}
         />
 
@@ -786,7 +810,13 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <link rel="preconnect" href="https://img.tradepub.com" />
       <TrackView event="result_view" props={{ pageVariant: 'v4', stage: stageKey, persona, submissionId: rowId }} />
       <ClarityTag submissionId={rowId} variant="v4" />
-      <ExperimentTracker assignments={assignments} submissionId={rowId} />
+      <ExperimentTracker
+        assignments={[
+          ...assignments,
+          ...(individual && !searchParams.g ? [{ experimentKey: EVO_KEY, variantKey: individual.id }] : []),
+        ]}
+        submissionId={rowId}
+      />
       <Confetti onLoad />
 
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
