@@ -13,9 +13,12 @@
 //   3. AUTO-CONCLUDE (owner, 2026-08-17: "should we be more aggressive?
 //      self-optimization should serve right this way"). Two moves the
 //      bandit could not make before:
-//        KILL — every challenger has been guardrail-zeroed → the experiment
-//        ends itself, control is the winner, the surface is free for the
-//        next test instead of serving a decided question forever.
+//        KILL — every challenger has been guardrail-zeroed AND was actually
+//        exposed to people → the experiment ends itself, control is the
+//        winner, the surface is free for the next test instead of serving a
+//        decided question forever. A challenger at weight 0 with zero
+//        exposures is held, not killed: it is a built-but-unapproved arm
+//        waiting for review, and it beat nothing because it ran on nobody.
 //        CROWN — a variant holds ≥97% posterior win probability on clicks
 //        at ≥150 people per arm AND is not behind on actual quiz trials.
 //        The trials gate is not optional: the week of Aug 10 produced 32%
@@ -229,6 +232,31 @@ export async function GET(req: NextRequest) {
       const variants = (fresh.variants as { key: string; weight: number; approved?: boolean }[]) || []
       const challengers = variants.filter(v => v.key !== 'control' && v.approved !== false)
 
+      // All-time per-variant counts. Needed by BOTH conclusion branches: the
+      // kill has to know whether a zero-weight challenger was beaten or was
+      // never run, and the crown needs people/trials.
+      const { data: statsRaw } = await c.rpc('experiment_conclusion_stats', { exp_key: row.key })
+      const stats = (statsRaw ?? []) as ConclusionStat[]
+      const challengerPeople = stats
+        .filter(s => s.variant_key !== 'control')
+        .reduce((a, s) => a + Number(s.people || 0), 0)
+
+      // A challenger sitting at weight 0 that has NEVER been shown to anyone
+      // was not beaten, it was never run. That is the supervision state the
+      // owner asked for (2026-08-19: "how do we supervise what's shown") — a
+      // built arm parked at zero traffic, previewable in /admin/compare, until
+      // he approves it. Before this gate the kill below could not tell the two
+      // apart and ended landing_desktop_v1 eleven minutes after it was created,
+      // crowning a control that had beaten nothing.
+      if (challengers.length > 0 && challengers.every(v => (v.weight ?? 0) === 0) && challengerPeople === 0) {
+        results.push({
+          experimentKey: row.key,
+          action: 'preview_held',
+          reason: 'challengers parked at weight 0 with zero exposures — awaiting review, not concluded',
+        })
+        continue
+      }
+
       // KILL: the guardrail has zeroed every challenger — the question is
       // answered, stop spending a surface on it.
       if (challengers.length > 0 && challengers.every(v => (v.weight ?? 0) === 0)) {
@@ -248,8 +276,6 @@ export async function GET(req: NextRequest) {
       }
 
       // CROWN: posterior certainty on clicks, sanity-gated on real trials.
-      const { data: statsRaw } = await c.rpc('experiment_conclusion_stats', { exp_key: row.key })
-      const stats = (statsRaw ?? []) as ConclusionStat[]
       const minPeople = Math.max(150, Number(fresh.min_exposures_per_variant) || 0)
       if (stats.length >= 2 && stats.every(s => s.people >= minPeople)) {
         const probs = winProbabilities(stats)
