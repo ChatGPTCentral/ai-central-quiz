@@ -628,7 +628,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   )
   const echoOn = researchPage && echoLines.length >= 2
   const offerSection = (withVideo: boolean) => (
-    <section style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM }}>
+    // id + scrollMarginTop so /admin/compare can point both frames straight
+    // at the part that differs (owner, 2026-08-19: the two pages looked
+    // identical because the change lives below the fold).
+    <section id="offer" style={{ borderTop: `3px solid ${INK}`, backgroundColor: CREAM, scrollMarginTop: 0 }}>
       <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
         <Eyebrow>The unfair advantage</Eyebrow>
         {echoOn ? (

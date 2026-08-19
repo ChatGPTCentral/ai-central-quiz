@@ -24,9 +24,11 @@ type Exp = {
  *  variant carries the same preview the flow lab uses. An experiment with no
  *  entry here still lists, it just cannot be framed until its parameter is
  *  added — better than silently showing the wrong thing. */
-const ARMS: Record<string, { base: string; variant: string; label: string; sample?: boolean }> = {
+const ARMS: Record<string, { base: string; variant: string; label: string; sample?: boolean; anchor?: string }> = {
   entry_microcopy_v1: { base: '/', variant: 'xv=microcopy', label: 'microcopy' },
-  result_page_v3: { base: '/result', variant: 'xv=research', label: 'research', sample: true },
+  // #offer: the change is 8% down the page, so a frame showing the top made
+  // the two arms look identical (owner, 2026-08-19). Land on the difference.
+  result_page_v3: { base: '/result', variant: 'xv=research', label: 'research', sample: true, anchor: 'offer' },
   quiz_flow_v2: { base: '/quiz-v2', variant: 'qf=v2', label: 'flow2' },
 }
 const SAMPLE = 'name=Moshe%20Epstein&score=77&persona=maker&stage=S3_practitioner&id=03a3224c-d974-4ff9-971b-65481171f384'
@@ -44,8 +46,38 @@ export default async function ComparePage({ searchParams }: { searchParams: { ex
   const arm = active ? ARMS[active.key] : undefined
   const phone = searchParams.w === 'phone'
 
-  const controlUrl = arm ? (arm.sample ? `${arm.base}?${SAMPLE}` : arm.base) : 'about:blank'
-  const variantUrl = arm ? (arm.sample ? `${arm.base}?${SAMPLE}&${arm.variant}` : `${arm.base}?${arm.variant}`) : 'about:blank'
+  const hash = arm?.anchor ? `#${arm.anchor}` : ''
+  const controlUrl = arm ? (arm.sample ? `${arm.base}?${SAMPLE}${hash}` : `${arm.base}${hash}`) : 'about:blank'
+  const variantUrl = arm ? (arm.sample ? `${arm.base}?${SAMPLE}&${arm.variant}${hash}` : `${arm.base}?${arm.variant}${hash}`) : 'about:blank'
+
+  // WHAT CHANGED, computed rather than described: fetch both arms and diff
+  // their visible text. This is the answer to "the pages look the same" —
+  // either it lists real differences, or the test genuinely changes nothing
+  // a person can see, which is worth knowing immediately.
+  let added: string[] = [], removed: string[] = []
+  if (arm) {
+    try {
+      const origin = process.env.NEXT_PUBLIC_SITE_ORIGIN || 'https://quiz.thecentral.ai'
+      const strip = (h: string): string[] => {
+        const noScript = h.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '')
+        return noScript.replace(/<[^>]+>/g, '\n').split('\n')
+          .map(t => t.replace(/\s+/g, ' ').trim()).filter(t => t.length > 24)
+      }
+      const [ra, rb] = await Promise.all([
+        fetch(`${origin}${controlUrl.split('#')[0]}`, { cache: 'no-store' }).then(r => r.text()),
+        fetch(`${origin}${variantUrl.split('#')[0]}`, { cache: 'no-store' }).then(r => r.text()),
+      ])
+      const A = strip(ra), B = strip(rb)
+      const inA: Record<string, true> = {}, inB: Record<string, true> = {}
+      A.forEach(t => { inA[t] = true }); B.forEach(t => { inB[t] = true })
+      const uniq = (arr: string[], other: Record<string, true>) => {
+        const seen: Record<string, true> = {}
+        return arr.filter(t => !other[t] && !seen[t] && (seen[t] = true)).slice(0, 8)
+      }
+      added = uniq(B, inA)
+      removed = uniq(A, inB)
+    } catch { /* frames still render; the diff panel simply says nothing */ }
+  }
 
   const tab: React.CSSProperties = { padding: '7px 12px', border: `2px solid ${INK}`, background: PAPER, color: INK, fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }
   const tabOn: React.CSSProperties = { ...tab, background: INK, color: LATTE }
@@ -100,6 +132,31 @@ export default async function ComparePage({ searchParams }: { searchParams: { ex
               <a href={`/admin/compare?exp=${active.key}&w=phone`} style={phone ? tabOn : tab}>phone</a>
             </span>
           </div>
+
+          {arm && (added.length || removed.length) ? (
+            <div style={{ border: `2px solid ${INK}`, background: PAPER, padding: '12px 14px', marginBottom: 12 }}>
+              <strong style={{ fontSize: 13 }}>What actually changes</strong>
+              <span style={{ fontSize: 11.5, color: MUTE, marginLeft: 8 }}>
+                computed by fetching both arms and diffing their visible text, just now
+              </span>
+              <div style={{ display: 'flex', gap: 18, marginTop: 8, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: GREEN, fontWeight: 700, marginBottom: 4 }}>ONLY IN THE VARIANT</div>
+                  {added.map(t => <div key={t} style={{ fontSize: 12, marginBottom: 4, color: INK }}>+ {t.slice(0, 130)}</div>)}
+                </div>
+                <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: '#A31621', fontWeight: 700, marginBottom: 4 }}>ONLY IN THE CONTROL</div>
+                  {removed.map(t => <div key={t} style={{ fontSize: 12, marginBottom: 4, color: MUTE }}>− {t.slice(0, 130)}</div>)}
+                </div>
+              </div>
+            </div>
+          ) : arm ? (
+            <div style={{ border: `2px solid #A31621`, background: '#FDF3F1', padding: '12px 14px', marginBottom: 12, fontSize: 13 }}>
+              <strong style={{ color: '#A31621' }}>These two pages render identical text.</strong> If that is not the
+              intent, the variant is not being applied — check the preview parameter before trusting any result from
+              this experiment.
+            </div>
+          ) : null}
 
           {arm ? (
             <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
