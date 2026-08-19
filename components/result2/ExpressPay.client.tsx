@@ -34,13 +34,16 @@ function getStripe() {
 }
 
 export default function ExpressPay({
-  submissionId, anonId, utmSource, utmRef, placement = 'v2_express_pay', offer = 'trial',
+  submissionId, anonId, utmSource, utmRef, placement = 'v2_express_pay', offer = 'trial', heldRate = false,
 }: {
   submissionId?: string
   anonId?: string
   utmSource?: string
   utmRef?: string
   placement?: string
+  /** This visitor arrived from a recovery email that quotes $4.99, so the
+   *  wallet sheet must quote and charge that held rate, not the list price. */
+  heldRate?: boolean
   /** 'lifetime' where the trial does not renew. Both the quoted amount and the
    *  charge come from this, so the wallet sheet can never show one price and
    *  take another. */
@@ -97,7 +100,7 @@ export default function ExpressPay({
         // actually taps to pay.
         // submissionId rides along so the founding window (when enabled) can
         // quote THIS person's price — the same number POST will charge.
-        const priceRes = await fetch(`/api/checkout/intent?offer=${encodeURIComponent(offer)}${submissionId ? `&submissionId=${encodeURIComponent(submissionId)}` : ''}`)
+        const priceRes = await fetch(`/api/checkout/intent?offer=${encodeURIComponent(offer)}${submissionId ? `&submissionId=${encodeURIComponent(submissionId)}` : ''}${heldRate ? '&held=1' : ''}`)
         if (!priceRes.ok) throw new Error(`price ${priceRes.status}`)
         const { amount, currency } = await priceRes.json()
         if (!amount || dead || !host.current) return
@@ -156,7 +159,7 @@ export default function ExpressPay({
             const res = await fetch('/api/checkout/intent', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ submissionId, anonId, utmSource, utmRef, offer }),
+              body: JSON.stringify({ submissionId, anonId, utmSource, utmRef, offer, held: heldRate }),
             })
             if (!res.ok) throw new Error(`intent ${res.status}`)
             const { client_secret: clientSecret, renewalCheck } = await res.json()

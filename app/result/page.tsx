@@ -27,7 +27,7 @@ import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { AnswerEcho, buildEchoLines } from '@/components/result2/AnswerEcho'
-import { foundingWindowState, hoursLeft } from '@/lib/founding-window'
+import { foundingWindowState, hoursLeft, isHeldRateSource } from '@/lib/founding-window'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
@@ -307,16 +307,27 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // Lifetime (India) is untouched. ?fw=expired previews the post-window
   // DISPLAY only; what anyone is charged never depends on the preview.
   const fwPreview = typeof searchParams.fw === 'string' ? searchParams.fw.trim() : ''
-  let fw = baseOffer.key === 'trial' ? await foundingWindowState(rowId, baseOffer.cents) : null
-  if (fw && fwPreview === 'expired') fw = { ...fw, enabled: true, valid: false, amountCents: fw.listCents }
+  // An arrival from one of our recovery sequences keeps the $4.99 those
+  // emails quote (see isHeldRateSource): the same flag reaches both checkout
+  // routes below, so the held rate is charged, not just displayed.
+  const heldRate = isHeldRateSource(
+    typeof searchParams.utm_source === 'string' ? searchParams.utm_source : segFields?.utm_source ?? null,
+  )
+  let fw = baseOffer.key === 'trial' ? await foundingWindowState(rowId, baseOffer.cents, undefined, { heldRate }) : null
+  if (fw && fwPreview === 'expired') fw = { ...fw, enabled: true, valid: false, held: false, amountCents: fw.listCents }
   const offer = fw && fw.enabled && !fw.valid
     ? { ...baseOffer, price: `$${(fw.listCents / 100).toFixed(2)}`, cents: fw.listCents }
     : baseOffer
   // The one TRUE urgency line this page is allowed: a personal deadline that
-  // the checkout actually enforces.
-  const windowNote = fw && fw.enabled && fw.valid && fw.expiresAt
-    ? `Your founding rate: ${baseOffer.price} for the next ${hoursLeft(fw.expiresAt)} hours. After that, new members pay $${(fw.listCents / 100).toFixed(2)}.`
-    : null
+  // the checkout actually enforces. A held-rate visitor gets the honest
+  // version instead, because their clock ran out and we kept the price
+  // anyway; inventing a fresh countdown for them would be the fake deadline
+  // this whole design exists to avoid.
+  const windowNote = fw && fw.enabled && fw.held
+    ? `We held your founding rate: ${baseOffer.price} for your first 4 weeks, the price from your email.`
+    : fw && fw.enabled && fw.valid && fw.expiresAt
+      ? `Your founding rate: ${baseOffer.price} for the next ${hoursLeft(fw.expiresAt)} hours. After that, new members pay $${(fw.listCents / 100).toFixed(2)}.`
+      : null
   const isLifetime = offer.key === 'lifetime'
   // Every CTA on the page asks for the offer this visitor is being shown.
   const CTA = isLifetime ? CTA_LABEL_LIFETIME : CTA_LABEL
@@ -497,6 +508,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       anonId={anonId ?? undefined}
       utmSource={segFields?.utm_source ?? undefined}
       utmRef={typeof searchParams.utm_ref === 'string' ? searchParams.utm_ref : undefined}
+      heldRate={heldRate}
     />
   ) : null
 

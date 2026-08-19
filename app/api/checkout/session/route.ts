@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { resolveLifetimePriceId } from '@/lib/offers-server'
-import { foundingWindowState } from '@/lib/founding-window'
+import { foundingWindowState, isHeldRateSource } from '@/lib/founding-window'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -83,7 +83,7 @@ async function emailForSubmission(submissionId?: string): Promise<string | undef
 }
 
 export async function POST(req: NextRequest) {
-  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string; offer?: string } = {}
+  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string; offer?: string; held?: boolean } = {}
   try { body = await req.json() } catch { /* no body is fine */ }
 
   const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_SITE_URL || 'https://quiz.thecentral.ai'
@@ -116,7 +116,9 @@ export async function POST(req: NextRequest) {
     let lineItem: NonNullable<SessionParams['line_items']>[number] = { price: priceId, quantity: 1 }
     if (!lifetime) {
       const trialPrice = await s.prices.retrieve(PRICE_ID)
-      const w = await foundingWindowState(sub, trialPrice.unit_amount ?? 499)
+      const w = await foundingWindowState(sub, trialPrice.unit_amount ?? 499, undefined, {
+        heldRate: body.held === true || isHeldRateSource(clean(body.utmSource, 120)),
+      })
       if (w.enabled) metadata.founding = w.valid ? 'window' : 'list'
       if (w.enabled && !w.valid && trialPrice.unit_amount && w.amountCents !== trialPrice.unit_amount) {
         lineItem = {

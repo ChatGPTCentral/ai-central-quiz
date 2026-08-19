@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { resolveLifetimePriceId } from '@/lib/offers-server'
-import { foundingWindowState } from '@/lib/founding-window'
+import { foundingWindowState, isHeldRateSource } from '@/lib/founding-window'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -101,7 +101,12 @@ export async function GET(req: NextRequest) {
     // number POST will charge — and per-person quotes must never be CDN-cached.
     const w = wantLifetime
       ? null
-      : await foundingWindowState(req.nextUrl.searchParams.get('submissionId'), price.unit_amount)
+      : await foundingWindowState(
+          req.nextUrl.searchParams.get('submissionId'),
+          price.unit_amount,
+          undefined,
+          { heldRate: req.nextUrl.searchParams.get('held') === '1' },
+        )
     const amount = w ? w.amountCents : price.unit_amount
     return NextResponse.json(
       {
@@ -116,7 +121,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string; offer?: string } = {}
+  let body: { submissionId?: string; anonId?: string; utmSource?: string; utmRef?: string; offer?: string; held?: boolean } = {}
   try { body = await req.json() } catch { /* empty body is fine */ }
 
   const metadata: Record<string, string> = { source: 'quiz_result_express' }
@@ -145,9 +150,13 @@ export async function POST(req: NextRequest) {
     if (!baseAmount || baseAmount <= 0 || !currency) {
       return NextResponse.json({ error: 'price_has_no_amount' }, { status: 500 })
     }
-    const w = lifetime ? null : await foundingWindowState(sub, baseAmount)
+    const w = lifetime
+      ? null
+      : await foundingWindowState(sub, baseAmount, undefined, {
+          heldRate: body.held === true || isHeldRateSource(utm),
+        })
     const amount = w ? w.amountCents : baseAmount
-    if (w && w.enabled) metadata.founding = w.valid ? 'window' : 'list'
+    if (w && w.enabled) metadata.founding = w.held ? 'held' : w.valid ? 'window' : 'list'
 
     // The Customer is not optional. Without one the card cannot be charged
     // off-session on day 28 and the subscription silently never happens.

@@ -24,6 +24,10 @@ export type WindowState = {
   enabled: boolean
   /** true = the $4.99 founding rate applies to this person right now. */
   valid: boolean
+  /** true = the rate is valid because we HELD it for an email recipient,
+   *  not because their 12 hours are still running. The page says so plainly
+   *  instead of showing a countdown that already ended. */
+  held: boolean
   /** What the TRIAL costs this person, in cents — the one number to charge and quote. */
   amountCents: number
   listCents: number
@@ -70,13 +74,28 @@ export async function foundingWindowState(
   submissionId: string | null | undefined,
   baseCents: number,
   c?: SupabaseClient,
+  opts?: { heldRate?: boolean },
 ): Promise<WindowState> {
   const cfg = await foundingConfig(c)
   const disabled: WindowState = {
-    enabled: false, valid: true, amountCents: baseCents,
+    enabled: false, valid: true, held: false, amountCents: baseCents,
     listCents: cfg.list_cents, windowHours: cfg.window_hours, expiresAt: null,
   }
   if (!cfg.enabled) return disabled
+
+  // THE HELD RATE (2026-08-19, first night of the window). Our recovery
+  // emails quote $4.99 and carry static Stripe links that genuinely charge
+  // $4.99 forever, so a recipient who follows one back to this page must
+  // never meet $14.95: overnight, 2 of the first 5 clickers did exactly
+  // that, arriving from an Aug-16 and an Aug-17 quiz, and neither bought.
+  // The rate is honoured for arrivals tagged with an email source. It is
+  // not a loophole in the deadline, it is the deadline told truthfully:
+  // the page's clock is real for everyone deciding in the moment, and the
+  // people we personally wrote to keep the price we personally promised.
+  if (opts?.heldRate && submissionId) {
+    return { ...disabled, enabled: true, valid: true, held: true, amountCents: baseCents }
+  }
+
   if (!submissionId) {
     // No quiz, no window: direct visitors pay the list price. That is what
     // makes the founding rate a real reward and the list price a real price.
@@ -90,7 +109,7 @@ export async function foundingWindowState(
     const expires = new Date(createdIso).getTime() + cfg.window_hours * 3600_000
     const valid = Date.now() < expires
     return {
-      enabled: true, valid,
+      enabled: true, valid, held: false,
       amountCents: valid ? baseCents : cfg.list_cents,
       listCents: cfg.list_cents, windowHours: cfg.window_hours,
       expiresAt: new Date(expires).toISOString(),
@@ -99,6 +118,13 @@ export async function foundingWindowState(
     // Lookup failed for someone who may be in-window: fail toward $4.99.
     return { ...disabled, enabled: true }
   }
+}
+
+/** The email sources whose sends quote $4.99 and carry a $4.99 link, so an
+ *  arrival tagged with one of them has been personally promised that rate. */
+const HELD_RATE_SOURCES = new Set(['passrec', 'checkrec'])
+export function isHeldRateSource(utmSource: string | null | undefined): boolean {
+  return !!utmSource && HELD_RATE_SOURCES.has(utmSource.trim().toLowerCase())
 }
 
 /** Whole hours left in the window, floored at 1 so copy never says "0 hours". */
