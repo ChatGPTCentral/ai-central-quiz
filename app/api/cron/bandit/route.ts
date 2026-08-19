@@ -165,6 +165,16 @@ export async function GET(req: NextRequest) {
     console.error('[bandit-cron] cohort assignment failed:', e)
   }
 
+  // NO GHOSTS (audit, 2026-08-19). Six of fifteen experiments died without a
+  // verdict, one sat paused for 28 days holding a surface with 49 people in
+  // it. Anything paused for a week ends itself; a test nobody restarted in
+  // seven days is not a test, it is a parked surface pretending to be one.
+  try {
+    const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString()
+    await c.from('experiments').update({ status: 'ended', ended_at: new Date().toISOString() })
+      .eq('status', 'paused').lt('updated_at', weekAgo)
+  } catch (e) { console.error('[bandit-cron] ghost sweep failed:', e) }
+
   const { data: running, error } = await c.from('experiments').select('*').eq('status', 'running')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

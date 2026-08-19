@@ -193,12 +193,40 @@ buyers because identity there stays anonymous until someone is identified.
 - NEVER show the question count before the quiz starts (owner, 2026-08-18,
   from prior testing: when people know the length they do not start).
   In-quiz progress counters are fine; the entry surfaces are not.
-- **A test must be visible in /admin/compare before it runs** (owner,
-  2026-08-19: "what kind of A/B test is a test where no one sees the
-  difference?"). The side-by-side diffs both arms' text live; if it cannot
-  name what changed, the change is too small to detect at this traffic and
-  the surface is being wasted. entry_microcopy_v1 was ended for exactly
-  this: one line of small print, ~9 weeks to resolve 3 points.
+## How we test (audited 2026-08-19, after 15 experiments)
+
+The record: 3 winners adopted, 4 controls defended, 6 died with no verdict,
+biggest arm we ever ran was 537 people. Every adopted winner was a LARGE
+structural change (sell-first +14.4pts, question-first +8.6pts, embedded
+checkout); everything smaller returned noise. That is not bad luck, it is
+arithmetic — at this traffic the honest minimum detectable effects are:
+
+| Surface | Detectable in ~2 weeks | Needs 7+ weeks |
+|---|---|---|
+| Result page clicks (44%) | 10 points | 5 points |
+| Trials per finisher (6%) | 4 points | 2 points |
+| Landing start rate (67%) | 10 points | 5 points |
+| Quiz completion (73%) | 10 points | 5 points |
+
+The rules that follow, and they are rules:
+
+1. **Only test what could plausibly move the step by 10+ points.** Anything
+   smaller cannot be resolved before the page changes underneath it. Ship it
+   on judgment instead, or leave it alone.
+2. **A test must be visible in /admin/compare before it runs** (owner,
+   2026-08-19: "what kind of A/B test is a test where no one sees the
+   difference?"). The side-by-side diffs both arms live; if it cannot name
+   what changed, the change is too small. entry_microcopy_v1 was ended for
+   exactly this: one line of small print, ~9 weeks to resolve 3 points.
+3. **Declare the sample and the stop date when the test starts.** If the
+   surface cannot deliver that sample inside 3 weeks, do not start it.
+4. **Decide on the step the change touches, with trials as a guardrail.**
+   Clicks alone lied once (sell-first won on clicks, was behind on paid);
+   trials alone are unmeasurable inside a test window. Both, always.
+5. **Everything else ships to everyone and is watched on /admin/cohorts.**
+   Ship-and-watch is faster than a test nobody can power, and the cohort
+   meter names a regression within a hundred landers.
+6. **No ghosts.** The bandit cron ends anything paused for 7 days.
 - Develop on `claude/great-volta-PaEPx`; ship = ff-merge to `main`
   (Vercel auto-deploys). Verify on prod after every ship.
 - New client events must be allowlisted in `app/api/events/route.ts`.
