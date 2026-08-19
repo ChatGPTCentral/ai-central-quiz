@@ -15,7 +15,12 @@ const INK = '#333333'
 const FULVOUS = '#E48715'
 const XANTHOUS = '#E7B02F'
 
-const CHECKS = ['10 ANSWERS SCORED', 'PLACED AMONG 8.1B PEOPLE', 'SEQUENCING MONTH 1']
+// Ownership, not machinery. People valued self-assembled things 63% higher
+// in Norton, Mochon & Ariely's IKEA-effect studies, and the effect needs
+// COMPLETION to fire — which is exactly this screen's moment. The lines now
+// say what the person built rather than what the server is doing, and every
+// one of them is literally true of the plan being generated.
+const CHECKS = ['YOUR ANSWERS SCORED', 'YOUR RANK AMONG 8.1B PEOPLE', 'YOUR MONTH 1, SEQUENCED']
 const TICK_MS = 850          // one checklist line per beat
 const REDIRECT_AT_MS = 3000  // "takes about 3 seconds"
 
@@ -56,11 +61,14 @@ function CalculatingContent() {
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center px-6 py-10" style={{ backgroundColor: RICH }}>
       <p className="font-mono uppercase" style={{ fontSize: 11, letterSpacing: '0.16em', color: XANTHOUS }}>
-        Scoring
+        Done
       </p>
       <h1 className="mt-3 font-bold text-center" style={{ fontSize: 'clamp(28px, 3.4vw, 40px)', letterSpacing: '-0.03em', color: CREAM }}>
-        Assembling your pass
+        Building what you just earned
       </h1>
+      <p className="mt-2 text-center" style={{ fontSize: 13.5, color: CREAM, opacity: 0.75, maxWidth: 420 }}>
+        Your pass and your 30-day plan, made out of your answers and yours to keep.
+      </p>
 
       {/* Checklist — lines tick in sequence, the live one blinks */}
       <div className="mt-7 flex flex-col gap-2.5 font-mono" style={{ fontSize: 12, letterSpacing: '0.1em' }}>

@@ -112,7 +112,50 @@ function BlockNext({
   )
 }
 
-function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
+// ── quiz_flow_v2 progress mechanics (research play #4) ──────────────────
+//
+// ENDOWED + FAST-THEN-SLOW. A meta-analysis of 32 randomized web-survey
+// experiments found constant-speed indicators do NOT reduce abandonment
+// while fast-to-slow ones do, and Nunes & Dreze took completion from 19% to
+// 34% by granting progress people had not earned yet (two pre-stamped
+// stamps, identical real effort). So the bar opens with credit for starting
+// and front-loads its movement: the visitor sees distance covered early,
+// where commitment is weakest, and the slower tail is spent on someone who
+// has already invested nine answers.
+//
+// The curve is concave (exponent < 1) so each early answer moves it more
+// than each late one, and it still lands on exactly 100 at the final step:
+// the bar never lies about being finished.
+const ENDOWED_HEAD_START = 0.15
+const CURVE = 0.75
+function flowProgressPct(step: number, total: number): number {
+  if (total <= 0) return 0
+  const f = Math.min(1, Math.max(0, step / total))
+  return (ENDOWED_HEAD_START + (1 - ENDOWED_HEAD_START) * Math.pow(f, CURVE)) * 100
+}
+
+/** How many questions are still to come INCLUDING this one, walked through
+ *  the real branching rules rather than assumed from the total, so the
+ *  endgame line can never promise a question count the flow will not honour.
+ *  Returns 0 when the walk is inconclusive. */
+function stepsLeftInclusive(
+  step: number,
+  questions: V2Question[],
+  answers: Answers,
+  ctx: Parameters<typeof resolveNextStep>[3],
+): number {
+  let left = 1
+  let idx = step - 1
+  for (let guard = 0; guard < questions.length + 2; guard++) {
+    const nx = resolveNextStep(idx, questions, answers, ctx)
+    if (nx === 'end') return left
+    left++
+    idx = nx as number
+  }
+  return 0
+}
+
+function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: Props & { flowV2?: boolean }) {
   const QUESTIONS = questions
   const TOTAL_STEPS = QUESTIONS.length
   const ACCENT = accent
@@ -244,6 +287,9 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
     return () => { if (partialTimer.current) clearTimeout(partialTimer.current) }
   }, [answers, searchParams])
 
+  // The bar: linear for control, endowed and front-loaded for the variant.
+  const progressPct = flowV2 ? flowProgressPct(step, TOTAL_STEPS) : (step / TOTAL_STEPS) * 100
+
   const q = QUESTIONS[step - 1]
   const singleAnswer = (answers[q.id] as string) || ''
   const multiAnswer = (answers[q.id] as string[]) || []
@@ -263,6 +309,18 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   }
 
   const nextResolved = resolveNextStep(step - 1, QUESTIONS, answers, branchCtx)
+
+  // THE ENDGAME LINE (variant only). Kivetz's goal gradient: effort
+  // accelerates as the distance to the goal shrinks, but only once the goal
+  // is close enough to see. It appears at three questions out and never
+  // earlier, so the total length is still never revealed at the start (the
+  // owner's standing rule) — and the count is walked through the real
+  // branching, so "2 left" is a promise the flow keeps.
+  const stepsLeft = flowV2 ? stepsLeftInclusive(step, QUESTIONS, answers, branchCtx) : 0
+  const endgameNote =
+    stepsLeft === 1 ? 'last question'
+      : stepsLeft === 2 || stepsLeft === 3 ? `${stepsLeft} left`
+        : null
   const isLastStep = nextResolved === 'end'
   const isWelcome = q.type === 'welcome'
   const isText = q.type === 'text' || q.type === 'email'
@@ -589,12 +647,12 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={Math.round((step / TOTAL_STEPS) * 100)}
+        aria-valuenow={Math.round(progressPct)}
         aria-label="Quiz progress"
       >
         <div
           className="h-full transition-all duration-300"
-          style={{ width: `${(step / TOTAL_STEPS) * 100}%`, backgroundColor: FULVOUS }}
+          style={{ width: `${progressPct}%`, backgroundColor: FULVOUS }}
         />
       </div>
 
@@ -617,8 +675,19 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
           <img src="/logo-full-light-bg.png" alt="AI Central" style={{ height: 13, width: 'auto' }} />
           {/* The Q1/11 counter lived here. Removed for the same reason as the
               eyebrow: it is a running total of how much is left. The spacer
-              keeps the wordmark centred. */}
-          <span style={{ width: 44 }} aria-hidden="true" />
+              keeps the wordmark centred — and in the variant it carries the
+              endgame line, which appears only in the last three steps. */}
+          {endgameNote ? (
+            <span
+              role="status"
+              className="uppercase text-right"
+              style={{ width: 76, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: FULVOUS }}
+            >
+              {endgameNote}
+            </span>
+          ) : (
+            <span style={{ width: 44 }} aria-hidden="true" />
+          )}
         </header>
       )}
 
@@ -712,6 +781,16 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT }: Props) {
   )
 }
 
+/** quiz_flow_v2 assignment (or ?qf=v2 preview, which records no exposure).
+ *  Split out so the preview can read searchParams inside the Suspense
+ *  boundary the rest of the flow already lives in. */
+function QuizV2Gate({ questions, accent, assignments }: Props) {
+  const sp = useSearchParams()
+  const preview = (sp.get('qf') || '').trim() === 'v2'
+  const assigned = (assignments ?? []).some(a => a.experimentKey === 'quiz_flow_v2' && a.variantKey === 'flow2')
+  return <QuizV2Content questions={questions} accent={accent} flowV2={preview || assigned} />
+}
+
 export default function QuizV2Client({ questions, accent, assignments }: Props) {
   return (
     <>
@@ -723,7 +802,7 @@ export default function QuizV2Client({ questions, accent, assignments }: Props) 
           <div className="w-8 h-8 rounded-full border-4 animate-spin" style={{ borderColor: '#E8E4DF', borderTopColor: '#E48715' }} />
         </div>
       }>
-        <QuizV2Content questions={questions} accent={accent} />
+        <QuizV2Gate questions={questions} accent={accent} assignments={assignments} />
       </Suspense>
     </>
   )
