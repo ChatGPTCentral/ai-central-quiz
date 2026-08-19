@@ -399,6 +399,51 @@ export const UX_QUERIES: {
     },
   },
   {
+    key: 'source_died',
+    claim: 'a traffic source that always delivers has gone silent',
+    // Born 2026-08-19, from the worst kind of failure: nothing on our side
+    // broke. thecentral.ai delivered 15 to 29 completions every day for
+    // twelve days, then stopped dead at 20:19 on Aug 18 — the quiz link had
+    // vanished from the website — and the only symptom anyone could see was
+    // "a lot of people, no conversions". A source that reliably delivers and
+    // then delivers nothing is an outage somewhere, even when every one of
+    // our own screens is green.
+    threshold: 0,
+    severity: 'critical',
+    source: 'supabase',
+    sql: `with daily as (
+            select coalesce(nullif(trim(utm_source),''),'(direct)') as src,
+                   quiz_completed_at::date as day, count(*) as n
+            from submissions
+            where quiz_completed_at >= current_date - 8
+              and coalesce(is_test,false) = false
+            group by 1,2
+          ), prior as (
+            select src, avg(n) as daily_avg, count(*) as days_seen
+            from daily where day between current_date - 8 and current_date - 1
+            group by src
+          ), recent as (
+            select coalesce(nullif(trim(utm_source),''),'(direct)') as src, count(*) as n
+            from submissions
+            where quiz_completed_at >= now() - interval '24 hours'
+              and coalesce(is_test,false) = false
+            group by 1
+          )
+          select p.src, round(p.daily_avg::numeric, 1) as daily_avg, coalesce(r.n, 0) as last_24h
+          from prior p left join recent r on r.src = p.src
+          where p.daily_avg >= 5 and p.days_seen >= 6 and coalesce(r.n, 0) = 0
+          order by p.daily_avg desc`,
+    read: rows => {
+      if (!rows.length) return { value: 0, detail: 'every reliable source is still delivering' }
+      const worst = rows[0] as { src: string; daily_avg: number; last_24h: number }
+      const names = rows.map(r => `${(r as { src: string }).src} (usually ${(r as { daily_avg: number }).daily_avg}/day)`).join(', ')
+      return {
+        value: 1,
+        detail: `${rows.length} dead source${rows.length > 1 ? 's' : ''}: ${names}. Check the link on that surface before anything else — ${worst.src} sent nobody in 24 hours.`,
+      }
+    },
+  },
+  {
     key: 'daily_benchmark',
     claim: "yesterday missed the owner's bar of 10 trials a day",
     // THE BAR (owner, 2026-08-18: "your benchmark must be over 10 conversions
