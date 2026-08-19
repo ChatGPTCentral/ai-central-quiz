@@ -35,6 +35,24 @@ export const EXPERIMENT_SLOTS: Record<string, { label: string; hint: string }> =
     label: 'Landing (desktop) · button under the pass card',
     hint: "share | quiz  ('share' = today's LinkedIn button, 'quiz' = a second quiz CTA)",
   },
+
+  // Read by app/page.tsx since entry_microcopy_v1, never registered here, so
+  // isSlotKey dropped it and that experiment rendered control to BOTH arms for
+  // its whole life. Same class of bug as riskFree.ctaLabel above. The rule this
+  // proves: a slot the page READS must exist here, or the test is a placebo.
+  'landing.effortNote': {
+    label: 'Landing · effort line under the CTA',
+    hint: 'free, no card, 40 seconds',
+  },
+
+  // Desktop is two thirds of landings and starts the quiz 15 points below
+  // mobile, six weeks running. Mobile's edge is its ORDER, not its size:
+  // headline, one button, reward after. A MODE slot: 'onecol' rebuilds the
+  // desktop hero in that order. Mobile renders identically either way.
+  'landing.desktopLayout': {
+    label: 'Landing (desktop) · hero layout',
+    hint: "twocol | onecol  ('twocol' = today's split hero, 'onecol' = mobile's order at desktop scale)",
+  },
 }
 
 export type SlotKey = keyof typeof EXPERIMENT_SLOTS

@@ -67,9 +67,24 @@ export default async function HomePage({
   // to today's line on any resolution error.
   const effortNote = overrides['landing.effortNote'] ?? 'free, no card, 40 seconds'
 
+  // landing_desktop_v1. Desktop is two thirds of our traffic and starts the
+  // quiz at 45.7% against mobile's 60.8% — a fifteen point gap that has held
+  // for six straight weeks. Mobile's advantage is not its size, it is its
+  // ORDER: headline, one button, then the reward. Desktop currently splits
+  // attention across two columns where the pass card competes with the CTA,
+  // which is the same pattern that produced 169 dead clicks on that card
+  // before we made it clickable. This variant gives desktop the mobile
+  // order in a desktop-sized layout: one column, one obvious action, the
+  // pass below as the reward rather than the rival. Mobile is untouched.
+  // Note the viewport pin below: the two-column hero is fixed to exactly one
+  // screen (lg:h-[100dvh] + overflow-hidden). The one-column stack is TALLER
+  // than that by design (the pass sits under the CTA), so with the pin left on
+  // it would be silently clipped and unscrollable. The variant drops the pin.
+  const desktopOneCol = overrides['landing.desktopLayout'] === 'onecol'
+
   return (
     <div
-      className="relative min-h-[100dvh] lg:h-[100dvh] lg:overflow-hidden flex flex-col"
+      className={`relative min-h-[100dvh] ${desktopOneCol ? '' : 'lg:h-[100dvh] lg:overflow-hidden'} flex flex-col`}
       style={{ backgroundColor: PAPER, backgroundImage: GRAIN }}
     >
       <TrackView event="quiz_view" />
@@ -84,7 +99,11 @@ export default async function HomePage({
 
       {/* xl:pr reserves the right rail the fixed FOMO marquee occupies, so the
           flipped hero copy never runs underneath it. */}
-      <main className="flex-1 min-h-0 flex items-start lg:items-center justify-center px-5 sm:px-8 py-6 lg:py-0 xl:pr-[280px]">
+      <main
+        className={`flex-1 flex items-start justify-center px-5 sm:px-8 py-6 xl:pr-[280px] ${
+          desktopOneCol ? 'lg:pt-10 lg:pb-16' : 'min-h-0 lg:items-center lg:py-0'
+        }`}
+      >
         {/* ── MOBILE (<lg) — owner's explicit order: headline → tagline →
             LinkedIn-style CTA (see where I rank) → free note → description →
             card. Hidden on lg+, which uses the flipped two-column grid. ── */}
@@ -137,8 +156,87 @@ export default async function HomePage({
           </div>
         </div>
 
+        {/* ── DESKTOP one-column (landing_desktop_v1 variant) ──────────
+            Mobile's order, at desktop scale: headline, the single action,
+            the effort note, one line of what they get, then the pass as the
+            reward underneath. Nothing here competes with the button. */}
+        {desktopOneCol && (
+          <div className="hidden lg:flex w-full max-w-[760px] mx-auto flex-col items-center text-center">
+            <p className="uppercase" style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.05em', color: FULVOUS, marginBottom: 14 }}>
+              The 40-second AI readiness quiz
+            </p>
+            <h1
+              className="font-bold"
+              style={{ fontSize: 'clamp(38px, 3.6vw, 52px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH, marginBottom: 16 }}
+            >
+              Most people haven&apos;t started with AI.{' '}
+              <span style={{ color: FULVOUS }}>Where do you rank?</span>
+            </h1>
+            <p style={{ fontSize: 18, fontWeight: 300, lineHeight: 1.5, color: '#4A4A4A', maxWidth: 560, marginBottom: 26 }}>
+              Take the quiz to get your <strong style={{ color: INK, fontWeight: 600 }}>AI Readiness Type</strong> and
+              see exactly where you land versus everyone else, then a plan to climb
+            </p>
+
+            <Link
+              href={quizHref}
+              className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]"
+              style={{ textDecoration: 'none' }}
+            >
+              <span
+                className="inline-flex items-center justify-center"
+                style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 19, height: 62, padding: '0 38px' }}
+              >
+                see where I rank
+              </span>
+              <span
+                className="inline-flex items-center justify-center"
+                style={{ backgroundColor: FULVOUS, color: RICH, width: 62, height: 62, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 19 }}
+                aria-hidden
+              >
+                ↗
+              </span>
+            </Link>
+            <p style={{ fontSize: 13, color: MUTE, marginTop: 12 }}>{effortNote}</p>
+
+            <div
+              className="inline-flex items-center justify-center gap-4 px-4 py-2.5 font-mono"
+              style={{ backgroundColor: '#FFFFFF', border: `2px solid ${INK}`, fontSize: 10.5, letterSpacing: '0.08em', color: INK, marginTop: 18 }}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={FULVOUS} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="12" cy="12" r="9" />
+                  <polyline points="12 7 12 12 15 14" />
+                </svg>
+                ~40 SEC TO COMPLETE
+              </span>
+              <span aria-hidden style={{ color: '#C9C7BF' }}>·</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span style={{ color: '#62A758' }}>●</span>
+                2,768 COMPLETED
+              </span>
+            </div>
+
+            {/* The reward, underneath and smaller: it shows what the quiz
+                mints without competing for the click. Still clickable, since
+                people reach for it. */}
+            <div className="mt-8" style={{ width: 420 }}>
+              <Link href={quizHref} aria-label="take the quiz and mint your member pass" style={{ display: 'block', textDecoration: 'none' }}>
+                <PassCard
+                  name="YOUR NAME"
+                  personaLabel="AI Professional"
+                  stageLine="STAGE: ?????"
+                  passPct="Top ??% World"
+                  issued={`${String(new Date().getMonth() + 1).padStart(2, '0')} / ${new Date().getFullYear()}`}
+                  refNo="AC-????"
+                  description="Take the 40-second quiz to mint your member pass, see your AI Readiness Type, and where you rank among 8.1 billion people."
+                />
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* ── DESKTOP (lg+) — the flipped two-column hero. ── */}
-        <div className="hidden w-full max-w-6xl lg:grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+        <div className={`${desktopOneCol ? 'hidden' : 'hidden w-full max-w-6xl lg:grid lg:grid-cols-2'} gap-10 lg:gap-12 items-center`}>
           {/* Left column — the hook: the member pass the quiz mints for you.
               "YOUR NAME" placeholder makes the reward tangible at a glance.
               (Flipped to the left per owner request.) */}

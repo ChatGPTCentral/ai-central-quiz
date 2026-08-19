@@ -30,6 +30,7 @@ const ARMS: Record<string, { base: string; variant: string; label: string; sampl
   // the two arms look identical (owner, 2026-08-19). Land on the difference.
   result_page_v3: { base: '/result', variant: 'xv=research', label: 'research', sample: true, anchor: 'offer' },
   quiz_flow_v2: { base: '/quiz-v2', variant: 'qf=v2', label: 'flow2' },
+  landing_desktop_v1: { base: '/', variant: 'xv=onecol', label: 'onecol' },
 }
 const SAMPLE = 'name=Moshe%20Epstein&score=77&persona=maker&stage=S3_practitioner&id=03a3224c-d974-4ff9-971b-65481171f384'
 
