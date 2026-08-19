@@ -193,6 +193,12 @@ buyers because identity there stays anonymous until someone is identified.
 - NEVER show the question count before the quiz starts (owner, 2026-08-18,
   from prior testing: when people know the length they do not start).
   In-quiz progress counters are fine; the entry surfaces are not.
+- **A test must be visible in /admin/compare before it runs** (owner,
+  2026-08-19: "what kind of A/B test is a test where no one sees the
+  difference?"). The side-by-side diffs both arms' text live; if it cannot
+  name what changed, the change is too small to detect at this traffic and
+  the surface is being wasted. entry_microcopy_v1 was ended for exactly
+  this: one line of small print, ~9 weeks to resolve 3 points.
 - Develop on `claude/great-volta-PaEPx`; ship = ff-merge to `main`
   (Vercel auto-deploys). Verify on prod after every ship.
 - New client events must be allowlisted in `app/api/events/route.ts`.
