@@ -3,6 +3,7 @@
 // against the baseline it started from.
 
 import { db, allelePosterior, type AlleleRow } from '@/lib/evolution'
+import { ApproveControls, RetireControl, AlleleToggle, MasterControls } from '@/components/admin/EvolveControls.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -10,22 +11,25 @@ export const revalidate = 0
 const INK = '#1A1A1A', MUTE = '#75705F', HAIR = '#DED7C7', PAPER = '#FFFDFA'
 const LATTE = '#FEF7E7', GREEN = '#2E7D32', RED = '#A31621', AMBER = '#C96F0A'
 
-type Fit = { id: string; genome: Record<string, string>; generation: number; weight: number; retired_at: string | null; note: string | null; exposures: number; clickers: number; trials: number }
+type Fit = { id: string; genome: Record<string, string>; generation: number; weight: number; retired_at: string | null; note: string | null; approved_at: string | null; approved_by: string | null; rejected_at: string | null; exposures: number; clickers: number; trials: number }
 type LogRow = { at: string; generation: number; action: string; detail: Record<string, unknown> }
 
 export default async function EvolvePage() {
   const c = db()
-  const [{ data: aData }, { data: fData }, { data: lData }] = await Promise.all([
+  const [{ data: aData }, { data: fData }, { data: lData }, { data: cfgRow }] = await Promise.all([
     c.from('allele_fitness').select('*').order('slot'),
     c.from('individual_fitness').select('*').order('generation'),
-    c.from('evolution_log').select('at, generation, action, detail').eq('action', 'generation').order('at', { ascending: false }).limit(8),
+    c.from('evolution_log').select('at, generation, action, detail').order('at', { ascending: false }).limit(12),
+    c.from('app_settings').select('value').eq('key', 'evolution').maybeSingle(),
   ])
+  const cfg = (cfgRow?.value ?? { enabled: true, auto_approve: false }) as { enabled?: boolean; auto_approve?: boolean }
   const alleles = (aData ?? []) as AlleleRow[]
   const pop = (fData ?? []) as Fit[]
   const log = (lData ?? []) as LogRow[]
   const post = allelePosterior(alleles)
 
-  const live = pop.filter(p => !p.retired_at)
+  const live = pop.filter(p => !p.retired_at && p.approved_at)
+  const pending = pop.filter(p => !p.retired_at && !p.approved_at)
   const totalExp = pop.reduce((a, p) => a + Number(p.exposures || 0), 0)
   const totalTrials = pop.reduce((a, p) => a + Number(p.trials || 0), 0)
   const poolRate = totalExp ? totalTrials / totalExp : 0
@@ -46,6 +50,29 @@ export default async function EvolvePage() {
         half the surface&rsquo;s traffic rather than a fraction of it. Fitness is <strong style={{ color: INK }}>trials</strong>;
         clicks are shown but never promote a gene on their own.
       </p>
+
+      <MasterControls enabled={cfg.enabled !== false} autoApprove={cfg.auto_approve === true} />
+
+      {pending.length > 0 && (
+        <div style={{ border: `3px solid ${AMBER}`, background: '#FFF9EE', padding: '12px 14px', marginBottom: 18 }}>
+          <strong style={{ fontSize: 14 }}>Waiting for you: {pending.length} new page{pending.length > 1 ? 's' : ''}</strong>
+          <div style={{ fontSize: 12, color: MUTE, margin: '4px 0 10px' }}>
+            Bred from the winning genes. They are serving <strong>no traffic at all</strong> until you approve them.
+            Look before you decide.
+          </div>
+          {pending.map(p => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '7px 0', borderTop: `1px solid ${HAIR}` }}>
+              <strong style={{ fontSize: 12.5, minWidth: 90 }}>{p.id}</strong>
+              <span style={{ fontSize: 11.5, color: MUTE, flex: '1 1 260px' }}>
+                {Object.entries(p.genome || {}).map(([k, v]) => `${k}=${v}`).join('  ')}
+              </span>
+              <a href={`/result?name=Moshe%20Epstein&score=77&persona=maker&stage=S3_practitioner&id=03a3224c-d974-4ff9-971b-65481171f384&g=${p.id}#offer`}
+                 target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: '#3B5C8F' }}>see it ↗</a>
+              <ApproveControls id={p.id} />
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         {[
@@ -89,6 +116,9 @@ export default async function EvolvePage() {
                     </div>
                     <div style={{ width: 62, textAlign: 'right', fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: leading ? GREEN : INK }}>{(mean * 100).toFixed(1)}%</div>
                     <div style={{ width: 150, fontSize: 11, color: MUTE, textAlign: 'right' }}>{r.trials} trials · {r.exposures} seen · {r.clickers} clicked</div>
+                    <div style={{ width: 56, textAlign: 'right' }}>
+                      {r.is_baseline ? <span style={{ fontSize: 10, color: MUTE }}>control</span> : <AlleleToggle slot={r.slot} allele={r.allele} enabled={r.enabled} />}
+                    </div>
                   </div>
                 )
               })}
@@ -121,7 +151,8 @@ export default async function EvolvePage() {
                   <td style={{ ...td, fontWeight: 800 }}>{p.trials}</td>
                   <td style={{ ...td, color: rate > baseRate ? GREEN : INK, fontWeight: 700 }}>{p.exposures ? `${(rate * 100).toFixed(1)}%` : '—'}</td>
                   <td style={td}>
-                    <a href={`/result?name=Moshe%20Epstein&score=77&persona=maker&stage=S3_practitioner&id=03a3224c-d974-4ff9-971b-65481171f384&g=${p.id}#offer`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: '#3B5C8F' }}>see it ↗</a>
+                    <a href={`/result?name=Moshe%20Epstein&score=77&persona=maker&stage=S3_practitioner&id=03a3224c-d974-4ff9-971b-65481171f384&g=${p.id}#offer`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: '#3B5C8F', marginRight: 8 }}>see it ↗</a>
+                    {!dead && p.id !== 'baseline' && <RetireControl id={p.id} />}
                   </td>
                 </tr>
               )
@@ -140,10 +171,10 @@ export default async function EvolvePage() {
         <div style={{ border: `2px solid ${INK}`, background: PAPER }}>
           {log.map((l, i) => (
             <div key={i} style={{ padding: '9px 12px', borderBottom: i < log.length - 1 ? `1px solid ${HAIR}` : undefined, fontSize: 12.5 }}>
-              <strong>Generation {l.generation}</strong>
+              <strong>{l.action === 'generation' ? `Generation ${l.generation}` : l.action}</strong>
               <span style={{ color: MUTE }}> · {new Date(l.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
               <div style={{ fontSize: 11.5, color: MUTE, marginTop: 2 }}>
-                born <strong style={{ color: GREEN }}>{String((l.detail as { born?: string }).born ?? '')}</strong>
+                {l.action === 'generation' ? <>born <strong style={{ color: GREEN }}>{String((l.detail as { born?: string }).born ?? '')}</strong></> : JSON.stringify(l.detail).slice(0, 160)}
                 {(l.detail as { retired?: string }).retired ? <> · retired <strong style={{ color: RED }}>{String((l.detail as { retired?: string }).retired)}</strong></> : null}
                 {' · '}{JSON.stringify((l.detail as { genome?: unknown }).genome ?? {})}
               </div>

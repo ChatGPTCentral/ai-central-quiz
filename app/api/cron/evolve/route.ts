@@ -33,9 +33,17 @@ export async function GET(req: NextRequest) {
   if (!authed) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const c = db()
+
+  // MASTER SWITCH (supervision, 2026-08-19). One row, flipped live, stops the
+  // whole thing: no reweighting, no breeding. The population keeps serving
+  // whatever weights it already has, so pausing is safe rather than a cliff.
+  const { data: cfgRow } = await c.from('app_settings').select('value').eq('key', 'evolution').maybeSingle()
+  const cfg = (cfgRow?.value ?? {}) as { enabled?: boolean; auto_approve?: boolean }
+  if (cfg.enabled === false) return NextResponse.json({ ok: true, paused: true })
+
   const [{ data: alleleData }, { data: popData }, { data: lastGen }] = await Promise.all([
     c.from('allele_fitness').select('*'),
-    c.from('individual_fitness').select('*').is('retired_at', null),
+    c.from('individual_fitness').select('*').is('retired_at', null).not('approved_at', 'is', null),
     c.from('evolution_log').select('at, generation').eq('action', 'generation').order('at', { ascending: false }).limit(1).maybeSingle(),
   ])
   const alleles = (alleleData ?? []) as AlleleRow[]
@@ -109,8 +117,14 @@ export async function GET(req: NextRequest) {
   let child = breed(alleles, post), tries = 0
   while (existing.has(genomeKey(child)) && tries++ < 20) child = breed(alleles, post, 0.4)
   const childId = `g${generation}-${Math.random().toString(36).slice(2, 6)}`
+  // BORN PENDING. Zero weight, previewable, serving nobody until a human
+  // approves it on /admin/evolve — unless the owner has explicitly switched
+  // auto_approve on, which is his call to make and his to revoke.
+  const auto = cfg.auto_approve === true
   await c.from('page_individuals').insert({
-    id: childId, genome: child, generation, weight: 0.1,
+    id: childId, genome: child, generation, weight: 0,
+    approved_at: auto ? new Date().toISOString() : null,
+    approved_by: auto ? 'auto_approve' : null,
     parents: pop.filter(p => p.id !== retired?.id).slice(0, 2).map(p => p.id),
     note: 'bred from the pooled allele posteriors',
   })
@@ -119,5 +133,8 @@ export async function GET(req: NextRequest) {
     detail: { born: childId, genome: child, retired: retired?.id ?? null, pool: { exposures: totalExp, trials: totalTrials } },
   })
 
-  return NextResponse.json({ ok: true, generation, born: childId, genome: child, retired: retired?.id ?? null })
+  return NextResponse.json({
+    ok: true, generation, born: childId, genome: child, retired: retired?.id ?? null,
+    serving: cfg.auto_approve === true ? 'auto-approved' : 'PENDING YOUR APPROVAL — serving no traffic',
+  })
 }
