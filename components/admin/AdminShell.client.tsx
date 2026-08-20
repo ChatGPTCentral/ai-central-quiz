@@ -50,6 +50,7 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
       { href: '/admin/cohorts', label: 'Cohorts', icon: 'stats' },
       { href: '/admin/revenue', label: 'Revenue', icon: 'stats' },
       { href: '/admin/revenue/unpaid', label: 'Unpaid & overdue', icon: 'stats' },
+      { href: '/admin/revenue/outreach', label: 'Revenue recovery', icon: 'stats' },
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
       { href: '/admin/ads', label: 'Ads', icon: 'ads' },
       { href: '/admin/pass-recovery', label: 'Pass Recovery', icon: 'stats' },

@@ -8,6 +8,7 @@
 
 import RecoveryQueue, { type RecoveryRow } from '@/components/admin/RecoveryQueue.client'
 import { loadRevenueData, buildStateMachinery, inNoCardEra } from '@/lib/revenue-shared'
+import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -23,7 +24,21 @@ const navChip: React.CSSProperties = {
 export default async function TrialRecoveryPage() {
   let d: Awaited<ReturnType<typeof loadRevenueData>> | null = null
   let err: string | null = null
-  try { d = await loadRevenueData() } catch (e) { err = e instanceof Error ? e.message : String(e) }
+  let graduated = new Set<string>()
+  try {
+    d = await loadRevenueData()
+    // GRADUATED people are owned by a human email sequence now, not this
+    // auto-billing queue — owner, 2026-08-20: "removing them from the billing
+    // retry ledger and instead moving them into this other ledger." See
+    // /admin/revenue/outreach for where they went.
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+    if (url && key) {
+      const gc = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+      const { data: g } = await gc.from('revenue_recovery_members').select('person_key')
+      graduated = new Set((g ?? []).map(r => (r as { person_key: string }).person_key))
+    }
+  } catch (e) { err = e instanceof Error ? e.message : String(e) }
   if (err || !d) {
     return <div style={{ padding: 26 }}><h1 style={{ fontWeight: 800, fontSize: 24 }}>Trial recovery</h1><p style={{ color: '#B00020' }}>{err}</p></div>
   }
@@ -55,6 +70,7 @@ export default async function TrialRecoveryPage() {
   const queueByPerson = new Map<string, RecoveryRow>()
   for (const r of d.ledger) {
     if (r.country === 'India' || inNoCardEra(r)) continue
+    if (graduated.has(r.person_key.toLowerCase())) continue
     if (effState(r) !== 'lapsed' || !r.customer_id || (r.trial_cents !== 399 && r.trial_cents !== 499)) continue
     const pk = r.person_key.toLowerCase()
     const ex = queueByPerson.get(pk)
@@ -93,6 +109,7 @@ export default async function TrialRecoveryPage() {
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
         <a href="/admin/revenue/unpaid" style={navChip}>Unpaid &amp; overdue →</a>
+        <a href="/admin/revenue/outreach" style={navChip}>Revenue recovery (human sequences) →</a>
         <a href="/admin/revenue/trials" style={navChip}>Every trial &amp; status →</a>
       </div>
 
