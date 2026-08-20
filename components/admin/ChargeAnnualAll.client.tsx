@@ -27,8 +27,11 @@
 // (no reusable payment method) is reported as such, not silently emailed —
 // sending an invoice to dozens of people unattended is a different decision
 // than this one, and stays a deliberate per-person action.
+//
+// STOPPABLE MID-RUN, same as the invoice-side twin. Rows already subscribed
+// stay subscribed; nothing after a Stop click fires.
 
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 
 const GREEN = '#2E7D32'
 const RED = '#B00020'
@@ -59,8 +62,9 @@ const planCentsFor = (trialCents: number): number | null =>
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`
 
 export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] }) {
-  const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'stopping' | 'done'>('idle')
   const [results, setResults] = useState<ResultRow[]>([])
+  const stopRequested = useRef(false)
 
   if (trials.length === 0) return null
 
@@ -73,9 +77,11 @@ export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] })
   }
 
   const run = async () => {
+    stopRequested.current = false
     setPhase('running')
     setResults(trials.map(t => ({ ...t, outcome: 'pending', message: '' })))
     for (let i = 0; i < trials.length; i++) {
+      if (stopRequested.current) break
       const t = trials[i]
       setResults(prev => prev.map((r, idx) => (idx === i ? { ...r, outcome: 'charging' } : r)))
       try {
@@ -100,6 +106,11 @@ export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] })
       await new Promise(r => setTimeout(r, 200))
     }
     setPhase('done')
+  }
+
+  const requestStop = () => {
+    stopRequested.current = true
+    setPhase('stopping')
   }
 
   if (phase === 'idle') {
@@ -158,12 +169,25 @@ export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] })
     refused: 'refused', failed: 'failed',
   }
 
+  const stoppedEarly = phase === 'done' && counts.left > 0
   return (
     <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '10px 12px', maxWidth: 520 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
-        {phase === 'running'
-          ? `Retrying… ${results.length - counts.left} of ${results.length}`
-          : `Done — ${counts.created} subscribed, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed`}
+      <div className="flex items-center justify-between" style={{ gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
+          {phase === 'running' && `Retrying… ${results.length - counts.left} of ${results.length}`}
+          {phase === 'stopping' && `Stopping after the current one… ${results.length - counts.left} of ${results.length}`}
+          {phase === 'done' && (stoppedEarly
+            ? `Stopped — ${counts.created} subscribed, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed, ${counts.left} never started`
+            : `Done — ${counts.created} subscribed, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed`)}
+        </div>
+        {phase === 'running' && (
+          <button
+            onClick={requestStop}
+            style={{ fontSize: 10, fontWeight: 800, border: `2px solid ${RED}`, background: '#FFFFFF', color: RED, padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            ■ Stop
+          </button>
+        )}
       </div>
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflowY: 'auto' }}>
         {results.map(r => (

@@ -27,8 +27,16 @@
 // slower, but it is gentle on Stripe's rate limits and it is what makes a
 // live, honest progress list possible — the owner sees each outcome as it
 // lands rather than staring at a spinner for everyone at once.
+//
+// STOPPABLE MID-RUN. Owner, 2026-08-20: "sei sicuro che posso premere retry
+// 561 senza fare danni?" A fair question a running list with no brake did not
+// deserve a confident yes to. A Stop button appears the moment it starts;
+// rows already charged stay charged (there is no undo for money already
+// moved, and there should not be), but nothing AFTER the click fires. What is
+// stopped is always visible — the list itself is the record of exactly where
+// it got to.
 
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 
 const GREEN = '#2E7D32'
 const RED = '#B00020'
@@ -69,8 +77,9 @@ const money = (cents: number, cur: string | null) => {
 }
 
 export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoice[] }) {
-  const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done'>('idle')
+  const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'stopping' | 'done'>('idle')
   const [results, setResults] = useState<ResultRow[]>([])
+  const stopRequested = useRef(false)
 
   // The full list, always — see the header note on why there is no slice here.
   const batch = invoices
@@ -86,9 +95,11 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
   if (invoices.length === 0) return null
 
   const run = async () => {
+    stopRequested.current = false
     setPhase('running')
     setResults(batch.map(inv => ({ ...inv, outcome: 'pending', message: '' })))
     for (let i = 0; i < batch.length; i++) {
+      if (stopRequested.current) break
       const inv = batch[i]
       if (inv.blockedReason) {
         // Known-blocked, verified from a reliable field, not a guess: skip
@@ -119,6 +130,11 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
       await new Promise(r => setTimeout(r, 200))
     }
     setPhase('done')
+  }
+
+  const requestStop = () => {
+    stopRequested.current = true
+    setPhase('stopping')
   }
 
   if (phase === 'idle') {
@@ -178,12 +194,25 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
     refused: 'refused', failed: 'failed', skipped: 'skipped',
   }
 
+  const stoppedEarly = phase === 'done' && counts.left > 0
   return (
     <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '10px 12px', maxWidth: 520 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
-        {phase === 'running'
-          ? `Retrying… ${results.length - counts.left} of ${results.length}`
-          : `Done — ${counts.paid} paid, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed, ${counts.skipped} skipped (already known blocked)`}
+      <div className="flex items-center justify-between" style={{ gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
+          {phase === 'running' && `Retrying… ${results.length - counts.left} of ${results.length}`}
+          {phase === 'stopping' && `Stopping after the current one… ${results.length - counts.left} of ${results.length}`}
+          {phase === 'done' && (stoppedEarly
+            ? `Stopped — ${counts.paid} paid, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed, ${counts.skipped} skipped, ${counts.left} never started`
+            : `Done — ${counts.paid} paid, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed, ${counts.skipped} skipped (already known blocked)`)}
+        </div>
+        {phase === 'running' && (
+          <button
+            onClick={requestStop}
+            style={{ fontSize: 10, fontWeight: 800, border: `2px solid ${RED}`, background: '#FFFFFF', color: RED, padding: '3px 9px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            ■ Stop
+          </button>
+        )}
       </div>
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflowY: 'auto' }}>
         {results.map(r => (
