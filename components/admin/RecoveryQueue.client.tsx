@@ -8,6 +8,15 @@
 // list self-organizes: never-attempted people first (oldest debt first),
 // then the longest-since-last-try. Working the queue top to bottom never
 // hammers the same person twice while an untouched one waits.
+//
+// WHAT "ATTEMPTED" MEANS HERE, and it is narrower than it sounds. admin_actions
+// records OUR retry button and nothing else. Stripe's own subscription dunning
+// — the automatic charge when the annual falls due, plus Smart Retries after
+// it — never touches that table. So a row saying we never clicked is NOT a row
+// saying nobody ever tried: on 2026-08-20 the owner checked people this queue
+// called "never attempted" and found failed charges on them in Stripe, and he
+// was right. The labels now say "we never clicked", and what Stripe actually
+// attempted lives on /admin/revenue/unpaid, mirrored from its own endpoints.
 
 import React from 'react'
 import ChargeAnnual from './ChargeAnnual.client'
@@ -54,7 +63,7 @@ export default function RecoveryQueue({ rows, recovered, invoiced }: { rows: Rec
     <div>
       <div className="flex flex-wrap" style={{ gap: 8, marginTop: 12 }}>
         <Stat label="In the queue" value={String(rows.length)} />
-        <Stat label="Never attempted" value={String(never)} />
+        <Stat label="We never clicked retry" value={String(never)} />
         <Stat label="Awaiting retry" value={String(rows.length - never)} />
         <Stat label="Subscriptions won" value={String(recovered)} />
         <Stat label="Invoices out" value={String(invoiced)} />
@@ -100,7 +109,9 @@ export default function RecoveryQueue({ rows, recovered, invoiced }: { rows: Rec
                       </span>
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11, color: GREEN, fontWeight: 700 }}>fresh — never tried</span>
+                    <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }} title="Our admin retry button has never run on this person. Stripe's own subscription dunning is a SEPARATE thing and is not counted here — see Unpaid &amp; overdue for what Stripe actually attempted.">
+                      we never clicked
+                    </span>
                   )}
                 </td>
                 <td style={{ padding: '8px 10px' }}>

@@ -92,6 +92,7 @@ export default async function TrialRecoveryPage() {
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
+        <a href="/admin/revenue/unpaid" style={navChip}>Unpaid &amp; overdue →</a>
         <a href="/admin/revenue/trials" style={navChip}>Every trial &amp; status →</a>
       </div>
 
