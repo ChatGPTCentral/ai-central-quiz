@@ -16,9 +16,12 @@
 // is right for "am I sure THIS click was intentional", not for "have I
 // actually read how many people this touches".
 //
-// CAPPED, not just confirmed. A future queue of 400 invoices must not turn one
-// click into 400 charges: MAX_BATCH bounds a single run, and the button says
-// so plainly when the queue is bigger than that.
+// NO SUBSET. Owner, 2026-08-20: "'retry all' should retry all for real not a
+// subset." The first version silently capped a run at 50 and kept the rest
+// for "next time" — safe, but not what was asked. It now runs every invoice
+// it is given, in full. The `invoices` prop is the boundary that matters: the
+// caller (app/admin/revenue/unpaid/page.tsx) passes exactly the overdue,
+// actionable set, not a smaller slice picked in here.
 //
 // SEQUENTIAL, not parallel. Awaiting one call before starting the next is
 // slower, but it is gentle on Stripe's rate limits and it is what makes a
@@ -32,8 +35,6 @@ const RED = '#B00020'
 const INK = '#1A1A1A'
 const MUTE = '#6B6B6B'
 const AMBER = '#B26A00'
-
-const MAX_BATCH = 50
 
 export interface RetryAllInvoice {
   invoiceId: string
@@ -63,7 +64,8 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
   const [phase, setPhase] = useState<'idle' | 'confirm' | 'running' | 'done'>('idle')
   const [results, setResults] = useState<ResultRow[]>([])
 
-  const batch = invoices.slice(0, MAX_BATCH)
+  // The full list, always — see the header note on why there is no slice here.
+  const batch = invoices
   const totalByCurrency = new Map<string, number>()
   for (const inv of batch) {
     const k = (inv.currency || 'usd').toUpperCase()
@@ -108,7 +110,7 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
         onClick={() => setPhase('confirm')}
         style={{ fontSize: 11, fontWeight: 800, border: `2px solid ${INK}`, background: '#FFFDFA', padding: '5px 11px', cursor: 'pointer' }}
       >
-        Retry all {batch.length}{invoices.length > MAX_BATCH ? ` of ${invoices.length}` : ''}
+        Retry all {batch.length}
       </button>
     )
   }
@@ -120,9 +122,8 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
           This attempts to charge {batch.length} card{batch.length === 1 ? '' : 's'} now, totaling {totalLabel}.
         </strong>
         <span style={{ fontSize: 11.5, color: INK, lineHeight: 1.5 }}>
-          Each one is checked live before it charges — nobody who has paid since, and nobody without a real card
-          attached, will be touched. This cannot be undone once it runs.
-          {invoices.length > MAX_BATCH && ` Capped at ${MAX_BATCH} per run; ${invoices.length - MAX_BATCH} more are queued for the next one.`}
+          Every one of them, in this one run. Each is checked live before it charges — nobody who has paid since, and
+          nobody without a real card attached, will be touched. This cannot be undone once it runs.
         </span>
         <span style={{ display: 'flex', gap: 8 }}>
           <button

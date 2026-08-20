@@ -20,6 +20,7 @@
 
 import React from 'react'
 import ChargeAnnual from './ChargeAnnual.client'
+import ChargeAnnualAll from './ChargeAnnualAll.client'
 
 export interface RecoveryRow {
   personKey: string
@@ -61,12 +62,24 @@ export default function RecoveryQueue({ rows, recovered, invoiced }: { rows: Rec
   const never = rows.filter(r => !r.lastAt).length
   return (
     <div>
-      <div className="flex flex-wrap" style={{ gap: 8, marginTop: 12 }}>
-        <Stat label="In the queue" value={String(rows.length)} />
-        <Stat label="We never clicked retry" value={String(never)} />
-        <Stat label="Awaiting retry" value={String(rows.length - never)} />
-        <Stat label="Subscriptions won" value={String(recovered)} />
-        <Stat label="Invoices out" value={String(invoiced)} />
+      <div className="flex flex-wrap items-center justify-between" style={{ gap: 10, marginTop: 12 }}>
+        <div className="flex flex-wrap" style={{ gap: 8 }}>
+          <Stat label="In the queue" value={String(rows.length)} />
+          <Stat label="We never clicked retry" value={String(never)} />
+          <Stat label="Awaiting retry" value={String(rows.length - never)} />
+          <Stat label="Subscriptions won" value={String(recovered)} />
+          <Stat label="Invoices out" value={String(invoiced)} />
+        </div>
+        {/* Owner, 2026-08-20: "for all overdue trials... we gotta create
+            subscriptions" — the one real difference from the invoice version.
+            Same bulk pattern, same endpoint the single-row button already
+            uses, no cap: every row above, in one confirmed run. */}
+        <ChargeAnnualAll
+          trials={rows.map(r => ({
+            customerId: r.customerId, personKey: r.personKey,
+            chargeId: r.chargeId, trialCents: r.trialCents,
+          }))}
+        />
       </div>
 
       <div style={{ overflowX: 'auto', marginTop: 12, border: `2px solid ${INK}` }}>

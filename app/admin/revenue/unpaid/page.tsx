@@ -69,6 +69,7 @@ interface QueueRow {
   customer_id: string | null
   amount_remaining_cents: number
   currency: string | null
+  is_overdue: boolean
   days_overdue: number
   collection_method: string | null
   pay_url: string | null
@@ -136,6 +137,16 @@ export default async function UnpaidInvoicesPage() {
   const overdue = rows.filter(r => r.is_overdue)
   const notYetDue = rows.filter(r => !r.is_overdue)
   const uncollectible = rows.filter(r => r.status === 'uncollectible')
+  // The bulk button and the queue table below it must show the SAME set, or
+  // the button's count and the table's row count silently disagree — which is
+  // exactly the kind of mismatch that reads as broken. invoice_retry_queue
+  // blends overdue with not-yet-due (Stripe is still auto-retrying those on
+  // its own schedule), so this page splits them: not-yet-due invoices stay
+  // individually actionable in the reference table further down, and never
+  // enter the bulk run. Owner, 2026-08-20: "I'd like to have it for all
+  // overdue invoices" — this is that scope, applied to both the button and
+  // the list underneath it.
+  const overdueQueue = queue.filter(q => q.is_overdue)
   // Totals are per CURRENCY. Summing mixed currencies into one figure is the
   // kind of number nobody can verify against a Stripe screen.
   const byCurrency = new Map<string, { n: number; cents: number }>()
@@ -297,29 +308,30 @@ export default async function UnpaidInvoicesPage() {
       <section style={{ marginTop: 30 }}>
         <div className="flex flex-wrap items-start justify-between" style={{ gap: 12 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-            Retry queue <span style={{ color: MUTE, fontWeight: 600 }}>({queue.length})</span>
+            Retry queue <span style={{ color: MUTE, fontWeight: 600 }}>({overdueQueue.length})</span>
           </h2>
           {/* One click for the whole queue instead of one row at a time. Reuses
               the exact same endpoint as the single-row button, so every guard
               it has — live card check, paid-since exclusion, idempotency —
               applies to each invoice here too. Owner request, 2026-08-20. */}
           <InvoiceRetryAll
-            invoices={queue.map(q => ({
+            invoices={overdueQueue.map(q => ({
               invoiceId: q.invoice_id, personKey: q.person_key,
               amountCents: q.amount_remaining_cents, currency: q.currency,
             }))}
           />
         </div>
         <p style={{ fontSize: 12, color: MUTE, marginTop: 5, maxWidth: 880, lineHeight: 1.6 }}>
-          Open invoices with money owed, not yet excluded for a known reason. Untouched first, then whoever we tried
-          longest ago, then oldest debt. Anyone who paid us after the invoice was raised is excluded, so this list can
-          never charge a current customer. Whether a card actually exists is checked LIVE at the click, not guessed
-          from this list — <strong style={{ color: INK }}>Retry</strong> re-runs the card on file when one exists and
-          says plainly when it does not. <strong style={{ color: INK }}>Email</strong> sends the hosted invoice, and
-          they pay with any card: it is the only lever that works on a blocked card type, an expired card, or a bank
-          challenge.
+          Every OVERDUE invoice with money owed, not yet excluded for a known reason. Not-yet-due invoices Stripe is
+          still auto-retrying on its own schedule are not in this list — they stay individually actionable in
+          &quot;Outstanding, not yet due&quot; below. Untouched first, then whoever we tried longest ago, then oldest
+          debt. Anyone who paid us after the invoice was raised is excluded, so this can never charge a current
+          customer. Whether a card actually exists is checked LIVE at the click, not guessed from this list —{' '}
+          <strong style={{ color: INK }}>Retry</strong> re-runs the card on file when one exists and says plainly
+          when it does not. <strong style={{ color: INK }}>Retry all</strong> runs every row above, in full, with one
+          confirmation stating the exact count and total first.
         </p>
-        {queue.length === 0 ? (
+        {overdueQueue.length === 0 ? (
           <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing to retry.</p>
         ) : (
           <div style={{ overflowX: 'auto', marginTop: 10 }}>
@@ -336,7 +348,7 @@ export default async function UnpaidInvoicesPage() {
                 </tr>
               </thead>
               <tbody>
-                {queue.map(q => (
+                {overdueQueue.map(q => (
                   <tr key={q.invoice_id}>
                     <td style={{ ...td, fontWeight: 700, color: q.days_overdue > 180 ? MUTE : q.days_overdue > 90 ? AMBER : RED }}>
                       {q.days_overdue}
