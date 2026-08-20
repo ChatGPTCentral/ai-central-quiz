@@ -41,9 +41,17 @@ export interface RetryAllInvoice {
   personKey: string | null
   amountCents: number
   currency: string | null
+  /** Non-null = known blocked (uncollectible, paid since, etc). Skipped
+   *  WITHOUT a network call — the reason is read from a reliable enum field
+   *  or our own charge history, not a guessed one, so it is safe to trust
+   *  without asking Stripe again. Still listed in the results, never hidden:
+   *  owner, 2026-08-20, "can't the retry button go on everybody, why just a
+   *  subset" — it does go on everybody now; this is how it stays honest
+   *  about the ones it already knows cannot move. */
+  blockedReason?: string | null
 }
 
-type Outcome = 'pending' | 'charging' | 'paid' | 'no_card' | 'refused' | 'failed'
+type Outcome = 'pending' | 'charging' | 'paid' | 'no_card' | 'refused' | 'failed' | 'skipped'
 
 interface ResultRow {
   invoiceId: string
@@ -66,8 +74,10 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
 
   // The full list, always — see the header note on why there is no slice here.
   const batch = invoices
+  const toCall = batch.filter(inv => !inv.blockedReason)
+  const toSkip = batch.filter(inv => inv.blockedReason)
   const totalByCurrency = new Map<string, number>()
-  for (const inv of batch) {
+  for (const inv of toCall) {
     const k = (inv.currency || 'usd').toUpperCase()
     totalByCurrency.set(k, (totalByCurrency.get(k) ?? 0) + inv.amountCents)
   }
@@ -80,6 +90,13 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
     setResults(batch.map(inv => ({ ...inv, outcome: 'pending', message: '' })))
     for (let i = 0; i < batch.length; i++) {
       const inv = batch[i]
+      if (inv.blockedReason) {
+        // Known-blocked, verified from a reliable field, not a guess: skip
+        // without spending a Stripe call, but still show it, in place, so
+        // nothing here is invisible.
+        setResults(prev => prev.map((r, idx) => (idx === i ? { ...r, outcome: 'skipped', message: inv.blockedReason ?? '' } : r)))
+        continue
+      }
       setResults(prev => prev.map((r, idx) => (idx === i ? { ...r, outcome: 'charging' } : r)))
       try {
         const res = await fetch('/api/admin/invoice-retry', {
@@ -119,18 +136,19 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
     return (
       <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 8, border: `2px solid ${RED}`, background: '#FFF4F4', padding: '10px 12px', maxWidth: 460 }}>
         <strong style={{ fontSize: 12.5, color: RED }}>
-          This attempts to charge {batch.length} card{batch.length === 1 ? '' : 's'} now, totaling {totalLabel}.
+          This runs every one of the {batch.length} rows above. {toCall.length} get a real, live charge attempt
+          totaling {totalLabel}{toSkip.length > 0 ? `; ${toSkip.length} are already known blocked and are skipped without spending a Stripe call, but still listed` : ''}.
         </strong>
         <span style={{ fontSize: 11.5, color: INK, lineHeight: 1.5 }}>
-          Every one of them, in this one run. Each is checked live before it charges — nobody who has paid since, and
-          nobody without a real card attached, will be touched. This cannot be undone once it runs.
+          Each real attempt is checked live before it charges — nobody who has paid since, and nobody without a real
+          card attached, will be touched. This cannot be undone once it runs.
         </span>
         <span style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => void run()}
             style={{ fontSize: 11, fontWeight: 800, border: `2px solid ${RED}`, background: '#FFFFFF', color: RED, padding: '5px 11px', cursor: 'pointer' }}
           >
-            Yes, charge all {batch.length} now
+            Yes, run all {batch.length} now
           </button>
           <button
             onClick={() => setPhase('idle')}
@@ -149,14 +167,15 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
     no_card: results.filter(r => r.outcome === 'no_card').length,
     refused: results.filter(r => r.outcome === 'refused').length,
     failed: results.filter(r => r.outcome === 'failed').length,
+    skipped: results.filter(r => r.outcome === 'skipped').length,
     left: results.filter(r => r.outcome === 'pending' || r.outcome === 'charging').length,
   }
   const outcomeColor: Record<Outcome, string> = {
-    pending: MUTE, charging: MUTE, paid: GREEN, no_card: AMBER, refused: MUTE, failed: RED,
+    pending: MUTE, charging: MUTE, paid: GREEN, no_card: AMBER, refused: MUTE, failed: RED, skipped: MUTE,
   }
   const outcomeLabel: Record<Outcome, string> = {
     pending: 'waiting', charging: 'charging…', paid: 'paid', no_card: 'no card — try email',
-    refused: 'refused', failed: 'failed',
+    refused: 'refused', failed: 'failed', skipped: 'skipped',
   }
 
   return (
@@ -164,7 +183,7 @@ export default function InvoiceRetryAll({ invoices }: { invoices: RetryAllInvoic
       <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
         {phase === 'running'
           ? `Retrying… ${results.length - counts.left} of ${results.length}`
-          : `Done — ${counts.paid} paid, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed`}
+          : `Done — ${counts.paid} paid, ${counts.no_card} no card, ${counts.refused} refused, ${counts.failed} failed, ${counts.skipped} skipped (already known blocked)`}
       </div>
       <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflowY: 'auto' }}>
         {results.map(r => (
