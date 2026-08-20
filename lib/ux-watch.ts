@@ -107,6 +107,50 @@ export const UX_QUERIES: {
     }),
   },
   {
+    key: 'dead_clicks_unnamed',
+    claim: 'the biggest group of dead clicks has no name',
+    // dead_clicks_sell groups by $el_text alone, so anything without text — a
+    // div, an svg, an image, a decorative wrapper — collapses into "(no text)"
+    // and cannot be acted on. On 2026-08-20 that was 17 of 27 dead clicks on
+    // the landing page: a real, sustained regression (it stepped from ~4 per
+    // window to ~19 during 19 Aug) that nobody could fix, because the instrument
+    // reported the symptom without the element.
+    //
+    // This is a SEPARATE check on purpose rather than an edit to that one. Its
+    // HogQL cannot be verified from a session without PostHog access, and a
+    // mistake here must degrade to CHECK FAILED on a diagnostic instead of
+    // taking down the alarm that actually watches the funnel.
+    //
+    // any() rather than adding chain to GROUP BY: grouping by the chain would
+    // split one element across many rows, and since the value sums only the top
+    // groups it would silently undercount — the exact flaw dead_clicks_sell was
+    // recalibrated to remove on 2026-08-13.
+    threshold: 10,
+    severity: 'warn',
+    source: 'posthog',
+    sql: `SELECT splitByChar('?', toString(properties.$current_url))[1] AS url,
+                 any(substring(toString(elements_chain), 1, 200)) AS chain,
+                 count() AS n
+          FROM events
+          WHERE event = '$dead_click' AND timestamp > now() - INTERVAL 24 HOUR
+            AND coalesce(nullIf(toString(properties.$el_text), ''), '') = ''
+            AND toString(properties.$current_url) NOT LIKE '%/admin%'
+            AND toString(properties.$current_url) NOT LIKE '%/quiz-v2%'
+          GROUP BY url ORDER BY n DESC LIMIT 4`,
+    read: rows => ({
+      value: rows.reduce((a, r) => a + Number(r.n || 0), 0),
+      detail: rows.length
+        ? rows.map(r => {
+            const path = String(r.url || '').replace(/^https?:\/\/[^/]+/, '').split('?')[0] || '/'
+            // The chain is PostHog's raw element path. Trimmed to the first two
+            // hops, which is where the tag and its classes are.
+            const chain = String(r.chain || '').split(';').slice(0, 2).join(' < ').replace(/attr__/g, '').slice(0, 150)
+            return `${r.n}× on ${path} → ${chain || 'chain unavailable'}`
+          }).join(' | ')
+        : 'every dead click has a name',
+    }),
+  },
+  {
     key: 'quiz_tap_noise',
     claim: 'quiz tap noise spiked far past its engagement baseline',
     // Dead clicks on /quiz-v2 are NOT friction. The quiz auto-advances, people
