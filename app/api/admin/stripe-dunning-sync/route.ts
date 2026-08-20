@@ -284,8 +284,14 @@ export async function GET(req: NextRequest) {
 
   const truncated = chargePages >= CHARGE_PAGE_CAP || invoicePages >= INVOICE_PAGE_CAP
 
+  // NON-2xx WHEN A WALK FAILED. This returned 200 with ok:false, which meant a
+  // sync that fetched nothing and wrote nothing looked identical to a healthy
+  // one in the Vercel logs — the precise shape of failure this whole morning
+  // was spent removing from other places. Status codes are what monitoring
+  // reads; a body nobody parses is not a signal.
+  const failed = !!errors.charges || !!errors.invoices
   return NextResponse.json({
-    ok: !errors.charges && !errors.invoices,
+    ok: !failed,
     synced_at: syncStamp,
     failures: { found: failures.length, written: failuresWritten, skipped_succeeded: succeededSeen, pages: chargePages },
     invoices: { found: invoices.length, written: invoicesWritten, pages: invoicePages },
@@ -295,5 +301,5 @@ export async function GET(req: NextRequest) {
     errors,
     truncated,
     ...(truncated ? { warning: 'PAGE CAP HIT — this mirror is INCOMPLETE. Raise the cap.' } : {}),
-  })
+  }, { status: failed ? 500 : 200 })
 }

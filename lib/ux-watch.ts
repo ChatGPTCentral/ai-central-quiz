@@ -399,6 +399,37 @@ export const UX_QUERIES: {
     },
   },
   {
+    key: 'dunning_mirror_stale',
+    claim: 'the failed-payment mirror has stopped refreshing',
+    // Born 2026-08-20 with the mirror itself. It syncs hourly at :35 and takes
+    // several minutes, so anything under two hours is normal operation. Past
+    // three hours something stopped, and a payments mirror that silently
+    // freezes is worse than no mirror: /admin/revenue/unpaid keeps rendering
+    // confident numbers from whenever it last worked. The same failure mode
+    // that froze a Supabase snapshot for 14 hours on 2026-08-08 and let a
+    // dead source_died check report UNKNOWN for 20 hours yesterday.
+    threshold: 3,
+    severity: 'warn',
+    source: 'supabase',
+    sql: `select round(extract(epoch from (now() - max(synced_at))) / 3600.0, 2) as hours_stale,
+                 count(*) as rows_mirrored
+          from stripe_invoices`,
+    read: rows => {
+      const r = (rows[0] || {}) as { hours_stale: number | null; rows_mirrored: number }
+      const n = Number(r.rows_mirrored || 0)
+      if (n === 0) {
+        return { value: 99, detail: 'the invoice mirror is EMPTY — the sync has never completed. Run /api/admin/stripe-dunning-sync.' }
+      }
+      const h = Number(r.hours_stale ?? 99)
+      return {
+        value: h,
+        detail: h <= 3
+          ? `refreshed ${h.toFixed(1)}h ago, ${n} invoices mirrored`
+          : `LAST REFRESH ${h.toFixed(1)} HOURS AGO. /admin/revenue/unpaid is serving stale money. Check the :35 cron.`,
+      }
+    },
+  },
+  {
     key: 'source_died',
     claim: 'a traffic source that always delivers has gone silent',
     // Born 2026-08-19, from the worst kind of failure: nothing on our side
