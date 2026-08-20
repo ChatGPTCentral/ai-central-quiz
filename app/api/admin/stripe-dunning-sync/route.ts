@@ -131,12 +131,22 @@ function readRef(obj: unknown, key: string): string | null {
   return null
 }
 
-/** Is there a payment method this invoice could actually be charged against?
+/** Is there a DEFAULT payment method set, by the field names Stripe has
+ *  historically used: the invoice's own default, then the customer's
+ *  invoice_settings default, then the legacy default_source.
  *
- *  Checked in the order Stripe itself resolves them: the invoice's own default,
- *  then the customer's invoice_settings default, then the customer's legacy
- *  default_source. Any one of them is enough. None of them means only the
- *  hosted pay link can ever collect this money. */
+ *  PROVEN UNRELIABLE, 2026-08-20 — kept only as a free, best-effort hint, NEVER
+ *  as a gate. Ton Kuijlen has a Mastercard attached and nine Stripe retry
+ *  attempts on his invoice (Smart Retries never fires without a card to try),
+ *  yet this returned false for him: the account's pinned API version does not
+ *  populate these fields the way expected, the same class of bug that moved
+ *  amount_refunded off the Charge object. A false negative here once told the
+ *  owner a real customer had "no card on file".
+ *
+ *  The AUTHORITATIVE check lives in app/api/admin/invoice-retry/route.ts,
+ *  which calls stripe.paymentMethods.list() live, at the moment of the click —
+ *  a dedicated endpoint whose shape cannot silently move the way an object
+ *  field can. Do not resurrect this function to hide or show a button. */
 function hasChargeableMethod(inv: Stripe.Invoice): boolean {
   if (readRef(inv, 'default_payment_method')) return true
   if (readRef(inv, 'default_source')) return true

@@ -224,7 +224,6 @@ export default async function UnpaidInvoicesPage() {
                       personKey={r.email}
                       amountCents={r.amount_remaining_cents}
                       currency={r.currency}
-                      hasPaymentMethod={r.has_payment_method}
                       blockedReason={r.blocked_reason}
                     />
                     {r.hosted_invoice_url && (
@@ -284,7 +283,6 @@ export default async function UnpaidInvoicesPage() {
       <p style={{ fontSize: 11.5, color: MUTE, marginTop: 12 }}>
         {overdue.filter(r => !r.blocked_reason).length} of {overdue.length} overdue invoices can be actioned
         {' · '}{overdue.filter(r => r.paid_since).length} excluded because the person paid us since
-        {' · '}{overdue.filter(r => !r.blocked_reason && r.has_payment_method === false).length} have no card on file, so only the emailed invoice can collect
         {' · '}{neverAttempted} Stripe never attempted at all
         {' · '}{stillRetrying} still inside Stripe&apos;s retry schedule
         {' · '}{uncollectible.length} written off as uncollectible
@@ -363,7 +361,6 @@ export default async function UnpaidInvoicesPage() {
                         personKey={q.person_key}
                         amountCents={q.amount_remaining_cents}
                         currency={q.currency}
-                        hasPaymentMethod={q.has_payment_method}
                       />
                     </td>
                   </tr>

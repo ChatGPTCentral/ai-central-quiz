@@ -11,6 +11,18 @@
 // permission error read as silence, and the owner spent an afternoon looking
 // for a problem the message had already named. A money button's outcome is the
 // last thing on this page allowed to be unreadable.
+//
+// RETRY IS ALWAYS OFFERED, corrected 2026-08-20. The first version hid this
+// button whenever the hourly mirror's has_payment_method flag read false, on
+// the theory that offering an action that cannot work is worse than not
+// offering it. The theory was right; the flag was wrong. Ton Kuijlen has a
+// Mastercard on file and the flag said he did not, because it was built by
+// reading Stripe object fields that this account's API version does not
+// populate the way expected — read app/api/admin/invoice-retry/route.ts for
+// the full story. That mirror value is no longer trusted here at all. The
+// endpoint now checks live, via paymentMethods.list, at the moment of the
+// click — which is the only version-proof source of truth — and reports the
+// real answer if it refuses.
 
 import React, { useRef, useState } from 'react'
 
@@ -19,15 +31,14 @@ const RED = '#B00020'
 const INK = '#1A1A1A'
 const MUTE = '#6B6B6B'
 
-export default function InvoiceRetry({ invoiceId, personKey, amountCents, currency, hasPaymentMethod, blockedReason }: {
+export default function InvoiceRetry({ invoiceId, personKey, amountCents, currency, blockedReason }: {
   invoiceId: string
   personKey: string | null
   amountCents: number
   currency: string | null
-  /** False = no card on file, so invoices.pay() can NEVER succeed. Null = not
-   *  yet synced, so both actions stay available rather than guessing. */
-  hasPaymentMethod?: boolean | null
-  /** Non-null = this row must not be actioned at all, and this says why. */
+  /** Non-null = this row must not be actioned at all, and this says why.
+   *  Computed from real charge history (paid_since, invoice status), never
+   *  from a guessed Stripe field, so it stays trustworthy. */
   blockedReason?: string | null
 }) {
   const [phase, setPhase] = useState<'idle' | 'armed' | 'busy' | 'done' | 'error'>('idle')
@@ -107,22 +118,10 @@ export default function InvoiceRetry({ invoiceId, personKey, amountCents, curren
     )
   }
 
-  // NO CARD, NO RETRY. A PayPal payment leaves no reusable payment method, so
-  // Stripe answers "there is no default_payment_method set on this Customer or
-  // Invoice" — which is what the owner hit on JAGANATH G PATIL, whose only
-  // transaction is a py_ charge. 25 of 157 queue rows are in this position.
-  // Offering an action that cannot succeed reads as a broken product.
-  const canCharge = hasPaymentMethod !== false
   const armed = phase === 'armed'
   return (
     <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-      {!canCharge && (
-        <span title="Their only payment was PayPal or a one-off checkout, so Stripe kept no card to charge. The emailed invoice is the only way to collect this."
-              style={{ fontSize: 10, color: MUTE, fontWeight: 700 }}>
-          no card on file →
-        </span>
-      )}
-      {canCharge && <button
+      <button
         onClick={() => {
           if (!armed) {
             setPhase('armed')
@@ -135,7 +134,7 @@ export default function InvoiceRetry({ invoiceId, personKey, amountCents, curren
         }}
         title={armed
           ? 'Second click charges the card on file, for real.'
-          : `Charges the card on file for ${label}, now. This re-runs the card that already failed, so it only helps when the failure was transient.`}
+          : `Charges the card on file for ${label}, now. Checked live against Stripe at the click, not against the hourly mirror — this will correctly refuse if there truly is no card.`}
         style={{
           fontSize: 10, fontWeight: 800, whiteSpace: 'nowrap', cursor: 'pointer',
           border: `2px solid ${armed ? RED : INK}`,
@@ -145,13 +144,13 @@ export default function InvoiceRetry({ invoiceId, personKey, amountCents, curren
         }}
       >
         {armed ? `Sure? Charge ${label}` : `Retry ${label}`}
-      </button>}
+      </button>
       <button
         onClick={() => void fire('send')}
-        title="Stripe emails the hosted invoice, due in 7 days. They pay with ANY card. We have never sent one of these."
-        style={{ fontSize: canCharge ? 9.5 : 11, border: `${canCharge ? 1 : 2}px solid ${INK}`, background: '#FFFDFA', padding: canCharge ? '2px 6px' : '3px 9px', cursor: 'pointer', fontWeight: canCharge ? 700 : 800 }}
+        title="Stripe emails the hosted invoice, due in 7 days. They pay with ANY card."
+        style={{ fontSize: 9.5, border: `1px solid ${INK}`, background: '#FFFDFA', padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}
       >
-        📧 Email{canCharge ? '' : ` invoice ${label}`}
+        📧 Email
       </button>
     </span>
   )

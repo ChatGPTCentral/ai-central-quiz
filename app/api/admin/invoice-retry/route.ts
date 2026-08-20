@@ -35,6 +35,28 @@
 //   · every attempt lands in admin_actions, refusals included, which is what
 //     orders the queue
 //
+// PAYMENT METHOD LOOKUP, corrected 2026-08-20. The first version decided
+// "no card on file" by reading invoice.default_payment_method,
+// invoice.default_source, customer.invoice_settings.default_payment_method
+// and customer.default_source — four field names, none of them queried
+// directly. Ton Kuijlen has a Mastercard attached and NINE Stripe retry
+// attempts on his invoice (Smart Retries never fires without a card to try),
+// yet every one of those four fields read empty. The evidence inside our own
+// mirror confirms it is a field-name problem, not a missing card: his
+// invoice's `subscription` reference reads null too, on a plainly recurring
+// annual charge — the exact class of bug that made amount_refunded vanish off
+// the Charge object on this same pinned API version.
+//
+// The fix does not chase the renamed field. It asks the one endpoint whose
+// shape Stripe cannot quietly move: paymentMethods.list(), which returns every
+// reusable card actually attached to the customer, default or not. If it
+// finds one, the payment_method is passed to invoices.pay() EXPLICITLY —
+// which is precisely what Stripe's own error message suggests ("specify the
+// Payment Method you wish to use in the payment_method parameter") — so a
+// missing DEFAULT no longer blocks a real, attached card. Only a customer
+// with zero attached cards (JAGANATH G PATIL: one PayPal payment, no
+// reusable method Stripe can hold) is refused.
+//
 // The result reaches the screen at the next :35 dunning sync.
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -134,36 +156,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // NO CARD, NO CHARGE. Stripe answers this with "There is no
-  // default_payment_method set on this Customer or Invoice", which tells an
-  // operator nothing about what to do next. A PayPal payment or a one-off
-  // checkout leaves no reusable method, so invoices.pay() can never succeed —
-  // the emailed invoice is the ONLY way to collect. Caught before the call so
-  // the answer names the remedy (owner, 2026-08-20, on JAGANATH G PATIL).
-  if (action === 'pay') {
-    const invPm = readRef(inv, 'default_payment_method') || readRef(inv, 'default_source')
-    let hasPm = !!invPm
-    if (!hasPm && customerId) {
-      try {
-        const cust = await stripe.customers.retrieve(customerId)
-        if (!('deleted' in cust && cust.deleted)) {
-          const c = cust as Stripe.Customer
-          hasPm = !!(c.invoice_settings?.default_payment_method || c.default_source)
-        }
-      } catch { /* fall through: let Stripe be the judge rather than guess */ }
-    }
-    if (!hasPm) {
-      await audit('invoice_refused', personKey, customerId, {
-        invoice_id: invoiceId, reason: 'no_payment_method',
-      })
-      return NextResponse.json({
-        ok: false,
-        canEmail: true,
-        error: 'No card on file. Their only payment was PayPal or a one-off checkout, so Stripe kept nothing to charge. Use "Email invoice" — they can pay it with any card.',
-      }, { status: 409 })
-    }
-  }
-
   const idempotencyKey = `inv-${action}-${invoiceId}`
 
   // ── SEND: email the hosted invoice so they can pay with a different card.
@@ -195,12 +187,42 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── PAY: charge the payment method on file, now.
+  // ── PAY: find a real card and charge it, now.
+  //
+  // stripe.paymentMethods.list is the authority, not a field read. It cannot
+  // silently rename itself the way an object's field can, and it answers the
+  // actual question — is there a reusable card attached at all — rather than
+  // "is one specifically marked as the default".
+  if (!customerId) {
+    return refuse(invoiceId, personKey, customerId, 'no Stripe customer on this invoice, so there is no card to look up')
+  }
+  let chosenPaymentMethod: string | null = null
   try {
-    const paid = await stripe.invoices.pay(invoiceId, {}, { idempotencyKey })
+    const methods = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 3 })
+    if (methods.data.length === 0) {
+      await audit('invoice_refused', personKey, customerId, { invoice_id: invoiceId, reason: 'no_payment_method' })
+      return NextResponse.json({
+        ok: false,
+        canEmail: true,
+        error: 'No card attached to this customer at all — checked live via paymentMethods.list, not a field guess. Their only payment was likely PayPal or a one-off checkout. Use "Email invoice" instead; they can pay it with any card.',
+      }, { status: 409 })
+    }
+    // Prefer whichever Stripe already calls the default, IF that field
+    // resolves on this account; otherwise the first attached card is a fine
+    // choice — Stripe does not rank the list, and any of them is chargeable.
+    chosenPaymentMethod = readRef(inv, 'default_payment_method') || methods.data[0].id
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    await audit('invoice_failed', personKey, customerId, { invoice_id: invoiceId, action, error: `paymentMethods.list: ${msg}` })
+    return NextResponse.json({ ok: false, error: msg }, { status: 502 })
+  }
+
+  try {
+    const paid = await stripe.invoices.pay(invoiceId, { payment_method: chosenPaymentMethod }, { idempotencyKey })
     const ok = paid.status === 'paid'
     await audit(ok ? 'invoice_paid' : 'invoice_failed', personKey, customerId, {
       invoice_id: invoiceId, amount_cents: owed, currency: inv.currency, status: paid.status,
+      payment_method: chosenPaymentMethod,
     })
     return NextResponse.json({
       ok, action: 'pay', invoice: invoiceId, status: paid.status,
@@ -213,7 +235,7 @@ export async function POST(req: NextRequest) {
     // reason IS the next decision, and a truncated one sent the owner looking
     // for a phantom problem on 2026-08-13.
     const msg = e instanceof Error ? e.message : String(e)
-    await audit('invoice_failed', personKey, customerId, { invoice_id: invoiceId, action, error: msg })
+    await audit('invoice_failed', personKey, customerId, { invoice_id: invoiceId, action, error: msg, payment_method: chosenPaymentMethod })
     return NextResponse.json({ ok: false, error: msg, canEmail: true }, { status: 502 })
   }
 }
