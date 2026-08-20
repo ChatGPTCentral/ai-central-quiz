@@ -18,6 +18,7 @@
 // This page reads, it does not send. No email goes out from here.
 
 import { createClient } from '@supabase/supabase-js'
+import OutreachBoard from './OutreachBoard.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -86,12 +87,6 @@ export default async function RevenueRecoveryOutreachPage() {
     byCohort.set(r.cohort, list)
   }
 
-  const th: React.CSSProperties = {
-    textAlign: 'left', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em',
-    textTransform: 'uppercase', color: MUTE, padding: '8px 10px', borderBottom: `2px solid ${INK}`, whiteSpace: 'nowrap',
-  }
-  const td: React.CSSProperties = { fontSize: 12.5, padding: '8px 10px', borderBottom: '1px solid #E8E2D4', verticalAlign: 'top' }
-
   return (
     <div style={{ padding: '22px 26px 60px', maxWidth: 1240 }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Revenue recovery</h1>
@@ -122,44 +117,8 @@ export default async function RevenueRecoveryOutreachPage() {
                 {sent} sent at least one email · {list.length - sent} never sent yet
                 {paid > 0 && <span style={{ color: GREEN, fontWeight: 700 }}> · {paid} paid since graduating</span>}
               </p>
-              <div style={{ overflowX: 'auto', marginTop: 8 }}>
-                <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
-                  <thead>
-                    <tr>
-                      <th style={th}>Person</th>
-                      <th style={th}>Source</th>
-                      <th style={th}>Reason</th>
-                      <th style={th}>Moved</th>
-                      <th style={th}>Stage reached</th>
-                      <th style={th}>Emails sent</th>
-                      <th style={th}>Last sent</th>
-                      <th style={th}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.map(r => (
-                      <tr key={r.person_key}>
-                        <td style={td}>
-                          <a href={`https://dashboard.stripe.com/search?query=${encodeURIComponent(r.person_key)}`}
-                             target="_blank" rel="noreferrer" style={{ color: INK }}>{r.person_key}</a>
-                        </td>
-                        <td style={{ ...td, fontSize: 11 }}>{r.source}</td>
-                        <td style={{ ...td, fontSize: 11, maxWidth: 260 }}>{r.reason.replace(/_/g, ' ')}</td>
-                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{day(r.moved_at)}</td>
-                        <td style={{ ...td, fontWeight: 700 }}>{r.stage_reached ?? <span style={{ color: MUTE, fontWeight: 400 }}>none</span>}</td>
-                        <td style={{ ...td, fontWeight: 700 }}>{r.emails_sent}</td>
-                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{day(r.last_sent_at)}</td>
-                        <td style={td}>
-                          {r.paid_since_graduating
-                            ? <span style={{ color: GREEN, fontWeight: 700 }}>✓ paid</span>
-                            : r.emails_sent > 0
-                              ? <span style={{ color: AMBER, fontWeight: 700 }}>waiting</span>
-                              : <span style={{ color: MUTE }}>not started</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ marginTop: 10 }}>
+                <OutreachBoard cards={list} />
               </div>
             </section>
           )
