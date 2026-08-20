@@ -161,6 +161,101 @@ function isDisposableDomain(domain: string): boolean {
  */
 /** Compact forms of the multi-word fakes, long enough that a prefix match
  *  cannot collide with a real name. Built once, not per call. */
+// ── Profanity in the name field — hard-block ────────────────────────────────
+//
+// Owner, 2026-08-20: "Fuck Off" reached a member pass. Nothing in this file
+// looked for abuse, so it passed every other test: two pronounceable tokens,
+// no keyboard walk, no placeholder.
+//
+// MATCHED AS WHOLE TOKENS ONLY, never as substrings. This is the Scunthorpe
+// problem and it is not theoretical: Dickinson, Dickens, Hancock, Babcock,
+// Cummings, Weiner, Lipschitz, Shittu, Fuchs and Kuntz are all real surnames
+// carried by real people who would be blocked forever by a substring match.
+// A false positive here costs a lead permanently and silently.
+const PROFANITY_TOKENS = new Set<string>([
+  'fuck', 'fucker', 'fucking', 'fuckoff', 'fuckyou', 'fck', 'fuk',
+  'shit', 'shite', 'bullshit', 'crap',
+  'cunt', 'twat', 'wanker', 'bollocks',
+  'bitch', 'bastard', 'asshole', 'arsehole', 'dickhead', 'jackass',
+  'piss', 'pissoff', 'bugger', 'slut', 'whore',
+  'nigger', 'nigga', 'faggot', 'retard',
+  // Italian, because the owner's audience includes Italy.
+  'cazzo', 'stronzo', 'stronza', 'merda', 'vaffanculo', 'coglione', 'puttana',
+])
+
+/** Not one letter in ANY script: "3 3", "1", "...".
+ *
+ *  Written without \p{L} because this tsconfig targets below ES6 and the regex
+ *  `u` flag is unavailable there. Stripping digits, whitespace and punctuation
+ *  leaves the letters of every alphabet standing, which is the same test by a
+ *  different route. */
+function hasNoLetters(name: string): boolean {
+  const rest = name
+    .replace(/[0-9\s]/g, '')
+    .replace(/[!-\/:-@[-`{-~]/g, '')
+    .replace(/[\u00B7\u2022\u2013\u2014\u2015\u2026\u00AB\u00BB\u201C\u201D\u2018\u2019\u201E]/g, '')
+  return rest.length === 0
+}
+
+/** A token that is the word "test" in any of its usual disguises. "ttest test"
+ *  and "test MKJKJKH" both cleared every other rule. */
+const TEST_TOKENS = new Set<string>(['test', 'tests', 'testing', 'ttest', 'tset', 'prova', 'proval'])
+function hasTestToken(name: string): boolean {
+  return name.split(/[\s.\-_]+/).map(t => t.replace(/[^a-z]/g, '')).filter(Boolean)
+    .some(t => TEST_TOKENS.has(t))
+}
+
+/** Every Latin token in the name lacks a vowel: "gh hj", "Fff Gfg".
+ *
+ *  Applied ONLY when the name is entirely Latin script, because a vowel is a
+ *  Latin-script idea and Arabic, Cyrillic and CJK names carry none. 'y' counts
+ *  as a vowel so Welsh and Slavic names survive, and the rule needs EVERY token
+ *  to fail, which keeps real vowel-less surnames like "Ng" safe as long as they
+ *  sit beside a normal given name ("Yu Ng"). */
+const COMPANY_MARKERS = /\b(sp\.? ?z ?o\.? ?o|s\.?r\.?l|ltd|llc|l\.l\.c|inc|gmbh|b\.?v|n\.?v|a\.?g|oy|ab|as|plc|pty|kft|d\.?o\.?o|s\.?a|s\.?p\.?a)\b/i
+
+function allTokensVowelless(name: string): boolean {
+  if (name.replace(/[\x00-\x7F]/g, '').length > 0) return false
+  // A company name is not gibberish. "N3S Sp. z o.o" is a real PAYING customer
+  // whose Polish legal form has no vowels in it (found by backtest, 2026-08-20,
+  // before this ever reached production).
+  if (COMPANY_MARKERS.test(name)) return false
+  const toks = name.split(/[\s.\-_]+/).map(t => t.replace(/[^a-z]/g, '')).filter(t => t.length >= 2)
+  if (toks.length < 2) return false
+  return toks.every(t => !/[aeiouy]/.test(t))
+}
+
+/** True when any whole token of the name is profanity. */
+function hasProfanity(name: string): boolean {
+  return name
+    .split(/[\s.\-_]+/)
+    .map(t => t.replace(/[^a-z]/g, ''))
+    .filter(Boolean)
+    .some(t => PROFANITY_TOKENS.has(t))
+}
+
+// ── Famous names — hard-block ───────────────────────────────────────────────
+//
+// "Elvis Presley" reached a pass on 2026-08-20. It defeats every structural
+// test in this file because it IS a real name, it is simply not this person's.
+// Only an identity list catches it.
+//
+// EXACT FULL-NAME MATCH ONLY. Plenty of real people are called John Lennon or
+// Michael Jordan, so this list stays short and famous-dead-or-iconic, and it
+// never matches a single token. Somebody named Presley keeps their name.
+const FAMOUS_FULL_NAMES = new Set<string>([
+  'elvis presley', 'michael jackson', 'freddie mercury', 'john lennon',
+  'paul mccartney', 'kurt cobain', 'david bowie', 'bob marley',
+  'marilyn monroe', 'james bond', 'harry potter', 'james dean',
+  'albert einstein', 'isaac newton', 'stephen hawking', 'nikola tesla',
+  'donald trump', 'joe biden', 'barack obama', 'vladimir putin',
+  'elon musk', 'bill gates', 'steve jobs', 'jeff bezos', 'mark zuckerberg',
+  'santa claus', 'jesus christ', 'adolf hitler', 'darth vader',
+  'sherlock holmes', 'peter parker', 'clark kent', 'bruce wayne',
+  'homer simpson', 'ronald mcdonald', 'walt disney', 'chuck norris',
+  'lionel messi', 'cristiano ronaldo', 'michael jordan', 'kobe bryant',
+])
+
 const FAKE_NAME_PREFIXES: string[] = Array.from(FAKE_FULL_NAMES)
   .map(n => n.replace(/[^a-z0-9]/g, ''))
   .filter(n => n.length >= 7)
@@ -323,7 +418,19 @@ export function assessLead(input: LeadInput): LeadAssessment {
   const nameCompact = name.replace(/[^a-z0-9]/g, '')
 
   if (name) {
-    if (FAKE_FULL_NAMES.has(name) || FAKE_SINGLE_NAMES.has(name) || FAKE_SINGLE_NAMES.has(nameCompact)) {
+    if (hasProfanity(name)) {
+      // First, because it is the one an angry person types on purpose and the
+      // one that is worst to print on a member pass.
+      hard('name:profanity')
+    } else if (FAMOUS_FULL_NAMES.has(name)) {
+      hard('name:famous')
+    } else if (hasNoLetters(name)) {
+      hard('name:no_letters')
+    } else if (hasTestToken(name)) {
+      hard('name:test_token')
+    } else if (allTokensVowelless(name)) {
+      hard('name:no_vowels')
+    } else if (FAKE_FULL_NAMES.has(name) || FAKE_SINGLE_NAMES.has(name) || FAKE_SINGLE_NAMES.has(nameCompact)) {
       hard('name:placeholder')
     } else if (startsWithFakeName(nameCompact)) {
       // Evasion by suffix. A real submission arrived as "John Doep" — one
@@ -351,10 +458,16 @@ export function assessLead(input: LeadInput): LeadAssessment {
       // nothing to match — it is people typing the minimum to get past the
       // field.
       //
-      // Measured before turning this on: 37 of 1,347 quiz takers since Jul 5,
-      // and ZERO of them have ever paid, against a 6.11% baseline. It also
-      // makes enrichment worthless, since there is no real name to resolve.
-      hard('name:no_real_token')
+      // DOWNGRADED TO SOFT, 2026-08-20. The note above said 37 such people since
+      // Jul 5 and ZERO had ever paid. Backtesting this file against all 4,446
+      // named submissions says otherwise: 39 initials-only leads, 3 of whom
+      // PAID. That is 7.7% against a ~6.1% baseline, so they convert at least
+      // as well as everybody else and hard-blocking them costs money.
+      //
+      // Initials are terse, not fake. The owner asked to block fake names, and
+      // "P O" is a private person, not "Fuck Off". Kept as a flag so enrichment
+      // still skips them, because there is genuinely no name to resolve.
+      soft('name:no_real_token')
     } else {
       // Softer signals — flag but keep.
       if (firstNameLooksMashed(name)) soft('name:first_name_mash')
