@@ -30,6 +30,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { revalidateTag } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
 import { EXPERIMENTS_CACHE_TAG } from '@/lib/experiments'
+import { sampleBeta } from '@/lib/bayes'
 import { runBanditForExperiment, type BanditRunResult } from '@/lib/experiment-queries'
 
 export const dynamic = 'force-dynamic'
@@ -78,36 +79,6 @@ async function sendAlert(subject: string, text: string): Promise<void> {
 // ── Beta posterior sampling for the conclusion check ──
 // Marsaglia–Tsang gamma sampling with Box–Muller normals; Beta(a,b) as
 // Ga/(Ga+Gb). No dependency, exact enough for a 97% decision threshold.
-function sampleNormal(): number {
-  let u = 0
-  let v = 0
-  while (u === 0) u = Math.random()
-  while (v === 0) v = Math.random()
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
-}
-function sampleGamma(shape: number): number {
-  if (shape < 1) {
-    const u = Math.random()
-    return sampleGamma(shape + 1) * Math.pow(u, 1 / shape)
-  }
-  const d = shape - 1 / 3
-  const c = 1 / Math.sqrt(9 * d)
-  for (;;) {
-    let x = 0
-    let v = 0
-    do { x = sampleNormal(); v = 1 + c * x } while (v <= 0)
-    v = v * v * v
-    const u = Math.random()
-    if (u < 1 - 0.0331 * x * x * x * x) return d * v
-    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v
-  }
-}
-function sampleBeta(a: number, b: number): number {
-  const ga = sampleGamma(a)
-  const gb = sampleGamma(b)
-  return ga / (ga + gb)
-}
-
 type ConclusionStat = { variant_key: string; people: number; clickers: number; quiz_trials: number }
 
 /** P(each arm is the best on click rate), by Monte Carlo over Beta posteriors. */

@@ -16,6 +16,7 @@
 // stage that moved, so the retrain cycle aims at a seam, not an anecdote.
 
 import { db } from '@/lib/revenue-shared'
+import { probBetter, nNeededPerArm } from '@/lib/bayes'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -55,17 +56,44 @@ function trialsNeededPerCohort(rows: CohortRow[]): number {
   return landersPerDay > 0 ? (10 * 100) / landersPerDay : 8.5
 }
 
+interface LearningRow {
+  id: number
+  title: string
+  hypothesis: string | null
+  step: string
+  applied_at_cohort: number
+  predicted_delta_pts: number | null
+  status: string
+  notes: string | null
+  before_cohorts: number | null
+  before_num: number | null
+  before_den: number | null
+  after_cohorts: number | null
+  after_num: number | null
+  after_den: number | null
+}
+
+const STEP_LABEL: Record<string, string> = {
+  landed_to_started: 'landing → start',
+  started_to_completed: 'start → finish',
+  completed_to_clicked: 'finish → checkout',
+  clicked_to_trial: 'checkout → trial',
+  landed_to_trial: 'landing → trial',
+}
+
 export default async function CohortsPage() {
   let rows: CohortRow[] = []
+  let learnings: LearningRow[] = []
   let err: string | null = null
   try {
-    const { data, error } = await db()
-      .from('funnel_cohort_stats')
-      .select('*')
-      .order('cohort_n', { ascending: false })
-      .limit(30)
-    if (error) throw new Error(error.message)
-    rows = (data ?? []) as CohortRow[]
+    const [cohorts, learn] = await Promise.all([
+      db().from('funnel_cohort_stats').select('*').order('cohort_n', { ascending: false }).limit(30),
+      db().from('cohort_learning_evidence').select('*').order('applied_at_cohort', { ascending: false }),
+    ])
+    if (cohorts.error) throw new Error(cohorts.error.message)
+    if (learn.error) throw new Error(learn.error.message)
+    rows = (cohorts.data ?? []) as CohortRow[]
+    learnings = (learn.data ?? []) as LearningRow[]
   } catch (e) { err = e instanceof Error ? e.message : String(e) }
 
   if (err) {
@@ -98,6 +126,89 @@ export default async function CohortsPage() {
   return (
     <div style={{ padding: '22px 26px 60px', maxWidth: 1100 }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Cohorts</h1>
+
+      {/* THE LEARNING ENGINE, above the table, because the table is the raw
+          material and this is the point of collecting it.
+          A cohort is an INCREMENT OF EVIDENCE, never a test on its own: at 100
+          landers a cohort yields 0-3 trials, so cohort N against cohort N-1
+          can resolve nothing. Evidence pools from the change forward against a
+          bounded ten-cohort control, and the verdict is read off the pool. */}
+      <section style={{ marginTop: 18, marginBottom: 30 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
+          What we changed, and whether it worked <span style={{ color: MUTE, fontWeight: 600 }}>({learnings.length})</span>
+        </h2>
+        <p style={{ fontSize: 12.5, color: MUTE, marginTop: 5, maxWidth: 880, lineHeight: 1.6 }}>
+          Each learning names ONE step it claims to move and the cohort it starts at. Every completed cohort after that
+          adds people to the pool. The verdict reads the whole pool, never two adjacent cohorts. When it is still open,
+          the row says how many more people that step needs, so &quot;not yet&quot; and &quot;never&quot; can be told apart.
+        </p>
+        {learnings.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>No learning declared yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {learnings.map(l => {
+              const bN = Number(l.before_den || 0), bK = Number(l.before_num || 0)
+              const aN = Number(l.after_den || 0), aK = Number(l.after_num || 0)
+              const bPct = bN > 0 ? (bK / bN) * 100 : 0
+              const aPct = aN > 0 ? (aK / aN) * 100 : 0
+              const delta = aPct - bPct
+              const hasEvidence = bN > 0 && aN > 0
+              const p = hasEvidence ? probBetter(aK, aN, bK, bN) : 0.5
+              // 95% both ways. Anything between is genuinely undecided, and
+              // saying so is the whole job of this panel.
+              const verdict = !hasEvidence ? 'WAITING' : p >= 0.95 ? 'CONFIRMED' : p <= 0.05 ? 'REFUTED' : 'OPEN'
+              const vColor = verdict === 'CONFIRMED' ? GREEN : verdict === 'REFUTED' ? RED : verdict === 'OPEN' ? AMBER : MUTE
+              const target = Number(l.predicted_delta_pts || 5)
+              const need = nNeededPerArm(bN > 0 ? bK / bN : 0.5, target)
+              const shortBy = Math.max(0, need - aN)
+              return (
+                <div key={l.id} style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '12px 14px' }}>
+                  <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: vColor, border: `2px solid ${vColor}`, padding: '1px 6px' }}>
+                      {verdict}
+                    </span>
+                    <strong style={{ fontSize: 14, color: INK }}>{l.title}</strong>
+                    <span style={{ fontSize: 11, color: MUTE }}>
+                      {STEP_LABEL[l.step] ?? l.step} · from cohort {l.applied_at_cohort}
+                    </span>
+                  </div>
+                  {l.hypothesis && (
+                    <p style={{ fontSize: 12, color: '#4A4A4A', marginTop: 6, lineHeight: 1.55, maxWidth: 840 }}>{l.hypothesis}</p>
+                  )}
+                  <div className="flex flex-wrap" style={{ gap: 22, marginTop: 9, fontSize: 12.5 }}>
+                    <span>
+                      <span style={{ color: MUTE }}>before </span>
+                      <strong>{bN > 0 ? `${bPct.toFixed(1)}%` : '—'}</strong>
+                      <span style={{ color: MUTE }}> ({bK}/{bN}, {l.before_cohorts ?? 0} cohorts)</span>
+                    </span>
+                    <span>
+                      <span style={{ color: MUTE }}>after </span>
+                      <strong>{aN > 0 ? `${aPct.toFixed(1)}%` : '—'}</strong>
+                      <span style={{ color: MUTE }}> ({aK}/{aN}, {l.after_cohorts ?? 0} cohorts)</span>
+                    </span>
+                    {hasEvidence && (
+                      <>
+                        <span style={{ fontWeight: 800, color: delta >= 0 ? GREEN : RED }}>
+                          {delta >= 0 ? '+' : ''}{delta.toFixed(1)} pts
+                        </span>
+                        <span style={{ color: MUTE }}>P(better) <strong style={{ color: INK }}>{(p * 100).toFixed(0)}%</strong></span>
+                      </>
+                    )}
+                  </div>
+                  {verdict !== 'CONFIRMED' && verdict !== 'REFUTED' && (
+                    <p style={{ fontSize: 11.5, color: AMBER, marginTop: 7, fontWeight: 600 }}>
+                      {aN === 0
+                        ? `No completed cohort since the change yet. Evidence starts at cohort ${l.applied_at_cohort}.`
+                        : `Needs about ${need.toLocaleString()} people on this step to resolve ${target} points. ${shortBy.toLocaleString()} short.`}
+                    </p>
+                  )}
+                  {l.notes && <p style={{ fontSize: 11, color: MUTE, marginTop: 6 }}>{l.notes}</p>}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
       <p style={{ fontSize: 13, color: MUTE, marginTop: 6, maxWidth: 860, lineHeight: 1.55 }}>
         Every 100 landers, in arrival order, is one cohort — about a day of traffic. Rates are same-person: a cohort
         member counts at a stage only if they reached it. Cells go <strong style={{ color: GREEN }}>green</strong> when a
