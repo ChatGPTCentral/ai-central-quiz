@@ -17,6 +17,7 @@
 // day this shipped we had sent zero of them, ever.
 
 import { createClient } from '@supabase/supabase-js'
+import InvoiceRetry from '@/components/admin/InvoiceRetry.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -56,6 +57,25 @@ interface Row {
   synced_at: string
 }
 
+interface QueueRow {
+  invoice_id: string
+  invoice_number: string | null
+  person_key: string | null
+  person_name: string | null
+  customer_id: string | null
+  amount_remaining_cents: number
+  currency: string | null
+  days_overdue: number
+  collection_method: string | null
+  pay_url: string | null
+  stripe_attempts: number
+  stripe_last_failure: string | null
+  stripe_decline_code: string | null
+  our_attempts: number | null
+  our_last_at: string | null
+  our_last_outcome: string | null
+}
+
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key =
@@ -80,15 +100,21 @@ const day = (s: string | null) => (s ? s.slice(0, 10) : '—')
 
 export default async function UnpaidInvoicesPage() {
   let rows: Row[] = []
+  let queue: QueueRow[] = []
   let err: string | null = null
   try {
-    const { data, error } = await sb()
-      .from('stripe_outstanding_invoices')
-      .select('*')
-      .order('days_overdue', { ascending: false })
-      .limit(2000)
-    if (error) throw new Error(error.message)
-    rows = (data ?? []) as Row[]
+    const c = sb()
+    // The view already orders itself: never-attempted-by-us first, then
+    // longest since our last try. Do NOT re-order here — the ordering is the
+    // queue's whole behaviour and it belongs in one place.
+    const [outstanding, retryQueue] = await Promise.all([
+      c.from('stripe_outstanding_invoices').select('*').order('days_overdue', { ascending: false }).limit(2000),
+      c.from('invoice_retry_queue').select('*').limit(500),
+    ])
+    if (outstanding.error) throw new Error(outstanding.error.message)
+    if (retryQueue.error) throw new Error(retryQueue.error.message)
+    rows = (outstanding.data ?? []) as Row[]
+    queue = (retryQueue.data ?? []) as QueueRow[]
   } catch (e) {
     err = e instanceof Error ? e.message : String(e)
   }
@@ -243,6 +269,88 @@ export default async function UnpaidInvoicesPage() {
         {' · '}{uncollectible.length} written off as uncollectible
         {lastSync ? ` · mirror synced ${lastSync.slice(0, 16).replace('T', ' ')} UTC` : ' · never synced'}
       </p>
+
+      {/* THE RETRY QUEUE. The thing to actually work, above the reference
+          tables. Ordered by the view: untouched first, then longest since our
+          last attempt, so working it top to bottom never hits the same person
+          twice while an untouched invoice waits. */}
+      <section style={{ marginTop: 30 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
+          Retry queue <span style={{ color: MUTE, fontWeight: 600 }}>({queue.length})</span>
+        </h2>
+        <p style={{ fontSize: 12, color: MUTE, marginTop: 5, maxWidth: 880, lineHeight: 1.6 }}>
+          Open invoices with money owed and a card on file. Untouched first, then whoever we tried longest ago, then
+          oldest debt. Anyone who paid us after the invoice was raised is excluded, so this list can never charge a
+          current customer. <strong style={{ color: INK }}>Retry</strong> re-runs the card that already failed, which
+          only helps when the failure was transient. <strong style={{ color: INK }}>Email</strong> sends the hosted
+          invoice, and they pay with any card: it is the only lever that works on a blocked card type, an expired
+          card, or a bank challenge.
+        </p>
+        {queue.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing to retry.</p>
+        ) : (
+          <div style={{ overflowX: 'auto', marginTop: 10 }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1080 }}>
+              <thead>
+                <tr>
+                  <th style={th}>Days</th>
+                  <th style={th}>Owed</th>
+                  <th style={th}>Person</th>
+                  <th style={th}>Stripe tried</th>
+                  <th style={th}>Why it failed</th>
+                  <th style={th}>We tried</th>
+                  <th style={th}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {queue.map(q => (
+                  <tr key={q.invoice_id}>
+                    <td style={{ ...td, fontWeight: 700, color: q.days_overdue > 180 ? MUTE : q.days_overdue > 90 ? AMBER : RED }}>
+                      {q.days_overdue}
+                    </td>
+                    <td style={{ ...td, fontWeight: 700, whiteSpace: 'nowrap' }}>{money(q.amount_remaining_cents, q.currency)}</td>
+                    <td style={td}>
+                      {q.person_name && <div style={{ fontWeight: 600 }}>{q.person_name}</div>}
+                      {q.person_key ? (
+                        <a href={`https://dashboard.stripe.com/search?query=${encodeURIComponent(q.person_key)}`}
+                           target="_blank" rel="noreferrer" style={{ color: MUTE, fontSize: 11.5 }}>{q.person_key}</a>
+                      ) : <span style={{ color: MUTE, fontSize: 11.5 }}>no email</span>}
+                    </td>
+                    <td style={td}>
+                      {q.stripe_attempts === 0
+                        ? <span style={{ color: AMBER, fontWeight: 700 }}>never</span>
+                        : <span style={{ fontWeight: 700 }}>{q.stripe_attempts}×</span>}
+                    </td>
+                    <td style={{ ...td, fontSize: 11.5, maxWidth: 250 }}>
+                      {q.stripe_last_failure || <span style={{ color: MUTE }}>—</span>}
+                    </td>
+                    <td style={td}>
+                      {!q.our_attempts
+                        ? <span style={{ fontSize: 11, color: GREEN, fontWeight: 700 }}>never</span>
+                        : (
+                          <>
+                            <span style={{ fontWeight: 700 }}>{q.our_attempts}×</span>
+                            <div style={{ fontSize: 10.5, color: MUTE }}>
+                              {day(q.our_last_at)} {String(q.our_last_outcome || '').replace('invoice_', '')}
+                            </div>
+                          </>
+                        )}
+                    </td>
+                    <td style={td}>
+                      <InvoiceRetry
+                        invoiceId={q.invoice_id}
+                        personKey={q.person_key}
+                        amountCents={q.amount_remaining_cents}
+                        currency={q.currency}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {table(overdue, 'Overdue', 'Nothing is past due.')}
       {table(notYetDue, 'Outstanding, not yet due', 'Nothing outstanding inside its due window.')}
