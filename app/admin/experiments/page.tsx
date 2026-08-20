@@ -3,6 +3,7 @@ import { clarityUxByPage } from '@/lib/clarity'
 import { uxByPage, type UxPageRow } from '@/lib/ux-by-page'
 import ClarityPullNow from '@/components/admin/ClarityPullNow.client'
 import ExperimentsPanel from './ExperimentsPanel.client'
+import ExperimentArms from '@/components/admin/ExperimentArms'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic'
  * Funnel page): rage/dead clicks and JS errors are the qualitative side
  * of every experiment read.
  */
-export default async function ExperimentsPage() {
+export default async function ExperimentsPage({ searchParams }: { searchParams: { exp?: string; w?: string } }) {
   let experiments: Awaited<ReturnType<typeof listExperiments>> = []
   let results: Record<string, VariantResult[]> = {}
   let error: string | null = null
@@ -78,6 +79,11 @@ export default async function ExperimentsPage() {
         {error && <p className="text-sm text-[#BE3B3B] mt-2">Error: {error}</p>}
       </div>
       <ExperimentsPanel initialExperiments={experiments} initialResults={results} />
+
+      {/* The arms, under the numbers. Owner, 2026-08-20: the stats say how it
+          is doing, the side by side says what it IS. Both halves of one
+          question, so both on one screen. */}
+      <ExperimentArms expKey={searchParams.exp} phone={searchParams.w === 'phone'} />
 
       {/* UX health. Reads PostHog now, with Clarity only as a fallback while
           both run, so this table survives the Clarity snapshot being retired. */}

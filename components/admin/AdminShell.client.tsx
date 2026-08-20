@@ -47,10 +47,9 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
       { href: '/admin/xray', label: 'X-ray', icon: 'flow' },
-      { href: '/admin/compare', label: 'Side by side', icon: 'experiments' },
-      { href: '/admin/evolve', label: 'Evolution', icon: 'enrich' },
       { href: '/admin/cohorts', label: 'Cohorts', icon: 'stats' },
       { href: '/admin/revenue', label: 'Revenue', icon: 'stats' },
+      { href: '/admin/revenue/unpaid', label: 'Unpaid & overdue', icon: 'stats' },
       { href: '/admin/experiments', label: 'Experiments', icon: 'experiments' },
       { href: '/admin/ads', label: 'Ads', icon: 'ads' },
       { href: '/admin/pass-recovery', label: 'Pass Recovery', icon: 'stats' },
