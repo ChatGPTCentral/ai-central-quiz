@@ -411,26 +411,33 @@ export const UX_QUERIES: {
     threshold: 0,
     severity: 'critical',
     source: 'supabase',
-    sql: `with daily as (
-            select coalesce(nullif(trim(utm_source),''),'(direct)') as src,
-                   quiz_completed_at::date as day, count(*) as n
-            from submissions
-            where quiz_completed_at >= current_date - 8
-              and coalesce(is_test,false) = false
-            group by 1,2
-          ), prior as (
-            select src, avg(n) as daily_avg, count(*) as days_seen
-            from daily where day between current_date - 8 and current_date - 1
-            group by src
-          ), recent as (
+    // Subqueries, NOT a leading `with`: ux_watch_sql hard-requires the
+    // statement to start with 'select' (a CTE can carry a data-modifying
+    // statement in Postgres, so the guard is right and this query is what
+    // was wrong). Shipped 2026-08-19 as a CTE, which meant this check threw
+    // 'ux_watch_sql only runs SELECT' on every run and reported UNKNOWN for
+    // 20 hours — the one alarm built for the outage that had just cost a day.
+    sql: `select p.src, round(p.daily_avg::numeric, 1) as daily_avg, coalesce(r.n, 0) as last_24h
+          from (
+            select d.src, avg(d.n) as daily_avg, count(*) as days_seen
+            from (
+              select coalesce(nullif(trim(utm_source),''),'(direct)') as src,
+                     quiz_completed_at::date as day, count(*) as n
+              from submissions
+              where quiz_completed_at >= current_date - 8
+                and coalesce(is_test,false) = false
+              group by 1,2
+            ) d
+            where d.day between current_date - 8 and current_date - 1
+            group by d.src
+          ) p
+          left join (
             select coalesce(nullif(trim(utm_source),''),'(direct)') as src, count(*) as n
             from submissions
             where quiz_completed_at >= now() - interval '24 hours'
               and coalesce(is_test,false) = false
             group by 1
-          )
-          select p.src, round(p.daily_avg::numeric, 1) as daily_avg, coalesce(r.n, 0) as last_24h
-          from prior p left join recent r on r.src = p.src
+          ) r on r.src = p.src
           where p.daily_avg >= 5 and p.days_seen >= 6 and coalesce(r.n, 0) = 0
           order by p.daily_avg desc`,
     read: rows => {
@@ -618,6 +625,32 @@ async function rows(sql: string): Promise<any[]> {
   const r = await hogql(sql)
   if (r.error) throw new Error(r.error)
   return r.rows.map(row => Object.fromEntries(r.columns.map((c, i) => [c, (row as unknown[])[i]])))
+}
+
+/**
+ * BUILD-TIME GUARD. ux_watch_sql refuses anything not starting with 'select',
+ * so a supabase check written with a leading CTE reports UNKNOWN forever and
+ * the only symptom is one grey line on a panel nobody reads at 3am. That is
+ * how source_died — the alarm built for the outage that had just cost a day —
+ * shipped blind on 2026-08-19 and stayed blind for 20 hours.
+ *
+ * This throws at MODULE LOAD, which means `next build` fails. A watcher check
+ * being valid is a static property of this file, so it must be caught before
+ * the deploy, not by the deploy's first cron run six hours later. If the build
+ * is green this can never fire in production.
+ */
+for (const q of UX_QUERIES) {
+  if (q.source !== 'supabase') continue
+  if (q.sql.trimStart().slice(0, 6).toLowerCase() !== 'select') {
+    throw new Error(
+      `[ux-watch] check '${q.key}' starts with ` +
+      `'${q.sql.trimStart().split(/\s/)[0]}', but ux_watch_sql only runs SELECT. ` +
+      `Rewrite the CTE as subqueries in FROM.`,
+    )
+  }
+  if (q.sql.includes(';')) {
+    throw new Error(`[ux-watch] check '${q.key}' contains a semicolon; ux_watch_sql refuses statement chaining.`)
+  }
 }
 
 /**
