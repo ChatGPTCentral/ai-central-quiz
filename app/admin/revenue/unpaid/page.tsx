@@ -18,6 +18,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import InvoiceRetry from '@/components/admin/InvoiceRetry.client'
+import InvoiceRetryAll from '@/components/admin/InvoiceRetryAll.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -294,16 +295,29 @@ export default async function UnpaidInvoicesPage() {
           last attempt, so working it top to bottom never hits the same person
           twice while an untouched invoice waits. */}
       <section style={{ marginTop: 30 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-          Retry queue <span style={{ color: MUTE, fontWeight: 600 }}>({queue.length})</span>
-        </h2>
+        <div className="flex flex-wrap items-start justify-between" style={{ gap: 12 }}>
+          <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
+            Retry queue <span style={{ color: MUTE, fontWeight: 600 }}>({queue.length})</span>
+          </h2>
+          {/* One click for the whole queue instead of one row at a time. Reuses
+              the exact same endpoint as the single-row button, so every guard
+              it has — live card check, paid-since exclusion, idempotency —
+              applies to each invoice here too. Owner request, 2026-08-20. */}
+          <InvoiceRetryAll
+            invoices={queue.map(q => ({
+              invoiceId: q.invoice_id, personKey: q.person_key,
+              amountCents: q.amount_remaining_cents, currency: q.currency,
+            }))}
+          />
+        </div>
         <p style={{ fontSize: 12, color: MUTE, marginTop: 5, maxWidth: 880, lineHeight: 1.6 }}>
-          Open invoices with money owed and a card on file. Untouched first, then whoever we tried longest ago, then
-          oldest debt. Anyone who paid us after the invoice was raised is excluded, so this list can never charge a
-          current customer. <strong style={{ color: INK }}>Retry</strong> re-runs the card that already failed, which
-          only helps when the failure was transient. <strong style={{ color: INK }}>Email</strong> sends the hosted
-          invoice, and they pay with any card: it is the only lever that works on a blocked card type, an expired
-          card, or a bank challenge.
+          Open invoices with money owed, not yet excluded for a known reason. Untouched first, then whoever we tried
+          longest ago, then oldest debt. Anyone who paid us after the invoice was raised is excluded, so this list can
+          never charge a current customer. Whether a card actually exists is checked LIVE at the click, not guessed
+          from this list — <strong style={{ color: INK }}>Retry</strong> re-runs the card on file when one exists and
+          says plainly when it does not. <strong style={{ color: INK }}>Email</strong> sends the hosted invoice, and
+          they pay with any card: it is the only lever that works on a blocked card type, an expired card, or a bank
+          challenge.
         </p>
         {queue.length === 0 ? (
           <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing to retry.</p>
