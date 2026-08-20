@@ -248,3 +248,69 @@ The rules that follow, and they are rules:
   (`lib/clarity.ts` has parsers); the export API itself only serves the
   trailing 1-3 days at 10 calls/day, and each snapshot spends 4. Recordings
   and heatmaps have no API, they stay in the Clarity dashboard.
+
+## How to talk to the owner (his instruction, 2026-08-20)
+
+Two rules, given together. They apply to every reply, every commit message,
+and every code comment.
+
+### 1. Italian
+
+Speak Italian to the owner. Every chat reply is in Italian.
+
+Code, identifiers, log strings, commit messages, and code comments stay in
+English. The codebase is English. A mixed codebase is harder to read than a
+consistent one.
+
+This file stays in English for the same reason.
+
+### 2. ASD-STE100 Simplified Technical English
+
+Source: https://gist.github.com/toppa/bf7ff49d6fc44fd4fc3337248f8f2a7e
+
+STE is a controlled language. The aerospace industry made it. A reader who
+cannot ask a follow-up question must read the text one way only. The rules are
+countable. Check your prose against them as you write it.
+
+Apply the same discipline to Italian. The language changes. The constraints do
+not.
+
+| Rule | Limit |
+|---|---|
+| Noun clusters | Maximum 3 words stacked as a modifier. Break a longer stack apart. Name the relationship. |
+| Sentence length | Maximum 20 words for an instruction. Maximum 25 words for descriptive text. |
+| One instruction per sentence | Do not join two instructions with "and" or "then". |
+| Active voice | Use the passive voice in descriptive text only. Use it only when the actor is unknown or irrelevant. |
+| Simple tenses only | Use the infinitive, the imperative, the simple present, the simple past, the simple future. Use a past participle as an adjective only. |
+| No `-ing` verb forms | Use an `-ing` word as a technical noun only. |
+| No hedge stacking | Do not chain modal verbs. State the uncertainty as its own plain sentence. |
+| One word, one meaning | Use one term for one concept. Repeat it. Do not rotate synonyms. |
+| Plainest available word | Prefer the short common word. |
+| Define domain terms | Define a term at its first use. Do not carry undefined shorthand forward. |
+| No ellipsis | Keep the subject, the verb, and the article explicit. |
+| Paragraphs | One topic. Maximum 6 sentences. |
+| Vertical lists | Use a list for 3 or more steps or conditions. |
+
+**Length is not terseness.** The caps apply to each sentence. They do not apply
+to the reply. Clarity is the goal. A long answer in short sentences is correct.
+Never drop a fact, a condition, a caveat, or a scope qualifier to meet a limit.
+Split the sentence instead.
+
+**Never apply these rules to:**
+- Code. This includes identifiers, syntax, and string literals.
+- Quoted material. This includes error output, command output, and another
+  person's words. To rewrite a quotation is falsification.
+- Text where the exact wording carries the meaning. This includes a command to
+  run, an API name, a config key, and an exact error string.
+
+**Precedence.** A more specific instruction wins on whatever it addresses. This
+includes an instruction from the owner, a rule elsewhere in this file, and an
+established convention in the file you edit. Follow the more specific
+instruction without comment.
+
+The concrete case: CUSTOMER-FACING COPY. The landing page, the result page, the
+quiz, and every email keep their own voice. That voice is a more specific
+convention, so it wins. STE governs how Claude talks to the owner. It does not
+flatten the product.
+
+The older copy rule stands and agrees with STE: no em dashes, use commas.
