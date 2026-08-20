@@ -117,6 +117,7 @@ interface InvoiceRow {
   charge_id: string | null
   hosted_invoice_url: string | null
   invoice_pdf: string | null
+  has_payment_method: boolean
   synced_at: string
 }
 
@@ -128,6 +129,24 @@ function readRef(obj: unknown, key: string): string | null {
   if (typeof v === 'string') return v
   if (v && typeof v === 'object' && typeof (v as { id?: unknown }).id === 'string') return (v as { id: string }).id
   return null
+}
+
+/** Is there a payment method this invoice could actually be charged against?
+ *
+ *  Checked in the order Stripe itself resolves them: the invoice's own default,
+ *  then the customer's invoice_settings default, then the customer's legacy
+ *  default_source. Any one of them is enough. None of them means only the
+ *  hosted pay link can ever collect this money. */
+function hasChargeableMethod(inv: Stripe.Invoice): boolean {
+  if (readRef(inv, 'default_payment_method')) return true
+  if (readRef(inv, 'default_source')) return true
+  const cust = (inv as unknown as { customer?: unknown }).customer
+  if (!cust || typeof cust !== 'object') return false
+  const c = cust as { deleted?: boolean; default_source?: unknown; invoice_settings?: { default_payment_method?: unknown } }
+  if (c.deleted) return false
+  if (c.invoice_settings?.default_payment_method) return true
+  if (c.default_source) return true
+  return false
 }
 
 export async function GET(req: NextRequest) {
@@ -206,8 +225,14 @@ export async function GET(req: NextRequest) {
     try {
       let after: string | undefined
       while (invoicePages < INVOICE_PAGE_CAP) {
+        // The customer is expanded to answer ONE question: is there a card we
+        // could charge. A PayPal payment leaves no reusable payment method, so
+        // invoices.pay() can never work for those people, and offering them a
+        // Retry button is offering an action that cannot succeed (owner,
+        // 2026-08-20, on JAGANATH G PATIL).
         const page: Stripe.ApiList<Stripe.Invoice> = await stripe.invoices.list({
           limit: 100,
+          expand: ['data.customer'],
           ...(after ? { starting_after: after } : {}),
         })
         invoicePages++
@@ -238,6 +263,7 @@ export async function GET(req: NextRequest) {
             charge_id: readRef(inv, 'charge'),
             hosted_invoice_url: inv.hosted_invoice_url ?? null,
             invoice_pdf: inv.invoice_pdf ?? null,
+            has_payment_method: hasChargeableMethod(inv),
             synced_at: syncStamp,
           })
         }

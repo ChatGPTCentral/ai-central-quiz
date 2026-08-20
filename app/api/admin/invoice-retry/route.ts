@@ -59,6 +59,14 @@ function db() {
   })
 }
 
+/** Read a Stripe reference field that may be an id string or an expanded object. */
+function readRef(obj: unknown, key: string): string | null {
+  const v = (obj as Record<string, unknown> | null)?.[key]
+  if (typeof v === 'string') return v
+  if (v && typeof v === 'object' && typeof (v as { id?: unknown }).id === 'string') return (v as { id: string }).id
+  return null
+}
+
 async function audit(action: string, personKey: string | null, customerId: string | null, detail: Record<string, unknown>) {
   try {
     await db().from('admin_actions').insert({ action, person_key: personKey, customer_id: customerId, detail })
@@ -123,6 +131,36 @@ export async function POST(req: NextRequest) {
     const { data: paidSince } = await q
     if (paidSince && paidSince.length > 0) {
       return refuse(invoiceId, personKey, customerId, 'this person paid us after the invoice was raised')
+    }
+  }
+
+  // NO CARD, NO CHARGE. Stripe answers this with "There is no
+  // default_payment_method set on this Customer or Invoice", which tells an
+  // operator nothing about what to do next. A PayPal payment or a one-off
+  // checkout leaves no reusable method, so invoices.pay() can never succeed —
+  // the emailed invoice is the ONLY way to collect. Caught before the call so
+  // the answer names the remedy (owner, 2026-08-20, on JAGANATH G PATIL).
+  if (action === 'pay') {
+    const invPm = readRef(inv, 'default_payment_method') || readRef(inv, 'default_source')
+    let hasPm = !!invPm
+    if (!hasPm && customerId) {
+      try {
+        const cust = await stripe.customers.retrieve(customerId)
+        if (!('deleted' in cust && cust.deleted)) {
+          const c = cust as Stripe.Customer
+          hasPm = !!(c.invoice_settings?.default_payment_method || c.default_source)
+        }
+      } catch { /* fall through: let Stripe be the judge rather than guess */ }
+    }
+    if (!hasPm) {
+      await audit('invoice_refused', personKey, customerId, {
+        invoice_id: invoiceId, reason: 'no_payment_method',
+      })
+      return NextResponse.json({
+        ok: false,
+        canEmail: true,
+        error: 'No card on file. Their only payment was PayPal or a one-off checkout, so Stripe kept nothing to charge. Use "Email invoice" — they can pay it with any card.',
+      }, { status: 409 })
     }
   }
 

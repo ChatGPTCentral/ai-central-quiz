@@ -54,6 +54,9 @@ interface Row {
   last_decline_code: string | null
   is_overdue: boolean
   days_overdue: number
+  paid_since: boolean
+  blocked_reason: string | null
+  has_payment_method: boolean | null
   synced_at: string
 }
 
@@ -74,6 +77,7 @@ interface QueueRow {
   our_attempts: number | null
   our_last_at: string | null
   our_last_outcome: string | null
+  has_payment_method: boolean | null
 }
 
 function sb() {
@@ -167,7 +171,7 @@ export default async function UnpaidInvoicesPage() {
                 <th style={th}>Due</th>
                 <th style={th}>Stripe tried</th>
                 <th style={th}>Why it failed</th>
-                <th style={th}>Pay link</th>
+                <th style={th}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -211,10 +215,24 @@ export default async function UnpaidInvoicesPage() {
                     {r.last_decline_code && <div style={{ fontSize: 10.5, color: MUTE }}>{r.last_decline_code}</div>}
                   </td>
                   <td style={td}>
-                    {r.hosted_invoice_url
-                      ? <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
-                           style={{ ...navChip, display: 'inline-block', padding: '4px 9px', fontSize: 10.5 }}>Open ↗</a>
-                      : <span style={{ color: MUTE, fontSize: 11 }}>none</span>}
+                    {/* The owner asked why the overdue table had no buttons.
+                        It now has the same controls as the queue, and where a
+                        row cannot be actioned it says WHY instead of going
+                        blank — a blank cell reads as a broken feature. */}
+                    <InvoiceRetry
+                      invoiceId={r.id}
+                      personKey={r.email}
+                      amountCents={r.amount_remaining_cents}
+                      currency={r.currency}
+                      hasPaymentMethod={r.has_payment_method}
+                      blockedReason={r.blocked_reason}
+                    />
+                    {r.hosted_invoice_url && (
+                      <div style={{ marginTop: 4 }}>
+                        <a href={r.hosted_invoice_url} target="_blank" rel="noreferrer"
+                           style={{ fontSize: 10.5, color: '#3B5C8F' }}>pay link ↗</a>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -264,7 +282,10 @@ export default async function UnpaidInvoicesPage() {
       </div>
 
       <p style={{ fontSize: 11.5, color: MUTE, marginTop: 12 }}>
-        {neverAttempted} overdue invoice{neverAttempted === 1 ? '' : 's'} Stripe never attempted at all
+        {overdue.filter(r => !r.blocked_reason).length} of {overdue.length} overdue invoices can be actioned
+        {' · '}{overdue.filter(r => r.paid_since).length} excluded because the person paid us since
+        {' · '}{overdue.filter(r => !r.blocked_reason && r.has_payment_method === false).length} have no card on file, so only the emailed invoice can collect
+        {' · '}{neverAttempted} Stripe never attempted at all
         {' · '}{stillRetrying} still inside Stripe&apos;s retry schedule
         {' · '}{uncollectible.length} written off as uncollectible
         {lastSync ? ` · mirror synced ${lastSync.slice(0, 16).replace('T', ' ')} UTC` : ' · never synced'}
@@ -342,6 +363,7 @@ export default async function UnpaidInvoicesPage() {
                         personKey={q.person_key}
                         amountCents={q.amount_remaining_cents}
                         currency={q.currency}
+                        hasPaymentMethod={q.has_payment_method}
                       />
                     </td>
                   </tr>
