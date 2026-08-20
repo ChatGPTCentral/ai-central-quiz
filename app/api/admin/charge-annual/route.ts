@@ -133,7 +133,12 @@ export async function POST(req: NextRequest) {
 
     // ── INVOICE MODE: no payment method needed. The subscription starts on
     // an emailed Stripe invoice the person pays themselves, finalized and
-    // sent right now rather than on Stripe's one-hour timer. ──
+    // sent right now rather than on Stripe's one-hour timer. A hosted invoice
+    // page is an interactive Stripe payment form — it can complete a 3D
+    // Secure challenge the same way a Checkout Session can, so this is also
+    // the correct link for the outreach board (owner, 2026-08-20: "can't we
+    // generate the invoices and then use the invoice links" — right, this
+    // already existed, no new mechanism needed). ──
     if (mode === 'invoice') {
       const sub = await stripe.subscriptions.create(
         {
@@ -146,18 +151,23 @@ export async function POST(req: NextRequest) {
         { idempotencyKey: `annual-retry-inv-${chargeId}` },
       )
       let invoiceSent = false
+      let invoiceUrl: string | null = null
       try {
         const invId = typeof sub.latest_invoice === 'string' ? sub.latest_invoice : sub.latest_invoice?.id
         if (invId) {
           try { await stripe.invoices.finalizeInvoice(invId) } catch { /* already finalized is fine */ }
           await stripe.invoices.sendInvoice(invId)
           invoiceSent = true
+          // Re-retrieve rather than trust the pre-send object: finalizing is
+          // what stamps hosted_invoice_url onto the invoice.
+          const finalInv = await stripe.invoices.retrieve(invId)
+          invoiceUrl = finalInv.hosted_invoice_url ?? null
         }
       } catch (e) {
         console.error('[charge-annual] invoice send failed (Stripe will auto-send later):', e)
       }
-      await audit('charge_annual_invoiced', personKey, customerId, { subscription: sub.id, status: sub.status, price: plan.id, plan_cents: plan.cents, invoice_sent: invoiceSent, trial_charge_id: chargeId })
-      return NextResponse.json({ ok: true, subscription: sub.id, status: sub.status, planCents: plan.cents, invoiced: true, invoiceSent })
+      await audit('charge_annual_invoiced', personKey, customerId, { subscription: sub.id, status: sub.status, price: plan.id, plan_cents: plan.cents, invoice_sent: invoiceSent, invoice_url: invoiceUrl, trial_charge_id: chargeId })
+      return NextResponse.json({ ok: true, subscription: sub.id, status: sub.status, planCents: plan.cents, invoiced: true, invoiceSent, invoiceUrl })
     }
 
     // GUARD 2 (charge mode): something reusable to bill. The default payment

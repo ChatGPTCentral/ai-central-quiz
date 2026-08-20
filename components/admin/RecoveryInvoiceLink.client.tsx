@@ -1,13 +1,21 @@
 'use client'
 
-// Generates a real, hosted Stripe Checkout link for a graduated person with
-// no quiz result to send them back to (source='stripe' — a direct Stripe
-// signup, never took the quiz). Unlike a server-side charge, this link lets
-// the cardholder complete a 3D Secure challenge interactively, which is the
-// one thing a merchant-initiated attempt can never do.
+// Generates a real, hosted Stripe INVOICE link for a graduated person with
+// no quiz result to send them back to.
 //
-// Creates NOTHING by itself. Nobody is charged until the person opens this
-// link and pays — lower risk than the retry buttons, not higher.
+// Owner, 2026-08-20: "can't we generate the invoices and then use the
+// invoice links" — correct, and simpler than what this replaced. A hosted
+// invoice page is an interactive Stripe payment form, exactly like a
+// Checkout Session — it can complete a 3D Secure challenge the same way,
+// because the cardholder authenticates in their own browser either way. The
+// mechanism this needed already existed: /api/admin/charge-annual's
+// mode:'invoice' branch, live since 2026-08-13 as the single-row button's
+// "Email invoice instead" fallback. This calls the same route, the same
+// guards, and just reads the hosted_invoice_url back out of the response.
+//
+// Creates a real subscription (collection_method: send_invoice) and sends
+// Stripe's own invoice email immediately — nobody is CHARGED by this,
+// nothing moves until the person opens the link and pays.
 
 import React, { useState } from 'react'
 
@@ -16,7 +24,7 @@ const RED = '#B00020'
 const INK = '#1A1A1A'
 const MUTE = '#6B6B6B'
 
-export default function RecoveryCheckoutLink({ customerId, personKey, chargeId }: {
+export default function RecoveryInvoiceLink({ customerId, personKey, chargeId }: {
   customerId: string | null
   personKey: string
   chargeId: string | null
@@ -30,15 +38,18 @@ export default function RecoveryCheckoutLink({ customerId, personKey, chargeId }
   const fire = async () => {
     setPhase('busy')
     try {
-      const res = await fetch('/api/admin/recovery-checkout-link', {
+      const res = await fetch('/api/admin/charge-annual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId, personKey, chargeId }),
+        body: JSON.stringify({ customerId, personKey, chargeId, mode: 'invoice' }),
       })
       const j = await res.json().catch(() => ({}))
-      if (res.ok && j.ok && j.url) {
+      if (res.ok && j.ok && j.invoiceUrl) {
         setPhase('done')
-        setUrl(j.url)
+        setUrl(j.invoiceUrl)
+      } else if (res.ok && j.ok) {
+        setPhase('error')
+        setMsg('Invoice created but Stripe did not return a hosted URL — check admin_actions (charge_annual_invoiced) for the invoice id.')
       } else {
         setPhase('error')
         setMsg(String(j.error || `HTTP ${res.status}`))
@@ -60,14 +71,16 @@ export default function RecoveryCheckoutLink({ customerId, personKey, chargeId }
           onClick={e => (e.target as HTMLInputElement).select()}
           style={{ fontSize: 9.5, width: '100%', border: `1px solid ${GREEN}`, padding: '3px 5px', color: GREEN, fontFamily: 'monospace' }}
         />
-        <div style={{ fontSize: 9.5, color: MUTE, marginTop: 2 }}>select all, copy into the draft. Expires in 24h.</div>
+        <div style={{ fontSize: 9.5, color: MUTE, marginTop: 2 }}>
+          select all, copy into the draft. Stripe already emailed this invoice too, separately.
+        </div>
       </div>
     )
   }
 
   if (phase === 'error') {
     return (
-      <span style={{ fontSize: 9.5, color: RED, display: 'block', marginTop: 4 }}>
+      <span style={{ fontSize: 9.5, color: RED, display: 'block', marginTop: 4, lineHeight: 1.4 }}>
         ✕ {msg} <button onClick={() => setPhase('idle')} style={{ marginLeft: 4, fontSize: 9.5, textDecoration: 'underline' }}>retry</button>
       </span>
     )
@@ -78,7 +91,7 @@ export default function RecoveryCheckoutLink({ customerId, personKey, chargeId }
       onClick={e => { e.stopPropagation(); void fire() }}
       style={{ marginTop: 5, fontSize: 9.5, fontWeight: 800, border: `1px solid ${INK}`, background: '#FFFFFF', padding: '2px 7px', cursor: 'pointer' }}
     >
-      Generate checkout link
+      Generate invoice link
     </button>
   )
 }

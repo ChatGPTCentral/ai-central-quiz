@@ -15,7 +15,7 @@
 // the page around it — nothing here writes.
 
 import { useState } from 'react'
-import RecoveryCheckoutLink from '@/components/admin/RecoveryCheckoutLink.client'
+import RecoveryInvoiceLink from '@/components/admin/RecoveryInvoiceLink.client'
 
 const INK = '#1A1A1A'
 const MUTE = '#7A7A7A'
@@ -87,7 +87,7 @@ function Card({ c }: { c: OutreachCard }) {
             Stripe search ↗
           </a>
           {c.source === 'trial' && (
-            <RecoveryCheckoutLink customerId={c.customer_id} personKey={c.person_key} chargeId={c.charge_id} />
+            <RecoveryInvoiceLink customerId={c.customer_id} personKey={c.person_key} chargeId={c.charge_id} />
           )}
         </div>
       )}
