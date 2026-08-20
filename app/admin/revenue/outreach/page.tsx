@@ -41,6 +41,9 @@ interface BoardRow {
   cohort: string
   sequence_key: string | null
   moved_at: string
+  customer_id: string | null
+  charge_id: string | null
+  trial_cents: number | null
   stage_reached: number | null
   last_sent_at: string | null
   emails_sent: number

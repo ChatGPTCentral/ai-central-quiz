@@ -15,6 +15,7 @@
 // the page around it — nothing here writes.
 
 import { useState } from 'react'
+import RecoveryCheckoutLink from '@/components/admin/RecoveryCheckoutLink.client'
 
 const INK = '#1A1A1A'
 const MUTE = '#7A7A7A'
@@ -27,6 +28,8 @@ export interface OutreachCard {
   reason: string
   cohort: string
   moved_at: string
+  customer_id: string | null
+  charge_id: string | null
   stage_reached: number | null
   last_sent_at: string | null
   emails_sent: number
@@ -83,6 +86,9 @@ function Card({ c }: { c: OutreachCard }) {
              target="_blank" rel="noreferrer" style={{ color: '#0A66C2', fontWeight: 700 }} onClick={e => e.stopPropagation()}>
             Stripe search ↗
           </a>
+          {c.source === 'trial' && (
+            <RecoveryCheckoutLink customerId={c.customer_id} personKey={c.person_key} chargeId={c.charge_id} />
+          )}
         </div>
       )}
     </div>
