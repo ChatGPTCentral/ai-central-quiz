@@ -19,6 +19,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import OutreachBoard from './OutreachBoard.client'
+import RecoveryInvoiceLinkAll from '@/components/admin/RecoveryInvoiceLinkAll.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -44,6 +45,9 @@ interface BoardRow {
   customer_id: string | null
   charge_id: string | null
   trial_cents: number | null
+  invoice_url: string | null
+  invoice_generated_at: string | null
+  needs_review: boolean
   stage_reached: number | null
   last_sent_at: string | null
   emails_sent: number
@@ -113,9 +117,12 @@ export default async function RevenueRecoveryOutreachPage() {
           const paid = list.filter(r => r.paid_since_graduating).length
           return (
             <section key={cohort} style={{ marginTop: 28 }}>
-              <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-                {cohort} <span style={{ color: MUTE, fontWeight: 600 }}>({list.length})</span>
-              </h2>
+              <div className="flex flex-wrap items-start justify-between" style={{ gap: 12 }}>
+                <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
+                  {cohort} <span style={{ color: MUTE, fontWeight: 600 }}>({list.length})</span>
+                </h2>
+                <RecoveryInvoiceLinkAll cards={list} />
+              </div>
               <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4 }}>
                 {sent} sent at least one email · {list.length - sent} never sent yet
                 {paid > 0 && <span style={{ color: GREEN, fontWeight: 700 }}> · {paid} paid since graduating</span>}

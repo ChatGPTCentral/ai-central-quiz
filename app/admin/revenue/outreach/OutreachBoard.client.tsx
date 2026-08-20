@@ -30,16 +30,25 @@ export interface OutreachCard {
   moved_at: string
   customer_id: string | null
   charge_id: string | null
+  invoice_url: string | null
+  invoice_generated_at: string | null
+  needs_review: boolean
   stage_reached: number | null
   last_sent_at: string | null
   emails_sent: number
   paid_since_graduating: boolean
 }
 
-type ColumnKey = 'not_started' | 'stage_1' | 'stage_2' | 'stage_3' | 'paid'
+type ColumnKey = 'needs_review' | 'not_started' | 'invoice_link' | 'stage_1' | 'stage_2' | 'stage_3' | 'paid'
 
+// Owner, 2026-08-20: "the stages are 'not started', 'invoice link
+// generated', 'sent', etc" — and asked how to move a card between them.
+// The answer is: you don't. Every column here is a fact the database already
+// has, same as before. Generating the link IS the move — the card follows.
 const COLUMNS: { key: ColumnKey; label: string; color: string }[] = [
+  { key: 'needs_review', label: 'Needs review', color: '#B00020' },
   { key: 'not_started', label: 'Not started', color: MUTE },
+  { key: 'invoice_link', label: 'Invoice link generated', color: '#3B5C8F' },
   { key: 'stage_1', label: 'Stage 1 sent', color: AMBER },
   { key: 'stage_2', label: 'Stage 2 sent', color: AMBER },
   { key: 'stage_3', label: 'Stage 3+ sent', color: '#BE593B' },
@@ -50,10 +59,17 @@ function columnFor(c: OutreachCard): ColumnKey {
   // Paid wins regardless of stage — it is the one terminal fact that ends
   // the sequence, whatever stage it happened at.
   if (c.paid_since_graduating) return 'paid'
-  if (!c.emails_sent) return 'not_started'
-  if ((c.stage_reached ?? 0) >= 3) return 'stage_3'
-  if (c.stage_reached === 2) return 'stage_2'
-  return 'stage_1'
+  if (c.emails_sent) {
+    if ((c.stage_reached ?? 0) >= 3) return 'stage_3'
+    if (c.stage_reached === 2) return 'stage_2'
+    return 'stage_1'
+  }
+  // needs_review means Stripe already shows a live subscription that WE never
+  // generated — the person converted some other way after graduating, and no
+  // automation here should touch them until a human looks.
+  if (c.needs_review) return 'needs_review'
+  if (c.invoice_url) return 'invoice_link'
+  return 'not_started'
 }
 
 const day = (s: string | null) => (s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '')
@@ -87,7 +103,10 @@ function Card({ c }: { c: OutreachCard }) {
             Stripe search ↗
           </a>
           {c.source === 'trial' && (
-            <RecoveryInvoiceLink customerId={c.customer_id} personKey={c.person_key} chargeId={c.charge_id} />
+            <RecoveryInvoiceLink
+              customerId={c.customer_id} personKey={c.person_key} chargeId={c.charge_id}
+              existingUrl={c.invoice_url} needsReview={c.needs_review}
+            />
           )}
         </div>
       )}
