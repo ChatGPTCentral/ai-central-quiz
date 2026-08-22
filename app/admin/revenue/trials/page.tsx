@@ -9,6 +9,7 @@ import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.clien
 import { fmtDay } from '@/lib/dates'
 import {
   loadRevenueData, buildStateMachinery, inNoCardEra,
+  retryVerdict, lastChargeAttempts, loadGraduatedSet,
   STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State,
 } from '@/lib/revenue-shared'
 import { classifyLedger } from '@/lib/trial-entries'
@@ -36,8 +37,9 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   // "i only want to see the NET MONEY not the GROSS").
   const netByCharge = new Map<string, number>()
   const convertedIdBy = new Map<string, string | null>()
+  let graduated = new Set<string>()
   try {
-    d = await loadRevenueData()
+    ;[d, graduated] = await Promise.all([loadRevenueData(), loadGraduatedSet()])
     // Classified from the SAME single read as everything else on the page
     // (a second fetch can straddle the hourly sync's upsert and disagree).
     for (const t of d.ledger) convertedIdBy.set(t.charge_id, t.converted_charge_id ?? null)
@@ -76,9 +78,15 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
     (!fAttr || r.attribution === fAttr) &&
     (!q || r.person_key.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q)))
 
+  // The tables talk (owner, 2026-08-22): every row carries the SAME retry
+  // verdict the recovery queue filters on, plus the person's last recorded
+  // charge attempt — so what this table offers and what the queue holds can
+  // never disagree.
+  const lastAttempt = lastChargeAttempts(d.adminActions)
   const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map(r => {
     const st = effState(r)
+    const la = lastAttempt.get(r.person_key.toLowerCase())
     return {
       personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? paysOffLedger(r) : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
@@ -88,8 +96,14 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
       net_cents: Math.round(netOf(r.charge_id) * 100), lifetime_bundle: r.lifetime_bundle,
       derivedState: st, derivedLabel: STATE_LABEL[st], derivedColor: STATE_COLOR[st],
       override: d!.overrideBy.get(r.charge_id) ?? null,
+      retry: retryVerdict(r, st, graduated),
+      lastAttempt: la ? `${la.outcome} · ${fmtDay(la.at)}` : null,
     }
   })
+  // The queue's own headline numbers, derived the queue's own way (person
+  // level, full ledger) so the chip here and the recovery page always match.
+  const retryPeople = new Set<string>()
+  for (const r of L) if (retryVerdict(r, effState(r), graduated) === 'eligible') retryPeople.add(r.person_key.toLowerCase())
   const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0, manual: 0 }
   for (const r of L3) counts[effState(r)]++
   const erasPresent = new Set(L.map(r => r.era))
@@ -118,7 +132,8 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
-        <a href="/admin/revenue/recovery" style={navChip}>Trial recovery →</a>
+        <a href="/admin/revenue/recovery" style={navChip}>Retry queue: {retryPeople.size} people →</a>
+        <a href="/admin/revenue/outreach" style={navChip}>In outreach: {graduated.size} people →</a>
       </div>
 
       <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 14 }}>

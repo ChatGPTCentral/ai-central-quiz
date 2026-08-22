@@ -7,8 +7,7 @@
 // and /admin/revenue/trials — one dataset, three views.
 
 import RecoveryQueue, { type RecoveryRow } from '@/components/admin/RecoveryQueue.client'
-import { loadRevenueData, buildStateMachinery, inNoCardEra } from '@/lib/revenue-shared'
-import { createClient } from '@supabase/supabase-js'
+import { loadRevenueData, buildStateMachinery, retryVerdict, lastChargeAttempts, loadGraduatedSet } from '@/lib/revenue-shared'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -26,18 +25,13 @@ export default async function TrialRecoveryPage() {
   let err: string | null = null
   let graduated = new Set<string>()
   try {
-    d = await loadRevenueData()
     // GRADUATED people are owned by a human email sequence now, not this
     // auto-billing queue — owner, 2026-08-20: "removing them from the billing
     // retry ledger and instead moving them into this other ledger." See
-    // /admin/revenue/outreach for where they went.
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-    if (url && key) {
-      const gc = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
-      const { data: g } = await gc.from('revenue_recovery_members').select('person_key')
-      graduated = new Set((g ?? []).map(r => (r as { person_key: string }).person_key))
-    }
+    // /admin/revenue/outreach for where they went. Same shared fetch the
+    // trials table uses, so the two screens can never disagree about who
+    // graduated.
+    ;[d, graduated] = await Promise.all([loadRevenueData(), loadGraduatedSet()])
   } catch (e) { err = e instanceof Error ? e.message : String(e) }
   if (err || !d) {
     return <div style={{ padding: 26 }}><h1 style={{ fontWeight: 800, fontSize: 24 }}>Trial recovery</h1><p style={{ color: '#B00020' }}>{err}</p></div>
@@ -45,33 +39,24 @@ export default async function TrialRecoveryPage() {
 
   const { effState } = buildStateMachinery(d)
 
-  // Last attempt per person from the audit trail (arrives newest first, so
-  // the first row seen per person IS their latest attempt).
-  const lastAttemptByPerson = new Map<string, { at: string; outcome: string }>()
+  // Last attempt per person from the audit trail — the shared map (filtered
+  // to charge_annual_* actions; admin_actions now carries other kinds too).
+  const lastAttemptByPerson = lastChargeAttempts(d.adminActions)
   let recoveredCount = 0
   let invoicedCount = 0
   for (const a of d.adminActions) {
     if (a.action === 'charge_annual_created') recoveredCount++
     if (a.action === 'charge_annual_invoiced') invoicedCount++
-    const pk = (a.person_key || '').toLowerCase()
-    if (!pk || lastAttemptByPerson.has(pk)) continue
-    const det = (a.detail || {}) as Record<string, unknown>
-    const outcome =
-      a.action === 'charge_annual_created' ? `created ${String(det.subscription ?? '')}`
-      : a.action === 'charge_annual_invoiced' ? `invoiced ${String(det.subscription ?? '')}`
-      : a.action === 'charge_annual_refused' ? `refused: ${String(det.reason ?? '')}`
-      : `failed: ${String(det.error ?? '').slice(0, 80)}`
-    lastAttemptByPerson.set(pk, { at: a.at, outcome })
   }
 
   // One row per PERSON: a two-trial person is one debt (×2 badge), and the
-  // already-pays guard blocks a second charge anyway. India and the no-card
-  // era never enter the queue.
+  // already-pays guard blocks a second charge anyway. Eligibility is the ONE
+  // shared rule (retryVerdict) — the same verdict the trials table renders,
+  // so the two screens always agree row by row.
   const queueByPerson = new Map<string, RecoveryRow>()
   for (const r of d.ledger) {
-    if (r.country === 'India' || inNoCardEra(r)) continue
-    if (graduated.has(r.person_key.toLowerCase())) continue
-    if (effState(r) !== 'lapsed' || !r.customer_id || (r.trial_cents !== 399 && r.trial_cents !== 499)) continue
+    if (retryVerdict(r, effState(r), graduated) !== 'eligible') continue
+    if (!r.customer_id) continue // the verdict already guarantees this; narrows the type
     const pk = r.person_key.toLowerCase()
     const ex = queueByPerson.get(pk)
     if (!ex) {

@@ -300,3 +300,70 @@ export function buildStateMachinery(d: RevenueData) {
   }
   return { personOutcome, paysOffLedger, personPays, effState }
 }
+
+// ── The ONE retry rule ──────────────────────────────────────────────────
+// Owner, 2026-08-22: "la tabella dei trial e dei trial da recuperare devono
+// parlare." They did not: the trials table's charge button used its own
+// inline eligibility (which knew nothing of outreach graduation) and the
+// recovery queue used another. Same class of bug as every two-derivations
+// incident in CLAUDE.md. This is now the only place that decides whether a
+// trial may be auto-retried, and every screen renders from its verdict.
+
+export type RetryVerdict =
+  | 'eligible'        // show the charge button
+  | 'graduated'       // owned by a human outreach sequence, auto-billing must not touch
+  | 'india'           // standing exclusion: 0 of 43 due India trials ever renewed
+  | 'no_card_era'     // 2025-05-25..06-21 saved no card, nothing to charge
+  | 'not_lapsed'      // only a lapsed trial is a debt to retry
+  | 'no_customer'     // no Stripe customer on the charge
+  | 'unmapped_price'  // trial amount maps to no annual plan
+
+export function retryVerdict(r: Row, st: State, graduated: Set<string>): RetryVerdict {
+  if (r.country === 'India') return 'india'
+  if (inNoCardEra(r)) return 'no_card_era'
+  if (graduated.has(r.person_key.toLowerCase())) return 'graduated'
+  if (st !== 'lapsed') return 'not_lapsed'
+  if (!r.customer_id) return 'no_customer'
+  if (r.trial_cents !== 399 && r.trial_cents !== 499 && r.trial_cents !== 1495) return 'unmapped_price'
+  return 'eligible'
+}
+
+/** Latest charge-annual attempt per person, from the audit trail (the loader
+ *  returns admin_actions newest first, so first-seen per person wins).
+ *  Filtered to charge_annual_* actions on purpose: admin_actions now carries
+ *  other kinds (verification_set and friends), and the recovery page's old
+ *  inline loop would have displayed those as "failed:" attempts. */
+export function lastChargeAttempts(actions: AdminAction[]): Map<string, { at: string; outcome: string }> {
+  const m = new Map<string, { at: string; outcome: string }>()
+  for (const a of actions) {
+    if (!a.action.startsWith('charge_annual')) continue
+    const pk = (a.person_key || '').toLowerCase()
+    if (!pk || m.has(pk)) continue
+    const det = (a.detail || {}) as Record<string, unknown>
+    const outcome =
+      a.action === 'charge_annual_created' ? `created ${String(det.subscription ?? '')}`
+      : a.action === 'charge_annual_invoiced' ? `invoiced ${String(det.subscription ?? '')}`
+      : a.action === 'charge_annual_refused' ? `refused: ${String(det.reason ?? '')}`
+      : `failed: ${String(det.error ?? '').slice(0, 80)}`
+    m.set(pk, { at: a.at, outcome })
+  }
+  return m
+}
+
+/** The outreach graduation set — people owned by human sequences, invisible
+ *  to every auto-billing surface. One fetch, shared by both screens. */
+export async function loadGraduatedSet(): Promise<Set<string>> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return new Set()
+  try {
+    const c = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+    })
+    const { data } = await c.from('revenue_recovery_members').select('person_key')
+    return new Set((data ?? []).map(r => String((r as { person_key: string }).person_key).toLowerCase()))
+  } catch {
+    return new Set()
+  }
+}

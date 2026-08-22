@@ -44,6 +44,13 @@ export interface TrialRow {
   /** For a Did-not-convert row whose person converted on ANOTHER trial: the
    *  one line that resolves the apparent contradiction. Null otherwise. */
   personNote: string | null
+  /** The ONE shared retry rule's verdict (lib/revenue-shared retryVerdict) —
+   *  the same rule that builds the recovery queue, so this table's Charge
+   *  column and that queue can never disagree (owner, 2026-08-22). */
+  retry: string
+  /** The person's latest charge-annual attempt from the audit trail, already
+   *  formatted ("refused: already has a live subscription · Aug 20"). */
+  lastAttempt: string | null
 }
 
 const INK = '#1A1A1A'
@@ -84,15 +91,41 @@ const ALL_COLUMNS: Col[] = [
             ✓ {r.personNote}
           </span>
         )}
-        {/* The one-click retry, ONLY on the true retry segment: lapsed, zero
-            subscriptions anywhere, a Stripe customer to charge, and a trial
-            amount that maps to a plan ($3.99 → $39.75/yr, $4.99 → $59.75/yr).
-            The server re-checks all of it before any money moves. */}
-        {r.derivedState === 'lapsed' && !r.override && r.customer_id && (r.trial_cents === 399 || r.trial_cents === 499 || r.trial_cents === 1495) && (
-          <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} trialCents={r.trial_cents} />
-        )}
       </span>
     ) },
+  // The charge action, in its own column instead of buried inside Status
+  // (owner, 2026-08-22: "in questa tabella dovrebbero anche esserci i bottoni
+  // del charge"). Renders from the SERVER-computed shared verdict — the same
+  // rule that builds the recovery queue — never from a second inline rule.
+  { key: 'action', label: 'Charge', align: 'left',
+    cell: r => {
+      const whyNot: Record<string, string> = {
+        india: 'India is excluded from auto-retry: 0 of 43 due trials there ever renewed',
+        no_card_era: 'No-card era (2025-05-25 to 06-21): nothing saved to charge',
+        not_lapsed: 'Only a lapsed trial is a debt to retry',
+        no_customer: 'No Stripe customer on this charge',
+        unmapped_price: 'This trial amount maps to no annual plan',
+      }
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+          {r.retry === 'eligible' && r.customer_id && (
+            <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} trialCents={r.trial_cents} />
+          )}
+          {r.retry === 'graduated' && (
+            <a href="/admin/revenue/outreach" title="Owned by a human outreach sequence — auto-billing never touches this person"
+               style={{ fontSize: 10.5, fontWeight: 800, color: '#3B5C8F', textDecoration: 'underline' }}>in outreach →</a>
+          )}
+          {r.retry !== 'eligible' && r.retry !== 'graduated' && (
+            <span title={whyNot[r.retry] || r.retry} style={{ color: MUTE, fontSize: 11 }}>–</span>
+          )}
+          {r.lastAttempt && (
+            <span title={r.lastAttempt} style={{ display: 'inline-block', fontSize: 10, color: MUTE, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}>
+              {r.lastAttempt}
+            </span>
+          )}
+        </span>
+      )
+    } },
   { key: 'channel', label: 'Channel', align: 'left',
     cell: r => <span style={{ fontSize: 11.5, color: r.attribution === 'not_quiz' ? MUTE : GREEN, fontWeight: r.attribution === 'not_quiz' ? 400 : 700 }}>{ATTR_LABEL[r.attribution] ?? r.attribution}</span> },
   { key: 'utm', label: 'UTM source', align: 'left', cell: r => <span style={{ fontSize: 11.5, color: MUTE }}>{r.utm_source || '–'}</span> },
@@ -122,7 +155,7 @@ const ALL_COLUMNS: Col[] = [
 /** The owner's default view: who, when, where to act, what they paid. The
  *  analytical columns (channel, utm, country, second-payment date) stay one
  *  click away in the Columns menu. */
-const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'stripe', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
+const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'stripe', 'status', 'action', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
 const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }
@@ -193,7 +226,10 @@ export default function TrialsTable({
         </thead>
         <tbody>
           {view.map(r => (
-            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}` }}>
+            // Row tinted with its status color (owner, 2026-08-22: "le righe
+            // dovrebbero essere colorate del colore dello status") — the hex
+            // gets an 8% alpha suffix so the tint reads as a wash, not paint.
+            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${r.derivedColor}14` }}>
               {visible.map(c => (
                 <td key={c.key} style={{ ...td, textAlign: c.align }}>{c.cell(r)}</td>
               ))}
