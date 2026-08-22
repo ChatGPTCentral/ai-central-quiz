@@ -18,9 +18,11 @@ export const dynamic = 'force-dynamic'
  *  NOT exported: a Next route file may only export handlers and route config,
  *  and exporting a plain const here fails the build. Same rule that caught
  *  readLtvModel earlier. The dropdown keeps its own copy of this list. */
+// 'hold' removed 2026-08-22 (owner: "Trialing and hold sono la stessa cosa")
+// — it duplicated the derived Trialing state; existing holds were cleared.
 const MANUAL_STATES = [
   'yearly_subscriber', 'recovered', 'lifetime', 'no_payment',
-  'hold', 'dispute', 'cancel', 'refunded', 'deleted',
+  'dispute', 'cancel', 'refunded', 'deleted',
 ] as const
 
 function db() {

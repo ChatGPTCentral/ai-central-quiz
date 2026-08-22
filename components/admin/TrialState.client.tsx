@@ -10,13 +10,16 @@
 
 import { useState } from 'react'
 
+// 'hold' is gone from the list (owner, 2026-08-22: "Trialing and hold sono la
+// stessa cosa") — it duplicated the derived Trialing state and froze rows out
+// of the retry queue. The 81 existing hold overrides were cleared the same
+// day; the API refuses the value too, so it cannot come back by accident.
 const OPTIONS: { value: string; label: string }[] = [
   { value: 'auto', label: 'Auto (from charges)' },
   { value: 'yearly_subscriber', label: 'Yearly subscriber' },
   { value: 'recovered', label: 'Yearly / recovered' },
   { value: 'lifetime', label: 'Lifetime subscriber' },
   { value: 'no_payment', label: 'No payment' },
-  { value: 'hold', label: 'Hold' },
   { value: 'dispute', label: 'Dispute' },
   { value: 'cancel', label: 'Cancel' },
   { value: 'refunded', label: 'Refunded' },
@@ -75,9 +78,12 @@ export default function TrialState({
           maxWidth: 168,
         }}
       >
+        {/* The auto option shows the derived state PLAIN — "Trialing", not
+            "Auto · Trialing" (owner, 2026-08-22). Auto-ness lives in the
+            tooltip and the dropdown list, not in every row's face. */}
         {OPTIONS.map(o => (
           <option key={o.value} value={o.value}>
-            {o.value === 'auto' ? `Auto · ${derivedLabel}` : o.label}
+            {o.value === 'auto' ? (value === 'auto' ? derivedLabel : `Auto · ${derivedLabel}`) : o.label}
           </option>
         ))}
       </select>
