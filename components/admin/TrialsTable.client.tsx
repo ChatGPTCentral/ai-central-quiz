@@ -227,9 +227,9 @@ export default function TrialsTable({
         <tbody>
           {view.map(r => (
             // Row tinted with its status color (owner, 2026-08-22: "le righe
-            // dovrebbero essere colorate del colore dello status") — the hex
-            // gets an 8% alpha suffix so the tint reads as a wash, not paint.
-            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${r.derivedColor}14` }}>
+            // dovrebbero essere colorate del colore dello status", then
+            // "colori più intensi" the same day) — hex + 20% alpha suffix.
+            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${r.derivedColor}33` }}>
               {visible.map(c => (
                 <td key={c.key} style={{ ...td, textAlign: c.align }}>{c.cell(r)}</td>
               ))}
