@@ -386,6 +386,24 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // study plan and reviews, hero anchor to it, exit-rescue dwell 60s→240s.
   const cookieStore = cookies()
   const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
+  // Fired here, awaited down in the EVOLUTION block: this Supabase round-trip
+  // was stacked AFTER resolveExperiments below, adding its own latency on top
+  // instead of overlapping it. Measured live 2026-08-22: /result's 75th-pct
+  // LCP sat at 4.4-5.0s (Core Web Vitals "poor") for the 2.5 days since this
+  // fetch shipped (2ee6448, 2026-08-19), and nothing else touched this file
+  // in between. Starting it now, next to anonId, means both round-trips share
+  // one wait instead of queuing.
+  const evoPopulationPromise: Promise<Individual[]> = (async () => {
+    try {
+      const { data } = await evoDb()
+        .from('page_individuals')
+        .select('id, genome, generation, weight, retired_at, note')
+        .is('retired_at', null)
+      return (data ?? []) as Individual[]
+    } catch {
+      return [] as Individual[]
+    }
+  })()
   // Admin preview: ?xv=<variantKey> (or expKey:variantKey) force-renders that
   // variant's copy WITHOUT recording an exposure or an assignment, so the owner
   // can eyeball each version. Real visitors never carry this param.
@@ -472,17 +490,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // pooled per allele by the evolution cron; see lib/evolution.ts for why
   // gene-level pooling is the only version of this that works at our
   // traffic. ?g=<individual-id> previews one without recording anything.
-  let individual: Individual | null = null
-  let population: Individual[] = []
-  try {
-    const { data } = await evoDb().from('page_individuals')
-      .select('id, genome, generation, weight, retired_at, note').is('retired_at', null)
-    population = (data ?? []) as Individual[]
-    const forced = typeof searchParams.g === 'string' ? searchParams.g.trim() : ''
-    individual = forced
-      ? population.find(p => p.id === forced) ?? null
-      : pickIndividual(population, anonId)
-  } catch { /* no population: every gene falls back to today's page */ }
+  //
+  // The fetch itself now fires up by anonId, in parallel with
+  // resolveExperiments — this just consumes it. Same fallback-to-empty
+  // behaviour as before on any failure, unchanged.
+  const population = await evoPopulationPromise
+  const forced = typeof searchParams.g === 'string' ? searchParams.g.trim() : ''
+  const individual: Individual | null = forced
+    ? population.find(p => p.id === forced) ?? null
+    : pickIndividual(population, anonId)
   const gene = (slot: string, fallback: string) => (individual?.genome?.[slot] as string | undefined) ?? fallback
 
   // ── result_page_v3 · the research arm ───────────────────────────────
