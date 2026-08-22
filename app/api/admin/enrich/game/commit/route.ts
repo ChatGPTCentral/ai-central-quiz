@@ -63,7 +63,16 @@ export async function POST(req: NextRequest) {
     let committed = 0, verified = 0, unresolved = 0
     for (const r of todo) {
       const now = new Date().toISOString()
-      const update: Record<string, unknown> = { enrichment_verified_at: now }
+      // Both stamps, always (owner's law, 2026-08-22): a committed tuner
+      // round is an owner decision, so the verification ledger records it as
+      // owner_verified — or rejected for the known-bad no-truth case below.
+      const update: Record<string, unknown> = {
+        enrichment_verified_at: now,
+        verification_state: 'owner_verified',
+        verification_evidence: 'confirmed by hand in the enrich tuner',
+        verified_at: now,
+        verified_by: 'owner',
+      }
       const truth = r.truth || {}
       const truthLinkedin = val(truth.linkedinUrl)
       const hasTruthLinkedin = truthLinkedin && truthLinkedin.toUpperCase() !== 'N/A' && LINKEDIN_IN.test(truthLinkedin)
@@ -102,6 +111,8 @@ export async function POST(req: NextRequest) {
       } else {
         // neither, no truth → known-bad but unknown-correct. Flag, don't guess.
         update.enrichment_status = 'unresolved'
+        update.verification_state = 'rejected'
+        update.verification_evidence = 'owner reviewed in the enrich tuner: no profile stood, enriched data known wrong'
         unresolved++
       }
 

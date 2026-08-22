@@ -82,6 +82,14 @@ export interface StoredSubmission {
   enrichmentVerifiedAt?: string // stamped when the owner confirmed this
                                 // profile in the enrich-game. Read-only
                                 // here: toRow omits it.
+  // Verification ledger (owner's law, 2026-08-22). Read-only here on
+  // purpose: toRow omits all four, so no generic save path can ever
+  // clobber an owner_verified state. Writers: the migration backfill,
+  // enrich-lead's autoVerificationUpdate, and the admin verify routes.
+  verificationState?: string    // unverified | auto_verified | owner_verified | rejected
+  verificationEvidence?: string
+  verifiedAt?: string
+  verifiedBy?: string           // 'auto' | 'owner'
   // Future survey-v2 fields (NULL until quiz v2 ships)
   frequencyScore?: number       // 0..3 (last-7-days usage)
   depthScore?: number           // 0..5 (count of depth ticks)
@@ -225,6 +233,10 @@ export interface DbRow {
   // Optional: stamped by the enrich-game verify route; toRow omits it so
   // admin/enrichment saves can never stomp the verification.
   enrichment_verified_at?: string | null
+  verification_state?: string | null
+  verification_evidence?: string | null
+  verified_at?: string | null
+  verified_by?: string | null
 }
 
 function toRow(s: StoredSubmission): DbRow {
@@ -370,6 +382,10 @@ export function fromRow(r: DbRow): StoredSubmission {
     createdAt: r.created_at ?? undefined,
     quizCompletedAt: r.quiz_completed_at ?? undefined,
     enrichmentVerifiedAt: r.enrichment_verified_at ?? undefined,
+    verificationState: r.verification_state ?? undefined,
+    verificationEvidence: r.verification_evidence ?? undefined,
+    verifiedAt: r.verified_at ?? undefined,
+    verifiedBy: r.verified_by ?? undefined,
     frequencyScore: r.frequency_score ?? undefined,
     depthScore: r.depth_score ?? undefined,
     depthActions: r.depth_actions ?? undefined,

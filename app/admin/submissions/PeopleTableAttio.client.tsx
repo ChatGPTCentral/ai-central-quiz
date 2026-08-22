@@ -315,7 +315,16 @@ export default function PeopleTableAttio({
               case 'country': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.country ? '#4A4A4A' : '#C4BDB2' }}>{r.country ? `${countryFlag(r.country)} ${r.country}` : '—'}</span>
               case 'source': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 11.5, color: r.utmSource ? '#4A4A4A' : '#C4BDB2' }}>{r.utmSource || '—'}</span>
               case 'score': return <span key={key} style={{ padding: '0 12px', textAlign: 'right', fontSize: 12.5, fontWeight: 700, color: '#E48715', fontVariantNumeric: 'tabular-nums' }}>{typeof r.score === 'number' ? r.score : '—'}</span>
-              case 'verified': return <span key={key} style={{ padding: '0 12px', textAlign: 'center', fontSize: 11.5, color: r.enrichmentVerifiedAt ? '#2D6A26' : '#B26A00' }} title={r.enrichmentVerifiedAt ? `Verified ${new Date(r.enrichmentVerifiedAt).toLocaleDateString()}` : 'Pending verification (enrich tuner)'}>{r.enrichmentVerifiedAt ? '✓' : '⏳'}</span>
+              case 'verified': {
+                // Verification ledger (owner's law, 2026-08-22): four states.
+                const vs = r.verificationState || (r.enrichmentVerifiedAt ? 'owner_verified' : 'unverified')
+                const [sym, col, tip] =
+                  vs === 'owner_verified' ? ['✓', '#2D6A26', `Verified by you${r.verifiedAt || r.enrichmentVerifiedAt ? ` ${new Date((r.verifiedAt || r.enrichmentVerifiedAt)!).toLocaleDateString()}` : ''}`]
+                  : vs === 'auto_verified' ? ['✓', '#62A758', r.verificationEvidence || 'Verified — domain proof']
+                  : vs === 'rejected' ? ['✕', '#A31621', 'Rejected by you — enriched data known wrong']
+                  : ['⏳', '#B26A00', 'Not verified']
+                return <span key={key} style={{ padding: '0 12px', textAlign: 'center', fontSize: 11.5, color: col }} title={tip}>{sym}</span>
+              }
               case 'city': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.ipCity ? '#4A4A4A' : '#C4BDB2' }}>{r.ipCity || '—'}</span>
               case 'seniority': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.seniority ? '#4A4A4A' : '#C4BDB2' }}>{r.seniority || '—'}</span>
               case 'industry': return <span key={key} className="truncate" style={{ padding: '0 12px', fontSize: 12, color: r.companyIndustry ? '#4A4A4A' : '#C4BDB2' }}>{r.companyIndustry || '—'}</span>

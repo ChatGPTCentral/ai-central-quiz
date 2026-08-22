@@ -14,6 +14,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { runV2 } from './pipeline-v2'
+import { autoVerificationUpdate, isOwnerLocked } from './verification'
 import { isPlaceholderPhoto } from './photo-filter'
 import { bracketCompanySize } from './standardize'
 import { titleCase, normalizeCountry } from '../normalize'
@@ -67,7 +68,7 @@ export async function enrichLeadAndNotify(
   // Hydrate whatever context we already have.
   const { data: row } = await c
     .from('submissions')
-    .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url, job_level, work_area')
+    .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url, job_level, work_area, company_domain, company_website, verification_state')
     .eq('id', rowId)
     .maybeSingle()
 
@@ -76,7 +77,16 @@ export async function enrichLeadAndNotify(
     return { enriched: false, fieldsUpdated, emailed: false }
   }
 
-  if (reEnrich) {
+  // THE OWNER'S LOCK (his law, 2026-08-22): a row he verified or rejected by
+  // hand is never re-enriched by any automated path, force included — his
+  // judgment is final until HE resets the state. The notification still sends
+  // below, from the row exactly as he validated it.
+  const ownerLocked = isOwnerLocked(row.verification_state as string)
+  if (ownerLocked && reEnrich) {
+    console.log(`[enrich-lead] row=${rowId} is ${row.verification_state}, owner-locked — skipping re-enrichment`)
+  }
+
+  if (reEnrich && !ownerLocked) {
     try {
       const input = {
         email: row.email as string,
@@ -146,6 +156,19 @@ export async function enrichLeadAndNotify(
 
       update.enrichment_status = v2.status
       update.enriched_at = new Date().toISOString()
+
+      // Verification ledger: recompute the deterministic proof from the
+      // MERGED row (fresh values where set, existing otherwise). Owner-locked
+      // states return {} from this helper by construction.
+      Object.assign(
+        update,
+        autoVerificationUpdate(
+          row.verification_state as string,
+          row.email as string,
+          (update.company_domain as string) ?? (row.company_domain as string),
+          (update.company_website as string) ?? (row.company_website as string),
+        ),
+      )
 
       // Re-classify with the merged signal set.
       try {

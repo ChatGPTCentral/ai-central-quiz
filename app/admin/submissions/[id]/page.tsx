@@ -14,6 +14,7 @@ import LinkedInReplacer from './LinkedInReplacer.client'
 import PhotoEditor from './PhotoEditor.client'
 import RawDataSection from './RawDataSection'
 import DossierTabs from './DossierTabs.client'
+import VerificationControl from './VerificationControl.client'
 
 export const dynamic = 'force-dynamic'
 
@@ -427,22 +428,15 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             </div>
           </div>
 
-          {/* Verification status (enrich tuner → verify new records) */}
-          <div style={{ marginTop: 18, maxWidth: 272 }}>
-            {item.enrichmentVerifiedAt ? (
-              <div
-                title={`Profile confirmed on ${new Date(item.enrichmentVerifiedAt).toLocaleString()}`}
-                style={{ border: '2px solid #62A758', background: '#FFFFFF', color: '#2D6A26', padding: '9px 12px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}
-              >✓ Verified by you {fmtDate(item.enrichmentVerifiedAt)}</div>
-            ) : (
-              <Link
-                href="/admin/enrich-game"
-                title="Not verified yet — confirm this profile in the enrich tuner"
-                className="block hover:opacity-80"
-                style={{ border: '2px solid #E48715', background: '#FEF7E7', color: '#B26A00', padding: '9px 12px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'center' }}
-              >⏳ Pending verification →</Link>
-            )}
-          </div>
+          {/* Verification ledger (owner's law, 2026-08-22): four states, and
+              the owner can verify or reject right here — his click is final
+              and locks the row against every automated path. */}
+          <VerificationControl
+            id={item.id}
+            state={item.verificationState || 'unverified'}
+            evidence={item.verificationEvidence || null}
+            verifiedAt={item.verifiedAt || item.enrichmentVerifiedAt || null}
+          />
         </aside>
 
         {/* RIGHT · tabbed dossier */}

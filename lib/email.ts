@@ -108,6 +108,13 @@ export interface SubmissionRow {
   city?: string | null
   enrichment_status?: string | null
   enriched_at?: string | null
+  // Verification ledger (owner's law, 2026-08-22): the trust state of this
+  // row, shown at the very top of the notification so the owner knows how
+  // much to believe BEFORE reading a single enriched field.
+  verification_state?: string | null
+  verification_evidence?: string | null
+  verified_at?: string | null
+  verified_by?: string | null
   // Beehiiv
   beehiiv_status?: string | null
   subscription_tier?: string | null
@@ -304,10 +311,25 @@ function sectionHeader(title: string): string {
   return `<tr><td colspan="2" style="padding:18px 0 8px;border-top:1px solid #E8E4DF;color:#9C9C9C;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;">${escape(title)}</td></tr>`
 }
 
+/** The one-line trust verdict for the top of the email. */
+function verificationBanner(r: SubmissionRow): { bg: string; fg: string; text: string } {
+  switch (r.verification_state) {
+    case 'owner_verified':
+      return { bg: '#E8F5E9', fg: '#2D6A26', text: `✓ VERIFIED BY YOU${r.verified_at ? ` on ${new Date(r.verified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''} — this record is trusted` }
+    case 'auto_verified':
+      return { bg: '#E8F5E9', fg: '#2D6A26', text: `✓ VERIFIED — ${r.verification_evidence || 'deterministic proof on record'}` }
+    case 'rejected':
+      return { bg: '#FDECEA', fg: '#A31621', text: '✕ REJECTED BY YOU — the enriched details below are known wrong, trust only the quiz answers' }
+    default:
+      return { bg: '#FFF3E0', fg: '#B26A00', text: '⏳ NOT VERIFIED — no independent proof yet, treat the enriched details below as unconfirmed' }
+  }
+}
+
 function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: string | null, siteUrl?: string, referrers: Referrer[] = []): string {
   const fullName = r.name || '(no name)'
   const sd = r.stage ? stageDef(r.stage) : null
   const overview = buildOverview(r)
+  const verify = verificationBanner(r)
   const logoSrc = siteUrl ? `${siteUrl.replace(/\/$/, '')}/logo-full-light-bg.png` : null
   const photo = realPhoto(r)
 
@@ -429,6 +451,13 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
             </td>
           </tr>
 
+          <!-- 0 · VERIFICATION — the trust verdict before anything else -->
+          <tr>
+            <td style="padding:10px 24px;background:${verify.bg};color:${verify.fg};font-size:12px;font-weight:800;letter-spacing:0.03em;">
+              ${escape(verify.text)}
+            </td>
+          </tr>
+
           <!-- 1 · OVERVIEW -->
           <tr>
             <td style="padding:24px 24px 8px;">
@@ -478,6 +507,8 @@ function renderHtml(r: SubmissionRow, adminLink: string | null, resultLink: stri
 
 function renderText(r: SubmissionRow, adminLink: string | null, resultLink: string | null, siteUrl?: string, referrers: Referrer[] = []): string {
   const lines: string[] = []
+  lines.push(`VERIFICATION: ${verificationBanner(r).text}`)
+  lines.push('')
   lines.push(`${r.name || '(no name)'} <${r.email || ''}>`)
   lines.push('')
   lines.push(buildOverview(r))

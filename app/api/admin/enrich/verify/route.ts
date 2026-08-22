@@ -88,7 +88,19 @@ export async function POST(req: NextRequest) {
   const p = body.profile || {}
 
   // 1) Write the chosen/overridden profile onto the record + stamp verified.
-  const update: Record<string, unknown> = { enrichment_verified_at: now }
+  // Both stamps together, always: the legacy enrichment_verified_at AND the
+  // verification ledger (owner's law, 2026-08-22) — a tuner decision IS an
+  // owner validation. 'neither' means he looked and no profile stood, which
+  // is a hand REJECTION of the enriched data, locked the same way.
+  const update: Record<string, unknown> = {
+    enrichment_verified_at: now,
+    verification_state: won === 'neither' ? 'rejected' : 'owner_verified',
+    verification_evidence: won === 'neither'
+      ? 'owner reviewed in the enrich tuner: no proposed profile matched'
+      : 'confirmed by hand in the enrich tuner',
+    verified_at: now,
+    verified_by: 'owner',
+  }
   const set = (col: string, v?: string) => { if (v) update[col] = v }
   if (won === 'neither') {
     update.enrichment_status = 'unresolved'

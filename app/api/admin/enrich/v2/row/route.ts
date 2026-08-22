@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAdmin } from '@/lib/admin-auth'
 import { createClient } from '@supabase/supabase-js'
 import { runV2 } from '@/lib/enrichment/pipeline-v2'
+import { autoVerificationUpdate, isOwnerLocked } from '@/lib/enrichment/verification'
 import { isPlaceholderPhoto } from '@/lib/enrichment/photo-filter'
 import { titleCase, normalizeCountry } from '@/lib/normalize'
 import { assignSegmentationV2 } from '@/lib/segmentation-v2'
@@ -51,16 +52,22 @@ export async function POST(req: NextRequest) {
   let rowId: string | null = null
   let currentPhotoUrl: string | null = null
   let input = { email: body.email || '', name: undefined as string | undefined, linkedinUrl: undefined as string | undefined, companyName: undefined as string | undefined, jobTitle: undefined as string | undefined, country: undefined as string | undefined }
+  let currentVerification: string | null = null
+  let currentCompanyDomain: string | null = null
+  let currentCompanyWebsite: string | null = null
   if (body.id) {
     const { data: row, error } = await c
       .from('submissions')
-      .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url')
+      .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url, verification_state, company_domain, company_website')
       .eq('id', body.id)
       .maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     rowId = row.id
     currentPhotoUrl = row.photo_url
+    currentVerification = row.verification_state
+    currentCompanyDomain = row.company_domain
+    currentCompanyWebsite = row.company_website
     input = {
       email: row.email,
       name: row.name || undefined,
@@ -73,7 +80,7 @@ export async function POST(req: NextRequest) {
     // Try to find an existing row by email for context (helpful in Lab page)
     const { data: row } = await c
       .from('submissions')
-      .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url')
+      .select('id, email, name, linkedin_url, company_name, job_title, country, photo_url, verification_state, company_domain, company_website')
       .ilike('email', body.email.trim().toLowerCase())
       .order('ts', { ascending: false })
       .limit(1)
@@ -81,6 +88,9 @@ export async function POST(req: NextRequest) {
     if (row) {
       rowId = row.id
       currentPhotoUrl = row.photo_url
+      currentVerification = row.verification_state
+      currentCompanyDomain = row.company_domain
+      currentCompanyWebsite = row.company_website
       input = {
         email: row.email,
         name: row.name || undefined,
@@ -110,6 +120,18 @@ export async function POST(req: NextRequest) {
   let saveError: string | null = null
   let auditError: string | null = null
   const fieldsUpdated: string[] = []
+
+  if (body.save && rowId && isOwnerLocked(currentVerification)) {
+    // THE OWNER'S LOCK (his law, 2026-08-22): a row he verified or rejected
+    // by hand is never overwritten by any enrichment path, force included.
+    // The diagnostic run above still returns, so the Lab can LOOK — it just
+    // cannot write. He unlocks by resetting the state on the person record.
+    return NextResponse.json({
+      ...v2, rowId, saved: false,
+      saveError: `row is ${currentVerification} (owner-locked) — reset its verification state on the person record to re-enrich`,
+      auditError: null, fieldsUpdated: [], persisted: null,
+    })
+  }
 
   if (body.save && rowId) {
     // ── Pass 1: scalar/user-facing fields ───────────────────────────
@@ -213,6 +235,18 @@ export async function POST(req: NextRequest) {
     // which rows have already been processed (avoid wasteful re-runs).
     update.enrichment_status = v2.status
     update.enriched_at = new Date().toISOString()
+
+    // Verification ledger: recompute the deterministic proof from the merged
+    // row, same call enrich-lead makes — the two save paths stay in lock-step.
+    Object.assign(
+      update,
+      autoVerificationUpdate(
+        currentVerification,
+        input.email,
+        (update.company_domain as string) ?? currentCompanyDomain,
+        (update.company_website as string) ?? currentCompanyWebsite,
+      ),
+    )
 
     // Re-classify (v1 + v2) with the newly merged data so persona / stage
     // reflect the freshest signal set. Reads existing row + applies the
