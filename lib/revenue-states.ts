@@ -30,13 +30,34 @@ export type State = 'converted' | 'recovered' | 'lifetime' | 'lifetime_old' | 'l
 // attempt and leaves the row on 'auto'), so nothing can ever produce this
 // value again; the option is removed from the dropdown and refused by the
 // API too. Its one existing override was cleared.
+// 'converted' reads as "Yearly subscriber", not "Converted" (owner,
+// 2026-08-23: "converted non deve piu essitere, perche ogni converted e o
+// un 'Yearly subscriber' oppure un 'Yearly subscriber (recovered)'") — the
+// generic verb never told you what the person actually became; the concrete
+// noun does. 'recovered' is now auto-detected too (lib/revenue-shared.ts
+// stateOf, matched by trial_charge_id in the admin_actions audit trail), so
+// this is no longer only a manual-override distinction — an auto-derived
+// converted row genuinely never shows the plain word either.
+// 'lapsed_covered' reads identically to 'lapsed' now — same label, same red
+// (owner, 2026-08-23: "stiamo cercando di capire se i loro trial hanno
+// convertito o meno" — THIS trial did not convert, full stop, so it must
+// look exactly like every other "Did not convert" row). The extra fact this
+// bucket used to carry alone in its own colour — the person pays some other
+// way — is still there, just demoted to a note next to the dropdown
+// (personNote, already existed) instead of a whole second visual state.
+// Kept as its own internal key ONLY so retryVerdict() (lib/revenue-shared.ts)
+// keeps excluding it from the retry queue exactly as before — st !== 'lapsed'
+// still holds for 'lapsed_covered', so nothing here can start auto-billing
+// someone who already pays (owner: "sono comunque persone a cui non
+// vogliamo fare un tentativo"). The filter chips on the trials page fold its
+// count into 'lapsed' so the two never appear as separate chips.
 export const STATE_LABEL: Record<State, string> = {
-  converted: 'Converted',
+  converted: 'Yearly subscriber',
   recovered: 'Yearly subscriber (recovered)',
   lifetime: 'Lifetime (new)',
   lifetime_old: 'Lifetime (old)',
   lapsed: 'Did not convert',
-  lapsed_covered: 'Person already pays',
+  lapsed_covered: 'Did not convert',
   not_due: 'Trialing',
   refunded: 'Refunded / disputed',
   cancelled: 'Cancelled (your sheet)',
@@ -54,12 +75,12 @@ export const STATE_LABEL: Record<State, string> = {
 // to 'lifetime_old' and new to 'lifetime'. Old is brown, new is light
 // violet, both excluded from billing the same way (TrialsTable.client.tsx).
 // 'recovered' split out of plain 'converted' 2026-08-23 (owner: "yearly
-// subscriber (recovered)... dagli un verde piu intenso per distinguirlo") —
-// a genuinely different story worth seeing at a glance (charged AFTER
-// lapsing, not a smooth renewal), unlike 'yearly_subscriber', which stays
-// merged into plain 'converted' because the owner described it as the same
-// fact, just confirmed by hand.
-export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', recovered: '#1B5E20', lifetime: '#8E6FA8', lifetime_old: '#8B5E3C', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
+// subscriber (recovered)... dagli un verde piu intenso per distinguirlo",
+// then "piu scuro ancora" the same day) — a genuinely different story worth
+// seeing at a glance (charged AFTER lapsing, not a smooth renewal), unlike
+// 'yearly_subscriber', which stays merged into plain 'converted' because the
+// owner described it as the same fact, just confirmed by hand.
+export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', recovered: '#0D3D12', lifetime: '#8E6FA8', lifetime_old: '#8B5E3C', lapsed: '#B00020', lapsed_covered: '#B00020', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
 
 /** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
  *  judgment; a row with ANY override can never be lapsed, so it can never be

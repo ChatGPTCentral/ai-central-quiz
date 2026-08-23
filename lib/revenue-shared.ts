@@ -35,10 +35,16 @@ export const NO_CARD_ERA_START = '2025-05-25'
 export const NO_CARD_ERA_END = '2025-06-21'
 export const inNoCardEra = (r: Row) => { const d = r.trial_at.slice(0, 10); return d >= NO_CARD_ERA_START && d <= NO_CARD_ERA_END }
 
-function stateOf(r: Row, personPaysElsewhere: boolean): State {
+// recoveredChargeIds identifies conversions THIS TRIAL'S OWN retry button
+// won back, matched by charge_id (not just by person — a person can hold a
+// second trial that converted smoothly on its own, and that row must not
+// borrow this one's recovery). Owner, 2026-08-23: "ogni converted è o un
+// 'Yearly subscriber' oppure un 'Yearly subscriber (recovered)'" — every
+// converted row must read as one of the two, never the plain word.
+function stateOf(r: Row, personPaysElsewhere: boolean, recoveredChargeIds: Set<string>): State {
   if (r.trial_refunded) return 'refunded'
   if (r.lifetime_bundle) return 'lifetime'
-  if (r.converted) return 'converted'
+  if (r.converted) return recoveredChargeIds.has(r.charge_id) ? 'recovered' : 'converted'
   if (!r.due) return 'not_due'
   return personPaysElsewhere ? 'lapsed_covered' : 'lapsed'
 }
@@ -265,10 +271,21 @@ export function buildStateMachinery(d: RevenueData) {
     return null
   }
   const personPays = (r: Row) => personOutcome.has(r.person_key) || paysOffLedger(r) !== null
+  // Every trial_charge_id the retry button ever won a subscription for —
+  // charge-annual/route.ts stamps it into admin_actions.detail on every
+  // charge_annual_created. Matched by charge_id, not by person: it marks
+  // exactly the trial the button recovered, never a sibling trial from the
+  // same person that happened to convert on its own.
+  const recoveredChargeIds = new Set(
+    d.adminActions
+      .filter(a => a.action === 'charge_annual_created')
+      .map(a => (a.detail as { trial_charge_id?: unknown } | null)?.trial_charge_id)
+      .filter((id): id is string => typeof id === 'string'),
+  )
   const effState = (r: Row): State => {
     const ov = d.overrideBy.get(r.charge_id)
-    if (ov && ov !== 'auto') return OVERRIDE_BUCKET[ov] ?? stateOf(r, personPays(r))
-    return stateOf(r, personPays(r))
+    if (ov && ov !== 'auto') return OVERRIDE_BUCKET[ov] ?? stateOf(r, personPays(r), recoveredChargeIds)
+    return stateOf(r, personPays(r), recoveredChargeIds)
   }
   return { personOutcome, paysOffLedger, personPays, effState }
 }

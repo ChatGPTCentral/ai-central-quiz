@@ -17,7 +17,7 @@ import { fmtDay } from '@/lib/dates'
 import {
   loadRevenueData, buildStateMachinery, inNoCardEra,
   retryVerdict, lastChargeAttempts, loadGraduatedSet,
-  STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State,
+  STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State, type Row,
 } from '@/lib/revenue-shared'
 import { classifyLedger } from '@/lib/trial-entries'
 
@@ -84,8 +84,13 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const initialNonPayingOnly = searchParams.nonpaying === '1'
 
   const L3 = L.filter(r => (includeIndia || r.country !== 'India') && (includeNoCard || !inNoCardEra(r)))
+  // 'lapsed_covered' reads and counts as 'lapsed' everywhere on this page
+  // (owner, 2026-08-23: same fact, "Did not convert"; see the note on
+  // STATE_LABEL) — so filtering by 'lapsed' must also catch it, or the
+  // "Did not convert" chip's count and what clicking it shows would disagree.
+  const matchesState = (r: Row) => !fState || effState(r) === fState || (fState === 'lapsed' && effState(r) === 'lapsed_covered')
   const filtered = L3.filter(r =>
-    (!fState || effState(r) === fState) &&
+    matchesState(r) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr) &&
     (!q || r.person_key.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q)))
@@ -170,9 +175,13 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
         </summary>
         <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 10 }}>
           <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
-          {(['converted', 'recovered', 'lifetime', 'lifetime_old', 'lapsed', 'lapsed_covered', 'not_due', 'refunded', 'cancelled'] as State[]).map(s => (
+          {/* 'lapsed_covered' is not its own chip — it reads and counts as
+              'lapsed' (owner, 2026-08-23), folded in here so the chip's
+              number always matches what clicking it shows (matchesState
+              above already includes lapsed_covered under 'lapsed'). */}
+          {(['converted', 'recovered', 'lifetime', 'lifetime_old', 'lapsed', 'not_due', 'refunded', 'cancelled'] as State[]).map(s => (
             <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
-              {STATE_LABEL[s]} {counts[s]}
+              {STATE_LABEL[s]} {s === 'lapsed' ? counts.lapsed + counts.lapsed_covered : counts[s]}
             </a>
           ))}
           <span style={{ width: 12 }} />
