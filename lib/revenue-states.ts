@@ -8,7 +8,7 @@
 
 /** The states a trial can be in. Deliberately exhaustive: every trial is in
  *  exactly one of them, so the counts always sum to the trial total. */
-export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'cancelled'
+export type State = 'converted' | 'lifetime' | 'lifetime_old' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'cancelled'
 
 // 'cancel' spent one round folded into Trialing (owner, first round: "same
 // label, so people stop reading them as two facts"). The very next round,
@@ -29,22 +29,27 @@ export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'no
 // rule.
 export const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
-  lifetime: 'Lifetime',
+  lifetime: 'Lifetime (new)',
+  lifetime_old: 'Lifetime (old)',
   lapsed: 'Did not convert',
   lapsed_covered: 'Person already pays',
   not_due: 'Trialing',
   refunded: 'Refunded / disputed',
   cancelled: 'Cancelled (your sheet)',
 }
-// 'lifetime' is light violet, not the old blue-grey: every row that can ever
-// carry this state in trial_ledger is a $54.74 bundle (trial + lifetime in
-// one charge, the "New" lifetime subscriber per the owner's 2026-08-23
-// split) — checked against stripe_charges, 28 charges of $54.74, 28 ledger
-// rows with lifetime_bundle=true, zero of anything else. The "Old" lifetime
-// subscribers he also named (240 charges of exactly $49.75, sold with no
-// trial at all) have no trial and so no row here to colour; see the note on
-// TrialsTable.client.tsx.
-export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#8E6FA8', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
+// CORRECTED 2026-08-23: the first version of this split coloured EVERY
+// 'lifetime' row light violet on the claim that all of them are the $54.74
+// bundle. That was checked against the AUTO-derived rows only (28 charges of
+// $54.74, 28 ledger rows with lifetime_bundle=true) — it missed that a
+// MANUAL override can also force a row into 'lifetime', and the owner's own
+// sheet already has two distinct statuses for this: "(Old) Lifetime
+// Subscriber" (38 rows, 33 matching a real trial) and "(New) Lifetime
+// Subscriber" (28 rows, matching the bundle exactly). The sync function
+// collapsed both into the same override — see the
+// fix_hold_reimport_and_split_old_new_lifetime migration, which now maps old
+// to 'lifetime_old' and new to 'lifetime'. Old is brown, new is light
+// violet, both excluded from billing the same way (TrialsTable.client.tsx).
+export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#8E6FA8', lifetime_old: '#8B5E3C', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
 
 /** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
  *  judgment; a row with ANY override can never be lapsed, so it can never be
@@ -53,6 +58,7 @@ export const OVERRIDE_BUCKET: Record<string, State> = {
   yearly_subscriber: 'converted',
   recovered: 'converted',
   lifetime: 'lifetime',
+  lifetime_old: 'lifetime_old',
   refunded: 'refunded',
   dispute: 'refunded',
   deleted: 'refunded',

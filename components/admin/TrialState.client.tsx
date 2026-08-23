@@ -19,7 +19,8 @@ const OPTIONS: { value: string; label: string }[] = [
   { value: 'auto', label: 'Auto (from charges)' },
   { value: 'yearly_subscriber', label: 'Yearly subscriber' },
   { value: 'recovered', label: 'Yearly / recovered' },
-  { value: 'lifetime', label: 'Lifetime subscriber' },
+  { value: 'lifetime', label: 'Lifetime (new, $54.74 bundle)' },
+  { value: 'lifetime_old', label: 'Lifetime (old, $49.75 only)' },
   { value: 'no_payment', label: 'No payment' },
   { value: 'dispute', label: 'Dispute' },
   { value: 'cancel', label: 'Cancel' },
@@ -30,7 +31,7 @@ const OPTIONS: { value: string; label: string }[] = [
 export type StripeCheck = { hasActiveSubscription: boolean; subscriptionStatus: string | null } | { error: string }
 
 export default function TrialState({
-  chargeId, customerId, derived, derivedLabel, derivedColor, initial, onLiveColorChange, onStripeCheck,
+  chargeId, customerId, derived, derivedLabel, initial, onLiveColorChange, onStripeCheck,
 }: {
   chargeId: string
   /** Needed to re-check Stripe live after a manual change; no check runs
@@ -38,7 +39,6 @@ export default function TrialState({
   customerId: string | null
   derived: State
   derivedLabel: string
-  derivedColor: string
   /** The stored override, or null when the row is on Auto. */
   initial: string | null
   /** Repaints the row's background the instant the dropdown changes — no
@@ -102,9 +102,14 @@ export default function TrialState({
         onChange={e => save(e.target.value)}
         style={{
           fontSize: 11.5, fontWeight: 700, padding: '3px 5px',
-          border: `2px solid ${failed ? '#B00020' : manual ? color : '#E8E2D4'}`,
+          // Every row's border and text carry its state colour now, auto or
+          // manual alike (owner, 2026-08-23: "perchè alcuni che sono
+          // 'trialing' hanno il bordo arancione e altri no? devono tutti
+          // avere il bordo"). It was gated on `manual` before, so an
+          // auto-derived Trialing row got a plain hairline instead of amber.
+          border: `2px solid ${failed ? '#B00020' : color}`,
           background: saving ? '#F3F0E8' : '#FFFDFA',
-          color: manual ? color : derivedColor,
+          color,
           maxWidth: 168,
         }}
       >

@@ -20,9 +20,12 @@ export const dynamic = 'force-dynamic'
  *  and exporting a plain const here fails the build. Same rule that caught
  *  readLtvModel earlier. The dropdown keeps its own copy of this list. */
 // 'hold' removed 2026-08-22 (owner: "Trialing and hold sono la stessa cosa")
-// — it duplicated the derived Trialing state; existing holds were cleared.
+// — it duplicated the derived Trialing state; existing holds were cleared
+// (twice — the sheet-sync function kept reintroducing it until fixed
+// 2026-08-23, see the fix_hold_reimport_and_split_old_new_lifetime
+// migration).
 const MANUAL_STATES = [
-  'yearly_subscriber', 'recovered', 'lifetime', 'no_payment',
+  'yearly_subscriber', 'recovered', 'lifetime', 'lifetime_old', 'no_payment',
   'dispute', 'cancel', 'refunded', 'deleted',
 ] as const
 
