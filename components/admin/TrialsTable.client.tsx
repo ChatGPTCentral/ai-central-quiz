@@ -284,16 +284,21 @@ export default function TrialsTable({
   const setLiveCheck = (chargeId: string, check: StripeCheck | null) => setLiveChecks(prev => ({ ...prev, [chargeId]: check }))
   const cellCtx: CellCtx = { onColor: setLiveColor, onCheck: setLiveCheck, checks: liveChecks }
 
-  // Cancelled, disputed and refunded rows move OUT of the main table
-  // entirely (owner, 2026-08-23: "mosso via dalla tabella principale") —
-  // still on the page, still editable, just never sitting next to a billing
-  // button. Nothing is hidden from the page, only re-sorted onto it.
-  const protectedRows = rows.filter(r => r.derivedState === 'refunded' || r.derivedState === 'cancelled')
-  const activeRows = rows.filter(r => r.derivedState !== 'refunded' && r.derivedState !== 'cancelled')
-  const nonPaying = activeRows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'recovered' && r.derivedState !== 'lifetime' && r.derivedState !== 'lifetime_old')
-  const base = nonPayingOnly ? nonPaying : activeRows
+  // ONE table, ONE toggle (owner, 2026-08-23: "ridurre la complessita di
+  // avere tutte queste tabelle e sottotabelle ... un toggle che mi fa il
+  // subset di tutte le persone con le righe rosse"). The earlier cancelled/
+  // disputed/refunded section is gone — those rows sort back in with
+  // everyone else. Nothing lost: the Actions cell above already refuses a
+  // billing button by checking each row's OWN state, not by which section
+  // it sits in, so folding the sections back together changes nothing about
+  // what can be billed, only how many tables the page has.
+  // 'nonPaying' is now exactly the red rows — state 'lapsed' only, matching
+  // what Retry all can actually act on 1:1 (owner: "cosi che poi puoi
+  // mandarmi il retry all sui rossi"). Trialing, cancelled, refunded,
+  // already-billed all stay out of this toggle; they only ever show in All.
+  const nonPaying = rows.filter(r => r.derivedState === 'lapsed')
+  const base = nonPayingOnly ? nonPaying : rows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
-  const protectedView = [...protectedRows].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
   // Actions then Notes are always the last two columns, in both views
   // (owner, 2026-08-23: "actions, e poi dopo mi metti le note").
   const visible = [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL, NOTES_COL].filter(Boolean)
@@ -319,7 +324,7 @@ export default function TrialsTable({
   )
   // Row tinted with its status color (owner, 2026-08-22, "colori più
   // intensi" the same day; 2026-08-23: a hand-change must repaint it too) —
-  // hex + 20% alpha suffix. Shared by both tables below.
+  // hex + 20% alpha suffix.
   const bodyRows = (list: TrialRow[]) => list.map(r => (
     <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${liveColors[r.charge_id] ?? r.derivedColor}33` }}>
       {visible.map(c => (
@@ -343,10 +348,10 @@ export default function TrialsTable({
     <>
       <div className="flex items-center flex-wrap" style={{ gap: 7, marginTop: 10, marginBottom: 6 }}>
         <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Showing:</span>
-        <button type="button" onClick={() => setNonPayingOnly(false)} style={btn(!nonPayingOnly)}>All {activeRows.length}</button>
+        <button type="button" onClick={() => setNonPayingOnly(false)} style={btn(!nonPayingOnly)}>All {rows.length}</button>
         <button type="button" onClick={() => setNonPayingOnly(true)} style={btn(nonPayingOnly)}
-                title="Not converted and not lifetime — Retry all and the recovery stats live only here">
-          Non-paying {nonPaying.length}
+                title="Did not convert (state exactly 'lapsed') — Retry all and the recovery stats live only here, and act on exactly this set">
+          Did not convert {nonPaying.length}
         </button>
         <span style={{ width: 10 }} />
         <ColumnsMenu all={MENU_COLUMNS.map(c => ({ key: c.key, label: c.label }))} hidden={L.hidden}
@@ -382,27 +387,6 @@ export default function TrialsTable({
         <tbody>{bodyRows(view)}</tbody>
       </table>
       </div>
-
-      {/* Cancelled, disputed and refunded — never intermixed with the
-          actionable rows above, so a billing button can never sit next to
-          one by accident (owner, 2026-08-23). Closed by default: this is
-          the part of the page nobody needs to look at, on purpose. */}
-      {protectedView.length > 0 && (
-        <details style={{ marginTop: 18 }}>
-          <summary style={{ fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer', userSelect: 'none' }}>
-            Cancelled, disputed &amp; refunded — excluded from billing ({protectedView.length})
-          </summary>
-          <p style={{ fontSize: 11, color: MUTE, marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
-            Never a Create sub or Charge button here, checked on the row&rsquo;s own state, not only on being listed here.
-          </p>
-          <div style={{ overflowX: 'auto', marginTop: 8 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>{headRow}</thead>
-              <tbody>{bodyRows(protectedView)}</tbody>
-            </table>
-          </div>
-        </details>
-      )}
     </>
   )
 }

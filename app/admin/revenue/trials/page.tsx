@@ -6,11 +6,16 @@
 //
 // ABSORBED the standalone recovery queue 2026-08-23 (owner: "merging
 // therefore this with the retry table feature. we dont need to see all
-// those buttons that you can fold into [a toggle]"). The table now shows
-// every trial ever, oldest first, always; a Non-paying toggle filters to
-// the retry-eligible set and is the ONLY place the charge button, Retry
-// all, and the old queue's stats render. /admin/revenue/recovery redirects
-// here with that toggle pre-set.
+// those buttons that you can fold into [a toggle]"). ONE table only — a
+// separate section for cancelled/disputed/refunded rows was tried the same
+// day and then folded back in (owner: "ridurre la complessita di avere
+// tutte queste tabelle e sottotabelle"), since the Actions cell already
+// refuses a billing button by checking each row's own state, not by which
+// section it sits in. Every trial ever shows, oldest first, always; a
+// "Did not convert" toggle narrows to state exactly 'lapsed' — the same set
+// Retry all acts on — and is the only place Retry all and the old queue's
+// stats render. /admin/revenue/recovery redirects here with that toggle
+// pre-set.
 
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import { fmtDay } from '@/lib/dates'
