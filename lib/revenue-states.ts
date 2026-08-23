@@ -8,17 +8,21 @@
 
 /** The states a trial can be in. Deliberately exhaustive: every trial is in
  *  exactly one of them, so the counts always sum to the trial total. */
-export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'manual'
+export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded'
 
-// 'manual' relabeled 2026-08-23 (owner: "i ONLY want 1 label, trialing ==
-// auto set aside by hand"). It is NOT the same fact as Trialing and staying
-// honest about that matters — the 14 rows left in this bucket are all
-// 'cancel', all imported from the owner's own sheet, all already past their
-// 28-day window; showing them as "Trialing" would hide a decision he
-// already recorded. What WAS true in his complaint: "Set aside by hand"
-// reads as a vague, pending-sounding phrase, easy to mistake for a Trialing
-// twin. Renamed to say what it now excludes: everything but a real,
-// sourced cancellation.
+// The distinct 'manual' bucket is GONE (owner, 2026-08-23, second time and
+// unambiguous: "'canceled' e 'trialing' sono la stessa cosa" / "'no payment'
+// e 'did not convert' sono la stessa cosa" — a final, informed call, made
+// after he'd already been told the 14 'cancel' rows are real, sourced
+// cancellations from his own sheet). Checked before folding it in: a row's
+// eligibility for auto-billing runs entirely on retryVerdict(), which only
+// ever fires on the exact state 'lapsed' (lib/revenue-shared.ts) — never on
+// this label. 'cancel' was never 'lapsed' and still is not, so it is exactly
+// as excluded from the retry queue as before; only the DISPLAY changed.
+// 'cancel' now buckets as Trialing, matching his words. 'no_payment' now
+// buckets as Did-not-convert, because that override always recorded the
+// same fact the auto-derived 'lapsed' state already captures — one fact,
+// one label, per the project's one-source rule.
 export const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
   lifetime: 'Lifetime',
@@ -26,9 +30,8 @@ export const STATE_LABEL: Record<State, string> = {
   lapsed_covered: 'Person already pays',
   not_due: 'Trialing',
   refunded: 'Refunded / disputed',
-  manual: 'Cancelled (your sheet)',
 }
-export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#7E9BB5', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', manual: '#8A7A5C' }
+export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#7E9BB5', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A' }
 
 /** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
  *  judgment; a row with ANY override can never be lapsed, so it can never be
@@ -40,16 +43,18 @@ export const OVERRIDE_BUCKET: Record<string, State> = {
   refunded: 'refunded',
   dispute: 'refunded',
   deleted: 'refunded',
-  cancel: 'manual',
-  no_payment: 'manual',
+  cancel: 'not_due',
+  no_payment: 'lapsed',
 }
 
 /** The live bucket for whatever the dropdown currently holds — 'auto' falls
  *  back to the server-derived state, anything else resolves through the
  *  override bucket. Shared by the dropdown (border/text color) and the row
  *  (background tint) so the two can never show different colors for the
- *  same value (owner, 2026-08-23: change by hand must repaint the row). */
+ *  same value (owner, 2026-08-23: change by hand must repaint the row). An
+ *  override value this map does not recognize falls back to the derived
+ *  state rather than a guess — the same thing 'auto' does. */
 export function liveState(value: string, derived: State): State {
   if (value === 'auto') return derived
-  return OVERRIDE_BUCKET[value] ?? 'manual'
+  return OVERRIDE_BUCKET[value] ?? derived
 }

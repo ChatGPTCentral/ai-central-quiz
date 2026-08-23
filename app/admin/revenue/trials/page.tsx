@@ -123,7 +123,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
     if (a.action === 'charge_annual_created') recoveredCount++
     if (a.action === 'charge_annual_invoiced') invoicedCount++
   }
-  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0, manual: 0 }
+  const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0 }
   for (const r of L3) counts[effState(r)]++
   const erasPresent = new Set(L.map(r => r.era))
 
@@ -141,7 +141,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   })
 
   return (
-    <div style={{ padding: '22px 26px 60px', maxWidth: 1240 }}>
+    <div style={{ padding: '22px 26px 60px' }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Every trial &amp; its status</h1>
       <p style={{ fontSize: 12.5, color: MUTE, marginTop: 6, maxWidth: 860, lineHeight: 1.6 }}>
         Laid out like your trials spreadsheet: date, email, name, status, channel, source, country, payments. Status is
@@ -170,7 +170,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
         </summary>
         <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 10 }}>
           <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
-          {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded', 'manual'] as State[]).map(s => (
+          {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded'] as State[]).map(s => (
             <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
               {STATE_LABEL[s]} {counts[s]}
             </a>

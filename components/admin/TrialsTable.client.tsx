@@ -170,10 +170,14 @@ const ALL_COLUMNS: Col[] = [
 
 /** The owner's default view: who, when, where to act, what they paid. The
  *  analytical columns (channel, utm, country, second-payment date) stay one
- *  click away in the Columns menu. 'action' is NOT in here at all — it is
- *  forced on or off by the non-paying toggle, never by column preference
- *  (owner, 2026-08-23: "we dont need to see all those buttons", fold them
- *  into the toggle instead of leaving them a per-user column choice). */
+ *  click away in the Columns menu. 'action' is NOT in here at all — it always
+ *  renders, in both the All and Non-paying views (owner, 2026-08-23: "voglio
+ *  avere il pulsante charge anche nella tabella all"), so it is never a
+ *  per-user column choice either. Showing it on a converted or lifetime row
+ *  is safe: every guard that can refuse a charge lives server-side
+ *  (app/api/admin/charge-annual/route.ts checks Stripe for a live
+ *  subscription before it ever bills), so a row that should not be touched
+ *  just shows the refusal text instead of charging anything. */
 const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
 const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
@@ -181,8 +185,9 @@ const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform:
 // One line per row, always: cells never wrap, the table scrolls instead.
 const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
-// 'action' is excluded from the column-preference universe on purpose — the
-// non-paying toggle owns it exclusively (owner, 2026-08-23).
+// 'action' is excluded from the column-preference universe on purpose — it is
+// always on, in both views, never a per-user hide/show choice (owner,
+// 2026-08-23).
 const MENU_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'action')
 const ACTION_COL = ALL_COLUMNS.find(c => c.key === 'action')!
 
@@ -226,7 +231,8 @@ export default function TrialsTable({
   const nonPaying = rows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'lifetime')
   const base = nonPayingOnly ? nonPaying : rows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
-  const visible = (nonPayingOnly ? [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL] : L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!)).filter(Boolean)
+  // Actions is always the last column, in both views (owner, 2026-08-23).
+  const visible = [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL].filter(Boolean)
 
   // The bulk retry target: only the rows the shared verdict actually clears
   // (lib/revenue-shared retryVerdict, computed server-side per row) — same
@@ -245,7 +251,7 @@ export default function TrialsTable({
         <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Showing:</span>
         <button type="button" onClick={() => setNonPayingOnly(false)} style={btn(!nonPayingOnly)}>All {rows.length}</button>
         <button type="button" onClick={() => setNonPayingOnly(true)} style={btn(nonPayingOnly)}
-                title="Not converted and not lifetime — the charge button and Retry all live only here">
+                title="Not converted and not lifetime — Retry all and the recovery stats live only here">
           Non-paying {nonPaying.length}
         </button>
         <span style={{ width: 10 }} />

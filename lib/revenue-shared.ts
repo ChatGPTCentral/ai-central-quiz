@@ -267,7 +267,7 @@ export function buildStateMachinery(d: RevenueData) {
   const personPays = (r: Row) => personOutcome.has(r.person_key) || paysOffLedger(r) !== null
   const effState = (r: Row): State => {
     const ov = d.overrideBy.get(r.charge_id)
-    if (ov && ov !== 'auto') return OVERRIDE_BUCKET[ov] ?? 'manual'
+    if (ov && ov !== 'auto') return OVERRIDE_BUCKET[ov] ?? stateOf(r, personPays(r))
     return stateOf(r, personPays(r))
   }
   return { personOutcome, paysOffLedger, personPays, effState }

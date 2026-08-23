@@ -148,7 +148,7 @@ export default async function RevenuePage() {
   const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
 
   return (
-    <div style={{ padding: '22px 26px 60px', maxWidth: 1240 }}>
+    <div style={{ padding: '22px 26px 60px' }}>
       <LedgerHealth checks={d.checks as CheckResult[] | null} ranAt={d.checksRanAt} />
       <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Revenue</h1>
       <p style={{ fontSize: 13.5, color: MUTE, marginTop: 6, maxWidth: 820, lineHeight: 1.55 }}>
