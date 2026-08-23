@@ -8,7 +8,7 @@
 
 /** The states a trial can be in. Deliberately exhaustive: every trial is in
  *  exactly one of them, so the counts always sum to the trial total. */
-export type State = 'converted' | 'lifetime' | 'lifetime_old' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'cancelled'
+export type State = 'converted' | 'recovered' | 'lifetime' | 'lifetime_old' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'cancelled'
 
 // 'cancel' spent one round folded into Trialing (owner, first round: "same
 // label, so people stop reading them as two facts"). The very next round,
@@ -32,6 +32,7 @@ export type State = 'converted' | 'lifetime' | 'lifetime_old' | 'lapsed' | 'laps
 // API too. Its one existing override was cleared.
 export const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
+  recovered: 'Yearly subscriber (recovered)',
   lifetime: 'Lifetime (new)',
   lifetime_old: 'Lifetime (old)',
   lapsed: 'Did not convert',
@@ -52,14 +53,20 @@ export const STATE_LABEL: Record<State, string> = {
 // fix_hold_reimport_and_split_old_new_lifetime migration, which now maps old
 // to 'lifetime_old' and new to 'lifetime'. Old is brown, new is light
 // violet, both excluded from billing the same way (TrialsTable.client.tsx).
-export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#8E6FA8', lifetime_old: '#8B5E3C', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
+// 'recovered' split out of plain 'converted' 2026-08-23 (owner: "yearly
+// subscriber (recovered)... dagli un verde piu intenso per distinguirlo") —
+// a genuinely different story worth seeing at a glance (charged AFTER
+// lapsing, not a smooth renewal), unlike 'yearly_subscriber', which stays
+// merged into plain 'converted' because the owner described it as the same
+// fact, just confirmed by hand.
+export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', recovered: '#1B5E20', lifetime: '#8E6FA8', lifetime_old: '#8B5E3C', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
 
 /** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
  *  judgment; a row with ANY override can never be lapsed, so it can never be
  *  in the retry queue and never chargeable. */
 export const OVERRIDE_BUCKET: Record<string, State> = {
   yearly_subscriber: 'converted',
-  recovered: 'converted',
+  recovered: 'recovered',
   lifetime: 'lifetime',
   lifetime_old: 'lifetime_old',
   refunded: 'refunded',

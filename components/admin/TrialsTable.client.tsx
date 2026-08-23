@@ -166,7 +166,7 @@ const ALL_COLUMNS: Col[] = [
           </span>
         )
       }
-      if (r.derivedState === 'converted' || r.derivedState === 'lifetime' || r.derivedState === 'lifetime_old' || r.derivedState === 'lapsed_covered') {
+      if (r.derivedState === 'converted' || r.derivedState === 'recovered' || r.derivedState === 'lifetime' || r.derivedState === 'lifetime_old' || r.derivedState === 'lapsed_covered') {
         return (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span title="Already billed — an annual, a lifetime, or paying us some other way" style={{ color: MUTE, fontSize: 11 }}>already billed</span>
@@ -282,7 +282,7 @@ export default function TrialsTable({
   // button. Nothing is hidden from the page, only re-sorted onto it.
   const protectedRows = rows.filter(r => r.derivedState === 'refunded' || r.derivedState === 'cancelled')
   const activeRows = rows.filter(r => r.derivedState !== 'refunded' && r.derivedState !== 'cancelled')
-  const nonPaying = activeRows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'lifetime' && r.derivedState !== 'lifetime_old')
+  const nonPaying = activeRows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'recovered' && r.derivedState !== 'lifetime' && r.derivedState !== 'lifetime_old')
   const base = nonPayingOnly ? nonPaying : activeRows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
   const protectedView = [...protectedRows].sort((a, b) => a.trial_at.localeCompare(b.trial_at))

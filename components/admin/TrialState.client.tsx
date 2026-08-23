@@ -29,7 +29,7 @@ import { liveState, STATE_COLOR, type State } from '@/lib/revenue-states'
 const OPTIONS: { value: string; label: string }[] = [
   { value: 'auto', label: 'Auto (from charges)' },
   { value: 'yearly_subscriber', label: 'Yearly subscriber' },
-  { value: 'recovered', label: 'Yearly / recovered' },
+  { value: 'recovered', label: 'Yearly subscriber (recovered)' },
   { value: 'lifetime', label: 'Lifetime (new, $54.74 bundle)' },
   { value: 'lifetime_old', label: 'Lifetime (old, $49.75 only)' },
   { value: 'dispute', label: 'Dispute' },
