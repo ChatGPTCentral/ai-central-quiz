@@ -17,6 +17,7 @@ import { fmtDay } from '@/lib/dates'
 import { useColumnLayout } from './useColumnLayout'
 import ColumnsMenu from './ColumnsMenu.client'
 import ChargeAnnual from './ChargeAnnual.client'
+import ChargeAnnualAll from './ChargeAnnualAll.client'
 
 export interface TrialRow {
   charge_id: string
@@ -154,41 +155,64 @@ const ALL_COLUMNS: Col[] = [
 
 /** The owner's default view: who, when, where to act, what they paid. The
  *  analytical columns (channel, utm, country, second-payment date) stay one
- *  click away in the Columns menu. */
-const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'stripe', 'status', 'action', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
+ *  click away in the Columns menu. 'action' is NOT in here at all — it is
+ *  forced on or off by the non-paying toggle, never by column preference
+ *  (owner, 2026-08-23: "we dont need to see all those buttons", fold them
+ *  into the toggle instead of leaving them a per-user column choice). */
+const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'stripe', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
 const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }
 // One line per row, always: cells never wrap, the table scrolls instead.
 const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
+// 'action' is excluded from the column-preference universe on purpose — the
+// non-paying toggle owns it exclusively (owner, 2026-08-23).
+const MENU_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'action')
+const ACTION_COL = ALL_COLUMNS.find(c => c.key === 'action')!
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '9px 13px' }}>
+      <div className="font-mono uppercase" style={{ fontSize: 9, letterSpacing: '.12em', color: MUTE, fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 19, fontWeight: 800, color: INK, marginTop: 2 }}>{value}</div>
+    </div>
+  )
+}
+
 export default function TrialsTable({
-  rows, initialOrder, initialHidden,
+  rows, initialOrder, initialHidden, recoveredCount, invoicedCount, initialNonPayingOnly,
 }: {
   rows: TrialRow[]
   initialOrder: string[] | null
   initialHidden: string[] | null
+  /** Subscriptions created / invoices sent by the retry button, all time —
+   *  merged in from the old recovery queue (owner, 2026-08-23). */
+  recoveredCount: number
+  invoicedCount: number
+  /** Arriving from /admin/revenue/recovery's redirect lands here toggled on. */
+  initialNonPayingOnly?: boolean
 }) {
   const L = useColumnLayout({
     tableKey: 'revenue_trials',
-    all: ALL_COLUMNS.map(c => ({ key: c.key, label: c.label })),
+    all: MENU_COLUMNS.map(c => ({ key: c.key, label: c.label })),
     initialOrder, initialHidden,
     defaultOrder: DEFAULT_ORDER, defaultHidden: DEFAULT_HIDDEN,
   })
-  // Default view: whoever is still TRIALING first, oldest first inside that —
-  // those are the people whose renewal is closest, so they are the ones worth
-  // acting on today. Everything else follows in the same chronological order.
-  const [sort, setSort] = useState<'trialing' | 'asc' | 'desc'>('trialing')
-  const visible = L.visibleKeys.map(k => ALL_COLUMNS.find(c => c.key === k)!).filter(Boolean)
-  const view = [...rows].sort((a, b) => {
-    if (sort === 'trialing') {
-      const at = a.derivedState === 'not_due' ? 0 : 1
-      const bt = b.derivedState === 'not_due' ? 0 : 1
-      if (at !== bt) return at - bt
-      return a.trial_at.localeCompare(b.trial_at)
-    }
-    return sort === 'asc' ? a.trial_at.localeCompare(b.trial_at) : b.trial_at.localeCompare(a.trial_at)
-  })
+  // ONE order, always: oldest first (owner, 2026-08-23: "in order A-Z, from
+  // the oldest to the newest"). No more per-user sort mode — a fixed order
+  // is one two people reading the same filter always see the same way.
+  const [nonPayingOnly, setNonPayingOnly] = useState(initialNonPayingOnly ?? false)
+  const nonPaying = rows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'lifetime')
+  const base = nonPayingOnly ? nonPaying : rows
+  const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
+  const visible = (nonPayingOnly ? [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL] : L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!)).filter(Boolean)
+
+  // The bulk retry target: only the rows the shared verdict actually clears
+  // (lib/revenue-shared retryVerdict, computed server-side per row) — same
+  // rule the single-row buttons already obey.
+  const eligible = nonPaying.filter(r => r.retry === 'eligible' && r.customer_id)
+  const neverClicked = eligible.filter(r => !r.lastAttempt).length
 
   const btn = (active: boolean): React.CSSProperties => ({
     padding: '4px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
@@ -198,14 +222,37 @@ export default function TrialsTable({
   return (
     <>
       <div className="flex items-center flex-wrap" style={{ gap: 7, marginTop: 10, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Rows:</span>
-        <button type="button" onClick={() => setSort('trialing')} style={btn(sort === 'trialing')} title="Still trialing first, then chronological">Trialing first</button>
-        <button type="button" onClick={() => setSort('asc')} style={btn(sort === 'asc')}>Date ↑ oldest</button>
-        <button type="button" onClick={() => setSort('desc')} style={btn(sort === 'desc')}>Date ↓ newest</button>
+        <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Showing:</span>
+        <button type="button" onClick={() => setNonPayingOnly(false)} style={btn(!nonPayingOnly)}>All {rows.length}</button>
+        <button type="button" onClick={() => setNonPayingOnly(true)} style={btn(nonPayingOnly)}
+                title="Not converted and not lifetime — the charge button and Retry all live only here">
+          Non-paying {nonPaying.length}
+        </button>
         <span style={{ width: 10 }} />
-        <ColumnsMenu all={ALL_COLUMNS.map(c => ({ key: c.key, label: c.label }))} hidden={L.hidden}
+        <ColumnsMenu all={MENU_COLUMNS.map(c => ({ key: c.key, label: c.label }))} hidden={L.hidden}
                      onHide={L.hide} onShow={L.show} onReset={L.reset} status={L.status} />
       </div>
+
+      {/* The old recovery queue's headline, merged in (owner, 2026-08-23:
+          "merging therefore this with the retry table feature"). Only in
+          this toggle — the buttons everyone asked to fold away live here
+          and nowhere else. */}
+      {nonPayingOnly && (
+        <div className="flex flex-wrap items-center justify-between" style={{ gap: 10, marginBottom: 10 }}>
+          <div className="flex flex-wrap" style={{ gap: 8 }}>
+            <Stat label="Chargeable now" value={String(eligible.length)} />
+            <Stat label="We never clicked retry" value={String(neverClicked)} />
+            <Stat label="Subscriptions won" value={String(recoveredCount)} />
+            <Stat label="Invoices out" value={String(invoicedCount)} />
+          </div>
+          <ChargeAnnualAll
+            trials={eligible.map(r => ({
+              customerId: r.customer_id as string, personKey: r.person_key,
+              chargeId: r.charge_id, trialCents: r.trial_cents,
+            }))}
+          />
+        </div>
+      )}
 
       {/* Cells never wrap, so the table scrolls sideways instead of
           growing a second line per row. */}
@@ -214,13 +261,19 @@ export default function TrialsTable({
         <thead>
           <tr style={{ borderBottom: `2px solid ${INK}` }}>
             {visible.map(c => (
-              <th key={c.key} {...L.headerProps(c.key)} style={{ ...th, textAlign: c.align, ...L.headerStyle(c.key) }}>
-                <span style={{ marginRight: 4, color: HAIR }}>⠿</span>
-                {c.label}
-                <button type="button" onClick={() => L.hide(c.key)}
-                        title={`Remove the ${c.label} column`}
-                        style={{ marginLeft: 5, border: 'none', background: 'transparent', cursor: 'pointer', color: MUTE, fontSize: 12, fontWeight: 700, padding: 0 }}>×</button>
-              </th>
+              // The action column isn't draggable or foldable on its own — the
+              // toggle above owns it entirely, so it skips headerProps/hide.
+              c.key === 'action' ? (
+                <th key={c.key} style={{ ...th, textAlign: c.align }}>{c.label}</th>
+              ) : (
+                <th key={c.key} {...L.headerProps(c.key)} style={{ ...th, textAlign: c.align, ...L.headerStyle(c.key) }}>
+                  <span style={{ marginRight: 4, color: HAIR }}>⠿</span>
+                  {c.label}
+                  <button type="button" onClick={() => L.hide(c.key)}
+                          title={`Remove the ${c.label} column`}
+                          style={{ marginLeft: 5, border: 'none', background: 'transparent', cursor: 'pointer', color: MUTE, fontSize: 12, fontWeight: 700, padding: 0 }}>×</button>
+                </th>
+              )
             ))}
           </tr>
         </thead>

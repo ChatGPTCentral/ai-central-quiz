@@ -4,8 +4,8 @@
 // sections and three jobs; now each job has a screen:
 //
 //   /admin/revenue            the money   (this page)
-//   /admin/revenue/trials     every trial and its status
-//   /admin/revenue/recovery   the trial recovery queue
+//   /admin/revenue/trials     every trial and its status, plus the retry
+//                             queue as a toggle (merged in 2026-08-23)
 //
 // THE RULE THIS PAGE LIVES BY: the matrix and this page are the same thing
 // displayed two ways. Every dollar here comes from the SAME classified
@@ -162,7 +162,7 @@ export default async function RevenuePage() {
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 12 }}>
         <SyncCharges lastSyncedAt={d.lastSyncedAt} />
         <a href="/admin/revenue/trials" style={navChip}>Every trial &amp; status →</a>
-        <a href="/admin/revenue/recovery" style={navChip}>Trial recovery →</a>
+        <a href="/admin/revenue/trials?nonpaying=1#top" style={navChip}>Trial recovery →</a>
       </div>
 
       {/* THE CHART FIRST: net money per month from the classified entries, so

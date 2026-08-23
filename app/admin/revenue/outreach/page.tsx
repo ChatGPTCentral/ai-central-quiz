@@ -106,7 +106,7 @@ export default async function RevenueRecoveryOutreachPage() {
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 12 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
         <a href="/admin/revenue/unpaid" style={navChip}>Unpaid &amp; overdue →</a>
-        <a href="/admin/revenue/recovery" style={navChip}>Trial recovery (automatic) →</a>
+        <a href="/admin/revenue/trials?nonpaying=1#top" style={navChip}>Trial recovery (automatic) →</a>
       </div>
 
       {rows.length === 0 ? (

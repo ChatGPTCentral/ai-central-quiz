@@ -2,8 +2,15 @@
 //
 // Its own screen since 2026-08-16: it was section 3 of a five-section page
 // and "deserves a place of its own" (owner). Same loader, same state
-// machinery as /admin/revenue and /admin/revenue/recovery — one dataset,
-// three views.
+// machinery as /admin/revenue — one dataset, two views.
+//
+// ABSORBED the standalone recovery queue 2026-08-23 (owner: "merging
+// therefore this with the retry table feature. we dont need to see all
+// those buttons that you can fold into [a toggle]"). The table now shows
+// every trial ever, oldest first, always; a Non-paying toggle filters to
+// the retry-eligible set and is the ONLY place the charge button, Retry
+// all, and the old queue's stats render. /admin/revenue/recovery redirects
+// here with that toggle pre-set.
 
 import TrialsTable, { type TrialRow } from '@/components/admin/TrialsTable.client'
 import { fmtDay } from '@/lib/dates'
@@ -70,6 +77,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const includeNoCard = searchParams.nocard === '1'
   const q = (searchParams.q || '').trim().toLowerCase()
   const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
+  const initialNonPayingOnly = searchParams.nonpaying === '1'
 
   const L3 = L.filter(r => (includeIndia || r.country !== 'India') && (includeNoCard || !inNoCardEra(r)))
   const filtered = L3.filter(r =>
@@ -101,9 +109,16 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
     }
   })
   // The queue's own headline numbers, derived the queue's own way (person
-  // level, full ledger) so the chip here and the recovery page always match.
+  // level, full ledger) so the chip here always matches the toggle beneath it
+  // — merged in from the old recovery queue, 2026-08-23.
   const retryPeople = new Set<string>()
   for (const r of L) if (retryVerdict(r, effState(r), graduated) === 'eligible') retryPeople.add(r.person_key.toLowerCase())
+  let recoveredCount = 0
+  let invoicedCount = 0
+  for (const a of d.adminActions) {
+    if (a.action === 'charge_annual_created') recoveredCount++
+    if (a.action === 'charge_annual_invoiced') invoicedCount++
+  }
   const counts: Record<State, number> = { converted: 0, lifetime: 0, lapsed: 0, lapsed_covered: 0, not_due: 0, refunded: 0, manual: 0 }
   for (const r of L3) counts[effState(r)]++
   const erasPresent = new Set(L.map(r => r.era))
@@ -132,7 +147,10 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
       </p>
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
-        <a href="/admin/revenue/recovery" style={navChip}>Retry queue: {retryPeople.size} people →</a>
+        {/* The old /admin/revenue/recovery page is gone (owner, 2026-08-23:
+            "merging therefore this with the retry table feature") — this
+            loads the table pre-toggled to Non-paying instead. */}
+        <a href="/admin/revenue/trials?nonpaying=1#top" style={navChip}>Chargeable: {retryPeople.size} people ↓</a>
         <a href="/admin/revenue/outreach" style={navChip}>In outreach: {graduated.size} people →</a>
       </div>
 
@@ -175,7 +193,12 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
         </form>
       </div>
 
-      <TrialsTable rows={tableRows} initialOrder={d.colOrder} initialHidden={d.colHidden} />
+      <div id="top" />
+      <TrialsTable
+        rows={tableRows} initialOrder={d.colOrder} initialHidden={d.colHidden}
+        recoveredCount={recoveredCount} invoicedCount={invoicedCount}
+        initialNonPayingOnly={initialNonPayingOnly}
+      />
     </div>
   )
 }

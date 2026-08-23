@@ -172,7 +172,7 @@ export default async function UnpaidInvoicesPage() {
 
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 12 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
-        <a href="/admin/revenue/recovery" style={navChip}>Trial recovery →</a>
+        <a href="/admin/revenue/trials?nonpaying=1#top" style={navChip}>Trial recovery →</a>
         <a href="/admin/revenue/trials" style={navChip}>Every trial &amp; status →</a>
       </div>
 
