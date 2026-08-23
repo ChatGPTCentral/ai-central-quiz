@@ -50,6 +50,13 @@ export default function TrialState({
   const [failed, setFailed] = useState(false)
   const [check, setCheck] = useState<{ hasActiveSubscription: boolean; subscriptionStatus: string | null } | { error: string } | null>(null)
 
+  // ONE color computation, used by the select's own border/text AND reported
+  // up for the row tint — they were drifting apart (owner, 2026-08-23: "i
+  // dont understand why the rectangle colors do not match the color of the
+  // row") because the select had its own hardcoded amber-for-any-override
+  // instead of asking what bucket this specific override actually maps to.
+  const color = STATE_COLOR[liveState(value, derived)]
+
   const save = async (next: string) => {
     const prev = value
     setValue(next); setSaving(true); setFailed(false); setCheck(null)
@@ -88,9 +95,9 @@ export default function TrialState({
         onChange={e => save(e.target.value)}
         style={{
           fontSize: 11.5, fontWeight: 700, padding: '3px 5px',
-          border: `2px solid ${failed ? '#B00020' : manual ? '#B26A00' : '#E8E2D4'}`,
+          border: `2px solid ${failed ? '#B00020' : manual ? color : '#E8E2D4'}`,
           background: saving ? '#F3F0E8' : '#FFFDFA',
-          color: manual ? '#B26A00' : derivedColor,
+          color: manual ? color : derivedColor,
           maxWidth: 168,
         }}
       >
@@ -103,7 +110,7 @@ export default function TrialState({
           </option>
         ))}
       </select>
-      {manual && <span style={{ fontSize: 9.5, color: '#B26A00', fontWeight: 700 }} aria-hidden>manual</span>}
+      {manual && <span style={{ fontSize: 9.5, color, fontWeight: 700 }} aria-hidden>manual</span>}
       {failed && <span style={{ fontSize: 9.5, color: '#B00020' }}>not saved</span>}
       {/* The live Stripe re-check (owner, 2026-08-23), advisory only — it
           never reverts his answer, it just says what Stripe shows right now. */}

@@ -10,6 +10,15 @@
  *  exactly one of them, so the counts always sum to the trial total. */
 export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'manual'
 
+// 'manual' relabeled 2026-08-23 (owner: "i ONLY want 1 label, trialing ==
+// auto set aside by hand"). It is NOT the same fact as Trialing and staying
+// honest about that matters — the 14 rows left in this bucket are all
+// 'cancel', all imported from the owner's own sheet, all already past their
+// 28-day window; showing them as "Trialing" would hide a decision he
+// already recorded. What WAS true in his complaint: "Set aside by hand"
+// reads as a vague, pending-sounding phrase, easy to mistake for a Trialing
+// twin. Renamed to say what it now excludes: everything but a real,
+// sourced cancellation.
 export const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
   lifetime: 'Lifetime',
@@ -17,7 +26,7 @@ export const STATE_LABEL: Record<State, string> = {
   lapsed_covered: 'Person already pays',
   not_due: 'Trialing',
   refunded: 'Refunded / disputed',
-  manual: 'Set aside by hand',
+  manual: 'Cancelled (your sheet)',
 }
 export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#7E9BB5', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', manual: '#8A7A5C' }
 

@@ -85,7 +85,14 @@ const ALL_COLUMNS: Col[] = [
   { key: 'trial_date', label: 'Trial date', align: 'left',
     cell: r => <span style={{ color: MUTE, whiteSpace: 'nowrap' }}>{fmtDay(r.trial_at)}<span title={`Pricing era ${r.era}`} style={{ marginLeft: 5, fontSize: 9.5 }}>e{r.era}</span></span> },
   { key: 'email', label: 'Email', align: 'left', cell: r => r.person_key },
-  { key: 'name', label: 'Name', align: 'left', cell: r => <span style={{ fontWeight: 700 }}>{r.name || '–'}</span> },
+  // Name IS the Stripe link now, not a separate "profile" text beside it
+  // (owner, 2026-08-23: "i want the name and the profile being a only
+  // hyperlink"). No customer_id, no link — just the plain name.
+  { key: 'name', label: 'Name', align: 'left',
+    cell: r => r.customer_id ? (
+      <a href={stripeCustomer(r.customer_id)} target="_blank" rel="noopener noreferrer" title={`Open ${r.customer_id} in Stripe`}
+         style={{ fontWeight: 700, color: INK, textDecoration: 'underline' }}>{r.name || r.person_key}</a>
+    ) : <span style={{ fontWeight: 700 }}>{r.name || '–'}</span> },
   { key: 'status', label: 'Status', align: 'left',
     cell: (r, onColor) => (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
@@ -105,31 +112,41 @@ const ALL_COLUMNS: Col[] = [
     ) },
   // The charge action, in its own column instead of buried inside Status
   // (owner, 2026-08-22: "in questa tabella dovrebbero anche esserci i bottoni
-  // del charge"). Renders from the SERVER-computed shared verdict — the same
-  // rule that builds the recovery queue — never from a second inline rule.
-  { key: 'action', label: 'Charge', align: 'left',
+  // del charge"). WIDENED 2026-08-23 ("bring it back the button 'charge' to
+  // those clients which we havent charged yet"): the strict retryVerdict
+  // ('eligible' only — lapsed, price-mapped) still gates the BULK Retry all
+  // below, so that can never mass-charge someone mid-trial or at an
+  // unmapped price by surprise. A single row is a deliberate click by the
+  // owner, not a bulk sweep, so it only excludes what is a real policy or
+  // technical wall: graduated (owned by a human sequence), India (0 of 43
+  // ever renewed), no-card era (nothing saved to charge), or no Stripe
+  // customer at all. Still-trialing and unmapped-price both get the two
+  // buttons now; the server is the final word on whether either can fire.
+  { key: 'action', label: 'Actions', align: 'left',
     cell: r => {
+      if (r.retry === 'graduated') {
+        return (
+          <a href="/admin/revenue/outreach" title="Owned by a human outreach sequence — auto-billing never touches this person"
+             style={{ fontSize: 10.5, fontWeight: 800, color: '#3B5C8F', textDecoration: 'underline' }}>in outreach →</a>
+        )
+      }
       const whyNot: Record<string, string> = {
-        india: 'India is excluded from auto-retry: 0 of 43 due trials there ever renewed',
+        india: 'India is excluded: 0 of 43 due trials there ever renewed',
         no_card_era: 'No-card era (2025-05-25 to 06-21): nothing saved to charge',
-        not_lapsed: 'Only a lapsed trial is a debt to retry',
-        no_customer: 'No Stripe customer on this charge',
-        unmapped_price: 'This trial amount maps to no annual plan',
+      }
+      if (!r.customer_id || whyNot[r.retry]) {
+        return <span title={!r.customer_id ? 'No Stripe customer on this charge' : whyNot[r.retry]} style={{ color: MUTE, fontSize: 11 }}>–</span>
       }
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-          {r.retry === 'eligible' && r.customer_id && (
-            <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} trialCents={r.trial_cents} />
-          )}
-          {r.retry === 'graduated' && (
-            <a href="/admin/revenue/outreach" title="Owned by a human outreach sequence — auto-billing never touches this person"
-               style={{ fontSize: 10.5, fontWeight: 800, color: '#3B5C8F', textDecoration: 'underline' }}>in outreach →</a>
-          )}
-          {r.retry !== 'eligible' && r.retry !== 'graduated' && (
-            <span title={whyNot[r.retry] || r.retry} style={{ color: MUTE, fontSize: 11 }}>–</span>
-          )}
+          <a href={stripeNewSub(r.customer_id)} target="_blank" rel="noopener noreferrer"
+             title="Open Stripe with the create-subscription panel, this customer preselected"
+             style={{ fontSize: 10, fontWeight: 800, border: `2px solid ${INK}`, background: '#FFFDFA', color: INK, padding: '2px 8px', textDecoration: 'none' }}>
+            Create sub
+          </a>
+          <ChargeAnnual customerId={r.customer_id} personKey={r.person_key} chargeId={r.charge_id} trialCents={r.trial_cents} />
           {r.lastAttempt && (
-            <span title={r.lastAttempt} style={{ display: 'inline-block', fontSize: 10, color: MUTE, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}>
+            <span title={r.lastAttempt} style={{ display: 'inline-block', fontSize: 10, color: MUTE, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'bottom' }}>
               {r.lastAttempt}
             </span>
           )}
@@ -149,17 +166,6 @@ const ALL_COLUMNS: Col[] = [
     cell: r => (r.converted ? `$${((r.converted_cents ?? 0) / 100).toFixed(2)}` : '–') },
   { key: 'total', label: 'Total', align: 'right',
     cell: r => <span style={{ fontWeight: 700 }} title="Net money actually kept from this trial: payments minus refunds, disputes, and Stripe's fees — a refunded trial totals $0.00 while its payments stay listed.">${(r.net_cents / 100).toFixed(2)}</span> },
-  { key: 'stripe', label: 'Stripe', align: 'left',
-    cell: r => r.customer_id ? (
-      <span style={{ whiteSpace: 'nowrap' }}>
-        <a href={stripeCustomer(r.customer_id)} target="_blank" rel="noopener noreferrer" title={`Open ${r.customer_id} in Stripe`}
-           style={{ fontSize: 11.5, fontWeight: 700, color: INK, textDecoration: 'underline' }}>profile</a>
-        <span style={{ color: HAIR, margin: '0 5px' }}>|</span>
-        <a href={stripeNewSub(r.customer_id)} target="_blank" rel="noopener noreferrer"
-           title="Open Stripe with the create-subscription panel, this customer preselected"
-           style={{ fontSize: 11.5, fontWeight: 700, color: GREEN, textDecoration: 'underline' }}>+ sub</a>
-      </span>
-    ) : <span style={{ color: MUTE, fontSize: 11 }}>–</span> },
 ]
 
 /** The owner's default view: who, when, where to act, what they paid. The
@@ -168,7 +174,7 @@ const ALL_COLUMNS: Col[] = [
  *  forced on or off by the non-paying toggle, never by column preference
  *  (owner, 2026-08-23: "we dont need to see all those buttons", fold them
  *  into the toggle instead of leaving them a per-user column choice). */
-const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'stripe', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
+const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
 const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }
