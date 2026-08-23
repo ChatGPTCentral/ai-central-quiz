@@ -87,10 +87,13 @@ export async function POST(req: NextRequest) {
   // GUARD -1: a hand-set state on this trial means a human already judged it
   // (refunded, dispute, hold, whatever it says). The button is for untouched
   // rows only; charging past a manual judgment is how a disputed customer
-  // gets charged again (owner, 2026-08-16).
+  // gets charged again (owner, 2026-08-16). ONE exception: 'lapsed' itself
+  // (owner, 2026-08-23: hand-marking a row Did-not-convert is how he puts it
+  // IN the retry queue, so refusing to charge it here would defeat the only
+  // reason to pick that value at all).
   {
     const { data: ov } = await db().from('trial_state_overrides').select('state').eq('charge_id', chargeId).maybeSingle()
-    if (ov?.state && ov.state !== 'auto') {
+    if (ov?.state && ov.state !== 'auto' && ov.state !== 'lapsed') {
       await audit('charge_annual_refused', personKey, customerId, { reason: 'manual state override', override: ov.state, trial_charge_id: chargeId })
       return NextResponse.json({ error: `refused: this trial is hand-marked "${ov.state}". The button only touches rows without a manual judgment.` }, { status: 409 })
     }

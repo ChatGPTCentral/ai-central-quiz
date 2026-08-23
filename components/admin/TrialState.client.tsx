@@ -23,15 +23,22 @@ import { liveState, STATE_COLOR, type State } from '@/lib/revenue-states'
 //     sono la stessa cosa ... abbiamo provato a addebitare quel cliente e
 //     non ci siamo riusciti" — a failed charge attempt never sets an
 //     override, the row just stays auto-derived 'lapsed') duplicated
-//     Did-not-convert. Its one existing override was cleared the same day.
-// Both values are refused by the API too, so neither can come back by
-// accident.
+//     Did-not-convert AS A LABEL. Both values are refused by the API too, so
+//     neither can come back by accident.
+// That removal left a real gap, found the same day (owner: "perche non
+// posso labelare qualcuno come rosso did not convert dalla tendina, vorrei
+// poterlo fare"): every OTHER bucket has a hand-pick that forces it — but
+// none forced 'lapsed'. 'lapsed' below is that hand-pick — a general "treat
+// this as Did-not-convert right now", not tied to any one reason the way
+// 'no_payment' was. Once set, effState() resolves it to 'lapsed' exactly
+// like the auto-derived case, so it is retry-eligible the same way too.
 const OPTIONS: { value: string; label: string }[] = [
   { value: 'auto', label: 'Auto (from charges)' },
   { value: 'yearly_subscriber', label: 'Yearly subscriber' },
   { value: 'recovered', label: 'Yearly subscriber (recovered)' },
   { value: 'lifetime', label: 'Lifetime (new, $54.74 bundle)' },
   { value: 'lifetime_old', label: 'Lifetime (old, $49.75 only)' },
+  { value: 'lapsed', label: 'Did not convert' },
   { value: 'dispute', label: 'Dispute' },
   { value: 'cancel', label: 'Cancel' },
   { value: 'refunded', label: 'Refunded' },

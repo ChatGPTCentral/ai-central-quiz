@@ -23,12 +23,15 @@ export const dynamic = 'force-dynamic'
 // — it duplicated the derived Trialing state; existing holds were cleared
 // (twice — the sheet-sync function kept reintroducing it until fixed
 // 2026-08-23, see the fix_hold_reimport_and_split_old_new_lifetime
-// migration). 'no_payment' removed 2026-08-23 for the same reason (owner:
-// "'no payment' e 'did not convert' sono la stessa cosa") — a failed charge
-// attempt never sets an override, so the row is already auto-derived
-// 'lapsed'; its one existing override was cleared.
+// migration). 'no_payment' removed the same day for the same reason (owner:
+// "'no payment' e 'did not convert' sono la stessa cosa") as a redundant
+// LABEL — but that also removed the only way to hand-force a row to
+// Did-not-convert, a real gap the owner found within the hour ("vorrei
+// poterlo [labelare come Did not convert]"). 'lapsed' below refills that
+// gap with a general pick, not tied to "failed payment" the way
+// 'no_payment' was.
 const MANUAL_STATES = [
-  'yearly_subscriber', 'recovered', 'lifetime', 'lifetime_old',
+  'yearly_subscriber', 'recovered', 'lifetime', 'lifetime_old', 'lapsed',
   'dispute', 'cancel', 'refunded', 'deleted',
 ] as const
 

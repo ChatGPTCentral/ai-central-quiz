@@ -83,13 +83,18 @@ export const STATE_LABEL: Record<State, string> = {
 export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', recovered: '#0D3D12', lifetime: '#8E6FA8', lifetime_old: '#8B5E3C', lapsed: '#B00020', lapsed_covered: '#B00020', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
 
 /** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
- *  judgment; a row with ANY override can never be lapsed, so it can never be
- *  in the retry queue and never chargeable. */
+ *  judgment. Every override here except one resolves to a bucket that can
+ *  never be 'lapsed', so it can never be in the retry queue and never
+ *  chargeable that way. 'lapsed' itself is the one exception, on purpose
+ *  (owner, 2026-08-23: "vorrei poterlo [labelare come Did not convert]") —
+ *  picking it deliberately puts the row IN the retry queue, exactly like an
+ *  auto-derived lapsed row, because that is the point of picking it. */
 export const OVERRIDE_BUCKET: Record<string, State> = {
   yearly_subscriber: 'converted',
   recovered: 'recovered',
   lifetime: 'lifetime',
   lifetime_old: 'lifetime_old',
+  lapsed: 'lapsed',
   refunded: 'refunded',
   dispute: 'refunded',
   deleted: 'refunded',
