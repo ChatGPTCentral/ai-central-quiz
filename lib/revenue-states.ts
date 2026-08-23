@@ -8,21 +8,25 @@
 
 /** The states a trial can be in. Deliberately exhaustive: every trial is in
  *  exactly one of them, so the counts always sum to the trial total. */
-export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded'
+export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'cancelled'
 
-// The distinct 'manual' bucket is GONE (owner, 2026-08-23, second time and
-// unambiguous: "'canceled' e 'trialing' sono la stessa cosa" / "'no payment'
-// e 'did not convert' sono la stessa cosa" — a final, informed call, made
-// after he'd already been told the 14 'cancel' rows are real, sourced
-// cancellations from his own sheet). Checked before folding it in: a row's
-// eligibility for auto-billing runs entirely on retryVerdict(), which only
-// ever fires on the exact state 'lapsed' (lib/revenue-shared.ts) — never on
-// this label. 'cancel' was never 'lapsed' and still is not, so it is exactly
-// as excluded from the retry queue as before; only the DISPLAY changed.
-// 'cancel' now buckets as Trialing, matching his words. 'no_payment' now
-// buckets as Did-not-convert, because that override always recorded the
-// same fact the auto-derived 'lapsed' state already captures — one fact,
-// one label, per the project's one-source rule.
+// 'cancel' spent one round folded into Trialing (owner, first round: "same
+// label, so people stop reading them as two facts"). The very next round,
+// after the Actions column started rendering in every view, he saw what that
+// actually produced: a cancelled row sitting in the same amber, in the same
+// table, next to a live Charge button — "dobbiamo evitare che vengano per
+// sbaglio billati nuovamente" (we must avoid accidentally billing them
+// again). The two asks are not a contradiction once separated: he never
+// objected to the WORD "Trialing" being wrong, he objected to seeing two
+// words for what looked like neighbours. Putting 'cancelled' back as its own
+// bucket, with its own grey and its own section below the main table (see
+// TrialsTable.client.tsx), removes the neighbours instead of removing the
+// distinction — cancel, dispute and refund all read as "will not auto-bill"
+// on sight now, which is the actual thing he asked for both times.
+// 'no_payment' was never touched by this and still buckets to 'lapsed': that
+// override always recorded the same fact the auto-derived state already
+// captures, so it stays one fact, one label, per the project's one-source
+// rule.
 export const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
   lifetime: 'Lifetime',
@@ -30,8 +34,17 @@ export const STATE_LABEL: Record<State, string> = {
   lapsed_covered: 'Person already pays',
   not_due: 'Trialing',
   refunded: 'Refunded / disputed',
+  cancelled: 'Cancelled (your sheet)',
 }
-export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#7E9BB5', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A' }
+// 'lifetime' is light violet, not the old blue-grey: every row that can ever
+// carry this state in trial_ledger is a $54.74 bundle (trial + lifetime in
+// one charge, the "New" lifetime subscriber per the owner's 2026-08-23
+// split) — checked against stripe_charges, 28 charges of $54.74, 28 ledger
+// rows with lifetime_bundle=true, zero of anything else. The "Old" lifetime
+// subscribers he also named (240 charges of exactly $49.75, sold with no
+// trial at all) have no trial and so no row here to colour; see the note on
+// TrialsTable.client.tsx.
+export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#8E6FA8', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', cancelled: '#7A7A7A' }
 
 /** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
  *  judgment; a row with ANY override can never be lapsed, so it can never be
@@ -43,7 +56,7 @@ export const OVERRIDE_BUCKET: Record<string, State> = {
   refunded: 'refunded',
   dispute: 'refunded',
   deleted: 'refunded',
-  cancel: 'not_due',
+  cancel: 'cancelled',
   no_payment: 'lapsed',
 }
 

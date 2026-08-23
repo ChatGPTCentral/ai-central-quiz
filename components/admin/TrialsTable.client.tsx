@@ -13,7 +13,7 @@
 // order, so two people reading the same filter see the same list.
 
 import { useState } from 'react'
-import TrialState from './TrialState.client'
+import TrialState, { type StripeCheck } from './TrialState.client'
 import { fmtDay } from '@/lib/dates'
 import { useColumnLayout } from './useColumnLayout'
 import ColumnsMenu from './ColumnsMenu.client'
@@ -72,13 +72,21 @@ const STRIPE_ACCT = 'acct_1O98fMBLsgHOvWxy'
 const stripeCustomer = (cus: string) => `https://dashboard.stripe.com/${STRIPE_ACCT}/customers/${cus}`
 const stripeNewSub = (cus: string) => `${stripeCustomer(cus)}?create=subscription&subscription_default_customer=${cus}`
 
+/** onColor and onCheck are only used by the status cell — repaints this row's
+ *  tint and reports the live Stripe re-check up, both instant, no reload
+ *  (owner, 2026-08-23). checks is read by the action cell, which renders
+ *  whatever the status cell's last check reported (owner, 2026-08-23:
+ *  "sposta i dettagli della transazione stripe a destra dei bottoni"). */
+type CellCtx = {
+  onColor: (chargeId: string, color: string) => void
+  onCheck: (chargeId: string, check: StripeCheck | null) => void
+  checks: Record<string, StripeCheck | null>
+}
 type Col = {
   key: string
   label: string
   align: 'left' | 'right'
-  /** onColor is only used by the status cell — repaints this row's tint the
-   *  instant a manual override changes, no reload (owner, 2026-08-23). */
-  cell: (r: TrialRow, onColor?: (chargeId: string, color: string) => void) => React.ReactNode
+  cell: (r: TrialRow, ctx: CellCtx) => React.ReactNode
 }
 
 const ALL_COLUMNS: Col[] = [
@@ -94,13 +102,14 @@ const ALL_COLUMNS: Col[] = [
          style={{ fontWeight: 700, color: INK, textDecoration: 'underline' }}>{r.name || r.person_key}</a>
     ) : <span style={{ fontWeight: 700 }}>{r.name || '–'}</span> },
   { key: 'status', label: 'Status', align: 'left',
-    cell: (r, onColor) => (
+    cell: (r, ctx) => (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
         <TrialState
           chargeId={r.charge_id} customerId={r.customer_id}
           derived={r.derivedState} derivedLabel={r.derivedLabel} derivedColor={r.derivedColor}
           initial={r.override}
-          onLiveColorChange={color => onColor?.(r.charge_id, color)}
+          onLiveColorChange={color => ctx.onColor(r.charge_id, color)}
+          onStripeCheck={check => ctx.onCheck(r.charge_id, check)}
         />
         {r.personNote && (
           <span title={`This TRIAL did not convert, but the person pays us: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
@@ -111,23 +120,58 @@ const ALL_COLUMNS: Col[] = [
       </span>
     ) },
   // The charge action, in its own column instead of buried inside Status
-  // (owner, 2026-08-22: "in questa tabella dovrebbero anche esserci i bottoni
-  // del charge"). WIDENED 2026-08-23 ("bring it back the button 'charge' to
-  // those clients which we havent charged yet"): the strict retryVerdict
-  // ('eligible' only — lapsed, price-mapped) still gates the BULK Retry all
-  // below, so that can never mass-charge someone mid-trial or at an
-  // unmapped price by surprise. A single row is a deliberate click by the
-  // owner, not a bulk sweep, so it only excludes what is a real policy or
-  // technical wall: graduated (owned by a human sequence), India (0 of 43
-  // ever renewed), no-card era (nothing saved to charge), or no Stripe
-  // customer at all. Still-trialing and unmapped-price both get the two
-  // buttons now; the server is the final word on whether either can fire.
+  // (owner, 2026-08-22). Three things can never show a billing button, and
+  // each is checked HERE, directly on the row's own state — not only by
+  // which of the two sections below a row lands in — so this stays true even
+  // if that partition ever drifts:
+  //   · graduated: owned by a human outreach sequence
+  //   · cancelled, disputed, refunded: the owner's own words, 2026-08-23,
+  //     "dobbiamo evitare che vengano per sbaglio billati nuovamente" (we
+  //     must avoid accidentally billing them again)
+  //   · converted, lifetime, lapsed_covered: already billed for this —
+  //     annual, lifetime, or paying some other way (owner, 2026-08-23:
+  //     "elimina i bottoni ... dalle persone che abbiamo già billato")
+  // Everything else — Trialing, Did-not-convert, unmapped price — gets both
+  // buttons; the server is the final word on whether either can fire
+  // (app/api/admin/charge-annual/route.ts).
   { key: 'action', label: 'Actions', align: 'left',
-    cell: r => {
+    cell: (r, ctx) => {
+      const check = ctx.checks[r.charge_id]
+      const checkBadge = check && (
+        'error' in check ? (
+          <span title={`Could not check Stripe: ${check.error}`} style={{ fontSize: 9.5, color: AMBER }}>⚠ Stripe check failed</span>
+        ) : (
+          <span
+            title={check.subscriptionStatus ? `Stripe subscription status: ${check.subscriptionStatus}` : 'No subscription found on this customer in Stripe'}
+            style={{ fontSize: 9.5, fontWeight: 700, color: check.hasActiveSubscription ? GREEN : AMBER }}
+          >
+            {check.hasActiveSubscription ? `✓ Stripe: ${check.subscriptionStatus}` : `Stripe: ${check.subscriptionStatus ?? 'no subscription'}`}
+          </span>
+        )
+      )
       if (r.retry === 'graduated') {
         return (
-          <a href="/admin/revenue/outreach" title="Owned by a human outreach sequence — auto-billing never touches this person"
-             style={{ fontSize: 10.5, fontWeight: 800, color: '#3B5C8F', textDecoration: 'underline' }}>in outreach →</a>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <a href="/admin/revenue/outreach" title="Owned by a human outreach sequence — auto-billing never touches this person"
+               style={{ fontSize: 10.5, fontWeight: 800, color: '#3B5C8F', textDecoration: 'underline' }}>in outreach →</a>
+            {checkBadge}
+          </span>
+        )
+      }
+      if (r.derivedState === 'refunded' || r.derivedState === 'cancelled') {
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span title="Cancelled, disputed, or refunded — excluded from auto-billing" style={{ color: MUTE, fontSize: 11 }}>protected, no billing</span>
+            {checkBadge}
+          </span>
+        )
+      }
+      if (r.derivedState === 'converted' || r.derivedState === 'lifetime' || r.derivedState === 'lapsed_covered') {
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span title="Already billed — an annual, a lifetime, or paying us some other way" style={{ color: MUTE, fontSize: 11 }}>already billed</span>
+            {checkBadge}
+          </span>
         )
       }
       const whyNot: Record<string, string> = {
@@ -150,6 +194,7 @@ const ALL_COLUMNS: Col[] = [
               {r.lastAttempt}
             </span>
           )}
+          {checkBadge}
         </span>
       )
     } },
@@ -171,13 +216,9 @@ const ALL_COLUMNS: Col[] = [
 /** The owner's default view: who, when, where to act, what they paid. The
  *  analytical columns (channel, utm, country, second-payment date) stay one
  *  click away in the Columns menu. 'action' is NOT in here at all — it always
- *  renders, in both the All and Non-paying views (owner, 2026-08-23: "voglio
- *  avere il pulsante charge anche nella tabella all"), so it is never a
- *  per-user column choice either. Showing it on a converted or lifetime row
- *  is safe: every guard that can refuse a charge lives server-side
- *  (app/api/admin/charge-annual/route.ts checks Stripe for a live
- *  subscription before it ever bills), so a row that should not be touched
- *  just shows the refusal text instead of charging anything. */
+ *  renders, in both the All and Non-paying views, so it is never a per-user
+ *  column choice either; see the 'action' column definition above for what
+ *  it shows on each row and why. */
 const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
 const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
@@ -228,11 +269,55 @@ export default function TrialsTable({
   // derivedColor until (if ever) a live edit happens on that row.
   const [liveColors, setLiveColors] = useState<Record<string, string>>({})
   const setLiveColor = (chargeId: string, color: string) => setLiveColors(prev => ({ ...prev, [chargeId]: color }))
-  const nonPaying = rows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'lifetime')
-  const base = nonPayingOnly ? nonPaying : rows
+  // The live Stripe re-check, keyed by charge_id — reported up from the
+  // status cell, read by the action cell (owner, 2026-08-23: "sposta i
+  // dettagli della transazione stripe a destra dei bottoni").
+  const [liveChecks, setLiveChecks] = useState<Record<string, StripeCheck | null>>({})
+  const setLiveCheck = (chargeId: string, check: StripeCheck | null) => setLiveChecks(prev => ({ ...prev, [chargeId]: check }))
+  const cellCtx: CellCtx = { onColor: setLiveColor, onCheck: setLiveCheck, checks: liveChecks }
+
+  // Cancelled, disputed and refunded rows move OUT of the main table
+  // entirely (owner, 2026-08-23: "mosso via dalla tabella principale") —
+  // still on the page, still editable, just never sitting next to a billing
+  // button. Nothing is hidden from the page, only re-sorted onto it.
+  const protectedRows = rows.filter(r => r.derivedState === 'refunded' || r.derivedState === 'cancelled')
+  const activeRows = rows.filter(r => r.derivedState !== 'refunded' && r.derivedState !== 'cancelled')
+  const nonPaying = activeRows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'lifetime')
+  const base = nonPayingOnly ? nonPaying : activeRows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
+  const protectedView = [...protectedRows].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
   // Actions is always the last column, in both views (owner, 2026-08-23).
   const visible = [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL].filter(Boolean)
+  const headRow = (
+    <tr style={{ borderBottom: `2px solid ${INK}` }}>
+      {visible.map(c => (
+        // The action column isn't draggable or foldable on its own — it is
+        // always on, never a per-user hide/show choice, so it skips
+        // headerProps/hide.
+        c.key === 'action' ? (
+          <th key={c.key} style={{ ...th, textAlign: c.align }}>{c.label}</th>
+        ) : (
+          <th key={c.key} {...L.headerProps(c.key)} style={{ ...th, textAlign: c.align, ...L.headerStyle(c.key) }}>
+            <span style={{ marginRight: 4, color: HAIR }}>⠿</span>
+            {c.label}
+            <button type="button" onClick={() => L.hide(c.key)}
+                    title={`Remove the ${c.label} column`}
+                    style={{ marginLeft: 5, border: 'none', background: 'transparent', cursor: 'pointer', color: MUTE, fontSize: 12, fontWeight: 700, padding: 0 }}>×</button>
+          </th>
+        )
+      ))}
+    </tr>
+  )
+  // Row tinted with its status color (owner, 2026-08-22, "colori più
+  // intensi" the same day; 2026-08-23: a hand-change must repaint it too) —
+  // hex + 20% alpha suffix. Shared by both tables below.
+  const bodyRows = (list: TrialRow[]) => list.map(r => (
+    <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${liveColors[r.charge_id] ?? r.derivedColor}33` }}>
+      {visible.map(c => (
+        <td key={c.key} style={{ ...td, textAlign: c.align }}>{c.cell(r, cellCtx)}</td>
+      ))}
+    </tr>
+  ))
 
   // The bulk retry target: only the rows the shared verdict actually clears
   // (lib/revenue-shared retryVerdict, computed server-side per row) — same
@@ -249,7 +334,7 @@ export default function TrialsTable({
     <>
       <div className="flex items-center flex-wrap" style={{ gap: 7, marginTop: 10, marginBottom: 6 }}>
         <span style={{ fontSize: 11, color: MUTE, fontWeight: 700 }}>Showing:</span>
-        <button type="button" onClick={() => setNonPayingOnly(false)} style={btn(!nonPayingOnly)}>All {rows.length}</button>
+        <button type="button" onClick={() => setNonPayingOnly(false)} style={btn(!nonPayingOnly)}>All {activeRows.length}</button>
         <button type="button" onClick={() => setNonPayingOnly(true)} style={btn(nonPayingOnly)}
                 title="Not converted and not lifetime — Retry all and the recovery stats live only here">
           Non-paying {nonPaying.length}
@@ -284,40 +369,31 @@ export default function TrialsTable({
           growing a second line per row. */}
       <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: `2px solid ${INK}` }}>
-            {visible.map(c => (
-              // The action column isn't draggable or foldable on its own — the
-              // toggle above owns it entirely, so it skips headerProps/hide.
-              c.key === 'action' ? (
-                <th key={c.key} style={{ ...th, textAlign: c.align }}>{c.label}</th>
-              ) : (
-                <th key={c.key} {...L.headerProps(c.key)} style={{ ...th, textAlign: c.align, ...L.headerStyle(c.key) }}>
-                  <span style={{ marginRight: 4, color: HAIR }}>⠿</span>
-                  {c.label}
-                  <button type="button" onClick={() => L.hide(c.key)}
-                          title={`Remove the ${c.label} column`}
-                          style={{ marginLeft: 5, border: 'none', background: 'transparent', cursor: 'pointer', color: MUTE, fontSize: 12, fontWeight: 700, padding: 0 }}>×</button>
-                </th>
-              )
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {view.map(r => (
-            // Row tinted with its status color (owner, 2026-08-22: "le righe
-            // dovrebbero essere colorate del colore dello status", then
-            // "colori più intensi" the same day; 2026-08-23: a hand-change
-            // must repaint it too) — hex + 20% alpha suffix.
-            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${liveColors[r.charge_id] ?? r.derivedColor}33` }}>
-              {visible.map(c => (
-                <td key={c.key} style={{ ...td, textAlign: c.align }}>{c.cell(r, setLiveColor)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
+        <thead>{headRow}</thead>
+        <tbody>{bodyRows(view)}</tbody>
       </table>
       </div>
+
+      {/* Cancelled, disputed and refunded — never intermixed with the
+          actionable rows above, so a billing button can never sit next to
+          one by accident (owner, 2026-08-23). Closed by default: this is
+          the part of the page nobody needs to look at, on purpose. */}
+      {protectedView.length > 0 && (
+        <details style={{ marginTop: 18 }}>
+          <summary style={{ fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer', userSelect: 'none' }}>
+            Cancelled, disputed &amp; refunded — excluded from billing ({protectedView.length})
+          </summary>
+          <p style={{ fontSize: 11, color: MUTE, marginTop: 6, maxWidth: 720, lineHeight: 1.5 }}>
+            Never a Create sub or Charge button here, checked on the row&rsquo;s own state, not only on being listed here.
+          </p>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>{headRow}</thead>
+              <tbody>{bodyRows(protectedView)}</tbody>
+            </table>
+          </div>
+        </details>
+      )}
     </>
   )
 }

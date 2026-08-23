@@ -27,8 +27,10 @@ const OPTIONS: { value: string; label: string }[] = [
   { value: 'deleted', label: 'Deleted' },
 ]
 
+export type StripeCheck = { hasActiveSubscription: boolean; subscriptionStatus: string | null } | { error: string }
+
 export default function TrialState({
-  chargeId, customerId, derived, derivedLabel, derivedColor, initial, onLiveColorChange,
+  chargeId, customerId, derived, derivedLabel, derivedColor, initial, onLiveColorChange, onStripeCheck,
 }: {
   chargeId: string
   /** Needed to re-check Stripe live after a manual change; no check runs
@@ -44,11 +46,16 @@ export default function TrialState({
    *  changes row color"). Called with the OPTIMISTIC color immediately, then
    *  again if the save fails and the value reverts. */
   onLiveColorChange?: (color: string) => void
+  /** The live Stripe re-check result, reported up instead of rendered here
+   *  (owner, 2026-08-23: "sposta i dettagli della transazione stripe a
+   *  destra dei bottoni") — the Actions column renders it, next to the
+   *  buttons that actually touch Stripe. Called with null to clear a stale
+   *  result when a new change starts. */
+  onStripeCheck?: (check: StripeCheck | null) => void
 }) {
   const [value, setValue] = useState(initial ?? 'auto')
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
-  const [check, setCheck] = useState<{ hasActiveSubscription: boolean; subscriptionStatus: string | null } | { error: string } | null>(null)
 
   // ONE color computation, used by the select's own border/text AND reported
   // up for the row tint — they were drifting apart (owner, 2026-08-23: "i
@@ -59,7 +66,7 @@ export default function TrialState({
 
   const save = async (next: string) => {
     const prev = value
-    setValue(next); setSaving(true); setFailed(false); setCheck(null)
+    setValue(next); setSaving(true); setFailed(false); onStripeCheck?.(null)
     onLiveColorChange?.(STATE_COLOR[liveState(next, derived)])
     try {
       const res = await fetch('/api/admin/trial-state', {
@@ -70,7 +77,7 @@ export default function TrialState({
       const j = await res.json().catch(() => ({}))
       if (!res.ok || !j.ok) throw new Error(String(j.error || res.status))
       if (j.stripeCheck) {
-        setCheck(j.stripeCheck.ok ? { hasActiveSubscription: j.stripeCheck.hasActiveSubscription, subscriptionStatus: j.stripeCheck.subscriptionStatus } : { error: j.stripeCheck.error })
+        onStripeCheck?.(j.stripeCheck.ok ? { hasActiveSubscription: j.stripeCheck.hasActiveSubscription, subscriptionStatus: j.stripeCheck.subscriptionStatus } : { error: j.stripeCheck.error })
       }
     } catch {
       // Put the control back where it was: a dropdown that shows a value the
@@ -101,29 +108,17 @@ export default function TrialState({
           maxWidth: 168,
         }}
       >
-        {/* The auto option shows the derived state PLAIN — "Trialing", not
-            "Auto · Trialing" (owner, 2026-08-22). Auto-ness lives in the
-            tooltip and the dropdown list, not in every row's face. */}
+        {/* The auto option always shows the derived state PLAIN — "Trialing",
+            never "Auto · Trialing" (owner, 2026-08-22, then again 2026-08-23:
+            "basta avere 'auto trialing' e 'trialing'" — one word for one
+            fact even inside the open list, not just in the closed box). */}
         {OPTIONS.map(o => (
           <option key={o.value} value={o.value}>
-            {o.value === 'auto' ? (value === 'auto' ? derivedLabel : `Auto · ${derivedLabel}`) : o.label}
+            {o.value === 'auto' ? derivedLabel : o.label}
           </option>
         ))}
       </select>
-      {manual && <span style={{ fontSize: 9.5, color, fontWeight: 700 }} aria-hidden>manual</span>}
       {failed && <span style={{ fontSize: 9.5, color: '#B00020' }}>not saved</span>}
-      {/* The live Stripe re-check (owner, 2026-08-23), advisory only — it
-          never reverts his answer, it just says what Stripe shows right now. */}
-      {check && ('error' in check ? (
-        <span title={`Could not check Stripe: ${check.error}`} style={{ fontSize: 9.5, color: '#B26A00' }}>⚠ Stripe check failed</span>
-      ) : (
-        <span
-          title={check.subscriptionStatus ? `Stripe subscription status: ${check.subscriptionStatus}` : 'No subscription found on this customer in Stripe'}
-          style={{ fontSize: 9.5, fontWeight: 700, color: check.hasActiveSubscription ? '#2E7D32' : '#B26A00' }}
-        >
-          {check.hasActiveSubscription ? `✓ Stripe: ${check.subscriptionStatus}` : `Stripe: ${check.subscriptionStatus ?? 'no subscription'}`}
-        </span>
-      ))}
     </span>
   )
 }
