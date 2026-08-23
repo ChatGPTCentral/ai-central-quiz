@@ -101,23 +101,18 @@ const ALL_COLUMNS: Col[] = [
       <a href={stripeCustomer(r.customer_id)} target="_blank" rel="noopener noreferrer" title={`Open ${r.customer_id} in Stripe`}
          style={{ fontWeight: 700, color: INK, textDecoration: 'underline' }}>{r.name || r.person_key}</a>
     ) : <span style={{ fontWeight: 700 }}>{r.name || '–'}</span> },
+  // Just the dropdown, nothing beside it (owner, 2026-08-23: "separami il
+  // dropdown dalle note cosi che la colonna status sia piu stretta") — the
+  // explanatory note moved to its own trailing column, see 'notes' below.
   { key: 'status', label: 'Status', align: 'left',
     cell: (r, ctx) => (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-        <TrialState
-          chargeId={r.charge_id} customerId={r.customer_id}
-          derived={r.derivedState} derivedLabel={r.derivedLabel}
-          initial={r.override}
-          onLiveColorChange={color => ctx.onColor(r.charge_id, color)}
-          onStripeCheck={check => ctx.onCheck(r.charge_id, check)}
-        />
-        {r.personNote && (
-          <span title={`This TRIAL did not convert, but the person pays us: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
-            style={{ fontSize: 10, color: GREEN, fontWeight: 700 }}>
-            ✓ {r.personNote}
-          </span>
-        )}
-      </span>
+      <TrialState
+        chargeId={r.charge_id} customerId={r.customer_id}
+        derived={r.derivedState} derivedLabel={r.derivedLabel}
+        initial={r.override}
+        onLiveColorChange={color => ctx.onColor(r.charge_id, color)}
+        onStripeCheck={check => ctx.onCheck(r.charge_id, check)}
+      />
     ) },
   // The charge action, in its own column instead of buried inside Status
   // (owner, 2026-08-22). Three things can never show a billing button, and
@@ -211,6 +206,18 @@ const ALL_COLUMNS: Col[] = [
     cell: r => (r.converted ? `$${((r.converted_cents ?? 0) / 100).toFixed(2)}` : '–') },
   { key: 'total', label: 'Total', align: 'right',
     cell: r => <span style={{ fontWeight: 700 }} title="Net money actually kept from this trial: payments minus refunds, disputes, and Stripe's fees — a refunded trial totals $0.00 while its payments stay listed.">${(r.net_cents / 100).toFixed(2)}</span> },
+  // The one line that resolves a "Did not convert" row whose person pays
+  // some other way — moved out of Status into its own trailing column
+  // (owner, 2026-08-23: "payment 1, payment 2, e total, e actions, e poi
+  // dopo mi metti le note"), same position rule as Actions: always on,
+  // always last, never a per-user column choice.
+  { key: 'notes', label: 'Notes', align: 'left',
+    cell: r => r.personNote ? (
+      <span title={`This TRIAL did not convert, but the person pays us: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
+        style={{ fontSize: 10, color: GREEN, fontWeight: 700 }}>
+        ✓ {r.personNote}
+      </span>
+    ) : null },
 ]
 
 /** The owner's default view: who, when, where to act, what they paid. The
@@ -226,11 +233,12 @@ const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform:
 // One line per row, always: cells never wrap, the table scrolls instead.
 const td: React.CSSProperties = { fontSize: 12, padding: '7px 8px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }
 
-// 'action' is excluded from the column-preference universe on purpose — it is
-// always on, in both views, never a per-user hide/show choice (owner,
-// 2026-08-23).
-const MENU_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'action')
+// 'action' and 'notes' are excluded from the column-preference universe on
+// purpose — both are always on, always the last two columns, never a
+// per-user hide/show/reorder choice (owner, 2026-08-23).
+const MENU_COLUMNS = ALL_COLUMNS.filter(c => c.key !== 'action' && c.key !== 'notes')
 const ACTION_COL = ALL_COLUMNS.find(c => c.key === 'action')!
+const NOTES_COL = ALL_COLUMNS.find(c => c.key === 'notes')!
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -286,15 +294,16 @@ export default function TrialsTable({
   const base = nonPayingOnly ? nonPaying : activeRows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
   const protectedView = [...protectedRows].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
-  // Actions is always the last column, in both views (owner, 2026-08-23).
-  const visible = [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL].filter(Boolean)
+  // Actions then Notes are always the last two columns, in both views
+  // (owner, 2026-08-23: "actions, e poi dopo mi metti le note").
+  const visible = [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL, NOTES_COL].filter(Boolean)
   const headRow = (
     <tr style={{ borderBottom: `2px solid ${INK}` }}>
       {visible.map(c => (
-        // The action column isn't draggable or foldable on its own — it is
-        // always on, never a per-user hide/show choice, so it skips
+        // Action and Notes aren't draggable or foldable on their own — both
+        // are always on, never a per-user hide/show choice, so they skip
         // headerProps/hide.
-        c.key === 'action' ? (
+        c.key === 'action' || c.key === 'notes' ? (
           <th key={c.key} style={{ ...th, textAlign: c.align }}>{c.label}</th>
         ) : (
           <th key={c.key} {...L.headerProps(c.key)} style={{ ...th, textAlign: c.align, ...L.headerStyle(c.key) }}>
