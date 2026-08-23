@@ -76,7 +76,11 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const includeIndia = searchParams.india === '1'
   const includeNoCard = searchParams.nocard === '1'
   const q = (searchParams.q || '').trim().toLowerCase()
-  const limit = Math.min(2000, Math.max(50, Number(searchParams.limit) || 200))
+  // Owner, 2026-08-23: "you say there are 795 but you're only showing 200" —
+  // the default used to cap the view well under the real total. 5000 covers
+  // every trial the ledger has ever held with headroom; ?limit= still works
+  // for anyone who wants a smaller slice.
+  const limit = Math.min(5000, Math.max(50, Number(searchParams.limit) || 5000))
   const initialNonPayingOnly = searchParams.nonpaying === '1'
 
   const L3 = L.filter(r => (includeIndia || r.country !== 'India') && (includeNoCard || !inNoCardEra(r)))
@@ -154,44 +158,55 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
         <a href="/admin/revenue/outreach" style={navChip}>In outreach: {graduated.size} people →</a>
       </div>
 
-      <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 14 }}>
-        <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
-        {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded', 'manual'] as State[]).map(s => (
-          <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
-            {STATE_LABEL[s]} {counts[s]}
+      {/* Folded away by default (owner, 2026-08-23: "why have we not ... hidden
+          those filters" — the state/era/channel/India/search filters below
+          overlap with the All/Non-paying toggle inside the table now, so they
+          stay one click away instead of sitting open on every visit). Opens
+          itself when any of them is actually active, so an active filter is
+          never invisible. */}
+      <details open={!!(fState || fEra || fAttr || includeIndia || includeNoCard || q)} style={{ marginTop: 14 }}>
+        <summary style={{ fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer', userSelect: 'none' }}>
+          Filters{(fState || fEra || fAttr || includeIndia || includeNoCard || q) ? ' (active)' : ''}
+        </summary>
+        <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 10 }}>
+          <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
+          {(['converted', 'lifetime', 'lapsed', 'lapsed_covered', 'not_due', 'refunded', 'manual'] as State[]).map(s => (
+            <a key={s} href={qs({ state: fState === s ? undefined : s })} style={chip(fState === s)}>
+              {STATE_LABEL[s]} {counts[s]}
+            </a>
+          ))}
+          <span style={{ width: 12 }} />
+          {d.eras.filter(e => erasPresent.has(e.era)).map(e => (
+            <a key={e.era} href={qs({ era: fEra === e.era ? undefined : String(e.era) })} style={chip(fEra === e.era)}>
+              Era {e.era}
+            </a>
+          ))}
+          <span style={{ width: 12 }} />
+          {Object.entries(ATTR_LABEL).map(([k, v]) => (
+            <a key={k} href={qs({ attr: fAttr === k ? undefined : k })} style={chip(fAttr === k)}>{v}</a>
+          ))}
+          <span style={{ width: 12 }} />
+          <a href={qs({ india: includeIndia ? undefined : '1' })} style={chip(includeIndia)}
+            title="India is hidden by default: 0 of 43 due trials there ever renewed, which is why India is sold the lifetime.">
+            {includeIndia ? 'India: shown' : 'India: hidden'}
           </a>
-        ))}
-        <span style={{ width: 12 }} />
-        {d.eras.filter(e => erasPresent.has(e.era)).map(e => (
-          <a key={e.era} href={qs({ era: fEra === e.era ? undefined : String(e.era) })} style={chip(fEra === e.era)}>
-            Era {e.era}
+          <a href={qs({ nocard: includeNoCard ? undefined : '1' })} style={chip(includeNoCard)}
+            title="Trials sold 2025-05-25 to 2025-06-21 saved no card and can never be one-click charged. The ledger and money keep them; this table hides them.">
+            {includeNoCard ? 'No-card era: shown' : 'No-card era: hidden'}
           </a>
-        ))}
-        <span style={{ width: 12 }} />
-        {Object.entries(ATTR_LABEL).map(([k, v]) => (
-          <a key={k} href={qs({ attr: fAttr === k ? undefined : k })} style={chip(fAttr === k)}>{v}</a>
-        ))}
-        <span style={{ width: 12 }} />
-        <a href={qs({ india: includeIndia ? undefined : '1' })} style={chip(includeIndia)}
-          title="India is hidden by default: 0 of 43 due trials there ever renewed, which is why India is sold the lifetime.">
-          {includeIndia ? 'India: shown' : 'India: hidden'}
-        </a>
-        <a href={qs({ nocard: includeNoCard ? undefined : '1' })} style={chip(includeNoCard)}
-          title="Trials sold 2025-05-25 to 2025-06-21 saved no card and can never be one-click charged. The ledger and money keep them; this table hides them.">
-          {includeNoCard ? 'No-card era: shown' : 'No-card era: hidden'}
-        </a>
-        <form method="get" action="/admin/revenue/trials#top" style={{ display: 'inline-flex', gap: 5, marginLeft: 12 }}>
-          {fState && <input type="hidden" name="state" value={fState} />}
-          {fEra ? <input type="hidden" name="era" value={String(fEra)} /> : null}
-          {fAttr && <input type="hidden" name="attr" value={fAttr} />}
-          {includeIndia && <input type="hidden" name="india" value="1" />}
-          {includeNoCard && <input type="hidden" name="nocard" value="1" />}
-          <input name="q" defaultValue={q} placeholder="search email or name…"
-            style={{ border: `2px solid ${INK}`, background: '#FFFDFA', fontSize: 11.5, padding: '5px 9px', width: 190 }} />
-          <button type="submit" style={{ border: `2px solid ${INK}`, background: INK, color: LATTE, fontSize: 11, fontWeight: 700, padding: '5px 10px', cursor: 'pointer' }}>Search</button>
-          {q && <a href={qs({ q: undefined })} style={{ ...navChip, padding: '5px 9px', fontSize: 11 }}>×</a>}
-        </form>
-      </div>
+          <form method="get" action="/admin/revenue/trials#top" style={{ display: 'inline-flex', gap: 5, marginLeft: 12 }}>
+            {fState && <input type="hidden" name="state" value={fState} />}
+            {fEra ? <input type="hidden" name="era" value={String(fEra)} /> : null}
+            {fAttr && <input type="hidden" name="attr" value={fAttr} />}
+            {includeIndia && <input type="hidden" name="india" value="1" />}
+            {includeNoCard && <input type="hidden" name="nocard" value="1" />}
+            <input name="q" defaultValue={q} placeholder="search email or name…"
+              style={{ border: `2px solid ${INK}`, background: '#FFFDFA', fontSize: 11.5, padding: '5px 9px', width: 190 }} />
+            <button type="submit" style={{ border: `2px solid ${INK}`, background: INK, color: LATTE, fontSize: 11, fontWeight: 700, padding: '5px 10px', cursor: 'pointer' }}>Search</button>
+            {q && <a href={qs({ q: undefined })} style={{ ...navChip, padding: '5px 9px', fontSize: 11 }}>×</a>}
+          </form>
+        </div>
+      </details>
 
       <div id="top" />
       <TrialsTable

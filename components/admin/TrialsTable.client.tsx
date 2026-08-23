@@ -8,8 +8,9 @@
 // columns sit underneath as chips and come back with a click; "reset" restores
 // the original order.
 //
-// The rows themselves sort by date (newest or oldest first) — an explicit,
-// reproducible order, so two people reading the same filter see the same list.
+// The rows sort ONE way, oldest trial first, always (owner, 2026-08-23:
+// "in order A-Z, from the oldest to the newest") — an explicit, reproducible
+// order, so two people reading the same filter see the same list.
 
 import { useState } from 'react'
 import TrialState from './TrialState.client'
@@ -18,6 +19,7 @@ import { useColumnLayout } from './useColumnLayout'
 import ColumnsMenu from './ColumnsMenu.client'
 import ChargeAnnual from './ChargeAnnual.client'
 import ChargeAnnualAll from './ChargeAnnualAll.client'
+import type { State } from '@/lib/revenue-states'
 
 export interface TrialRow {
   charge_id: string
@@ -38,7 +40,7 @@ export interface TrialRow {
    *  fees out, from the classifier's one keptUsdCents formula. */
   net_cents: number
   lifetime_bundle: boolean
-  derivedState: string
+  derivedState: State
   derivedLabel: string
   derivedColor: string
   override: string | null
@@ -74,7 +76,9 @@ type Col = {
   key: string
   label: string
   align: 'left' | 'right'
-  cell: (r: TrialRow) => React.ReactNode
+  /** onColor is only used by the status cell — repaints this row's tint the
+   *  instant a manual override changes, no reload (owner, 2026-08-23). */
+  cell: (r: TrialRow, onColor?: (chargeId: string, color: string) => void) => React.ReactNode
 }
 
 const ALL_COLUMNS: Col[] = [
@@ -83,9 +87,14 @@ const ALL_COLUMNS: Col[] = [
   { key: 'email', label: 'Email', align: 'left', cell: r => r.person_key },
   { key: 'name', label: 'Name', align: 'left', cell: r => <span style={{ fontWeight: 700 }}>{r.name || '–'}</span> },
   { key: 'status', label: 'Status', align: 'left',
-    cell: r => (
+    cell: (r, onColor) => (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-        <TrialState chargeId={r.charge_id} derived={r.derivedState} derivedLabel={r.derivedLabel} derivedColor={r.derivedColor} initial={r.override} />
+        <TrialState
+          chargeId={r.charge_id} customerId={r.customer_id}
+          derived={r.derivedState} derivedLabel={r.derivedLabel} derivedColor={r.derivedColor}
+          initial={r.override}
+          onLiveColorChange={color => onColor?.(r.charge_id, color)}
+        />
         {r.personNote && (
           <span title={`This TRIAL did not convert, but the person pays us: ${r.personNote}. Trials are counted gross, so each trial carries its own state.`}
             style={{ fontSize: 10, color: GREEN, fontWeight: 700 }}>
@@ -203,6 +212,11 @@ export default function TrialsTable({
   // the oldest to the newest"). No more per-user sort mode — a fixed order
   // is one two people reading the same filter always see the same way.
   const [nonPayingOnly, setNonPayingOnly] = useState(initialNonPayingOnly ?? false)
+  // Repainted the instant a status changes by hand, no reload (owner,
+  // 2026-08-23). Keyed by charge_id; falls back to the server-computed
+  // derivedColor until (if ever) a live edit happens on that row.
+  const [liveColors, setLiveColors] = useState<Record<string, string>>({})
+  const setLiveColor = (chargeId: string, color: string) => setLiveColors(prev => ({ ...prev, [chargeId]: color }))
   const nonPaying = rows.filter(r => r.derivedState !== 'converted' && r.derivedState !== 'lifetime')
   const base = nonPayingOnly ? nonPaying : rows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
@@ -281,10 +295,11 @@ export default function TrialsTable({
           {view.map(r => (
             // Row tinted with its status color (owner, 2026-08-22: "le righe
             // dovrebbero essere colorate del colore dello status", then
-            // "colori più intensi" the same day) — hex + 20% alpha suffix.
-            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${r.derivedColor}33` }}>
+            // "colori più intensi" the same day; 2026-08-23: a hand-change
+            // must repaint it too) — hex + 20% alpha suffix.
+            <tr key={r.charge_id} style={{ borderBottom: `1px solid ${HAIR}`, background: `${liveColors[r.charge_id] ?? r.derivedColor}33` }}>
               {visible.map(c => (
-                <td key={c.key} style={{ ...td, textAlign: c.align }}>{c.cell(r)}</td>
+                <td key={c.key} style={{ ...td, textAlign: c.align }}>{c.cell(r, setLiveColor)}</td>
               ))}
             </tr>
           ))}

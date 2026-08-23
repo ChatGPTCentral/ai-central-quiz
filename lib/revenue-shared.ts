@@ -9,6 +9,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { keptUsdCents, eurAvgRate } from '@/lib/trial-entries'
+import { STATE_LABEL, STATE_COLOR, OVERRIDE_BUCKET, liveState, type State } from '@/lib/revenue-states'
+export { STATE_LABEL, STATE_COLOR, OVERRIDE_BUCKET, liveState, type State }
 
 export interface Era { era: number; code: string; name: string; starts_on: string; ends_on: string | null; notes: string | null; color: string; is_quiz_era: boolean }
 export interface Row {
@@ -20,40 +22,10 @@ export interface Row {
   submission_id: string | null
 }
 
-/** The states a trial can be in. Deliberately exhaustive: every trial is in
- *  exactly one of them, so the counts always sum to the trial total. */
-export type State = 'converted' | 'lifetime' | 'lapsed' | 'lapsed_covered' | 'not_due' | 'refunded' | 'manual'
-
-export const STATE_LABEL: Record<State, string> = {
-  converted: 'Converted',
-  lifetime: 'Lifetime',
-  lapsed: 'Did not convert',
-  lapsed_covered: 'Person already pays',
-  not_due: 'Trialing',
-  refunded: 'Refunded / disputed',
-  manual: 'Set aside by hand',
-}
-export const STATE_COLOR: Record<State, string> = { converted: '#2E7D32', lifetime: '#7E9BB5', lapsed: '#B00020', lapsed_covered: '#6B7FA3', not_due: '#B26A00', refunded: '#7A7A7A', manual: '#8A7A5C' }
-
 export const ATTR_LABEL: Record<string, string> = {
   quiz_net_new: 'Quiz, new customer',
   quiz_existing: 'Quiz, existing customer',
   not_quiz: 'Not from the quiz',
-}
-
-/** THE MANUAL OVERRIDE WINS EVERYWHERE. The dropdown's state is a human
- *  judgment; a row with ANY override can never be lapsed, so it can never be
- *  in the retry queue and never chargeable. */
-export const OVERRIDE_BUCKET: Record<string, State> = {
-  yearly_subscriber: 'converted',
-  recovered: 'converted',
-  lifetime: 'lifetime',
-  refunded: 'refunded',
-  dispute: 'refunded',
-  deleted: 'refunded',
-  hold: 'manual',
-  cancel: 'manual',
-  no_payment: 'manual',
 }
 
 /** Trials sold in this window went through a flow that saved no card: they

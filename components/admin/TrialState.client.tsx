@@ -4,11 +4,12 @@
 //
 // "Auto" is the derived state from trial_ledger, which is always right about
 // the money. Picking anything else records a manual override — what the owner
-// knows that the charges cannot say (on hold, disputed, recovered by hand).
-// The label keeps showing the derived state underneath when an override is
-// active, so a manual answer never hides the arithmetic.
+// knows that the charges cannot say (disputed, recovered by hand). The label
+// keeps showing the derived state underneath when an override is active, so a
+// manual answer never hides the arithmetic.
 
 import { useState } from 'react'
+import { liveState, STATE_COLOR, type State } from '@/lib/revenue-states'
 
 // 'hold' is gone from the list (owner, 2026-08-22: "Trialing and hold sono la
 // stessa cosa") — it duplicated the derived Trialing state and froze rows out
@@ -27,33 +28,48 @@ const OPTIONS: { value: string; label: string }[] = [
 ]
 
 export default function TrialState({
-  chargeId, derived, derivedLabel, derivedColor, initial,
+  chargeId, customerId, derived, derivedLabel, derivedColor, initial, onLiveColorChange,
 }: {
   chargeId: string
-  derived: string
+  /** Needed to re-check Stripe live after a manual change; no check runs
+   *  without it. */
+  customerId: string | null
+  derived: State
   derivedLabel: string
   derivedColor: string
   /** The stored override, or null when the row is on Auto. */
   initial: string | null
+  /** Repaints the row's background the instant the dropdown changes — no
+   *  reload (owner, 2026-08-23: "when i change status by hand it also
+   *  changes row color"). Called with the OPTIMISTIC color immediately, then
+   *  again if the save fails and the value reverts. */
+  onLiveColorChange?: (color: string) => void
 }) {
   const [value, setValue] = useState(initial ?? 'auto')
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [check, setCheck] = useState<{ hasActiveSubscription: boolean; subscriptionStatus: string | null } | { error: string } | null>(null)
 
   const save = async (next: string) => {
     const prev = value
-    setValue(next); setSaving(true); setFailed(false)
+    setValue(next); setSaving(true); setFailed(false); setCheck(null)
+    onLiveColorChange?.(STATE_COLOR[liveState(next, derived)])
     try {
       const res = await fetch('/api/admin/trial-state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chargeId, state: next }),
+        body: JSON.stringify({ chargeId, state: next, customerId }),
       })
-      if (!res.ok) throw new Error(String(res.status))
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok || !j.ok) throw new Error(String(j.error || res.status))
+      if (j.stripeCheck) {
+        setCheck(j.stripeCheck.ok ? { hasActiveSubscription: j.stripeCheck.hasActiveSubscription, subscriptionStatus: j.stripeCheck.subscriptionStatus } : { error: j.stripeCheck.error })
+      }
     } catch {
       // Put the control back where it was: a dropdown that shows a value the
       // database does not hold is worse than an error.
       setValue(prev); setFailed(true)
+      onLiveColorChange?.(STATE_COLOR[liveState(prev, derived)])
     } finally {
       setSaving(false)
     }
@@ -89,6 +105,18 @@ export default function TrialState({
       </select>
       {manual && <span style={{ fontSize: 9.5, color: '#B26A00', fontWeight: 700 }} aria-hidden>manual</span>}
       {failed && <span style={{ fontSize: 9.5, color: '#B00020' }}>not saved</span>}
+      {/* The live Stripe re-check (owner, 2026-08-23), advisory only — it
+          never reverts his answer, it just says what Stripe shows right now. */}
+      {check && ('error' in check ? (
+        <span title={`Could not check Stripe: ${check.error}`} style={{ fontSize: 9.5, color: '#B26A00' }}>⚠ Stripe check failed</span>
+      ) : (
+        <span
+          title={check.subscriptionStatus ? `Stripe subscription status: ${check.subscriptionStatus}` : 'No subscription found on this customer in Stripe'}
+          style={{ fontSize: 9.5, fontWeight: 700, color: check.hasActiveSubscription ? '#2E7D32' : '#B26A00' }}
+        >
+          {check.hasActiveSubscription ? `✓ Stripe: ${check.subscriptionStatus}` : `Stripe: ${check.subscriptionStatus ?? 'no subscription'}`}
+        </span>
+      ))}
     </span>
   )
 }
