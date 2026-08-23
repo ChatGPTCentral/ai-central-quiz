@@ -23,9 +23,12 @@ export const dynamic = 'force-dynamic'
 // — it duplicated the derived Trialing state; existing holds were cleared
 // (twice — the sheet-sync function kept reintroducing it until fixed
 // 2026-08-23, see the fix_hold_reimport_and_split_old_new_lifetime
-// migration).
+// migration). 'no_payment' removed 2026-08-23 for the same reason (owner:
+// "'no payment' e 'did not convert' sono la stessa cosa") — a failed charge
+// attempt never sets an override, so the row is already auto-derived
+// 'lapsed'; its one existing override was cleared.
 const MANUAL_STATES = [
-  'yearly_subscriber', 'recovered', 'lifetime', 'lifetime_old', 'no_payment',
+  'yearly_subscriber', 'recovered', 'lifetime', 'lifetime_old',
   'dispute', 'cancel', 'refunded', 'deleted',
 ] as const
 

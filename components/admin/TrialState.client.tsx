@@ -11,17 +11,27 @@
 import { useState } from 'react'
 import { liveState, STATE_COLOR, type State } from '@/lib/revenue-states'
 
-// 'hold' is gone from the list (owner, 2026-08-22: "Trialing and hold sono la
-// stessa cosa") — it duplicated the derived Trialing state and froze rows out
-// of the retry queue. The 81 existing hold overrides were cleared the same
-// day; the API refuses the value too, so it cannot come back by accident.
+// Two values retired from this list, both for the same reason: each
+// duplicated a fact the AUTO-derived state already carries, so picking it
+// could never say anything 'auto' wasn't already saying.
+//   · 'hold' (owner, 2026-08-22: "Trialing and hold sono la stessa cosa")
+//     duplicated the derived Trialing state and froze rows out of the retry
+//     queue. Also had to be re-cleared 2026-08-23 when a Postgres sync
+//     function was found still reimporting it from the owner's sheet — see
+//     the fix_hold_reimport_and_split_old_new_lifetime migration.
+//   · 'no_payment' (owner, 2026-08-23: "'no payment' e 'did not convert'
+//     sono la stessa cosa ... abbiamo provato a addebitare quel cliente e
+//     non ci siamo riusciti" — a failed charge attempt never sets an
+//     override, the row just stays auto-derived 'lapsed') duplicated
+//     Did-not-convert. Its one existing override was cleared the same day.
+// Both values are refused by the API too, so neither can come back by
+// accident.
 const OPTIONS: { value: string; label: string }[] = [
   { value: 'auto', label: 'Auto (from charges)' },
   { value: 'yearly_subscriber', label: 'Yearly subscriber' },
   { value: 'recovered', label: 'Yearly / recovered' },
   { value: 'lifetime', label: 'Lifetime (new, $54.74 bundle)' },
   { value: 'lifetime_old', label: 'Lifetime (old, $49.75 only)' },
-  { value: 'no_payment', label: 'No payment' },
   { value: 'dispute', label: 'Dispute' },
   { value: 'cancel', label: 'Cancel' },
   { value: 'refunded', label: 'Refunded' },

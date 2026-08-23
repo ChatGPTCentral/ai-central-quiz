@@ -23,10 +23,13 @@ export type State = 'converted' | 'lifetime' | 'lifetime_old' | 'lapsed' | 'laps
 // TrialsTable.client.tsx), removes the neighbours instead of removing the
 // distinction — cancel, dispute and refund all read as "will not auto-bill"
 // on sight now, which is the actual thing he asked for both times.
-// 'no_payment' was never touched by this and still buckets to 'lapsed': that
-// override always recorded the same fact the auto-derived state already
-// captures, so it stays one fact, one label, per the project's one-source
-// rule.
+// 'no_payment' is gone from OVERRIDE_BUCKET entirely as of 2026-08-23 (owner:
+// "'no payment' e 'did not convert' sono la stessa cosa ... abbiamo provato
+// a addebitare quel cliente e non ci siamo riusciti") — a failed charge
+// attempt never writes an override (charge-annual/route.ts just logs the
+// attempt and leaves the row on 'auto'), so nothing can ever produce this
+// value again; the option is removed from the dropdown and refused by the
+// API too. Its one existing override was cleared.
 export const STATE_LABEL: Record<State, string> = {
   converted: 'Converted',
   lifetime: 'Lifetime (new)',
@@ -63,7 +66,6 @@ export const OVERRIDE_BUCKET: Record<string, State> = {
   dispute: 'refunded',
   deleted: 'refunded',
   cancel: 'cancelled',
-  no_payment: 'lapsed',
 }
 
 /** The live bucket for whatever the dropdown currently holds — 'auto' falls
