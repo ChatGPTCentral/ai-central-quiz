@@ -146,6 +146,14 @@ export async function POST(req: NextRequest) {
     .digest('hex')
     .slice(0, 32)
   const userAgent = s(req.headers.get('user-agent'), 200)
+  // Server-derived, same header app/result/page.tsx reads to choose the
+  // India lifetime offer. Stamped here, not trusted from the client, so a
+  // cohort cut by country reflects the geo Vercel saw AT THIS REQUEST —
+  // the same signal the offer decision itself ran on — rather than
+  // submissions.country, which can be stale by however long the trial was
+  // due. Answers whether a checkout_click that should have seen the
+  // lifetime offer actually carried the right country at that moment.
+  const ipCountry = s(req.headers.get('x-vercel-ip-country'), 8)
 
   const rows: Record<string, unknown>[] = []
   for (const ev of list) {
@@ -157,6 +165,7 @@ export async function POST(req: NextRequest) {
       const serialized = JSON.stringify(ev.props)
       if (serialized.length <= 2048) props = ev.props
     }
+    if (ipCountry) props = { ...props, ip_country: ipCountry }
     rows.push({
       event,
       anon_id: anonId,
