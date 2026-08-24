@@ -3,17 +3,27 @@
 // same minute. Same Bearer CRON_SECRET contract as the other crons.
 //
 // WHO THIS IS FOR. People who clicked the buy button, watched the payment
-// form open, and left without paying. ~120 a week with a known email. They are
-// the hottest segment the funnel produces, and until today they either got the
-// generic Pass Recovery sequence or nothing. This sequence talks to the moment
-// they actually stopped at: the payment form.
+// form open, and left without paying. ~120 a week with a known email. They
+// were meant to be the hottest segment the funnel produces, and until
+// 2026-08-10 they either got the generic Pass Recovery sequence or nothing.
+// This sequence talks to the moment they actually stopped at: the payment
+// form.
 //
-// WHY T+45 MINUTES. The purchase clock measured on 43 payers says people buy
-// in minutes or not at all: median 4.6 from seeing the result, 97.7% inside
-// 30. A click is later than the result view, so 45 minutes after the LAST
-// click is comfortably past every observed purchase. It also starts this
-// window before Pass Recovery's (result_view + 60), which is what makes the
-// specific email win the race for clickers instead of the generic one.
+// MEASURED, 2026-08-24: two weeks live, 280 enrolled, 1 became a trial,
+// 0.4%. Of the 100 checkout clicks that led to a trial in the trailing 90
+// days, 70% paid inside 5 minutes of that click, 87% inside 15, 94% inside
+// 45 — and the 45min-2h band the old T+45 floor opened into produced not
+// one trial in the whole 90 days. The email was arriving almost entirely
+// after the window in which this audience has ever paid.
+//
+// WHY T+20 MINUTES NOW. Comfortably past the 15-minute mark (87% of the
+// clickers who ever pay have already paid by then), while more than halving
+// the old miss. The real guard against emailing an active buyer is not this
+// delay, it is the re-verification below against stripe_first_charge_at
+// right before sending — moving the floor earlier cannot reach someone who
+// already paid, it only reaches the rest sooner, closer to the moment they
+// were still deciding. Still starts well before Pass Recovery's
+// (result_view + 60), same race won as before.
 //
 // MUTUAL EXCLUSION, both directions. 51 of last week's 120 unpaid clickers
 // were already inside Pass Recovery when this was built; without exclusion
@@ -28,12 +38,13 @@
 // any prior Stripe charge disqualifies, full stop — "you were one field away
 // from the $4.99 trial" must never reach an existing customer.
 //
-// TO ARM IT, both steps, in this order:
-//   1. publish the "Checkout Recovery" automation in beehiiv (it is a draft;
-//      enrolling into a draft is a no-op)
-//   2. set BEEHIIV_CHECKOUT_RECOVERY_ENABLED=true in Vercel, Production scope,
-//      AND REDEPLOY — Vercel bakes env vars at build time, so saving the
-//      variable without redeploying changes nothing and looks broken.
+// ARMED since 2026-08-10: the "Checkout Recovery" automation is published
+// live in beehiiv and BEEHIIV_CHECKOUT_RECOVERY_ENABLED=true in Production.
+// Nothing left to switch on. If it is ever paused, re-arming needs both:
+// publish the automation in beehiiv (a draft makes enrolment a no-op) AND
+// set the env var true in Vercel, Production scope, AND REDEPLOY — Vercel
+// bakes env vars at build time, so saving the variable without redeploying
+// changes nothing and looks broken.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -43,11 +54,11 @@ import { personResultPath, CHECKOUT_RECOVERY_UTM } from '@/lib/result-url'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
-/** Draft in beehiiv until the owner publishes it; enrolling into a draft is a no-op. */
+/** Live in beehiiv since 2026-08-10. */
 const AUTOMATION_ID = process.env.BEEHIIV_CHECKOUT_RECOVERY_AUTOMATION_ID
   || 'aut_02e82e63-8053-446d-a5cb-14266bd17fcb'
 
-const MIN_AGE_MIN = 45
+const MIN_AGE_MIN = 20
 const MAX_AGE_H = 24
 const BATCH = 50
 
@@ -81,8 +92,9 @@ export async function GET(req: NextRequest) {
   const dry = !armed || req.nextUrl.searchParams.get('dry') === '1'
   const c = sb()
 
-  // Candidates: last checkout click between 45 minutes and 24 hours ago, email
-  // known, no Stripe charge EVER, not enrolled in either recovery sequence.
+  // Candidates: last checkout click between MIN_AGE_MIN and 24 hours ago,
+  // email known, no Stripe charge EVER, not enrolled in either recovery
+  // sequence.
   // Fetch WIDE and re-check everything here — the RPC result is a list of
   // suggestions, not facts (see pass-recovery for the three incidents behind
   // that rule).
