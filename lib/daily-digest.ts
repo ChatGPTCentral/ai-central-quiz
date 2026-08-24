@@ -92,24 +92,36 @@ function nextStep(rows: FEvent[], prev: Map<string, string> | null, evt: string,
 }
 
 async function funnelAndSources(c: SupabaseClient): Promise<{ funnel: DigestResult['funnel']; sources: SourceRow[] }> {
-  // 2026-08-24: the owner's first live run came back with every funnel and
+  // 2026-08-24: the first two live runs came back with every funnel and
   // source number at zero, despite 4,200+ matching rows verified live in
-  // the database at the same moment. RLS and the index on (event, ts) were
-  // both checked and cleared — ruled out because the SAME client, SAME
-  // call, correctly read stripe_charges (also RLS-on, zero policies) in
-  // this exact invocation. The one thing never checked was whether this
-  // query itself came back with an `error` — the code only ever did
-  // `data ?? []`, which turns ANY failure into a silent, indistinguishable
-  // "zero people did anything this week." Logged now so the next failure
-  // says what actually happened instead of looking like real data.
+  // the database. RLS and the index on (event, ts) were checked and
+  // cleared. Logging the query's own `error` (added after run 1) showed
+  // there was none — but the row count logged from run 2 was only 972,
+  // against the 4,200+ the same filter matches directly in the database.
+  // A bare `.limit(20_000)` does not override PostgREST's server-side max
+  // rows cap — Supabase silently truncates to its own limit regardless of
+  // what the client asks for, the same trap loadRevenueData() in
+  // lib/revenue-shared.ts already pages around for exactly this reason. And
+  // with no ORDER BY, the truncated slice was not an even sample across the
+  // 14 days — it happened to contain zero quiz_view rows, so 'landing'
+  // start empty and everything downstream, which all require landing
+  // first, stayed empty too. Fixed by paging with .range() like every other
+  // large read in this codebase, ordered by ts so the pages are
+  // deterministic and don't skip or duplicate rows.
   const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
-  const { data, error } = await c.from('funnel_events')
-    .select('anon_id, event, path, ts, utm_source')
-    .gte('ts', since)
-    .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
-    .limit(20_000)
-  if (error) console.error('[daily-digest] funnel_events query failed:', error.message, error.details, error.hint, error.code)
-  const rows = ((data ?? []) as FEvent[]).filter(r => !!r.anon_id)
+  const rows: FEvent[] = []
+  for (let o = 0; o < 30_000; o += 1000) {
+    const { data, error } = await c.from('funnel_events')
+      .select('anon_id, event, path, ts, utm_source')
+      .gte('ts', since)
+      .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
+      .order('ts', { ascending: true })
+      .range(o, o + 999)
+    if (error) { console.error('[daily-digest] funnel_events query failed:', error.message, error.details, error.hint, error.code); break }
+    if (!data || data.length === 0) break
+    rows.push(...(data as FEvent[]).filter(r => !!r.anon_id))
+    if (data.length < 1000) break
+  }
   console.log(`[daily-digest] funnel_events: ${rows.length} rows since ${since}`)
   const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString()
   const weekOf = (ts: string): 'this_week' | 'last_week' => (ts >= cutoff ? 'this_week' : 'last_week')
