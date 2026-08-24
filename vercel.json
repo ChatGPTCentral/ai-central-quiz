@@ -38,7 +38,7 @@
     },
     {
       "path": "/api/cron/daily-digest",
-      "schedule": "15 7 * * *"
+      "schedule": "45 5 * * *"
     },
     {
       "path": "/api/cron/experiment-relay",

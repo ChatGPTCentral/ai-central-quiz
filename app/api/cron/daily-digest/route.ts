@@ -29,12 +29,15 @@ export async function GET(req: NextRequest) {
   const { error } = await c.from('daily_digests').upsert({
     day: result.day,
     ran_at: new Date().toISOString(),
+    is_monday: result.isMonday,
     trials_yesterday: result.trialsYesterday,
     bar: 10,
     bar_hit: result.barHit,
     trend: result.trend,
-    funnel: result.funnel,
+    daily_funnel: result.dailyFunnel,
+    weekly_funnel: result.weeklyFunnel,
     sources: result.sources,
+    cohort: result.cohort,
     headline: result.headline,
     synthesis: result.synthesis,
   }, { onConflict: 'day' })

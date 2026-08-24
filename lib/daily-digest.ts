@@ -8,8 +8,17 @@
 // steps SAME PERSON IN TIME ORDER (never two independent headcounts — the
 // exact bug CLAUDE.md names, email-link quiz-starts credited to a landing
 // page they never saw), the traffic-source breakdown behind any landing
-// move, then a short WRITTEN synthesis instead of leaving him to read raw
-// numbers alone.
+// move, a traced quiz-completed-to-trial cohort, then a short WRITTEN
+// synthesis instead of leaving him to read raw numbers alone.
+//
+// Cadence, same day (owner: "mi fai un daily tutti i giorni e il lunedi al
+// massimo mi fai il weekly"): every day gets the DAILY comparison
+// (yesterday vs the day before) as the primary read. Monday additionally
+// gets the WEEKLY comparison (this week vs last), because a single day's
+// swing is too noisy to read alone but a week's isn't. Every "scorsa /
+// questa" style label carries its own real date range now — the first
+// version just said "scorsa" and "questa" with nothing to anchor them to,
+// which is exactly what he could not read.
 //
 // The synthesis is a narrative layer on top of the stored numbers, never a
 // replacement for them — the digest page renders both, so a claim in the
@@ -32,18 +41,27 @@ export function db(): SupabaseClient {
 export const BAR = 10
 const TREND_DAYS = 21
 const FUNNEL_DAYS = 14
+const COHORT_DAYS = 7
 const DAY_MS = 86_400_000
 
+const isoDay = (daysAgo: number) => new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10)
+
 export interface TrendPoint { day: string; trials: number }
-export interface FunnelWeek { landing: number; started: number; completed: number; clicked: number }
+export interface FunnelSnapshot { landing: number; started: number; completed: number; clicked: number }
+export interface DailyFunnel { yesterday: FunnelSnapshot; dayBefore: FunnelSnapshot; yesterdayDate: string; dayBeforeDate: string }
+export interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; thisWeekRange: string; lastWeekRange: string }
 export interface SourceRow { source: string; this_week: number; last_week: number }
+export interface CohortTrace { windowDays: number; completed: number; clickedCheckout: number; becameTrial: number }
 export interface DigestResult {
   day: string
+  isMonday: boolean
   trialsYesterday: number
   barHit: boolean
   trend: TrendPoint[]
-  funnel: { this_week: FunnelWeek; last_week: FunnelWeek }
+  dailyFunnel: DailyFunnel
+  weeklyFunnel: WeeklyFunnel
   sources: SourceRow[]
+  cohort: CohortTrace
   headline: string
   synthesis: string
 }
@@ -64,13 +82,13 @@ async function trialsTrend(c: SupabaseClient): Promise<TrendPoint[]> {
   }
   const out: TrendPoint[] = []
   for (let i = TREND_DAYS; i >= 1; i--) {
-    const d = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10)
+    const d = isoDay(i)
     out.push({ day: d, trials: byDay.get(d) ?? 0 })
   }
   return out
 }
 
-interface FEvent { anon_id: string; event: string; path: string | null; ts: string; utm_source: string | null }
+interface FEvent { anon_id: string; event: string; path: string | null; ts: string; utm_source: string | null; submission_id: string | null; email: string | null }
 
 /** Same-person, timestamps-in-order — the one rule CLAUDE.md names for a
  *  funnel step ("of the people who did A, how many then did B"). Each call
@@ -91,29 +109,18 @@ function nextStep(rows: FEvent[], prev: Map<string, string> | null, evt: string,
   return m
 }
 
-async function funnelAndSources(c: SupabaseClient): Promise<{ funnel: DigestResult['funnel']; sources: SourceRow[] }> {
-  // 2026-08-24: the first two live runs came back with every funnel and
-  // source number at zero, despite 4,200+ matching rows verified live in
-  // the database. RLS and the index on (event, ts) were checked and
-  // cleared. Logging the query's own `error` (added after run 1) showed
-  // there was none — but the row count logged from run 2 was only 972,
-  // against the 4,200+ the same filter matches directly in the database.
-  // A bare `.limit(20_000)` does not override PostgREST's server-side max
-  // rows cap — Supabase silently truncates to its own limit regardless of
-  // what the client asks for, the same trap loadRevenueData() in
-  // lib/revenue-shared.ts already pages around for exactly this reason. And
-  // with no ORDER BY, the truncated slice was not an even sample across the
-  // 14 days — it happened to contain zero quiz_view rows, so 'landing'
-  // start empty and everything downstream, which all require landing
-  // first, stayed empty too. Fixed by paging with .range() like every other
-  // large read in this codebase, ordered by ts so the pages are
-  // deterministic and don't skip or duplicate rows.
-  const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
+/** Pages through funnel_events like every other large read in this codebase
+ *  (lib/revenue-shared.ts loadRevenueData) — a bare .limit() does not
+ *  override Supabase's own server-side max-rows cap, found live 2026-08-24
+ *  when a 20,000-row request silently came back with 972 and zero landing
+ *  rows among them, because with no ORDER BY the truncated slice was not an
+ *  even sample of the window. */
+async function fetchFunnelEvents(c: SupabaseClient, sinceIso: string): Promise<FEvent[]> {
   const rows: FEvent[] = []
   for (let o = 0; o < 30_000; o += 1000) {
     const { data, error } = await c.from('funnel_events')
-      .select('anon_id, event, path, ts, utm_source')
-      .gte('ts', since)
+      .select('anon_id, event, path, ts, utm_source, submission_id, email')
+      .gte('ts', sinceIso)
       .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
       .order('ts', { ascending: true })
       .range(o, o + 999)
@@ -122,24 +129,40 @@ async function funnelAndSources(c: SupabaseClient): Promise<{ funnel: DigestResu
     rows.push(...(data as FEvent[]).filter(r => !!r.anon_id))
     if (data.length < 1000) break
   }
-  console.log(`[daily-digest] funnel_events: ${rows.length} rows since ${since}`)
-  const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString()
-  const weekOf = (ts: string): 'this_week' | 'last_week' => (ts >= cutoff ? 'this_week' : 'last_week')
+  console.log(`[daily-digest] funnel_events: ${rows.length} rows since ${sinceIso}`)
+  return rows
+}
 
+function funnelAndSources(rows: FEvent[]): { daily: DailyFunnel; weekly: WeeklyFunnel; sources: SourceRow[] } {
   const landing = nextStep(rows, null, 'quiz_view', '/')
   const started = nextStep(rows, landing, 'quiz_start')
   const completed = nextStep(rows, started, 'quiz_submit')
   const clicked = nextStep(rows, completed, 'checkout_click')
 
-  const bucket = (m: Map<string, string>) => {
-    let thisWeek = 0, lastWeek = 0
-    for (const ts of Array.from(m.values())) { if (weekOf(ts) === 'this_week') thisWeek++; else lastWeek++ }
-    return { thisWeek, lastWeek }
+  const countOnDay = (m: Map<string, string>, day: string) => {
+    let n = 0
+    for (const ts of Array.from(m.values())) if (ts.slice(0, 10) === day) n++
+    return n
   }
-  const L = bucket(landing), S = bucket(started), C = bucket(completed), K = bucket(clicked)
-  const funnel = {
-    this_week: { landing: L.thisWeek, started: S.thisWeek, completed: C.thisWeek, clicked: K.thisWeek },
-    last_week: { landing: L.lastWeek, started: S.lastWeek, completed: C.lastWeek, clicked: K.lastWeek },
+  const yesterdayDate = isoDay(1), dayBeforeDate = isoDay(2)
+  const daily: DailyFunnel = {
+    yesterdayDate, dayBeforeDate,
+    yesterday: { landing: countOnDay(landing, yesterdayDate), started: countOnDay(started, yesterdayDate), completed: countOnDay(completed, yesterdayDate), clicked: countOnDay(clicked, yesterdayDate) },
+    dayBefore: { landing: countOnDay(landing, dayBeforeDate), started: countOnDay(started, dayBeforeDate), completed: countOnDay(completed, dayBeforeDate), clicked: countOnDay(clicked, dayBeforeDate) },
+  }
+
+  const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString()
+  const weekOf = (ts: string): 'this_week' | 'last_week' => (ts >= cutoff ? 'this_week' : 'last_week')
+  const countInWeek = (m: Map<string, string>, wk: 'this_week' | 'last_week') => {
+    let n = 0
+    for (const ts of Array.from(m.values())) if (weekOf(ts) === wk) n++
+    return n
+  }
+  const weekly: WeeklyFunnel = {
+    thisWeekRange: `${isoDay(7)} → ${isoDay(1)}`,
+    lastWeekRange: `${isoDay(14)} → ${isoDay(8)}`,
+    this_week: { landing: countInWeek(landing, 'this_week'), started: countInWeek(started, 'this_week'), completed: countInWeek(completed, 'this_week'), clicked: countInWeek(clicked, 'this_week') },
+    last_week: { landing: countInWeek(landing, 'last_week'), started: countInWeek(started, 'last_week'), completed: countInWeek(completed, 'last_week'), clicked: countInWeek(clicked, 'last_week') },
   }
 
   // Raw landing pageviews (not deduped to first-per-person — a volume
@@ -156,7 +179,72 @@ async function funnelAndSources(c: SupabaseClient): Promise<{ funnel: DigestResu
     .map(([source, v]) => ({ source, this_week: v.thisWeek, last_week: v.lastWeek }))
     .sort((a, b) => (b.last_week + b.this_week) - (a.last_week + a.this_week))
 
-  return { funnel, sources }
+  return { daily, weekly, sources }
+}
+
+/** Traces the SAME people from quiz completion through to an actual paid
+ *  trial — the answer to the owner's 2026-08-24 challenge ("189 quiz
+ *  completed, non c'e nessuna scusa"). Not a ratio of two head-counts:
+ *  every completer is checked by email, against a real charge dated AFTER
+ *  their own completion. */
+async function cohortTrace(c: SupabaseClient, rows: FEvent[]): Promise<CohortTrace> {
+  const since = new Date(Date.now() - COHORT_DAYS * DAY_MS).toISOString()
+  const completedAt = new Map<string, string>()
+  for (const r of rows) {
+    if (r.event !== 'quiz_submit' || r.ts < since) continue
+    const existing = completedAt.get(r.anon_id)
+    if (!existing || r.ts < existing) completedAt.set(r.anon_id, r.ts)
+  }
+  const completed = Array.from(completedAt.keys())
+  if (completed.length === 0) return { windowDays: COHORT_DAYS, completed: 0, clickedCheckout: 0, becameTrial: 0 }
+
+  const clickedCheckout = nextStep(rows, completedAt, 'checkout_click').size
+
+  // Latest known email per completer — quiz_submit itself rarely carries one
+  // (email capture comes later in the flow), so read it off any later event
+  // for the same anon_id, or the linked submission.
+  const emailOf = new Map<string, string>()
+  for (const r of rows) {
+    if (!completedAt.has(r.anon_id)) continue
+    const em = r.email
+    if (em) emailOf.set(r.anon_id, em.toLowerCase())
+  }
+  const submissionIds = Array.from(new Set(rows.filter(r => completedAt.has(r.anon_id) && r.submission_id).map(r => r.submission_id as string)))
+  if (submissionIds.length > 0) {
+    const { data: subs } = await c.from('submissions').select('id, email').in('id', submissionIds).limit(2000)
+    const emailBySub = new Map((subs ?? []).map((s: { id: string; email: string | null }) => [s.id, s.email?.toLowerCase() ?? null]))
+    for (const r of rows) {
+      if (!completedAt.has(r.anon_id) || emailOf.has(r.anon_id) || !r.submission_id) continue
+      const em = emailBySub.get(r.submission_id)
+      if (em) emailOf.set(r.anon_id, em)
+    }
+  }
+
+  const emails = Array.from(new Set(Array.from(emailOf.values())))
+  let becameTrial = 0
+  if (emails.length > 0) {
+    const { data: charges } = await c.from('stripe_charges')
+      .select('email, amount_cents, refunded, charged_at')
+      .in('email', emails)
+      .in('amount_cents', [399, 499, 1495, 5474])
+      .eq('refunded', false)
+      .limit(5000)
+    const earliestTrialByEmail = new Map<string, string>()
+    for (const ch of (charges ?? []) as { email: string; charged_at: string }[]) {
+      const em = ch.email?.toLowerCase()
+      if (!em) continue
+      const existing = earliestTrialByEmail.get(em)
+      if (!existing || ch.charged_at < existing) earliestTrialByEmail.set(em, ch.charged_at)
+    }
+    for (const [anonId, at] of Array.from(completedAt.entries())) {
+      const em = emailOf.get(anonId)
+      if (!em) continue
+      const trialAt = earliestTrialByEmail.get(em)
+      if (trialAt && trialAt >= at) becameTrial++
+    }
+  }
+
+  return { windowDays: COHORT_DAYS, completed: completed.length, clickedCheckout, becameTrial }
 }
 
 const MODEL = 'claude-sonnet-4-6'
@@ -170,7 +258,7 @@ Regole di scrittura, sempre:
 - Una idea per frase. Non unire due istruzioni con "e" o "poi".
 - Voce attiva. Parole semplici. Nessun em-dash, usa la virgola.
 - Usa SOLO i numeri forniti. Non inventare nessun numero e nessuna causa assente dai dati.
-- Se un numero viene da una finestra diversa (settimana contro giorno), dillo nella stessa frase.
+- Ogni numero porta la sua data o il suo intervallo esplicito, mai "scorsa" o "questa" da sole.
 
 Contesto del progetto:
 - L'obiettivo e 10+ trial pagati al giorno, "the bar". Sotto 10 e fallimento.
@@ -178,7 +266,12 @@ Contesto del progetto:
 - La conversione sulla pagina, la percentuale che passa da un passo al successivo, e la leva di Claude.
 - Un trial e un pagamento reale di $4.99, $3.99, $14.95, o il bundle $54.74.
 
-Il tuo compito: scrivi un titolo di una frase (headline) e una sintesi di massimo 6 frasi (synthesis). Spiega cosa e cambiato questa settimana contro la scorsa. Dai la causa piu probabile SOLO se i numeri la mostrano chiaramente. Se i numeri non mostrano una causa chiara, dillo, non inventarla. Finisci la sintesi con una frase su cosa guardare o fare dopo.`
+Il tuo compito: scrivi un titolo di una frase (headline) e una sintesi di massimo 7 frasi (synthesis).
+Priorita 1: il confronto GIORNALIERO, ieri contro il giorno prima, sempre presente.
+Priorita 2, SOLO se e lunedi: aggiungi cosa dice il confronto SETTIMANALE.
+Priorita 3: il tracciamento del completamento quiz fino al trial, per dire dove si perde la persona.
+Dai la causa piu probabile SOLO se i numeri la mostrano chiaramente. Se non la mostrano, dillo, non inventarla.
+Finisci la sintesi con una frase su cosa guardare o fare dopo.`
 
 const SYNTH_SCHEMA = {
   type: 'object',
@@ -192,10 +285,13 @@ const SYNTH_SCHEMA = {
 
 async function synthesize(input: {
   trend: TrendPoint[]
-  funnel: DigestResult['funnel']
+  daily: DailyFunnel
+  weekly: WeeklyFunnel
   sources: SourceRow[]
+  cohort: CohortTrace
   trialsYesterday: number
   barHit: boolean
+  isMonday: boolean
 }): Promise<{ headline: string; synthesis: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   const fallback = {
@@ -206,19 +302,30 @@ async function synthesize(input: {
   }
   if (!apiKey) return fallback
 
+  const weeklyBlock = input.isMonday ? `
+
+E' lunedi. Funnel settimanale, ${input.weekly.lastWeekRange} contro ${input.weekly.thisWeekRange}, stessa persona in ordine di tempo:
+landing: ${input.weekly.last_week.landing} -> ${input.weekly.this_week.landing}
+iniziano il quiz: ${input.weekly.last_week.started} -> ${input.weekly.this_week.started}
+completano il quiz: ${input.weekly.last_week.completed} -> ${input.weekly.this_week.completed}
+cliccano checkout: ${input.weekly.last_week.clicked} -> ${input.weekly.this_week.clicked}
+
+Traffico landing per fonte, ${input.weekly.lastWeekRange} contro ${input.weekly.thisWeekRange}:
+${input.sources.slice(0, 8).map(s => `${s.source}: ${s.last_week} -> ${s.this_week}`).join('\n')}` : ''
+
   const userPrompt = `Trend trial per giorno (ultimi 21 giorni, dal piu vecchio al piu recente):
 ${input.trend.map(t => `${t.day}: ${t.trials}`).join('\n')}
 
-Ieri: ${input.trialsYesterday} trial, bar di 10, ${input.barHit ? 'raggiunta' : 'mancata'}.
+Ieri (${input.daily.yesterdayDate}): ${input.trialsYesterday} trial, bar di 10, ${input.barHit ? 'raggiunta' : 'mancata'}.
 
-Funnel, settimana scorsa contro questa settimana, stessa persona in ordine di tempo:
-landing: ${input.funnel.last_week.landing} -> ${input.funnel.this_week.landing}
-iniziano il quiz: ${input.funnel.last_week.started} -> ${input.funnel.this_week.started}
-completano il quiz: ${input.funnel.last_week.completed} -> ${input.funnel.this_week.completed}
-cliccano checkout: ${input.funnel.last_week.clicked} -> ${input.funnel.this_week.clicked}
+Funnel giornaliero, ${input.daily.dayBeforeDate} contro ${input.daily.yesterdayDate}, stessa persona in ordine di tempo:
+landing: ${input.daily.dayBefore.landing} -> ${input.daily.yesterday.landing}
+iniziano il quiz: ${input.daily.dayBefore.started} -> ${input.daily.yesterday.started}
+completano il quiz: ${input.daily.dayBefore.completed} -> ${input.daily.yesterday.completed}
+cliccano checkout: ${input.daily.dayBefore.clicked} -> ${input.daily.yesterday.clicked}
+${weeklyBlock}
 
-Traffico landing per fonte, settimana scorsa contro questa settimana:
-${input.sources.slice(0, 8).map(s => `${s.source}: ${s.last_week} -> ${s.this_week}`).join('\n')}`
+Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${input.cohort.completed} hanno completato il quiz, ${input.cohort.clickedCheckout} di questi hanno cliccato checkout, ${input.cohort.becameTrial} sono diventati un trial pagato dopo.`
 
   try {
     const client = new Anthropic({ apiKey })
@@ -240,10 +347,15 @@ ${input.sources.slice(0, 8).map(s => `${s.source}: ${s.last_week} -> ${s.this_we
 }
 
 export async function runDailyDigest(c: SupabaseClient): Promise<DigestResult> {
-  const [trend, fs] = await Promise.all([trialsTrend(c), funnelAndSources(c)])
+  const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
+  const [trend, rows] = await Promise.all([trialsTrend(c), fetchFunnelEvents(c, since)])
+  const { daily, weekly, sources } = funnelAndSources(rows)
+  const cohort = await cohortTrace(c, rows)
   const trialsYesterday = trend.length ? trend[trend.length - 1].trials : 0
   const barHit = trialsYesterday >= BAR
-  const day = new Date().toISOString().slice(0, 10)
-  const { headline, synthesis } = await synthesize({ trend, funnel: fs.funnel, sources: fs.sources, trialsYesterday, barHit })
-  return { day, trialsYesterday, barHit, trend, funnel: fs.funnel, sources: fs.sources, headline, synthesis }
+  const now = new Date()
+  const day = now.toISOString().slice(0, 10)
+  const isMonday = now.getUTCDay() === 1
+  const { headline, synthesis } = await synthesize({ trend, daily, weekly, sources, cohort, trialsYesterday, barHit, isMonday })
+  return { day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, headline, synthesis }
 }
