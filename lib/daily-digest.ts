@@ -50,12 +50,13 @@ export interface DigestResult {
 
 async function trialsTrend(c: SupabaseClient): Promise<TrendPoint[]> {
   const since = new Date(Date.now() - TREND_DAYS * DAY_MS).toISOString()
-  const { data } = await c.from('stripe_charges')
+  const { data, error } = await c.from('stripe_charges')
     .select('charged_at')
     .gte('charged_at', since)
     .in('amount_cents', [399, 499, 1495, 5474])
     .eq('refunded', false)
     .limit(5000)
+  if (error) console.error('[daily-digest] stripe_charges query failed:', error.message, error.details, error.hint, error.code)
   const byDay = new Map<string, number>()
   for (const r of (data ?? []) as { charged_at: string }[]) {
     const d = r.charged_at.slice(0, 10)
@@ -91,14 +92,25 @@ function nextStep(rows: FEvent[], prev: Map<string, string> | null, evt: string,
 }
 
 async function funnelAndSources(c: SupabaseClient): Promise<{ funnel: DigestResult['funnel']; sources: SourceRow[] }> {
+  // 2026-08-24: the owner's first live run came back with every funnel and
+  // source number at zero, despite 4,200+ matching rows verified live in
+  // the database at the same moment. RLS and the index on (event, ts) were
+  // both checked and cleared — ruled out because the SAME client, SAME
+  // call, correctly read stripe_charges (also RLS-on, zero policies) in
+  // this exact invocation. The one thing never checked was whether this
+  // query itself came back with an `error` — the code only ever did
+  // `data ?? []`, which turns ANY failure into a silent, indistinguishable
+  // "zero people did anything this week." Logged now so the next failure
+  // says what actually happened instead of looking like real data.
   const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
-  const { data } = await c.from('funnel_events')
+  const { data, error } = await c.from('funnel_events')
     .select('anon_id, event, path, ts, utm_source')
     .gte('ts', since)
-    .not('anon_id', 'is', null)
     .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
     .limit(20_000)
-  const rows = (data ?? []) as FEvent[]
+  if (error) console.error('[daily-digest] funnel_events query failed:', error.message, error.details, error.hint, error.code)
+  const rows = ((data ?? []) as FEvent[]).filter(r => !!r.anon_id)
+  console.log(`[daily-digest] funnel_events: ${rows.length} rows since ${since}`)
   const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString()
   const weekOf = (ts: string): 'this_week' | 'last_week' => (ts >= cutoff ? 'this_week' : 'last_week')
 
