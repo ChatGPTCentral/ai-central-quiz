@@ -241,13 +241,20 @@ The rules that follow, and they are rules:
   (helper: `personResultPath` in `lib/result-url.ts`); it re-fetches by `id`,
   so the link works anytime, from the notification email, the person record,
   or the People table 🎯.
-- Clarity UX aggregates snapshot daily (Vercel cron 06:30 UTC →
-  `/api/cron/clarity-snapshot`) into `clarity_daily` (raw jsonb per
-  metric × dims × day: rage/dead clicks, quick-backs, scroll depth, script
-  errors, by URL/Device/Source/Country). Read UX health from that table
-  (`lib/clarity.ts` has parsers); the export API itself only serves the
-  trailing 1-3 days at 10 calls/day, and each snapshot spends 4. Recordings
-  and heatmaps have no API, they stay in the Clarity dashboard.
+- The Clarity daily-snapshot cron (`/api/cron/clarity-snapshot`) was
+  retired 2026-08-13, gate agreed with the owner 2026-08-11: `clarity_daily`
+  keeps 2026-07-13 through 2026-08-13 as a frozen before/after baseline
+  (`lib/clarity.ts` has parsers) but is NOT live, do not read it as current.
+  UX-by-page moved to PostHog: `lib/ux-by-page.ts`'s `uxByPage()` runs a live
+  HogQL query (rage/dead clicks WITH the element, quick-backs, script
+  errors, by URL), feeding `/admin/experiments`. Clarity recordings still
+  have no API, dashboard only, unchanged.
+  PostHog also has its own Heatmaps product (coordinate-level click, rage,
+  scroll-depth maps, separate from the event counts above), queryable via
+  its `heatmaps-list`/`heatmaps-events` API. `capture_heatmaps: true` is
+  set client-side (`components/PostHogProvider.client.tsx`), but as of
+  2026-08-24 it returns ZERO data sitewide over the trailing 30 days,
+  cause not yet found. Verify this is still true before relying on it.
 
 ## How to talk to the owner (his instruction, 2026-08-20)
 
