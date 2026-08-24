@@ -6,11 +6,9 @@ import { ClarityTag } from '@/components/result2/ClarityTag.client'
 import { resolveExperiments, getVariantOverrides } from '@/lib/experiments'
 import OfferBar from '@/components/result2/OfferBar'
 import { Marquee2 } from '@/components/result2/Marquee2'
-import { FomoNotifications } from '@/components/result2/FomoNotifications.client'
 import { StageGauge } from '@/components/result2/StageGauge'
 import { StudyPlan } from '@/components/result2/StudyPlan'
 import Confetti from '@/components/result2/Confetti.client'
-import ExpenseEmail from '@/components/result2/ExpenseEmail.client'
 import { PassGate } from '@/components/result2/PassGate.client'
 import { STAGES } from '@/lib/segmentation-v2'
 import { offerForCountry, checkoutPathFor, TRIAL_OFFER, LIFETIME_OFFER } from '@/lib/offers'
@@ -37,12 +35,17 @@ import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
-// Owner-spec'd order: top-X% hero → FOMO trial strip (no India) →
-// horizontal journey stepper (green/grey + weeks-to-reach) → video with
-// "unfair advantage" framing + get-everything offer card → recommended
-// study plan (real library tutorials, vertical stepper) → Senja reviews →
-// "you made it" pass with confetti, personalization widget and a
-// suggested LinkedIn post (@AICentral #AICentral) → FAQ → final band.
+// Owner-spec'd order: top-X% hero → horizontal journey stepper (green/grey
+// + weeks-to-reach) → video with "unfair advantage" framing + get-everything
+// offer card → recommended study plan (real library tutorials, vertical
+// stepper) → Senja reviews → "you made it" pass with confetti, personalization
+// widget and a suggested LinkedIn post (@AICentral #AICentral) → FAQ → final
+// band.
+// The FOMO trial strip (fabricated buyer names, no real data behind it) and
+// the expense-email block sat here too until 2026-08-24: 30 days of
+// v2_fomo_notification read 1,662 views, 4 clicks, 0 trials, and
+// v2_expense_email read 383 views, 0 clicks ever. Cut on that number, not a
+// test (see checkout_click/placement_view by props->>'placement').
 // Neon offer bar is fixed to the BOTTOM. Self-contained sibling of
 // /result: all placements v2_-prefixed, result_view carries
 // pageVariant:'v2', page stays noindexed and unlinked.
@@ -684,26 +687,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           windowNote={windowNote}
         />
 
-        {/* Directly under the price, because that is the exact moment the
-            objection lands. Theory under test: the blocker is not $59.75, it
-            is whose money it is. See the component for the kill number. */}
-        {/* The expense-request template exists to get a RENEWAL approved by
-            someone else's budget. A lifetime buyer has no renewal, so this is
-            not copy to reword, it is a section that does not apply to them. */}
-        {!isLifetime && (
-          <div style={{ maxWidth: 640 }}>
-            <ExpenseEmail
-              stageLabel={rung.className}
-              hoursLost={segFields?.hours_lost ?? null}
-              submissionId={rowId}
-              priceLabel={offer.price}
-            />
-          </div>
-        )}
-
-        {/* Live trial notifications sit UNDER the pay buttons, not over the
-            video: social proof lands hardest at the moment of decision. */}
-        <FomoNotifications checkoutUrl={checkoutUrl} submissionId={rowId} visitorCountry={visitorCountry} />
       </div>
     </section>
   )
