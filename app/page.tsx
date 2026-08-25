@@ -67,6 +67,16 @@ export default async function HomePage({
   const cookieStore = cookies()
   const anonId = cookieStore.get('ac_aid')?.value ?? headers().get('x-anon-id') ?? null
   const previewVar = typeof searchParams.xv === 'string' ? searchParams.xv.trim() : ''
+  // landing_skip_v1 doesn't express itself as an override slot like every
+  // other experiment on this page — it's a redirect, so ?xv= preview needs
+  // its own check here rather than going through getVariantOverrides.
+  // Preview only: never records an exposure, same as every other ?xv= look.
+  if (previewVar) {
+    const [a, b] = previewVar.split(':')
+    const previewExpKey = b ? a : null
+    const previewVarKey = (b ?? a).trim()
+    if (previewVarKey === 'skip' && (!previewExpKey || previewExpKey === 'landing_skip_v1')) redirect(quizHref)
+  }
   const { assignments, overrides } = previewVar
     ? { assignments: [] as { experimentKey: string; variantKey: string }[], overrides: await getVariantOverrides('landing', previewVar) }
     : await resolveExperiments({
