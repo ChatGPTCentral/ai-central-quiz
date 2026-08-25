@@ -35,6 +35,18 @@ const navChip: React.CSSProperties = {
   border: '2px solid #1A1A1A', background: '#FFFDFA', color: '#1A1A1A', textDecoration: 'none',
 }
 
+interface QueuedFollowup {
+  id: number
+  person_key: string
+  stage: number
+  amount_cents: number
+  currency: string | null
+  pay_url: string | null
+  from_address: string | null
+  from_name: string | null
+  queued_at: string
+}
+
 interface BoardRow {
   person_key: string
   source: string
@@ -69,11 +81,23 @@ const day = (s: string | null) => (s ? s.slice(0, 10) : '—')
 
 export default async function RevenueRecoveryOutreachPage() {
   let rows: BoardRow[] = []
+  let queued: QueuedFollowup[] = []
   let err: string | null = null
   try {
-    const { data, error } = await sb().from('revenue_recovery_board').select('*').limit(2000)
-    if (error) throw new Error(error.message)
-    rows = (data ?? []) as BoardRow[]
+    const client = sb()
+    const [board, followups] = await Promise.all([
+      client.from('revenue_recovery_board').select('*').limit(2000),
+      client
+        .from('recovery_outreach')
+        .select('id, person_key, stage, amount_cents, currency, pay_url, from_address, from_name, queued_at')
+        .eq('status', 'queued')
+        .order('queued_at', { ascending: true })
+        .limit(200),
+    ])
+    if (board.error) throw new Error(board.error.message)
+    if (followups.error) throw new Error(followups.error.message)
+    rows = (board.data ?? []) as BoardRow[]
+    queued = (followups.data ?? []) as QueuedFollowup[]
   } catch (e) {
     err = e instanceof Error ? e.message : String(e)
   }
@@ -108,6 +132,27 @@ export default async function RevenueRecoveryOutreachPage() {
         <a href="/admin/revenue/unpaid" style={navChip}>Unpaid &amp; overdue →</a>
         <a href="/admin/revenue/trials?nonpaying=1#top" style={navChip}>Trial recovery (automatic) →</a>
       </div>
+
+      {queued.length > 0 && (
+        <section style={{ marginTop: 24, border: `2px solid ${AMBER}`, background: '#FFF8EC', padding: '14px 16px' }}>
+          <h2 style={{ fontSize: 15, fontWeight: 800, color: AMBER }}>
+            Follow-up ready to draft ({queued.length})
+          </h2>
+          <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4, maxWidth: 760, lineHeight: 1.5 }}>
+            The recovery-followup cron queues these automatically, 7 days after the prior stage went out with no
+            reply and no payment. A queued row has no email behind it yet — it is a to-do, not a send. Claude drafts
+            the actual email in Gmail from here for the owner to review and send by hand, same as every stage before it.
+          </p>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {queued.map(q => (
+              <div key={q.id} style={{ fontSize: 12.5, color: INK, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700 }}>{q.person_key}</span>
+                <span style={{ color: MUTE }}>stage {q.stage} · queued {day(q.queued_at)} · ${(q.amount_cents / 100).toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {rows.length === 0 ? (
         <p style={{ fontSize: 13, color: MUTE, marginTop: 20 }}>Nobody graduated yet.</p>

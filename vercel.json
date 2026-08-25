@@ -49,6 +49,10 @@
       "schedule": "15 9 * * *"
     },
     {
+      "path": "/api/cron/recovery-followup",
+      "schedule": "25 8 * * *"
+    },
+    {
       "path": "/api/admin/stripe-dunning-sync",
       "schedule": "35 * * * *"
     }
