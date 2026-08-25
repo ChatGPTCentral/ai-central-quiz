@@ -96,6 +96,17 @@ would fake it. `stripe_charges` is the mirror of record, synced daily 06:20
 UTC, refunds excluded; the owner's trials spreadsheet is the reconciliation
 source of truth.
 
+**`stripe_charges` mirrors SUCCESSFUL charges only. Absence from it is not
+proof a renewal was never owed** (learned the hard way, 2026-08-25: a case
+read as "never billed, nothing owed" off `stripe_charges` alone, and real
+Stripe payment_intents showed three separate $59.75 renewal attempts, all
+blocked, `requires_payment_method` or `canceled/failed_invoice` — a genuine
+debt that off-session billing cannot collect because the card requires
+interactive 3D Secure, the same mechanism behind the India renewal
+collapse above). A "was this ever billed" question needs `GetPaymentIntents`
+by customer, not just `stripe_charges`, before anyone concludes a charge
+claim is false.
+
 ## One source per fact, and only one
 
 Owner's rule, 2026-08-11: **there is a single source of truth for each kind of
