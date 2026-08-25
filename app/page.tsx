@@ -1,11 +1,34 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { cookies, headers } from 'next/headers'
+import { createClient } from '@supabase/supabase-js'
 import AICentralLogo from '@/components/AICentralLogo'
 import FomoMarquee from '@/components/FomoMarquee.client'
 import TrackView from '@/components/TrackView'
 import ExperimentTracker from '@/components/ExperimentTracker.client'
 import { resolveExperiments, getVariantOverrides } from '@/lib/experiments'
 import { PassCard } from '@/components/result/PassCard'
+
+// landing_skip_v1 (owner, 2026-08-25): does skipping the landing page and
+// sending traffic straight to quiz question 1 change anything? Declared
+// 2 weeks, closes 2026-09-07. Primary metric quiz_completed (a landing-page
+// change is exactly the "quiz-entry style test" experiment-queries.ts calls
+// out as worth deciding on completion, not clicks), net_new_paid watched as
+// the guardrail per CLAUDE.md's testing rule 4. 50/50, bandit OFF — a
+// declared test wants a stable split for its whole window, not weights
+// drifting mid-read.
+//
+// The 'skip' arm never renders this page, so the normal client-side
+// <ExperimentTracker> exposure beacon never mounts for it. Recorded
+// server-side instead, via the same RPC /api/events uses, before the
+// redirect fires — the control arm still gets its exposure the normal way,
+// from the ExperimentTracker already on this page.
+function opsDb() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return null
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+}
 
 export const metadata = {
   title: 'AI Central, where do you rank in AI adoption?',
@@ -52,6 +75,25 @@ export default async function HomePage({
         utmSource: typeof searchParams.utm_source === 'string' ? searchParams.utm_source : null,
         page: 'landing',
       })
+
+  // landing_skip_v1: the 'skip' arm never sees this page at all.
+  const skipAssignment = assignments.find(a => a.experimentKey === 'landing_skip_v1')
+  if (skipAssignment?.variantKey === 'skip') {
+    if (anonId) {
+      const c = opsDb()
+      if (c) {
+        await c.rpc('upsert_experiment_assignment', {
+          p_experiment_key: 'landing_skip_v1',
+          p_anon_id: anonId,
+          p_variant_key: 'skip',
+        }).then(
+          ({ error }) => { if (error) console.error('[landing_skip_v1] exposure RPC failed:', error.message) },
+          err => console.error('[landing_skip_v1] exposure RPC threw:', err),
+        )
+      }
+    }
+    redirect(quizHref)
+  }
 
   // The desktop button under the pass card. Today it says "Share on LinkedIn"
   // on a page where the visitor has nothing to share yet, and it is the most

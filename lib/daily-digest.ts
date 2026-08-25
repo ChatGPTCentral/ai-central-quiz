@@ -68,16 +68,25 @@ export interface DigestResult {
 
 async function trialsTrend(c: SupabaseClient): Promise<TrendPoint[]> {
   const since = new Date(Date.now() - TREND_DAYS * DAY_MS).toISOString()
-  const { data, error } = await c.from('stripe_charges')
-    .select('charged_at')
-    .gte('charged_at', since)
-    .in('amount_cents', [399, 499, 1495, 5474])
-    .eq('refunded', false)
+  // Same bucketing the daily_benchmark watcher check uses (lib/ux-watch.ts):
+  // quiz-attributed trials (net-new + existing) on the QUIZ clock, not-quiz
+  // trials on the CHARGE clock. This used to scan stripe_charges by
+  // charged_at instead — a second derivation of "trials/day" that could,
+  // and on 2026-08-24 did, disagree with the matrix's own number (5 here
+  // vs 3 on daily_benchmark) — exactly the one-source-of-truth violation
+  // CLAUDE.md warns about. trial_ledger is the one source; read it, don't
+  // re-derive it.
+  const { data, error } = await c.from('trial_ledger')
+    .select('attribution, quiz_completed_at, trial_at')
+    .in('attribution', ['quiz_net_new', 'quiz_existing', 'not_quiz'])
+    .or(`quiz_completed_at.gte.${since},trial_at.gte.${since}`)
     .limit(5000)
-  if (error) console.error('[daily-digest] stripe_charges query failed:', error.message, error.details, error.hint, error.code)
+  if (error) console.error('[daily-digest] trial_ledger query failed:', error.message, error.details, error.hint, error.code)
   const byDay = new Map<string, number>()
-  for (const r of (data ?? []) as { charged_at: string }[]) {
-    const d = r.charged_at.slice(0, 10)
+  for (const r of (data ?? []) as { attribution: string; quiz_completed_at: string | null; trial_at: string | null }[]) {
+    const anchor = r.attribution === 'not_quiz' ? r.trial_at : (r.quiz_completed_at ?? r.trial_at)
+    if (!anchor || anchor < since) continue
+    const d = anchor.slice(0, 10)
     byDay.set(d, (byDay.get(d) ?? 0) + 1)
   }
   const out: TrendPoint[] = []
