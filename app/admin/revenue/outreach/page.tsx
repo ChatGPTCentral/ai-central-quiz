@@ -45,6 +45,7 @@ interface QueuedFollowup {
   from_address: string | null
   from_name: string | null
   queued_at: string
+  provider_msg_id: string | null
 }
 
 interface BoardRow {
@@ -89,7 +90,7 @@ export default async function RevenueRecoveryOutreachPage() {
       client.from('revenue_recovery_board').select('*').limit(2000),
       client
         .from('recovery_outreach')
-        .select('id, person_key, stage, amount_cents, currency, pay_url, from_address, from_name, queued_at')
+        .select('id, person_key, stage, amount_cents, currency, pay_url, from_address, from_name, queued_at, provider_msg_id')
         .eq('status', 'queued')
         .order('queued_at', { ascending: true })
         .limit(200),
@@ -140,14 +141,19 @@ export default async function RevenueRecoveryOutreachPage() {
           </h2>
           <p style={{ fontSize: 11.5, color: MUTE, marginTop: 4, maxWidth: 760, lineHeight: 1.5 }}>
             The recovery-followup cron queues these automatically, 7 days after the prior stage went out with no
-            reply and no payment. A queued row has no email behind it yet — it is a to-do, not a send. Claude drafts
-            the actual email in Gmail from here for the owner to review and send by hand, same as every stage before it.
+            reply and no payment. Nothing here has been sent — a draft still needs a human's review in Gmail before
+            it goes out, same as every stage before it.
           </p>
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {queued.map(q => (
-              <div key={q.id} style={{ fontSize: 12.5, color: INK, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div key={q.id} style={{ fontSize: 12.5, color: INK, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700 }}>{q.person_key}</span>
                 <span style={{ color: MUTE }}>stage {q.stage} · queued {day(q.queued_at)} · ${(q.amount_cents / 100).toFixed(2)}</span>
+                {q.provider_msg_id ? (
+                  <span style={{ color: GREEN, fontWeight: 700, fontSize: 11 }}>drafted in Gmail, ready to send</span>
+                ) : (
+                  <span style={{ color: AMBER, fontWeight: 700, fontSize: 11 }}>needs a draft</span>
+                )}
               </div>
             ))}
           </div>
