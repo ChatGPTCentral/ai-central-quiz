@@ -189,6 +189,67 @@ buyers because identity there stays anonymous until someone is identified.
   1,129 people and badges by so few its impression was not even instrumented
   until 2026-08-11.
 
+## Funnel design theory, cross-checked against our own data (2026-08-26)
+
+Five independent research passes (Hormozi, Justin Welsh, ClickFunnels/
+ThriveCart, persuasion psychology, quiz-funnel implementation patterns),
+none aware of the other four, converged on the same four points. Full
+sourcing and the tiered build plan: [Le Cinque Scuole](https://claude.ai/code/artifact/27b225f0-9bf1-4cbf-985f-653b74f6db5b).
+
+1. **The diversions compete with the offer, they don't complement it.**
+   Buyers spend their time on offer content (checkout_click lifts 93.2% vs
+   35.2%); non-buyers over-index on the wheel, share, and exit-rescue. Same
+   conclusion from Unbounce's attention-ratio research (removing a
+   competing goal lifted conversion 40%+ in their own test) and from
+   Welsh's Upside-Down Homepage (offer first, diversions after, never
+   before or beside it). Treat every diversion as a cost to the CTA, not a
+   neutral add-on.
+2. **The founding window is the textbook-correct implementation of honest
+   urgency — protect it, do not touch it.** 18 published A/B tests on
+   countdown timers: real deadlines median +9.1%, fake or resetting ones
+   median −3.2% (Deadline Funnel's own aggregation). Hormozi's own rule is
+   identical: scarcity only works while it's true. The actual risk is a
+   *different* element (anything implying false scarcity, e.g. a prize
+   wheel) teaching the reader not to trust deadlines at all, including the
+   real one.
+3. **v2_offer_stack_badges (69% of clickers) is buried; v2_study_plan (9%
+   of clickers, far more views) dominates exposure.** This is a placement
+   problem, not a content problem — matches Welsh's "delete some of your
+   offers" and Hormozi's Trim & Stack. Promote the badge, shrink the study
+   plan.
+4. **Quiz-derived data (persona, score, cost-of-gap) only ever selects
+   which persona template renders — it never reaches the offer copy
+   itself.** Welsh's own RightMessage case study measured +38% relative
+   (8.69%→12.01%) from segmenting on two questions and swapping only a
+   headline/subhead. The self-reference effect explains why: a reader's own
+   words persuade more, but only when they're already motivated to read —
+   which describes someone who just finished our quiz. Never infer beyond
+   what the person actually answered; that's the line where personalization
+   backfires.
+
+**What does not transfer, on purpose:** multi-day nurture sequences (soap
+opera sequence, 5-day close) assume a return-to-decide window this funnel
+doesn't have (buyer_behaviour_lift: ~1.2 sessions, decision happens in one
+visit). Order-bump/upsell price ratios (20-40% of the anchor item, from all
+three funnel-platform sources) are calibrated for $27-2,000 products; run
+against $4.99 they produce $1-2, too small to survive the per-charge fee
+math `keptUsdCents()` already tracks — any bump price needs its own
+reasoning, not the book's formula, and per the existing pricing rule above,
+must be scanned against charge history before it exists. Every
+bump/upsell/downsell tactic optimizes average order value in its source
+material; this project's one metric is trial count, and every tactic must
+be judged on that number, never on AOV.
+
+**The build order that respects the north-star metric:** a post-purchase
+one-click annual-prepay upsell is safe to build first — it only fires after
+a trial is already banked, so it cannot cost a trial, only add an early
+renewal. A downsell (only on upsell decline, reusing the founding-window
+rate rather than inventing a new price) depends on it. An order bump at
+checkout is the one genuinely risky move, because it sits before the
+button the whole business depends on — ship it last, watched on
+/admin/cohorts with checkout-completion as the kill switch, only once the
+upsell is stable.
+
 ## Conventions
 
 - **CARDINAL RULE (owner, 2026-08-13): numbers quoted to the owner are the
