@@ -19,6 +19,7 @@ import {
 import DashboardArea from './DashboardArea.client'
 import LedgerHealth from '@/components/admin/LedgerHealth'
 import UxHealth from '@/components/admin/UxHealth'
+import XraySection from '@/components/admin/XraySection'
 import type { UxSignal } from '@/lib/ux-watch'
 import type { CheckResult } from '@/lib/ledger-invariants'
 import { type BentoRow, type FunnelEventCounts, type PlacementStat, type SeriesPoint, type Series } from './DashboardBento.client'
@@ -692,6 +693,7 @@ export default async function DashboardPage({
       <UxHealth signals={uxHealth.signals} ranAt={uxHealth.ranAt} />
       <LedgerHealth checks={health.checks} ranAt={health.ranAt} />
     </div>
+    <XraySection />
     <DashboardArea
       rows={rows}
       sample={sample}
