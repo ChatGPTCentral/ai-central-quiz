@@ -112,14 +112,32 @@ export async function aggregateStripeByEmail(opts: { skipEmails?: Set<string>; o
   const stripe = stripeClient()
   if (!stripe) throw new Error('STRIPE_SECRET_KEY not set')
 
-  // Group customers by email first (cheap — one paginated list)
+  // Group customers by email first. When onlyEmails is set (the webhook's
+  // single-email resync, or the cron's incremental affectedEmails batch),
+  // look those up directly instead of paging every customer on the account
+  // to find them — walking the whole account for one email is what tripped
+  // Stripe's rate limit on 2026-08-26 and silently dropped that customer's
+  // CRM sync (caught via Vercel runtime errors, not from a user report).
   const customersByEmail = new Map<string, Stripe.Customer[]>()
-  for await (const customer of stripe.customers.list({ limit: 100 })) {
-    const email = customer.email?.trim().toLowerCase()
-    if (!email) continue
-    const bucket = customersByEmail.get(email) || []
-    bucket.push(customer)
-    customersByEmail.set(email, bucket)
+  if (opts.onlyEmails) {
+    const targets = Array.from(opts.onlyEmails)
+    const found = await Promise.all(targets.map(email => stripe!.customers.search({ query: `email:'${email}'` })))
+    for (let i = 0; i < targets.length; i++) {
+      const email = targets[i].trim().toLowerCase()
+      for (const customer of found[i].data) {
+        const bucket = customersByEmail.get(email) || []
+        bucket.push(customer)
+        customersByEmail.set(email, bucket)
+      }
+    }
+  } else {
+    for await (const customer of stripe.customers.list({ limit: 100 })) {
+      const email = customer.email?.trim().toLowerCase()
+      if (!email) continue
+      const bucket = customersByEmail.get(email) || []
+      bucket.push(customer)
+      customersByEmail.set(email, bucket)
+    }
   }
 
   // Process emails in parallel. Stripe's burst limit is tighter than the
@@ -312,10 +330,12 @@ async function collect<T>(it: AsyncIterable<T>): Promise<T[]> {
  *   • refunds created since the cutoff → customers whose LTV may have shrunk
  *
  * Then runs the standard per-email aggregation on that subset only.
- * Multi-customer-per-email dedupe still works because aggregateStripeByEmail
- * walks the full customer list to build the email map - - the speedup comes
- * from skipping the slow per-customer charges/invoices/subscriptions fetch
- * for emails with no recent activity.
+ * Multi-customer-per-email dedupe still works: aggregateStripeByEmail looks
+ * up each affected email directly (a Stripe customer search, not a walk of
+ * the whole account), which returns every customer sharing that email even
+ * if only one of them had activity since the cutoff. The speedup comes from
+ * skipping both the full-account walk AND the slow per-customer
+ * charges/invoices/subscriptions fetch for emails with no recent activity.
  *
  * Typical run: 5,000 customers in Stripe with 30 changes in the last week
  *   = ~30 emails get re-aggregated instead of all 5,000.
