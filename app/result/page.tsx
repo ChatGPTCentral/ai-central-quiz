@@ -33,6 +33,8 @@ import { UnlockReveal } from '@/components/result2/UnlockReveal.client'
 import ExpressPay from '@/components/result2/ExpressPay.client'
 import { RiskFree } from '@/components/result2/RiskFree'
 import PayBadges from '@/components/result2/PayBadges.client'
+import { RedesignHero, FitCheckSection } from '@/components/result2/RedesignHero'
+import { AgitationSection, HowItGoesSection, MechanismSection, BundleCrossSell, FinalUrgencyClose } from '@/components/result2/RedesignExtras'
 
 // ── Result page v2 (video-first experiment, iteration 2) ─────────────
 // Owner-spec'd order: top-X% hero → horizontal journey stepper (green/grey
@@ -536,6 +538,23 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     previewVar.includes('aspirational') ||
     assignments.some(a => a.experimentKey === 'result_aspirational_v1' && a.variantKey === 'aspirational')
 
+  // ── result_page_v4 · the redesign arm ────────────────────────────────
+  // The navy/orange "story first" structural candidate approved 2026-08-26:
+  // reveal → real stage-journey device → real founding-window countdown (when
+  // one exists) → agitation (the existing answer-echo/cost-of-gap pitch,
+  // unchanged) → mechanism → an honest fit check → THEN the offer, led by a
+  // real bundle cross-sell, then the usual proof sections. Takes priority
+  // over the other structural arms the same way `aspirational` already does:
+  // orthogonal experiments should never combine two full-page layouts on the
+  // same visit, so if this is ever run alongside another live structural
+  // test, this one wins the page shape.
+  //
+  // Judged on net_new_paid (a click lift with a pay collapse is a loss here,
+  // same lesson result_page_v3 already taught this page), min 150/arm.
+  const redesign =
+    previewVar.includes('redesign') ||
+    assignments.some(a => a.experimentKey === 'result_page_v4' && a.variantKey === 'redesign')
+
   // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
   // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
   // beehiiv link 1:1); 'link' arm: unchanged, navigates to the beehiiv link.
@@ -775,7 +794,18 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
 
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
-        {aspirational ? (
+        {redesign ? (
+          <RedesignHero
+            firstName={firstName}
+            rungClassName={rt.typeName}
+            tagline={rt.tagline}
+            aheadPct={rt.aheadPct}
+            nextStage={nextStage ? { label: nextStage.label, aheadPct: readinessType(nextStage.key).aheadPct } : null}
+            offer={offer}
+            fw={fw}
+            windowNote={windowNote}
+          />
+        ) : aspirational ? (
           <AspirationalHero
             offer={offer}
             firstName={firstName}
@@ -840,7 +870,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                         guarantee
             Every section is identical between arms, only the order and the
             video's position change, so a win is attributable to the order. */}
-        {reveal && !stripped && (
+        {reveal && !stripped && !redesign && (
           <UnlockReveal
             offer={offer}
             firstName={firstName || null}
@@ -853,7 +883,51 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           />
         )}
 
-        {aspirational ? (
+        {redesign ? (
+          // The redesign arm's own order: agitation and mechanism BEFORE the
+          // ask, offer led by the real bundle cross-sell rather than the
+          // plain item list alone. See the `redesign` comment above for why.
+          <>
+            <AgitationSection>
+              {echoOn ? (
+                <AnswerEcho lines={echoLines} stageClassName={rt.typeName} />
+              ) : cost ? (
+                <div className="mx-auto" style={{ borderLeft: '4px solid #E48715', backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
+                  <p style={{ fontSize: 15.5, lineHeight: 1.5, color: '#1A1A1A', fontWeight: 500 }}>{cost}</p>
+                </div>
+              ) : null}
+            </AgitationSection>
+            <HowItGoesSection rungClassName={rt.typeName} />
+            <MechanismSection />
+            <FitCheckSection />
+            <section id="offer" style={{ backgroundColor: '#FEF7E7', scrollMarginTop: 0 }}>
+              <div className="max-w-[720px] mx-auto px-6 sm:px-10 pt-10 sm:pt-12 pb-12 sm:pb-16">
+                <div className="text-center">
+                  <h2 className="font-bold" style={{ fontSize: 'clamp(24px, 3vw, 32px)', color: '#1D3557', letterSpacing: '-0.01em' }}>
+                    Your plan, unlocked tonight
+                  </h2>
+                </div>
+                <div className="mt-6">
+                  <BundleCrossSell nextStageLabel={nextStage?.label ?? null} />
+                </div>
+                <OfferStack
+                  offer={offer}
+                  checkoutUrl={checkoutUrl}
+                  submissionId={rowId}
+                  rungClassName={rung.className}
+                  ctaLabel={ov('offerCard.ctaLabel', CTA)}
+                  expressPay={expressPayEl}
+                  lead="duration"
+                  guarantee="oneline"
+                  windowNote={windowNote}
+                />
+              </div>
+            </section>
+            <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} nextStageLabel={nextStage?.label ?? null} />
+            {reviewsSection}
+            {studyPlanSection}
+          </>
+        ) : aspirational ? (
           // Result → the goods → the plan → the price. The wall is framed as
           // what the NEXT rung reads, so it is the thing between them and the
           // headline's promise rather than a catalogue.
@@ -906,6 +980,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             reached the bottom and did not click is holding a "what if I get
             stuck with a renewal" worry, not a value worry. */}
         <RiskFree offer={offer} checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA)} />
+
+        {/* Redesign arm only, and only when there is a real deadline to
+            restate (the component itself no-ops without one). */}
+        {redesign && (
+          <FinalUrgencyClose offer={offer} fw={fw} checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA)} />
+        )}
 
         {/* ── THE PASS · the reward, before the housekeeping ──────────── */}
         {/* The pass and its LinkedIn share are a closure moment: a reward
