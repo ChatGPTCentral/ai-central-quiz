@@ -217,15 +217,23 @@ sourcing and the tiered build plan: [Le Cinque Scuole](https://claude.ai/code/ar
    problem, not a content problem — matches Welsh's "delete some of your
    offers" and Hormozi's Trim & Stack. Promote the badge, shrink the study
    plan.
-4. **Quiz-derived data (persona, score, cost-of-gap) only ever selects
-   which persona template renders — it never reaches the offer copy
-   itself.** Welsh's own RightMessage case study measured +38% relative
-   (8.69%→12.01%) from segmenting on two questions and swapping only a
-   headline/subhead. The self-reference effect explains why: a reader's own
-   words persuade more, but only when they're already motivated to read —
-   which describes someone who just finished our quiz. Never infer beyond
-   what the person actually answered; that's the line where personalization
-   backfires.
+4. **Quiz-derived data (persona, score, cost-of-gap) mostly only selects
+   which persona template renders, not the offer copy itself — but this is
+   partly already built and sitting idle, not a gap to build from zero.**
+   `components/result2/AnswerEcho.tsx` already quotes a person's own quiz
+   answers back to them (their stated work area, hours lost, tools used)
+   before the study-plan pitch, gated on real honesty rules (an answer
+   nobody gave never renders). It was tested as `result_page_v3`'s
+   "research" arm against control and manually stopped 2026-08-19 at
+   41/29 exposures, nowhere near its declared 150/arm, no verdict — one of
+   the no-verdict experiments, and the page then served plain control for
+   a week with nothing queued, against the never-idle rule. Relaunched
+   2026-08-26 for a real read, same content, fresh clock. Welsh's own
+   RightMessage case study measured +38% relative (8.69%→12.01%) from the
+   same mechanism (segment on a couple of questions, swap only a
+   headline/subhead) — this experiment is close to a live test of that
+   exact finding. Never infer beyond what the person actually answered;
+   that's the line where personalization backfires.
 
 **What does not transfer, on purpose:** multi-day nurture sequences (soap
 opera sequence, 5-day close) assume a return-to-decide window this funnel
