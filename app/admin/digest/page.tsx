@@ -53,7 +53,8 @@ const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` 
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '5px 8px', textAlign: 'left' }
 const td: React.CSSProperties = { fontSize: 12, padding: '5px 8px', fontVariantNumeric: 'tabular-nums' }
 
-function FunnelTable({ leftLabel, rightLabel, left, right }: { leftLabel: string; rightLabel: string; left: FunnelSnapshot; right: FunnelSnapshot }) {
+function FunnelTable({ leftLabel, rightLabel, left, right }: { leftLabel?: string; rightLabel?: string; left: FunnelSnapshot | null; right: FunnelSnapshot | null }) {
+  if (!left || !right) return <p style={{ fontSize: 11, color: MUTE, marginTop: 8 }}>Dati del funnel non disponibili per questo giorno.</p>
   const rows: { label: string; key: keyof FunnelSnapshot; base: keyof FunnelSnapshot | null }[] = [
     { label: 'Landing', key: 'landing', base: null },
     { label: 'Iniziano il quiz', key: 'started', base: 'landing' },
@@ -79,7 +80,7 @@ function FunnelTable({ leftLabel, rightLabel, left, right }: { leftLabel: string
   )
 }
 
-function SourcesTable({ sources, leftLabel, rightLabel }: { sources: SourceRow[]; leftLabel: string; rightLabel: string }) {
+function SourcesTable({ sources, leftLabel, rightLabel }: { sources: SourceRow[]; leftLabel?: string; rightLabel?: string }) {
   return (
     <table style={{ borderCollapse: 'collapse', marginTop: 8 }}>
       <thead><tr style={{ borderBottom: `2px solid ${INK}` }}>
@@ -112,7 +113,8 @@ function Sparkline({ trend }: { trend: TrendPoint[] }) {
 
 // The direct, permanent answer to "189 quiz completed, non c'e nessuna
 // scusa" (owner, 2026-08-24) — traced person by person, not two head-counts.
-function CohortStrip({ cohort }: { cohort: CohortTrace }) {
+function CohortStrip({ cohort }: { cohort: CohortTrace | null }) {
+  if (!cohort) return <p style={{ fontSize: 11, color: MUTE, marginTop: 10 }}>Tracciamento non disponibile per questo giorno.</p>
   const step = (label: string, value: number, base: number | null) => (
     <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '7px 12px', minWidth: 110 }}>
       <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: MUTE }}>{label}</div>
@@ -174,17 +176,17 @@ export default async function DigestPage() {
               <summary style={{ fontSize: 11.5, fontWeight: 700, color: MUTE, cursor: 'pointer', userSelect: 'none' }}>Numeri verificabili</summary>
               <div className="flex flex-wrap" style={{ gap: 30 }}>
                 <FunnelTable
-                  leftLabel={d.daily_funnel.dayBeforeDate} rightLabel={d.daily_funnel.yesterdayDate}
-                  left={d.daily_funnel.dayBefore} right={d.daily_funnel.yesterday}
+                  leftLabel={d.daily_funnel?.dayBeforeDate} rightLabel={d.daily_funnel?.yesterdayDate}
+                  left={d.daily_funnel?.dayBefore ?? null} right={d.daily_funnel?.yesterday ?? null}
                 />
                 {d.is_monday && (
                   <FunnelTable
-                    leftLabel={d.weekly_funnel.lastWeekRange} rightLabel={d.weekly_funnel.thisWeekRange}
-                    left={d.weekly_funnel.last_week} right={d.weekly_funnel.this_week}
+                    leftLabel={d.weekly_funnel?.lastWeekRange} rightLabel={d.weekly_funnel?.thisWeekRange}
+                    left={d.weekly_funnel?.last_week ?? null} right={d.weekly_funnel?.this_week ?? null}
                   />
                 )}
-                {d.is_monday && (
-                  <SourcesTable sources={d.sources} leftLabel={d.weekly_funnel.lastWeekRange} rightLabel={d.weekly_funnel.thisWeekRange} />
+                {d.is_monday && d.sources && (
+                  <SourcesTable sources={d.sources} leftLabel={d.weekly_funnel?.lastWeekRange} rightLabel={d.weekly_funnel?.thisWeekRange} />
                 )}
               </div>
             </details>
