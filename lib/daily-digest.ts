@@ -62,6 +62,7 @@ export interface DigestResult {
   weeklyFunnel: WeeklyFunnel
   sources: SourceRow[]
   cohort: CohortTrace
+  cohortYesterday: CohortTrace
   headline: string
   synthesis: string
 }
@@ -195,17 +196,22 @@ function funnelAndSources(rows: FEvent[]): { daily: DailyFunnel; weekly: WeeklyF
  *  trial — the answer to the owner's 2026-08-24 challenge ("189 quiz
  *  completed, non c'e nessuna scusa"). Not a ratio of two head-counts:
  *  every completer is checked by email, against a real charge dated AFTER
- *  their own completion. */
-async function cohortTrace(c: SupabaseClient, rows: FEvent[]): Promise<CohortTrace> {
-  const since = new Date(Date.now() - COHORT_DAYS * DAY_MS).toISOString()
+ *  their own completion.
+ *
+ *  `sinceIso`/`untilIso` bound WHEN someone had to complete the quiz to be
+ *  in this trace (untilIso null = up to now); `windowDays` is only the
+ *  label on the result, so the 7-day rolling trace and the yesterday-only
+ *  one share this same function without diverging in logic. */
+async function cohortTrace(c: SupabaseClient, rows: FEvent[], sinceIso: string, untilIso: string | null, windowDays: number): Promise<CohortTrace> {
   const completedAt = new Map<string, string>()
   for (const r of rows) {
-    if (r.event !== 'quiz_submit' || r.ts < since) continue
+    if (r.event !== 'quiz_submit' || r.ts < sinceIso) continue
+    if (untilIso !== null && r.ts >= untilIso) continue
     const existing = completedAt.get(r.anon_id)
     if (!existing || r.ts < existing) completedAt.set(r.anon_id, r.ts)
   }
   const completed = Array.from(completedAt.keys())
-  if (completed.length === 0) return { windowDays: COHORT_DAYS, completed: 0, clickedCheckout: 0, becameTrial: 0 }
+  if (completed.length === 0) return { windowDays, completed: 0, clickedCheckout: 0, becameTrial: 0 }
 
   const clickedCheckout = nextStep(rows, completedAt, 'checkout_click').size
 
@@ -253,7 +259,7 @@ async function cohortTrace(c: SupabaseClient, rows: FEvent[]): Promise<CohortTra
     }
   }
 
-  return { windowDays: COHORT_DAYS, completed: completed.length, clickedCheckout, becameTrial }
+  return { windowDays, completed: completed.length, clickedCheckout, becameTrial }
 }
 
 const MODEL = 'claude-sonnet-4-6'
@@ -359,12 +365,21 @@ export async function runDailyDigest(c: SupabaseClient): Promise<DigestResult> {
   const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
   const [trend, rows] = await Promise.all([trialsTrend(c), fetchFunnelEvents(c, since)])
   const { daily, weekly, sources } = funnelAndSources(rows)
-  const cohort = await cohortTrace(c, rows)
+  // Two traces, same function, different bounds: the rolling 7-day one
+  // (unchanged), and a true yesterday-only one on the SAME calendar day
+  // funnelAndSources already uses for daily.yesterday, so the two "ieri"
+  // numbers on the page can never disagree about which day "ieri" means.
+  const yesterdayStartIso = `${daily.yesterdayDate}T00:00:00.000Z`
+  const todayStartIso = new Date(new Date(yesterdayStartIso).getTime() + DAY_MS).toISOString()
+  const [cohort, cohortYesterday] = await Promise.all([
+    cohortTrace(c, rows, new Date(Date.now() - COHORT_DAYS * DAY_MS).toISOString(), null, COHORT_DAYS),
+    cohortTrace(c, rows, yesterdayStartIso, todayStartIso, 1),
+  ])
   const trialsYesterday = trend.length ? trend[trend.length - 1].trials : 0
   const barHit = trialsYesterday >= BAR
   const now = new Date()
   const day = now.toISOString().slice(0, 10)
   const isMonday = now.getUTCDay() === 1
   const { headline, synthesis } = await synthesize({ trend, daily, weekly, sources, cohort, trialsYesterday, barHit, isMonday })
-  return { day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, headline, synthesis }
+  return { day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, cohortYesterday, headline, synthesis }
 }

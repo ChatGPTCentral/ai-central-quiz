@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     weekly_funnel: result.weeklyFunnel,
     sources: result.sources,
     cohort: result.cohort,
+    cohort_yesterday: result.cohortYesterday,
     headline: result.headline,
     synthesis: result.synthesis,
   }, { onConflict: 'day' })

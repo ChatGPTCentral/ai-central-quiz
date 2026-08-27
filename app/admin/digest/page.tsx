@@ -36,6 +36,8 @@ interface CohortTrace { windowDays: number; completed: number; clickedCheckout: 
 interface DigestRow {
   day: string; ran_at: string; is_monday: boolean; trials_yesterday: number; bar: number; bar_hit: boolean
   trend: TrendPoint[]; daily_funnel: DailyFunnel; weekly_funnel: WeeklyFunnel; sources: SourceRow[]; cohort: CohortTrace
+  // Nullable: rows written before 2026-08-27 have no yesterday-only trace.
+  cohort_yesterday: CohortTrace | null
   headline: string; synthesis: string
 }
 
@@ -113,8 +115,20 @@ function Sparkline({ trend }: { trend: TrendPoint[] }) {
 
 // The direct, permanent answer to "189 quiz completed, non c'e nessuna
 // scusa" (owner, 2026-08-24) — traced person by person, not two head-counts.
-function CohortStrip({ cohort }: { cohort: CohortTrace | null }) {
-  if (!cohort) return <p style={{ fontSize: 11, color: MUTE, marginTop: 10 }}>Tracciamento non disponibile per questo giorno.</p>
+// Same table twice on one page, two different windows: the badge is what
+// tells them apart at a glance (2026-08-27, see the commit that added the
+// first one — this generalizes it rather than duplicating the JSX for the
+// yesterday-only trace added right after it).
+function CohortStrip({
+  cohort, badge, badgeColor, missingLabel, footnote,
+}: {
+  cohort: CohortTrace | null
+  badge: string
+  badgeColor: string
+  missingLabel: string
+  footnote?: string
+}) {
+  if (!cohort) return <p style={{ fontSize: 11, color: MUTE, marginTop: 10 }}>{missingLabel}</p>
   const step = (label: string, value: number, base: number | null) => (
     <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '7px 12px', minWidth: 110 }}>
       <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: MUTE }}>{label}</div>
@@ -124,17 +138,11 @@ function CohortStrip({ cohort }: { cohort: CohortTrace | null }) {
   )
   return (
     <div style={{ marginTop: 10 }}>
-      {/* A loud, standalone window badge, not a small caption: this table sat
-          next to the daily funnel's near-identical Italian labels ("Completano
-          il quiz", "Cliccano checkout") for a single day, and the owner read
-          this one as today's numbers too (2026-08-27). The step labels below
-          were also switched to past tense for the same reason: two tables,
-          one page, must not be readable as the same table twice. */}
       <span style={{
         display: 'inline-block', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
-        letterSpacing: '.06em', color: '#FFFDFA', background: '#8A5A00', padding: '3px 9px', marginBottom: 8,
+        letterSpacing: '.06em', color: '#FFFDFA', background: badgeColor, padding: '3px 9px', marginBottom: 8,
       }}>
-        Non oggi: ultimi {cohort.windowDays} giorni
+        {badge}
       </span>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
         Stessa persona, dal quiz al trial, in ordine
@@ -146,6 +154,7 @@ function CohortStrip({ cohort }: { cohort: CohortTrace | null }) {
         <span style={{ color: MUTE }}>→</span>
         {step('Sono diventati trial', cohort.becameTrial, cohort.clickedCheckout)}
       </div>
+      {footnote && <p style={{ fontSize: 10.5, color: MUTE, marginTop: 6, maxWidth: 480 }}>{footnote}</p>}
     </div>
   )
 }
@@ -183,7 +192,19 @@ export default async function DigestPage() {
             <p style={{ fontSize: 15, fontWeight: 700, color: INK, marginTop: 10 }}>{d.headline}</p>
             <p style={{ fontSize: 13, color: '#333', marginTop: 6, lineHeight: 1.6, maxWidth: 760 }}>{d.synthesis}</p>
             <Sparkline trend={d.trend} />
-            <CohortStrip cohort={d.cohort} />
+            <CohortStrip
+              cohort={d.cohort_yesterday}
+              badge={`Ieri: ${d.daily_funnel?.yesterdayDate ?? d.day}`}
+              badgeColor={GREEN}
+              missingLabel="Tracciamento del solo ieri non disponibile per questo giorno (aggiunto il 2026-08-27, righe piu vecchie non lo hanno)."
+              footnote="Chi ha completato ieri ha avuto un solo giorno per comprare. Il numero di trial sale ancora nei prossimi giorni, non e' il conteggio finale."
+            />
+            <CohortStrip
+              cohort={d.cohort}
+              badge={`Non oggi: ultimi ${d.cohort?.windowDays ?? 7} giorni`}
+              badgeColor="#8A5A00"
+              missingLabel="Tracciamento non disponibile per questo giorno."
+            />
             <details style={{ marginTop: 10 }}>
               <summary style={{ fontSize: 11.5, fontWeight: 700, color: MUTE, cursor: 'pointer', userSelect: 'none' }}>Numeri verificabili</summary>
               <div className="flex flex-wrap" style={{ gap: 30 }}>
