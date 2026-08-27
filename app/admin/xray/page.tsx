@@ -1,12 +1,9 @@
-// Standalone route for THE X-RAY. The actual funnel-flow logic lives in
-// components/admin/XraySection.tsx, shared with its embedded copy inside
-// /admin/dashboard — one source of the SVG-building logic, two call sites.
+// Retired 2026-08-27: X-ray is now embedded at the top of /admin/dashboard
+// (components/admin/XraySection.tsx), and this was its only nav entry. Kept
+// as a redirect, not a delete, so an old bookmark still lands somewhere.
 
-import XraySection from '@/components/admin/XraySection'
+import { redirect } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
-export default async function XrayPage() {
-  return <XraySection />
+export default function XrayPage() {
+  redirect('/admin/dashboard')
 }
