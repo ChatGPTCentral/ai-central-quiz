@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
     sources: result.sources,
     cohort: result.cohort,
     cohort_yesterday: result.cohortYesterday,
+    trial_sums: result.trialSums,
     headline: result.headline,
     synthesis: result.synthesis,
   }, { onConflict: 'day' })

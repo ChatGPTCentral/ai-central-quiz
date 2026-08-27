@@ -33,11 +33,13 @@ interface DailyFunnel { yesterday: FunnelSnapshot; dayBefore: FunnelSnapshot; ye
 interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; thisWeekRange: string; lastWeekRange: string }
 interface SourceRow { source: string; this_week: number; last_week: number }
 interface CohortTrace { windowDays: number; landed: number; completed: number; clickedCheckout: number; becameTrial: number }
+interface TrialSums { thisWeek: number; lastWeek: number; thisMonth: number; lastMonth: number }
 interface DigestRow {
   day: string; ran_at: string; is_monday: boolean; trials_yesterday: number; bar: number; bar_hit: boolean
   trend: TrendPoint[]; daily_funnel: DailyFunnel; weekly_funnel: WeeklyFunnel; sources: SourceRow[]; cohort: CohortTrace
-  // Nullable: rows written before 2026-08-27 have no yesterday-only trace.
+  // Nullable: rows written before 2026-08-27 have no yesterday-only trace / no sums.
   cohort_yesterday: CohortTrace | null
+  trial_sums: TrialSums | null
   headline: string; synthesis: string
 }
 
@@ -115,6 +117,42 @@ function Sparkline({ trend }: { trend: TrendPoint[] }) {
 
 // The direct, permanent answer to "189 quiz completed, non c'e nessuna
 // scusa" (owner, 2026-08-24) — traced person by person, not two head-counts.
+// Owner, 2026-08-27: "aggiungi anche non solo quanti trial facciamo ogni
+// giorno ma anche somma dei trial settimanali (vs last week) e somma dei
+// trial mensili (vs last month)". Both sums come from the same trial_ledger
+// read the sparkline already uses (lib/daily-digest.ts trialsByDay), so
+// this can never disagree with the sparkline about what happened on a
+// given day, only summarize it differently.
+function SumPair({ label, thisPeriod, lastPeriod }: { label: string; thisPeriod: number; lastPeriod: number }) {
+  const delta = thisPeriod - lastPeriod
+  const deltaColor = delta > 0 ? GREEN : delta < 0 ? RED : MUTE
+  return (
+    <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '7px 12px', minWidth: 140 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.1em', color: MUTE }}>{label}</div>
+      <div className="flex items-baseline flex-wrap" style={{ gap: 6 }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color: INK }}>{thisPeriod}</span>
+        <span style={{ fontSize: 10.5, color: MUTE }}>vs {lastPeriod} prima</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: deltaColor }}>{delta > 0 ? '+' : ''}{delta}</span>
+      </div>
+    </div>
+  )
+}
+
+function TrialSumsStrip({ sums }: { sums: TrialSums | null }) {
+  if (!sums) return <p style={{ fontSize: 11, color: MUTE, marginTop: 10 }}>Somme settimana/mese non disponibili per questo giorno (aggiunto il 2026-08-27).</p>
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
+        Somma trial, contro il periodo uguale precedente
+      </div>
+      <div className="flex flex-wrap" style={{ gap: 8 }}>
+        <SumPair label="Ultimi 7 giorni" thisPeriod={sums.thisWeek} lastPeriod={sums.lastWeek} />
+        <SumPair label="Ultimi 30 giorni" thisPeriod={sums.thisMonth} lastPeriod={sums.lastMonth} />
+      </div>
+    </div>
+  )
+}
+
 // Same table twice on one page, two different windows: the badge is what
 // tells them apart at a glance (2026-08-27, see the commit that added the
 // first one — this generalizes it rather than duplicating the JSX for the
@@ -194,6 +232,7 @@ export default async function DigestPage() {
             <p style={{ fontSize: 15, fontWeight: 700, color: INK, marginTop: 10 }}>{d.headline}</p>
             <p style={{ fontSize: 13, color: '#333', marginTop: 6, lineHeight: 1.6, maxWidth: 760 }}>{d.synthesis}</p>
             <Sparkline trend={d.trend} />
+            <TrialSumsStrip sums={d.trial_sums} />
             <CohortStrip
               cohort={d.cohort_yesterday}
               badge={`Ieri: ${d.daily_funnel?.yesterdayDate ?? d.day}`}

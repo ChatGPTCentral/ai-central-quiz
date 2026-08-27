@@ -40,6 +40,7 @@ export function db(): SupabaseClient {
 
 export const BAR = 10
 const TREND_DAYS = 21
+const SUMS_DAYS = 60 // covers this-month + last-month (30 + 30)
 const FUNNEL_DAYS = 14
 const COHORT_DAYS = 7
 const DAY_MS = 86_400_000
@@ -47,6 +48,7 @@ const DAY_MS = 86_400_000
 const isoDay = (daysAgo: number) => new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10)
 
 export interface TrendPoint { day: string; trials: number }
+export interface TrialSums { thisWeek: number; lastWeek: number; thisMonth: number; lastMonth: number }
 export interface FunnelSnapshot { landing: number; started: number; completed: number; clicked: number }
 export interface DailyFunnel { yesterday: FunnelSnapshot; dayBefore: FunnelSnapshot; yesterdayDate: string; dayBeforeDate: string }
 export interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; thisWeekRange: string; lastWeekRange: string }
@@ -63,12 +65,19 @@ export interface DigestResult {
   sources: SourceRow[]
   cohort: CohortTrace
   cohortYesterday: CohortTrace
+  trialSums: TrialSums
   headline: string
   synthesis: string
 }
 
-async function trialsTrend(c: SupabaseClient): Promise<TrendPoint[]> {
-  const since = new Date(Date.now() - TREND_DAYS * DAY_MS).toISOString()
+/** One trial_ledger read, two derivations from the same by-day map: the
+ *  21-day sparkline and the week/month sums below. Reading it twice at two
+ *  different window sizes would let the sparkline and the sums disagree on
+ *  a day that moved between the two reads — same one-source-of-truth
+ *  reasoning as the rest of this file, just applied to two views of one
+ *  query instead of two queries. */
+async function trialsByDay(c: SupabaseClient): Promise<Map<string, number>> {
+  const since = new Date(Date.now() - SUMS_DAYS * DAY_MS).toISOString()
   // Same bucketing the daily_benchmark watcher check uses (lib/ux-watch.ts):
   // quiz-attributed trials (net-new + existing) on the QUIZ clock, not-quiz
   // trials on the CHARGE clock. This used to scan stripe_charges by
@@ -90,12 +99,31 @@ async function trialsTrend(c: SupabaseClient): Promise<TrendPoint[]> {
     const d = anchor.slice(0, 10)
     byDay.set(d, (byDay.get(d) ?? 0) + 1)
   }
+  return byDay
+}
+
+function trialsTrend(byDay: Map<string, number>): TrendPoint[] {
   const out: TrendPoint[] = []
   for (let i = TREND_DAYS; i >= 1; i--) {
     const d = isoDay(i)
     out.push({ day: d, trials: byDay.get(d) ?? 0 })
   }
   return out
+}
+
+/** Sums, not daily points: "quanti trial facciamo ogni settimana" and "ogni
+ *  mese" (owner, 2026-08-27), each against the equal-length period right
+ *  before it — 7-vs-7, 30-vs-30, both trailing from today. */
+function trialsSums(byDay: Map<string, number>): TrialSums {
+  let thisWeek = 0, lastWeek = 0, thisMonth = 0, lastMonth = 0
+  for (let i = 1; i <= SUMS_DAYS; i++) {
+    const n = byDay.get(isoDay(i)) ?? 0
+    if (i <= 7) thisWeek += n
+    else if (i <= 14) lastWeek += n
+    if (i <= 30) thisMonth += n
+    else if (i <= 60) lastMonth += n
+  }
+  return { thisWeek, lastWeek, thisMonth, lastMonth }
 }
 
 interface FEvent { anon_id: string; event: string; path: string | null; ts: string; utm_source: string | null; submission_id: string | null; email: string | null }
@@ -296,8 +324,9 @@ Contesto del progetto:
 
 Il tuo compito: scrivi un titolo di una frase (headline) e una sintesi di massimo 7 frasi (synthesis).
 Priorita 1: il confronto GIORNALIERO, ieri contro il giorno prima, sempre presente.
-Priorita 2, SOLO se e lunedi: aggiungi cosa dice il confronto SETTIMANALE.
-Priorita 3: il tracciamento del completamento quiz fino al trial, per dire dove si perde la persona.
+Priorita 2: le somme SETTIMANALE e MENSILE dei trial, sempre presenti, contro il periodo uguale precedente.
+Priorita 3, SOLO se e lunedi: aggiungi cosa dice il confronto SETTIMANALE del funnel (non la somma, il passo per passo).
+Priorita 4: il tracciamento visto-completato-checkout-trial, per dire dove si perde la persona.
 Dai la causa piu probabile SOLO se i numeri la mostrano chiaramente. Se non la mostrano, dillo, non inventarla.
 Finisci la sintesi con una frase su cosa guardare o fare dopo.`
 
@@ -317,6 +346,7 @@ async function synthesize(input: {
   weekly: WeeklyFunnel
   sources: SourceRow[]
   cohort: CohortTrace
+  trialSums: TrialSums
   trialsYesterday: number
   barHit: boolean
   isMonday: boolean
@@ -345,6 +375,9 @@ ${input.sources.slice(0, 8).map(s => `${s.source}: ${s.last_week} -> ${s.this_we
 ${input.trend.map(t => `${t.day}: ${t.trials}`).join('\n')}
 
 Ieri (${input.daily.yesterdayDate}): ${input.trialsYesterday} trial, bar di 10, ${input.barHit ? 'raggiunta' : 'mancata'}.
+
+Somma trial, settimana contro settimana scorsa (7 giorni contro 7 giorni prima): ${input.trialSums.lastWeek} -> ${input.trialSums.thisWeek}.
+Somma trial, mese contro mese scorso (30 giorni contro 30 giorni prima): ${input.trialSums.lastMonth} -> ${input.trialSums.thisMonth}.
 
 Funnel giornaliero, ${input.daily.dayBeforeDate} contro ${input.daily.yesterdayDate}, stessa persona in ordine di tempo:
 landing: ${input.daily.dayBefore.landing} -> ${input.daily.yesterday.landing}
@@ -376,7 +409,9 @@ Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${in
 
 export async function runDailyDigest(c: SupabaseClient): Promise<DigestResult> {
   const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
-  const [trend, rows] = await Promise.all([trialsTrend(c), fetchFunnelEvents(c, since)])
+  const [byDay, rows] = await Promise.all([trialsByDay(c), fetchFunnelEvents(c, since)])
+  const trend = trialsTrend(byDay)
+  const trialSums = trialsSums(byDay)
   const { daily, weekly, sources } = funnelAndSources(rows)
   // Two traces, same function, different bounds: the rolling 7-day one
   // (unchanged), and a true yesterday-only one on the SAME calendar day
@@ -393,6 +428,6 @@ export async function runDailyDigest(c: SupabaseClient): Promise<DigestResult> {
   const now = new Date()
   const day = now.toISOString().slice(0, 10)
   const isMonday = now.getUTCDay() === 1
-  const { headline, synthesis } = await synthesize({ trend, daily, weekly, sources, cohort, trialsYesterday, barHit, isMonday })
-  return { day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, cohortYesterday, headline, synthesis }
+  const { headline, synthesis } = await synthesize({ trend, daily, weekly, sources, cohort, trialSums, trialsYesterday, barHit, isMonday })
+  return { day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, cohortYesterday, trialSums, headline, synthesis }
 }
