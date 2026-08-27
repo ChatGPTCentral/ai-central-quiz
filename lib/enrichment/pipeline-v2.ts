@@ -18,6 +18,7 @@
 // so the merge step has the maximum set of signals to combine.
 
 import { apolloProvider } from './apollo'
+import { databarProvider } from './databar'
 import { findLinkedInViaGoogle } from './google-linkedin-search'
 import { resolveIdentityViaGoogle, type ResolverResult } from './google-resolver'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
@@ -45,7 +46,7 @@ export interface V2Input {
 }
 
 export interface V2Stage {
-  name: 'name_from_email' | 'google_search' | 'apollo' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
+  name: 'name_from_email' | 'databar' | 'google_search' | 'apollo' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
   status: 'skipped' | 'ok' | 'miss' | 'error'
   /** What this stage consumed (the ctx it saw) — surfaced by the inspector. */
   input?: Record<string, unknown>
@@ -136,6 +137,32 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; verified
     stages.push({ name: 'name_from_email', status: 'skipped', reason: 'row already has a name' })
   }
 
+  // ── Stage 1.5: Databar — meta-aggregator across 100+ providers, by email
+  // alone, same shape Apollo already takes. Runs before the Google search
+  // so a hit here can supply linkedinUrl and skip that stage entirely.
+  // Ctx is promoted NOW (so downstream stages see it) but record() — which
+  // is what sets merge priority via results[] push order — is deferred to
+  // after Apollo below, so Apify/Apollo still win ties on overlapping
+  // fields until real accuracy data justifies re-ranking. no-op (returns
+  // null) until DATABAR_API_KEY is set, same fail-open pattern every
+  // provider here already uses.
+  let databarResult: NormalizedPerson | null = null
+  try {
+    databarResult = await databarProvider.lookup(ctx)
+    if (databarResult) {
+      if (!ctx.linkedinUrl && databarResult.linkedinUrl) ctx.linkedinUrl = databarResult.linkedinUrl
+      if (!ctx.name && databarResult.fullName) ctx.name = databarResult.fullName
+      if (!ctx.companyName && databarResult.companyName) ctx.companyName = databarResult.companyName
+      if (!ctx.jobTitle && databarResult.jobTitle) ctx.jobTitle = databarResult.jobTitle
+      if (!ctx.country && databarResult.country) ctx.country = databarResult.country
+      stages.push({ name: 'databar', status: 'ok', result: databarResult })
+    } else {
+      stages.push({ name: 'databar', status: process.env.DATABAR_API_KEY ? 'miss' : 'skipped', reason: process.env.DATABAR_API_KEY ? undefined : 'DATABAR_API_KEY not set' })
+    }
+  } catch (err) {
+    stages.push({ name: 'databar', status: 'error', reason: String(err) })
+  }
+
   // ── Stage 2: Google → LinkedIn URL (only if missing) ────────────
   let resolver: ResolverResult | undefined
   const gInput = { name: ctx.name, companyName: ctx.companyName, jobTitle: ctx.jobTitle, country: ctx.country, emailDomain: ctx.email.split('@')[1] }
@@ -223,6 +250,11 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; verified
   } catch (err) {
     stages.push({ name: 'apollo', status: 'error', input: apolloInput, reason: String(err) })
   }
+
+  // Recorded here, not in Stage 1.5, so Apify/Apollo (already pushed to
+  // results above) keep merge priority over Databar on any field they
+  // both found.
+  if (databarResult) { tried.push('databar'); record('databar', databarResult) }
 
   const merged = mergeEnrichment(results, tried)
 
