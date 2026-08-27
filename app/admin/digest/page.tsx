@@ -124,15 +124,27 @@ function CohortStrip({ cohort }: { cohort: CohortTrace | null }) {
   )
   return (
     <div style={{ marginTop: 10 }}>
+      {/* A loud, standalone window badge, not a small caption: this table sat
+          next to the daily funnel's near-identical Italian labels ("Completano
+          il quiz", "Cliccano checkout") for a single day, and the owner read
+          this one as today's numbers too (2026-08-27). The step labels below
+          were also switched to past tense for the same reason: two tables,
+          one page, must not be readable as the same table twice. */}
+      <span style={{
+        display: 'inline-block', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+        letterSpacing: '.06em', color: '#FFFDFA', background: '#8A5A00', padding: '3px 9px', marginBottom: 8,
+      }}>
+        Non oggi: ultimi {cohort.windowDays} giorni
+      </span>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
-        Ultimi {cohort.windowDays} giorni, stessa persona dal quiz al trial
+        Stessa persona, dal quiz al trial, in ordine
       </div>
       <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
-        {step('Completano il quiz', cohort.completed, null)}
+        {step('Hanno completato il quiz', cohort.completed, null)}
         <span style={{ color: MUTE }}>→</span>
-        {step('Cliccano checkout', cohort.clickedCheckout, cohort.completed)}
+        {step('Hanno cliccato checkout', cohort.clickedCheckout, cohort.completed)}
         <span style={{ color: MUTE }}>→</span>
-        {step('Diventano trial', cohort.becameTrial, cohort.clickedCheckout)}
+        {step('Sono diventati trial', cohort.becameTrial, cohort.clickedCheckout)}
       </div>
     </div>
   )
