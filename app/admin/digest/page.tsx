@@ -32,7 +32,7 @@ interface FunnelSnapshot { landing: number; started: number; completed: number; 
 interface DailyFunnel { yesterday: FunnelSnapshot; dayBefore: FunnelSnapshot; yesterdayDate: string; dayBeforeDate: string }
 interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; thisWeekRange: string; lastWeekRange: string }
 interface SourceRow { source: string; this_week: number; last_week: number }
-interface CohortTrace { windowDays: number; completed: number; clickedCheckout: number; becameTrial: number }
+interface CohortTrace { windowDays: number; landed: number; completed: number; clickedCheckout: number; becameTrial: number }
 interface DigestRow {
   day: string; ran_at: string; is_monday: boolean; trials_yesterday: number; bar: number; bar_hit: boolean
   trend: TrendPoint[]; daily_funnel: DailyFunnel; weekly_funnel: WeeklyFunnel; sources: SourceRow[]; cohort: CohortTrace
@@ -148,7 +148,9 @@ function CohortStrip({
         Stessa persona, dal quiz al trial, in ordine
       </div>
       <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
-        {step('Hanno completato il quiz', cohort.completed, null)}
+        {step('Hanno visto', cohort.landed, null)}
+        <span style={{ color: MUTE }}>→</span>
+        {step('Hanno completato il quiz', cohort.completed, cohort.landed)}
         <span style={{ color: MUTE }}>→</span>
         {step('Hanno cliccato checkout', cohort.clickedCheckout, cohort.completed)}
         <span style={{ color: MUTE }}>→</span>

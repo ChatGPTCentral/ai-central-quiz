@@ -51,7 +51,7 @@ export interface FunnelSnapshot { landing: number; started: number; completed: n
 export interface DailyFunnel { yesterday: FunnelSnapshot; dayBefore: FunnelSnapshot; yesterdayDate: string; dayBeforeDate: string }
 export interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; thisWeekRange: string; lastWeekRange: string }
 export interface SourceRow { source: string; this_week: number; last_week: number }
-export interface CohortTrace { windowDays: number; completed: number; clickedCheckout: number; becameTrial: number }
+export interface CohortTrace { windowDays: number; landed: number; completed: number; clickedCheckout: number; becameTrial: number }
 export interface DigestResult {
   day: string
   isMonday: boolean
@@ -192,44 +192,57 @@ function funnelAndSources(rows: FEvent[]): { daily: DailyFunnel; weekly: WeeklyF
   return { daily, weekly, sources }
 }
 
-/** Traces the SAME people from quiz completion through to an actual paid
+/** Traces the SAME people, in order, landing through to an actual paid
  *  trial — the answer to the owner's 2026-08-24 challenge ("189 quiz
- *  completed, non c'e nessuna scusa"). Not a ratio of two head-counts:
- *  every completer is checked by email, against a real charge dated AFTER
- *  their own completion.
+ *  completed, non c'e nessuna scusa") AND his 2026-08-27 correction that
+ *  the trace has to start at landing, not at completion ("quanti hanno
+ *  visto >>> quanti hanno completato >>> quanti checkout >>> quanti
+ *  trial"). Every arrow is a TRUE subset of the one before it: becameTrial
+ *  only counts people who are already in the clickedCheckout set, matched
+ *  by email against a real charge dated at/after THEIR OWN click. Earlier
+ *  today this matched trial against every completer regardless of whether
+ *  they ever clicked checkout on this page, which let a box read as a
+ *  same-person chain while its last arrow was not actually gated on the
+ *  one before it — a smaller instance of the exact bug CLAUDE.md names for
+ *  funnel steps. Fixed here rather than left in one place: both callers
+ *  below use this same corrected function, so the two boxes on the page
+ *  never fall out of agreement about what "trial" is gated on again.
  *
- *  `sinceIso`/`untilIso` bound WHEN someone had to complete the quiz to be
- *  in this trace (untilIso null = up to now); `windowDays` is only the
- *  label on the result, so the 7-day rolling trace and the yesterday-only
- *  one share this same function without diverging in logic. */
+ *  `sinceIso`/`untilIso` bound WHEN someone had to land to be in this
+ *  trace (untilIso null = up to now); `windowDays` is only the label on
+ *  the result, so the 7-day rolling trace and the yesterday-only one
+ *  share this one function without diverging in logic. */
 async function cohortTrace(c: SupabaseClient, rows: FEvent[], sinceIso: string, untilIso: string | null, windowDays: number): Promise<CohortTrace> {
-  const completedAt = new Map<string, string>()
+  const inWindow = (ts: string) => ts >= sinceIso && (untilIso === null || ts < untilIso)
+
+  const landedAt = new Map<string, string>()
   for (const r of rows) {
-    if (r.event !== 'quiz_submit' || r.ts < sinceIso) continue
-    if (untilIso !== null && r.ts >= untilIso) continue
-    const existing = completedAt.get(r.anon_id)
-    if (!existing || r.ts < existing) completedAt.set(r.anon_id, r.ts)
+    if (r.event !== 'quiz_view' || r.path !== '/' || !inWindow(r.ts)) continue
+    const existing = landedAt.get(r.anon_id)
+    if (!existing || r.ts < existing) landedAt.set(r.anon_id, r.ts)
   }
-  const completed = Array.from(completedAt.keys())
-  if (completed.length === 0) return { windowDays, completed: 0, clickedCheckout: 0, becameTrial: 0 }
+  const landed = landedAt.size
+  if (landed === 0) return { windowDays, landed: 0, completed: 0, clickedCheckout: 0, becameTrial: 0 }
 
-  const clickedCheckout = nextStep(rows, completedAt, 'checkout_click').size
+  const completedAt = nextStep(rows, landedAt, 'quiz_submit')
+  const clickedAt = nextStep(rows, completedAt, 'checkout_click')
+  if (clickedAt.size === 0) return { windowDays, landed, completed: completedAt.size, clickedCheckout: 0, becameTrial: 0 }
 
-  // Latest known email per completer — quiz_submit itself rarely carries one
-  // (email capture comes later in the flow), so read it off any later event
-  // for the same anon_id, or the linked submission.
+  // Latest known email per CLICKER (not per completer — see note above) —
+  // checkout_click itself rarely carries one, so read it off any later
+  // event for the same anon_id, or the linked submission.
   const emailOf = new Map<string, string>()
   for (const r of rows) {
-    if (!completedAt.has(r.anon_id)) continue
+    if (!clickedAt.has(r.anon_id)) continue
     const em = r.email
     if (em) emailOf.set(r.anon_id, em.toLowerCase())
   }
-  const submissionIds = Array.from(new Set(rows.filter(r => completedAt.has(r.anon_id) && r.submission_id).map(r => r.submission_id as string)))
+  const submissionIds = Array.from(new Set(rows.filter(r => clickedAt.has(r.anon_id) && r.submission_id).map(r => r.submission_id as string)))
   if (submissionIds.length > 0) {
     const { data: subs } = await c.from('submissions').select('id, email').in('id', submissionIds).limit(2000)
     const emailBySub = new Map((subs ?? []).map((s: { id: string; email: string | null }) => [s.id, s.email?.toLowerCase() ?? null]))
     for (const r of rows) {
-      if (!completedAt.has(r.anon_id) || emailOf.has(r.anon_id) || !r.submission_id) continue
+      if (!clickedAt.has(r.anon_id) || emailOf.has(r.anon_id) || !r.submission_id) continue
       const em = emailBySub.get(r.submission_id)
       if (em) emailOf.set(r.anon_id, em)
     }
@@ -251,7 +264,7 @@ async function cohortTrace(c: SupabaseClient, rows: FEvent[], sinceIso: string, 
       const existing = earliestTrialByEmail.get(em)
       if (!existing || ch.charged_at < existing) earliestTrialByEmail.set(em, ch.charged_at)
     }
-    for (const [anonId, at] of Array.from(completedAt.entries())) {
+    for (const [anonId, at] of Array.from(clickedAt.entries())) {
       const em = emailOf.get(anonId)
       if (!em) continue
       const trialAt = earliestTrialByEmail.get(em)
@@ -259,7 +272,7 @@ async function cohortTrace(c: SupabaseClient, rows: FEvent[], sinceIso: string, 
     }
   }
 
-  return { windowDays, completed: completed.length, clickedCheckout, becameTrial }
+  return { windowDays, landed, completed: completedAt.size, clickedCheckout: clickedAt.size, becameTrial }
 }
 
 const MODEL = 'claude-sonnet-4-6'
@@ -340,7 +353,7 @@ completano il quiz: ${input.daily.dayBefore.completed} -> ${input.daily.yesterda
 cliccano checkout: ${input.daily.dayBefore.clicked} -> ${input.daily.yesterday.clicked}
 ${weeklyBlock}
 
-Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${input.cohort.completed} hanno completato il quiz, ${input.cohort.clickedCheckout} di questi hanno cliccato checkout, ${input.cohort.becameTrial} sono diventati un trial pagato dopo.`
+Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${input.cohort.landed} hanno visto la pagina, ${input.cohort.completed} di questi hanno completato il quiz, ${input.cohort.clickedCheckout} di questi hanno cliccato checkout, ${input.cohort.becameTrial} di questi sono diventati un trial pagato dopo.`
 
   try {
     const client = new Anthropic({ apiKey })
