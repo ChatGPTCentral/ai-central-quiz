@@ -1,4 +1,5 @@
 import type { Provider, NormalizedPerson } from './types'
+import { PERSONAL_EMAIL_DOMAINS } from '../validation'
 
 // Cleanlist — cascades through 15+ providers per lookup itself, so this is
 // one call standing in for its own small ensemble, same idea as Databar.
@@ -10,14 +11,29 @@ import type { Provider, NormalizedPerson } from './types'
 // groups un-listed enrichments into a system-managed "Extension Leads"
 // list automatically, so lead_list_id is simply omitted below.
 //
-// UNCONFIRMED, same caveat as databar.ts: the public docs don't show the
-// exact bulk request array key or the completed-result field names for
-// this specific endpoint (only the older /enrichment/person example did:
-// full_name, linkedin_url, title, company). Best-effort parsing below,
-// raw response logged so the first real call can correct it rather than
-// this being assumed right.
+// FIXED 2026-08-27 after seeing it fail on the first real lead (Vercel
+// runtime logs): email alone is not enough. Cleanlist's own 422 said so
+// exactly — "Each contact must include linkedin_url OR first_name +
+// last_name + (company_domain or company_name)" — this file originally
+// sent bare {email}. Now sends linkedin_url when known, else first/last
+// name split from ctx.name plus a company_domain guessed from the email's
+// own domain (skipped for personal providers — gmail.com etc — same list
+// lib/validation.ts already uses for exactly this distinction), else
+// ctx.companyName. If none of that is assembleable, the call is skipped
+// rather than sent to fail the same way again.
+//
+// STILL UNCONFIRMED: the exact completed-result field names for this
+// endpoint (only an older /enrichment/person example is documented: full_
+// name, linkedin_url, title, company). Best-effort parsing below, raw
+// response logged so the next real success can correct it if it's wrong.
 
 const BASE = 'https://api.cleanlist.ai/api/v1/public'
+
+function companyDomainFromEmail(email: string): string | undefined {
+  const domain = email.split('@')[1]?.toLowerCase().trim()
+  if (!domain || PERSONAL_EMAIL_DOMAINS.has(domain)) return undefined
+  return domain
+}
 
 interface CleanlistResult {
   full_name?: string
@@ -61,9 +77,28 @@ export const cleanlistProvider: Provider = {
   // fire-and-forget background enrichment path; too slow to add to a live,
   // click-and-wait admin flow (see the Enrich tuner complaint, 2026-08-27).
   slow: true,
-  async lookup({ email }): Promise<NormalizedPerson | null> {
+  async lookup({ email, name, linkedinUrl, companyName }): Promise<NormalizedPerson | null> {
     const apiKey = process.env.CLEANLIST_API_KEY
     if (!apiKey) return null
+
+    const [firstName, ...rest] = (name ?? '').trim().split(/\s+/).filter(Boolean)
+    const lastName = rest.join(' ') || undefined
+    const companyDomain = companyDomainFromEmail(email)
+
+    const contact: Record<string, string> = { email }
+    if (linkedinUrl) {
+      contact.linkedin_url = linkedinUrl
+    } else if (firstName && lastName && (companyDomain || companyName)) {
+      contact.first_name = firstName
+      contact.last_name = lastName
+      if (companyDomain) contact.company_domain = companyDomain
+      else if (companyName) contact.company_name = companyName
+    } else {
+      // Cleanlist's own validation (seen live, 2026-08-27): a bare email
+      // is rejected. Nothing else assembleable yet for this person — skip
+      // rather than send a call already known to fail.
+      return null
+    }
 
     try {
       const res = await fetch(`${BASE}/enrich/bulk`, {
@@ -72,7 +107,7 @@ export const cleanlistProvider: Provider = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({ contacts: [{ email }] }),
+        body: JSON.stringify({ contacts: [contact] }),
       })
       if (!res.ok) {
         if (res.status !== 404) console.error('Cleanlist error:', res.status, await res.text().catch(() => ''))
