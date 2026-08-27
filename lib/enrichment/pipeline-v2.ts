@@ -19,6 +19,7 @@
 
 import { apolloProvider } from './apollo'
 import { databarProvider } from './databar'
+import { cleanlistProvider } from './cleanlist'
 import { findLinkedInViaGoogle } from './google-linkedin-search'
 import { resolveIdentityViaGoogle, type ResolverResult } from './google-resolver'
 import { scrapeLinkedInProfile } from './linkedin-scrape'
@@ -46,7 +47,7 @@ export interface V2Input {
 }
 
 export interface V2Stage {
-  name: 'name_from_email' | 'databar' | 'google_search' | 'apollo' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
+  name: 'name_from_email' | 'databar' | 'cleanlist' | 'google_search' | 'apollo' | 'linkedin_scrape' | 'photo_ai_demographics' | 'beehiiv_lookup' | 'stripe_lookup'
   status: 'skipped' | 'ok' | 'miss' | 'error'
   /** What this stage consumed (the ctx it saw) — surfaced by the inspector. */
   input?: Record<string, unknown>
@@ -79,7 +80,16 @@ export interface V2Result {
   resolver?: ResolverResult
 }
 
-export async function runV2(input: V2Input, opts: { useCache?: boolean; verifiedResolver?: boolean } = {}): Promise<V2Result> {
+export async function runV2(
+  input: V2Input,
+  opts: { useCache?: boolean; verifiedResolver?: boolean; includeSlow?: boolean } = {},
+): Promise<V2Result> {
+  // Providers marked Provider.slow (Cleanlist today: async submit-then-poll,
+  // up to ~24s) are skipped when a caller sets includeSlow:false — for a
+  // synchronous, click-and-wait admin flow, not the fire-and-forget
+  // background path, which is unaffected either way. Defaults to including
+  // them, so every existing caller keeps its current behavior unchanged.
+  const includeSlow = opts.includeSlow !== false
   const email = input.email.trim().toLowerCase()
 
   // ── Cache check — protects API budget on re-runs (60-day TTL) ───
@@ -161,6 +171,31 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; verified
     }
   } catch (err) {
     stages.push({ name: 'databar', status: 'error', reason: String(err) })
+  }
+
+  // ── Stage 1.6: Cleanlist — cascades 15+ providers per lookup itself, by
+  // email alone. Same ctx-now / record-later pattern as Databar. slow:true
+  // (async submit-then-poll, up to ~24s) so it is skipped when includeSlow
+  // is false — see runV2's opts.
+  let cleanlistResult: NormalizedPerson | null = null
+  if (includeSlow) {
+    try {
+      cleanlistResult = await cleanlistProvider.lookup(ctx)
+      if (cleanlistResult) {
+        if (!ctx.linkedinUrl && cleanlistResult.linkedinUrl) ctx.linkedinUrl = cleanlistResult.linkedinUrl
+        if (!ctx.name && cleanlistResult.fullName) ctx.name = cleanlistResult.fullName
+        if (!ctx.companyName && cleanlistResult.companyName) ctx.companyName = cleanlistResult.companyName
+        if (!ctx.jobTitle && cleanlistResult.jobTitle) ctx.jobTitle = cleanlistResult.jobTitle
+        if (!ctx.country && cleanlistResult.country) ctx.country = cleanlistResult.country
+        stages.push({ name: 'cleanlist', status: 'ok', result: cleanlistResult })
+      } else {
+        stages.push({ name: 'cleanlist', status: process.env.CLEANLIST_API_KEY ? 'miss' : 'skipped', reason: process.env.CLEANLIST_API_KEY ? undefined : 'CLEANLIST_API_KEY not set' })
+      }
+    } catch (err) {
+      stages.push({ name: 'cleanlist', status: 'error', reason: String(err) })
+    }
+  } else {
+    stages.push({ name: 'cleanlist', status: 'skipped', reason: 'includeSlow:false' })
   }
 
   // ── Stage 2: Google → LinkedIn URL (only if missing) ────────────
@@ -251,10 +286,11 @@ export async function runV2(input: V2Input, opts: { useCache?: boolean; verified
     stages.push({ name: 'apollo', status: 'error', input: apolloInput, reason: String(err) })
   }
 
-  // Recorded here, not in Stage 1.5, so Apify/Apollo (already pushed to
-  // results above) keep merge priority over Databar on any field they
-  // both found.
+  // Recorded here, not in their own stages, so Apify/Apollo (already pushed
+  // to results above) keep merge priority over Databar/Cleanlist on any
+  // field they both found.
   if (databarResult) { tried.push('databar'); record('databar', databarResult) }
+  if (cleanlistResult) { tried.push('cleanlist'); record('cleanlist', cleanlistResult) }
 
   const merged = mergeEnrichment(results, tried)
 
