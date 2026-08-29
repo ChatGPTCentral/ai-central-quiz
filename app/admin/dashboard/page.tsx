@@ -364,10 +364,10 @@ async function revenueCharges(): Promise<{
 
   // People holding more than one paid trial. This used to be the count of
   // trials the ledger threw away as duplicates; nothing is thrown away now
-  // (owner's rules 1, 2 and 5), so it is simply how many people bought twice.
+  // (owner's rules 1, 2 and 5 — gross, always, restated 2026-08-29), so it is
+  // simply how many people bought twice. A refund does not un-buy the trial.
   const perPerson = new Map<string, number>()
   for (const t of ledger) {
-    if (t.trial_refunded) continue
     perPerson.set(t.person_key, (perPerson.get(t.person_key) || 0) + 1)
   }
   const quizRepeatTrials = Array.from(perPerson.values()).filter(n => n > 1).length

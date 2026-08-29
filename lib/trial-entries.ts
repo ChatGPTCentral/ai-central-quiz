@@ -277,35 +277,51 @@ export function classifyLedger(
       submissionId: t.submission_id ?? null,
     }
 
-    if (!t.trial_refunded) {
-      accounted.add(t.charge_id)
-      trialPoints.push({
-        ...who,
-        at: anchor,
-        chargedAt: t.trial_at,
-        due: t.due,
-        converted: t.converted,
-        attribution: t.attribution,
-        quizAt: t.quiz_completed_at,
-        trialCents: t.trial_cents,
-        convertedCents: t.converted_cents,
-        convertedAt: t.converted_at,
-        lifetimeBundle: t.lifetime_bundle,
-      })
-      // Both sets come from the ledger's own person key, so "who is net-new"
-      // and "who is an existing-customer buyer" have exactly one definition.
-      if (t.person_key?.includes('@')) {
-        if (t.attribution === 'quiz_net_new') netNewEmails.add(t.person_key)
-        else if (t.attribution === 'quiz_existing') quizExistingEmails.add(t.person_key)
-      }
-      const usd = netCents(t.charge_id, t.trial_cents) / 100
-      if (t.attribution === 'quiz_net_new') {
-        entries.push({ ...who, at: anchor, chargedAt: t.trial_at, kind: 'net', usd, why: 'trial, quiz earned it from a new customer' })
-      } else if (t.attribution === 'quiz_existing') {
-        entries.push({ ...who, at: anchor, chargedAt: t.trial_at, kind: 'quizExisting', usd, why: 'trial, quiz earned it from an existing customer' })
-      } else {
-        entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, kind: 'notQuiz', usd, why: 'trial, no quiz before the charge' })
-      }
+    // GROSS, ALWAYS (owner's rule 5 and 1, restated 2026-08-29 after the
+    // dashboard's ALL TRIALS cell moved 100 -> 98 the moment two July trials
+    // synced in as refunded: "il numero che voglio vedere in all trials deve
+    // essere il gross"). A refunded trial IS STILL a trial the quiz produced;
+    // the refund is a fact about the MONEY, not about whether the sale
+    // happened. So this pushes unconditionally now, refunded or not — the
+    // count is never gated on trial_refunded again, anywhere.
+    //
+    // This does not touch rule 6 (money stays NET): netCents() below still
+    // nets a refunded trial down through the SAME deductionLeft pool the
+    // "-cost" sweep at the bottom of this function draws from, so a fully
+    // refunded $4.99 now emits as $0.00 here and the sweep's residual entry
+    // (Stripe's kept fee, negative, same kind) absorbs the rest — the kind's
+    // TOTAL money is exactly what it was before this change, only the COUNT
+    // gained the person. Verified by hand against Bianco/Mitchell, the two
+    // July refunds that surfaced this: quizExisting and notQuiz kept their
+    // pre-fix totals to the cent, both now show 1 more gross trial.
+    accounted.add(t.charge_id)
+    trialPoints.push({
+      ...who,
+      at: anchor,
+      chargedAt: t.trial_at,
+      due: t.due,
+      converted: t.converted,
+      attribution: t.attribution,
+      quizAt: t.quiz_completed_at,
+      trialCents: t.trial_cents,
+      convertedCents: t.converted_cents,
+      convertedAt: t.converted_at,
+      lifetimeBundle: t.lifetime_bundle,
+    })
+    // Both sets come from the ledger's own person key, so "who is net-new"
+    // and "who is an existing-customer buyer" have exactly one definition.
+    if (t.person_key?.includes('@')) {
+      if (t.attribution === 'quiz_net_new') netNewEmails.add(t.person_key)
+      else if (t.attribution === 'quiz_existing') quizExistingEmails.add(t.person_key)
+    }
+    const usd = netCents(t.charge_id, t.trial_cents) / 100
+    const refundNote = t.trial_refunded ? ', later refunded' : ''
+    if (t.attribution === 'quiz_net_new') {
+      entries.push({ ...who, at: anchor, chargedAt: t.trial_at, kind: 'net', usd, why: `trial, quiz earned it from a new customer${refundNote}` })
+    } else if (t.attribution === 'quiz_existing') {
+      entries.push({ ...who, at: anchor, chargedAt: t.trial_at, kind: 'quizExisting', usd, why: `trial, quiz earned it from an existing customer${refundNote}` })
+    } else {
+      entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, kind: 'notQuiz', usd, why: `trial, no quiz before the charge${refundNote}` })
     }
 
     // The $49.75 half of a $54.74 bundle exists the moment the CHARGE does,
@@ -316,8 +332,10 @@ export function classifyLedger(
     // Caught by the on-page identity line the day it shipped (owner,
     // 2026-08-16). A lifetime is NOT an annual — owner's rule, stated twice:
     // the $4.99 half belongs with the trials, the $49.75 half is Other
-    // Revenue. Gate on the charge amount, never on stamps or flags.
-    if (!t.trial_refunded && chargeCents.get(t.charge_id) === 5474) {
+    // Revenue. Gate on the charge amount, never on stamps or flags — and, as
+    // of the gross-count fix above, never on refund status either, for the
+    // same reason and with the same sweep-neutrality guarantee.
+    if (chargeCents.get(t.charge_id) === 5474) {
       entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, chargeId: `${t.charge_id}-lt`, kind: 'other', usd: netCents(t.charge_id, 4975) / 100, why: 'the $49.75 lifetime half of a $54.74 bundle' })
     }
 
