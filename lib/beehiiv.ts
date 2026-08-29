@@ -41,7 +41,7 @@ export async function createBeehiivSubscriber(payload: CreateSubscriberPayload):
   }
 
   const customFields: CustomField[] = [
-    { name: 'quiz_name', value: payload.name },
+    { name: 'name', value: payload.name },
     { name: 'ai_level', value: payload.aiLevel },
     { name: 'work_area', value: payload.workArea },
     { name: 'learning_style', value: payload.learningStyle },
@@ -137,9 +137,12 @@ export interface StageResult {
 function stageCustomFields(name: string, stage: string | null): CustomField[] {
   const fields: CustomField[] = []
   if (name) {
-    // Preserve the v1 quiz_name field for backwards-compat with existing
-    // beehiiv-lookup name parsing.
-    fields.push({ name: 'quiz_name', value: name })
+    // 'quiz_name' doesn't exist as a beehiiv custom field — confirmed via
+    // list_custom_fields, 2026-08-29 — every subscribeWithStage call was
+    // failing its whole request with a 422 because of this one field, not
+    // just silently dropping it. The publication does have a real 'name'
+    // field (alongside first_name/last_name, both already sent below).
+    fields.push({ name: 'name', value: name })
     const parts = name.trim().split(/\s+/)
     if (parts[0]) fields.push({ name: 'first_name', value: parts[0] })
     if (parts.length > 1) fields.push({ name: 'last_name', value: parts.slice(1).join(' ') })

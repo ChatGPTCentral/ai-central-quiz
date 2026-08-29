@@ -22,7 +22,13 @@ function getActorList(): string[] {
   return [
     'CP1SVZfEwWflrmWCX',                     // your pinned — primary
     'dev_fusion~Linkedin-Profile-Scraper',   // backup (requires console approval)
-    'bebity~linkedin-profile-scraper',       // last-resort public actor
+    // REMOVED 2026-08-29: bebity~linkedin-profile-scraper — Apify returns
+    // 404 "Actor with this name was not found" on every call (confirmed live
+    // in Vercel runtime errors, 10 occurrences over the last 2 months, all
+    // failing the same way). The actor no longer exists under this slug.
+    // Was the last-resort fallback, so every lookup that reached it always
+    // failed anyway; removing it is a pure cleanup, not a coverage loss.
+    //
     // REMOVED: apimaestro~linkedin-profile-detail
     //   This actor returns a phantom record ("Sanjay Kulkarni @ Kafein
     //   Technology Solutions, Senior Product Owner") when its scrape
@@ -269,10 +275,18 @@ export const apifyProfileProvider: Provider = {
 
     // Defensive payload: include every common field-name variant AND the
     // profileScraperMode that CP1SVZfEwWflrmWCX requires.
+    //
+    // FIXED 2026-08-29: this was 'Short ($4 per 1k)' — the price label shown
+    // in the Apify console's dropdown, not the actual enum value the actor's
+    // input schema accepts. Every call was rejected with HTTP 400 ("must be
+    // equal to one of the allowed values: 'Short', 'Full', 'Full + email
+    // search'"), confirmed live in Vercel runtime errors, 34 occurrences.
+    // CP1SVZfEwWflrmWCX — the PRIMARY actor — has been failing on every
+    // single lookup that reached it since this was introduced.
     const payload: Record<string, unknown> = {
       maxItems: 1,
       maxRequestRetries: 2,
-      profileScraperMode: 'Short ($4 per 1k)',   // required by CP1SVZfEwWflrmWCX
+      profileScraperMode: 'Short',   // required by CP1SVZfEwWflrmWCX
     }
     if (cleanUrl) {
       payload.profileUrls = [cleanUrl]

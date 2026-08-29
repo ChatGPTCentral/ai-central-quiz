@@ -13,7 +13,8 @@ export interface BeehiivLookupResult {
 // Map raw Beehiiv custom_field keys → quiz field IDs
 function mapBeehiivCustomFields(cf: Array<{ name: string; value: string }> = []): Record<string, string> {
   const map: Record<string, string> = {
-    quiz_name: 'name',
+    name: 'name',
+    quiz_name: 'name', // legacy fallback — see lib/beehiiv.ts, 2026-08-29
     ai_level: 'aiLevel',
     work_area: 'workArea',
     learning_style: 'learningStyle',

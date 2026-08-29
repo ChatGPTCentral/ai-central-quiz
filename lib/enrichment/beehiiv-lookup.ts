@@ -66,13 +66,17 @@ export async function findBeehiivSubscriberByEmail(email: string): Promise<Beehi
     if (!sub) return null
 
     // Custom fields hold first_name, last_name, country (per the lib/beehiiv.ts
-    // write path that populates them on signup). Some legacy rows may also use
-    // `quiz_name` for the full name.
+    // write path that populates them on signup), plus the full name under
+    // 'name' (fixed 2026-08-29 — the write path used to send a 'quiz_name'
+    // field that doesn't exist in this publication, failing the whole
+    // subscribe request; kept as a fallback here only for whatever legacy
+    // rows might carry it from before that field was removed from beehiiv).
     const cf = Object.fromEntries((sub.custom_fields || []).map(f => [f.name?.toLowerCase(), f.value]))
     let firstName: string | undefined = cf['first_name'] || cf['firstname']
     let lastName:  string | undefined = cf['last_name']  || cf['lastname']
-    if (!firstName && !lastName && cf['quiz_name']) {
-      const parts = String(cf['quiz_name']).trim().split(/\s+/)
+    const fullName = cf['name'] || cf['quiz_name']
+    if (!firstName && !lastName && fullName) {
+      const parts = String(fullName).trim().split(/\s+/)
       firstName = parts[0]
       if (parts.length > 1) lastName = parts.slice(1).join(' ')
     }
