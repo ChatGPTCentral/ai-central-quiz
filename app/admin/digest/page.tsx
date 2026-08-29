@@ -34,12 +34,34 @@ interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; t
 interface SourceRow { source: string; this_week: number; last_week: number }
 interface CohortTrace { windowDays: number; landed: number; completed: number; clickedCheckout: number; becameTrial: number }
 interface TrialSums { thisWeek: number; lastWeek: number; thisMonth: number; lastMonth: number }
+interface WeekToDate { thisWtd: number; lastWtd: number; daysIn: number }
+interface CohortLearningSummary {
+  id: number; title: string; step: string; status: string; predictedDeltaPts: number | null
+  beforePct: number | null; afterPct: number | null; afterN: number; probBetter: number | null
+}
+interface RunningExperimentVariant { key: string; exposures: number; clickers: number; netNewPaid: number; completions: number }
+interface RunningExperimentSummary {
+  key: string; name: string; page: string; primaryMetric: string; startedAt: string | null
+  variants: RunningExperimentVariant[]
+}
+interface UxPageRow {
+  url: string; sessions: number; rage: number; dead: number; quickback: number; scriptErrors: number
+  days: number; worstElement: string | null
+}
 interface DigestRow {
   day: string; ran_at: string; is_monday: boolean; trials_yesterday: number; bar: number; bar_hit: boolean
   trend: TrendPoint[]; daily_funnel: DailyFunnel; weekly_funnel: WeeklyFunnel; sources: SourceRow[]; cohort: CohortTrace
   // Nullable: rows written before 2026-08-27 have no yesterday-only trace / no sums.
   cohort_yesterday: CohortTrace | null
   trial_sums: TrialSums | null
+  // Nullable: rows written before 2026-08-29 have none of this — the owner's
+  // "porta tutto insieme, self-learn il funnel" ask (cohort learnings status,
+  // running experiments status, PostHog UX signals, a proposed next test).
+  week_to_date: WeekToDate | null
+  cohort_learnings_snapshot: CohortLearningSummary[] | null
+  experiments_snapshot: RunningExperimentSummary[] | null
+  ux_signals: UxPageRow[] | null
+  proposed_hypothesis: string | null
   headline: string; synthesis: string
 }
 
@@ -199,6 +221,129 @@ function CohortStrip({
   )
 }
 
+// Owner, 2026-08-29: "voglio portare tutto nel digest ... self-learn il
+// funnel". Four new sections below, each reading a real source this project
+// already has, none re-derived: cohort learnings (lib/bayes.ts's sampler,
+// same one /admin/cohorts uses), running experiments (experiment_results(),
+// same function /admin/experiments uses), PostHog UX signals (uxByPage(),
+// same query /admin/experiments already renders), and a proposed next
+// hypothesis the synthesis writes ONLY when today's data clearly supports
+// one — never auto-declared as a real cohort_learnings row, that stays a
+// deliberate act.
+
+function WeekToDateStrip({ wtd }: { wtd: WeekToDate | null }) {
+  if (!wtd) return null
+  const delta = wtd.thisWtd - wtd.lastWtd
+  const deltaColor = delta > 0 ? GREEN : delta < 0 ? RED : MUTE
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
+        Settimana ad oggi (lunedì → oggi, {wtd.daysIn} {wtd.daysIn === 1 ? 'giorno' : 'giorni'}) contro gli stessi giorni la settimana scorsa
+      </div>
+      <div style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '7px 12px', minWidth: 140, display: 'inline-block' }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color: INK }}>{wtd.thisWtd}</span>
+        <span style={{ fontSize: 10.5, color: MUTE, marginLeft: 6 }}>vs {wtd.lastWtd} prima</span>
+        <span style={{ fontSize: 10.5, fontWeight: 700, color: deltaColor, marginLeft: 6 }}>{delta > 0 ? '+' : ''}{delta}</span>
+      </div>
+    </div>
+  )
+}
+
+function CohortLearningsSection({ learnings }: { learnings: CohortLearningSummary[] | null }) {
+  if (!learnings || learnings.length === 0) return null
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
+        Cohort learning aperti ({learnings.length}) — <a href="/admin/cohorts" style={{ color: MUTE }}>vedi /admin/cohorts</a>
+      </div>
+      <div className="flex flex-col" style={{ gap: 6 }}>
+        {learnings.map(l => {
+          const verdict = l.probBetter === null ? 'in attesa' : l.probBetter >= 0.95 ? 'confermato' : l.probBetter <= 0.05 ? 'smentito' : 'aperto'
+          const vColor = verdict === 'confermato' ? GREEN : verdict === 'smentito' ? RED : MUTE
+          return (
+            <div key={l.id} style={{ border: `1px solid ${HAIR}`, padding: '7px 10px', fontSize: 12 }}>
+              <span style={{ fontWeight: 700, color: INK }}>{l.title}</span>
+              <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 800, color: vColor, textTransform: 'uppercase' }}>{verdict}</span>
+              <div style={{ color: MUTE, marginTop: 2 }}>
+                passo {l.step} · prima {l.beforePct !== null ? `${l.beforePct.toFixed(1)}%` : 'n/d'} · dopo {l.afterPct !== null ? `${l.afterPct.toFixed(1)}%` : 'n/d'} su {l.afterN}
+                {l.probBetter !== null && ` · probabilità migliorato ${(l.probBetter * 100).toFixed(0)}%`}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ExperimentsSection({ experiments }: { experiments: RunningExperimentSummary[] | null }) {
+  if (!experiments || experiments.length === 0) return null
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
+        Experiment attivi ({experiments.length}) — <a href="/admin/experiments" style={{ color: MUTE }}>vedi /admin/experiments</a>
+      </div>
+      <div className="flex flex-col" style={{ gap: 6 }}>
+        {experiments.map(e => (
+          <div key={e.key} style={{ border: `1px solid ${HAIR}`, padding: '7px 10px', fontSize: 12 }}>
+            <span style={{ fontWeight: 700, color: INK }}>{e.name}</span>
+            <span style={{ color: MUTE, marginLeft: 6 }}>({e.page}, metrica {e.primaryMetric})</span>
+            <div className="flex flex-wrap" style={{ gap: 12, marginTop: 3 }}>
+              {e.variants.map(v => (
+                <span key={v.key} style={{ color: MUTE }}>
+                  <strong style={{ color: INK }}>{v.key}</strong>: {v.exposures} visti, {v.netNewPaid} trial
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function UxSignalsSection({ rows }: { rows: UxPageRow[] | null }) {
+  if (!rows || rows.length === 0) return null
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: MUTE, marginBottom: 6 }}>
+        Segnali PostHog, ultimi {rows[0]?.days ?? 7} giorni (rage click, click a vuoto, errori — non le registrazioni stesse)
+      </div>
+      <table style={{ borderCollapse: 'collapse' }}>
+        <thead><tr style={{ borderBottom: `2px solid ${INK}` }}>
+          <th style={th}>Pagina</th><th style={{ ...th, textAlign: 'right' }}>Sessioni</th>
+          <th style={{ ...th, textAlign: 'right' }}>Rage</th><th style={{ ...th, textAlign: 'right' }}>Vuoti</th>
+          <th style={{ ...th, textAlign: 'right' }}>Errori</th><th style={th}>Peggiore</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.url} style={{ borderBottom: `1px solid ${HAIR}` }}>
+              <td style={td}>{r.url}</td>
+              <td style={{ ...td, textAlign: 'right' }}>{r.sessions}</td>
+              <td style={{ ...td, textAlign: 'right', color: r.rage > 0 ? RED : undefined }}>{r.rage}</td>
+              <td style={{ ...td, textAlign: 'right', color: r.dead > 0 ? RED : undefined }}>{r.dead}</td>
+              <td style={{ ...td, textAlign: 'right', color: r.scriptErrors > 0 ? RED : undefined }}>{r.scriptErrors}</td>
+              <td style={{ ...td, color: MUTE }}>{r.worstElement ?? '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ProposedHypothesisBox({ text }: { text: string | null }) {
+  if (!text) return null
+  return (
+    <div style={{ marginTop: 10, border: `2px solid #8A5A00`, background: '#FFF6E0', padding: '9px 12px' }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, color: '#8A5A00', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+        Ipotesi proposta oggi, non ancora dichiarata
+      </div>
+      <p style={{ fontSize: 12.5, color: INK, marginTop: 4, lineHeight: 1.5 }}>{text}</p>
+    </div>
+  )
+}
+
 export default async function DigestPage() {
   const { data } = await db().from('daily_digests').select('*').order('day', { ascending: false }).limit(30)
   const digests = (data ?? []) as DigestRow[]
@@ -246,6 +391,11 @@ export default async function DigestPage() {
               badgeColor="#8A5A00"
               missingLabel="Tracciamento non disponibile per questo giorno."
             />
+            <WeekToDateStrip wtd={d.week_to_date} />
+            <ProposedHypothesisBox text={d.proposed_hypothesis} />
+            <CohortLearningsSection learnings={d.cohort_learnings_snapshot} />
+            <ExperimentsSection experiments={d.experiments_snapshot} />
+            <UxSignalsSection rows={d.ux_signals} />
             <details style={{ marginTop: 10 }}>
               <summary style={{ fontSize: 11.5, fontWeight: 700, color: MUTE, cursor: 'pointer', userSelect: 'none' }}>Numeri verificabili</summary>
               <div className="flex flex-wrap" style={{ gap: 30 }}>

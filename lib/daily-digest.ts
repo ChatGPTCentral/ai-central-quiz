@@ -27,6 +27,8 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
+import { probBetter } from './bayes'
+import { uxByPage } from './ux-by-page'
 
 export function db(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -54,6 +56,29 @@ export interface DailyFunnel { yesterday: FunnelSnapshot; dayBefore: FunnelSnaps
 export interface WeeklyFunnel { this_week: FunnelSnapshot; last_week: FunnelSnapshot; thisWeekRange: string; lastWeekRange: string }
 export interface SourceRow { source: string; this_week: number; last_week: number }
 export interface CohortTrace { windowDays: number; landed: number; completed: number; clickedCheckout: number; becameTrial: number }
+export interface WeekToDate { thisWtd: number; lastWtd: number; daysIn: number }
+export interface CohortLearningSummary {
+  id: number
+  title: string
+  step: string
+  status: string
+  predictedDeltaPts: number | null
+  beforePct: number | null
+  afterPct: number | null
+  afterN: number
+  /** P(after > before), by the same Beta-posterior sampler /admin/cohorts
+   *  uses (lib/bayes.ts) — null until there's evidence on both sides. */
+  probBetter: number | null
+}
+export interface RunningExperimentVariant { key: string; exposures: number; clickers: number; netNewPaid: number; completions: number }
+export interface RunningExperimentSummary {
+  key: string
+  name: string
+  page: string
+  primaryMetric: string
+  startedAt: string | null
+  variants: RunningExperimentVariant[]
+}
 export interface DigestResult {
   day: string
   isMonday: boolean
@@ -66,7 +91,19 @@ export interface DigestResult {
   cohort: CohortTrace
   cohortYesterday: CohortTrace
   trialSums: TrialSums
+  weekToDate: WeekToDate
+  cohortLearnings: CohortLearningSummary[]
+  runningExperiments: RunningExperimentSummary[]
+  /** Rage/dead clicks, quick-backs, script errors, per page, from PostHog —
+   *  the same query /admin/experiments already renders (lib/ux-by-page.ts),
+   *  filtered here to the pages that matter for the funnel. */
+  uxSignals: import('./ux-by-page').UxPageRow[]
   headline: string
+  /** One concrete next hypothesis when the data clearly supports one, else
+   *  null — the synthesis is told not to invent one just to fill the field.
+   *  A candidate for a future cohort_learnings row, never inserted
+   *  automatically: declaring a learning stays a deliberate, reviewed act. */
+  proposedHypothesis: string | null
   synthesis: string
 }
 
@@ -124,6 +161,104 @@ function trialsSums(byDay: Map<string, number>): TrialSums {
     else if (i <= 60) lastMonth += n
   }
   return { thisWeek, lastWeek, thisMonth, lastMonth }
+}
+
+/** Calendar week-to-date against the same days-of-week last week (owner,
+ *  2026-08-29: "performance WTD vs week-1") — Monday through today, not a
+ *  rolling 7 days, so a Tuesday reads against last Tuesday's Mon-Tue, never
+ *  against a full week that hasn't happened yet this week. Today (a partial
+ *  day) is included on purpose: "to date" means exactly that. */
+function computeWeekToDate(byDay: Map<string, number>): WeekToDate {
+  const dow = new Date().getUTCDay() // 0=Sun..6=Sat
+  const daysSinceMonday = (dow + 6) % 7
+  let thisWtd = 0, lastWtd = 0
+  for (let i = 0; i <= daysSinceMonday; i++) {
+    thisWtd += byDay.get(isoDay(i)) ?? 0
+    lastWtd += byDay.get(isoDay(i + 7)) ?? 0
+  }
+  return { thisWtd, lastWtd, daysIn: daysSinceMonday + 1 }
+}
+
+/** The open half of the cohort-learning ritual (lib/bayes.ts backs
+ *  /admin/cohorts with the same sampler) — surfaced here so the digest
+ *  doesn't just report trials, it reports whether what we changed is
+ *  actually working, the same question /admin/cohorts answers on demand. */
+async function cohortLearningsSummary(c: SupabaseClient): Promise<CohortLearningSummary[]> {
+  try {
+    const { data, error } = await c
+      .from('cohort_learning_evidence')
+      .select('id, title, step, status, predicted_delta_pts, before_num, before_den, after_num, after_den')
+      .eq('status', 'open')
+      .order('id', { ascending: false })
+      .limit(20)
+    if (error || !data) return []
+    return (data as Record<string, unknown>[]).map(r => {
+      const bN = Number(r.before_den ?? 0), bK = Number(r.before_num ?? 0)
+      const aN = Number(r.after_den ?? 0), aK = Number(r.after_num ?? 0)
+      return {
+        id: Number(r.id), title: String(r.title ?? ''), step: String(r.step ?? ''), status: String(r.status ?? ''),
+        predictedDeltaPts: r.predicted_delta_pts != null ? Number(r.predicted_delta_pts) : null,
+        beforePct: bN > 0 ? (bK / bN) * 100 : null,
+        afterPct: aN > 0 ? (aK / aN) * 100 : null,
+        afterN: aN,
+        probBetter: bN > 0 && aN > 0 ? probBetter(aK, aN, bK, bN) : null,
+      }
+    })
+  } catch (err) {
+    console.error('[daily-digest] cohortLearningsSummary failed:', err)
+    return []
+  }
+}
+
+/** Every currently-running experiment's real numbers, off the SAME
+ *  experiment_results() function /admin/experiments reads — never a second
+ *  derivation of "who's exposed, who converted" living in the digest. */
+async function runningExperimentsSummary(c: SupabaseClient): Promise<RunningExperimentSummary[]> {
+  try {
+    const { data: exps, error } = await c
+      .from('experiments')
+      .select('key, name, page, primary_metric, started_at')
+      .eq('status', 'running')
+    if (error || !exps) return []
+    const out: RunningExperimentSummary[] = []
+    for (const exp of exps as Record<string, unknown>[]) {
+      const key = String(exp.key)
+      try {
+        const { data: rows } = await c.rpc('experiment_results', { exp_key: key })
+        const variants: RunningExperimentVariant[] = ((rows ?? []) as Record<string, unknown>[]).map(v => ({
+          key: String(v.variant_key), exposures: Number(v.exposures ?? 0), clickers: Number(v.clickers ?? 0),
+          netNewPaid: Number(v.net_new_paid ?? 0), completions: Number(v.completions ?? 0),
+        }))
+        out.push({
+          key, name: String(exp.name ?? key), page: String(exp.page ?? ''),
+          primaryMetric: String(exp.primary_metric ?? ''), startedAt: (exp.started_at as string) ?? null, variants,
+        })
+      } catch (err) {
+        console.error(`[daily-digest] experiment_results failed for ${key}:`, err)
+      }
+    }
+    return out
+  } catch (err) {
+    console.error('[daily-digest] runningExperimentsSummary failed:', err)
+    return []
+  }
+}
+
+/** PostHog's rage/dead-click + script-error signal, filtered to the pages
+ *  that matter for the funnel (landing, quiz, result) rather than every URL
+ *  uxByPage() finds — "recordings" per the owner's 2026-08-29 ask means this:
+ *  the aggregated signal a session recording would show, not the recordings
+ *  themselves. Watching actual replay video isn't something an automated
+ *  daily cron can do; that stays a human (or a future, separate capability)
+ *  task, not something claimed here. */
+async function uxSignalsForFunnel(): Promise<import('./ux-by-page').UxPageRow[]> {
+  try {
+    const { rows } = await uxByPage(7)
+    return rows.filter(r => /\/(result|quiz-v2|calculating)(\/|$)/.test(r.url) || /\.[a-z]{2,}\/?$/.test(r.url))
+  } catch (err) {
+    console.error('[daily-digest] uxSignalsForFunnel failed:', err)
+    return []
+  }
 }
 
 interface FEvent { anon_id: string; event: string; path: string | null; ts: string; utm_source: string | null; submission_id: string | null; email: string | null }
@@ -327,16 +462,24 @@ Priorita 1: il confronto GIORNALIERO, ieri contro il giorno prima, sempre presen
 Priorita 2: le somme SETTIMANALE e MENSILE dei trial, sempre presenti, contro il periodo uguale precedente.
 Priorita 3, SOLO se e lunedi: aggiungi cosa dice il confronto SETTIMANALE del funnel (non la somma, il passo per passo).
 Priorita 4: il tracciamento visto-completato-checkout-trial, per dire dove si perde la persona.
+Priorita 5: se un cohort_learning aperto ha abbastanza dati per dire qualcosa, dillo (confermato, smentito, o ancora aperto).
+Priorita 6: se un experiment attivo mostra un divario grande tra i bracci, nominalo, ma MAI dichiararlo vinto sotto ai numeri minimi dichiarati.
+Priorita 7: se i segnali PostHog (rage click, click a vuoto, errori) mostrano un problema chiaro su una pagina, nominalo.
 Dai la causa piu probabile SOLO se i numeri la mostrano chiaramente. Se non la mostrano, dillo, non inventarla.
-Finisci la sintesi con una frase su cosa guardare o fare dopo.`
+Finisci la sintesi con una frase su cosa guardare o fare dopo.
+
+Campo separato, proposedHypothesis: SOLO quando i dati di oggi indicano con chiarezza un cambiamento preciso da provare
+(non generico), scrivilo in una frase, nello stile di una riga di cohort_learnings (cosa cambiare, quale passo dovrebbe
+muoversi). Se nessun dato lo indica con chiarezza oggi, scrivi null. Non inventare un'ipotesi per riempire il campo.`
 
 const SYNTH_SCHEMA = {
   type: 'object',
   properties: {
     headline: { type: 'string' },
     synthesis: { type: 'string' },
+    proposedHypothesis: { type: ['string', 'null'] },
   },
-  required: ['headline', 'synthesis'],
+  required: ['headline', 'synthesis', 'proposedHypothesis'],
   additionalProperties: false,
 } as const
 
@@ -347,16 +490,21 @@ async function synthesize(input: {
   sources: SourceRow[]
   cohort: CohortTrace
   trialSums: TrialSums
+  weekToDate: WeekToDate
+  cohortLearnings: CohortLearningSummary[]
+  runningExperiments: RunningExperimentSummary[]
+  uxSignals: import('./ux-by-page').UxPageRow[]
   trialsYesterday: number
   barHit: boolean
   isMonday: boolean
-}): Promise<{ headline: string; synthesis: string }> {
+}): Promise<{ headline: string; synthesis: string; proposedHypothesis: string | null }> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   const fallback = {
     headline: input.barHit
       ? `Bar raggiunta: ${input.trialsYesterday} trial ieri`
       : `Bar mancata: ${input.trialsYesterday} trial ieri contro 10`,
     synthesis: 'Sintesi automatica non disponibile (ANTHROPIC_API_KEY assente). I numeri sotto restano quelli veri.',
+    proposedHypothesis: null,
   }
   if (!apiKey) return fallback
 
@@ -386,20 +534,37 @@ completano il quiz: ${input.daily.dayBefore.completed} -> ${input.daily.yesterda
 cliccano checkout: ${input.daily.dayBefore.clicked} -> ${input.daily.yesterday.clicked}
 ${weeklyBlock}
 
-Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${input.cohort.landed} hanno visto la pagina, ${input.cohort.completed} di questi hanno completato il quiz, ${input.cohort.clickedCheckout} di questi hanno cliccato checkout, ${input.cohort.becameTrial} di questi sono diventati un trial pagato dopo.`
+Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${input.cohort.landed} hanno visto la pagina, ${input.cohort.completed} di questi hanno completato il quiz, ${input.cohort.clickedCheckout} di questi hanno cliccato checkout, ${input.cohort.becameTrial} di questi sono diventati un trial pagato dopo.
+
+Settimana ad oggi (lunedi a oggi, ${input.weekToDate.daysIn} giorni) contro stessi giorni la settimana scorsa: ${input.weekToDate.lastWtd} -> ${input.weekToDate.thisWtd} trial.
+
+Cohort learning aperti (${input.cohortLearnings.length}):
+${input.cohortLearnings.length === 0 ? 'nessuno' : input.cohortLearnings.map(l =>
+  `- "${l.title}" (passo: ${l.step}, predetto +${l.predictedDeltaPts ?? '?'}pt): prima ${l.beforePct !== null ? l.beforePct.toFixed(1) + '%' : 'n/d'}, dopo ${l.afterPct !== null ? l.afterPct.toFixed(1) + '%' : 'n/d'} su ${l.afterN} persone${l.probBetter !== null ? `, probabilita che sia migliorato: ${(l.probBetter * 100).toFixed(0)}%` : ''}`
+).join('\n')}
+
+Experiment attivi (${input.runningExperiments.length}):
+${input.runningExperiments.length === 0 ? 'nessuno' : input.runningExperiments.map(e =>
+  `- "${e.name}" (${e.key}, metrica: ${e.primaryMetric}): ${e.variants.map(v => `${v.key} ${v.exposures} visti, ${v.netNewPaid} trial`).join(' vs ')}`
+).join('\n')}
+
+Segnali PostHog, ultimi 7 giorni, per pagina (rage click, click a vuoto, errori):
+${input.uxSignals.length === 0 ? 'nessun dato' : input.uxSignals.map(u =>
+  `- ${u.url}: ${u.sessions} sessioni, ${u.rage} rage click, ${u.dead} click a vuoto${u.worstElement ? ` (peggiore: ${u.worstElement})` : ''}, ${u.scriptErrors} errori`
+).join('\n')}`
 
   try {
     const client = new Anthropic({ apiKey })
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 1280,
       system: [{ type: 'text', text: SYNTH_SYSTEM, cache_control: { type: 'ephemeral' } }],
       output_config: { format: { type: 'json_schema', schema: SYNTH_SCHEMA } },
       messages: [{ role: 'user', content: userPrompt }],
     })
     const textBlock = response.content.find(b => b.type === 'text')
     if (!textBlock || textBlock.type !== 'text') return fallback
-    const parsed = JSON.parse(textBlock.text) as { headline: string; synthesis: string }
+    const parsed = JSON.parse(textBlock.text) as { headline: string; synthesis: string; proposedHypothesis: string | null }
     return parsed
   } catch (e) {
     console.error('[daily-digest] synthesis failed:', e)
@@ -409,9 +574,13 @@ Tracciamento persona per persona, ultimi ${input.cohort.windowDays} giorni: ${in
 
 export async function runDailyDigest(c: SupabaseClient): Promise<DigestResult> {
   const since = new Date(Date.now() - FUNNEL_DAYS * DAY_MS).toISOString()
-  const [byDay, rows] = await Promise.all([trialsByDay(c), fetchFunnelEvents(c, since)])
+  const [byDay, rows, cohortLearnings, runningExperiments, uxSignals] = await Promise.all([
+    trialsByDay(c), fetchFunnelEvents(c, since),
+    cohortLearningsSummary(c), runningExperimentsSummary(c), uxSignalsForFunnel(),
+  ])
   const trend = trialsTrend(byDay)
   const trialSums = trialsSums(byDay)
+  const weekToDate = computeWeekToDate(byDay)
   const { daily, weekly, sources } = funnelAndSources(rows)
   // Two traces, same function, different bounds: the rolling 7-day one
   // (unchanged), and a true yesterday-only one on the SAME calendar day
@@ -428,6 +597,12 @@ export async function runDailyDigest(c: SupabaseClient): Promise<DigestResult> {
   const now = new Date()
   const day = now.toISOString().slice(0, 10)
   const isMonday = now.getUTCDay() === 1
-  const { headline, synthesis } = await synthesize({ trend, daily, weekly, sources, cohort, trialSums, trialsYesterday, barHit, isMonday })
-  return { day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, cohortYesterday, trialSums, headline, synthesis }
+  const { headline, synthesis, proposedHypothesis } = await synthesize({
+    trend, daily, weekly, sources, cohort, trialSums, weekToDate, cohortLearnings, runningExperiments, uxSignals,
+    trialsYesterday, barHit, isMonday,
+  })
+  return {
+    day, isMonday, trialsYesterday, barHit, trend, dailyFunnel: daily, weeklyFunnel: weekly, sources, cohort, cohortYesterday,
+    trialSums, weekToDate, cohortLearnings, runningExperiments, uxSignals, headline, proposedHypothesis, synthesis,
+  }
 }

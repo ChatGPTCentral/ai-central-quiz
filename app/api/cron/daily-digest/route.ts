@@ -10,7 +10,9 @@ import { verifySessionCookie, ADMIN_COOKIE_NAME } from '@/lib/admin-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+// Was 60 — raised for the 2026-08-29 additions (a PostHog HogQL query plus
+// one experiment_results() RPC per running experiment, sequential).
+export const maxDuration = 120
 
 export async function GET(req: NextRequest) {
   // SAME CONTRACT AS EVERY OTHER CRON IN THIS REPO: Bearer CRON_SECRET, or a
@@ -40,6 +42,11 @@ export async function GET(req: NextRequest) {
     cohort: result.cohort,
     cohort_yesterday: result.cohortYesterday,
     trial_sums: result.trialSums,
+    week_to_date: result.weekToDate,
+    cohort_learnings_snapshot: result.cohortLearnings,
+    experiments_snapshot: result.runningExperiments,
+    ux_signals: result.uxSignals,
+    proposed_hypothesis: result.proposedHypothesis,
     headline: result.headline,
     synthesis: result.synthesis,
   }, { onConflict: 'day' })
