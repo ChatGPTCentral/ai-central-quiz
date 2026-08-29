@@ -157,6 +157,12 @@ export type TrialPoint = {
   convertedCents: number | null
   convertedAt: string | null
   lifetimeBundle: boolean
+  /** For the transparency lines under ALL TRIALS: gross includes these, so
+   *  the owner can see how many of the gross count they are without having
+   *  to take the total on faith (2026-08-29: "add also a refunded line and
+   *  disputed"). */
+  refunded: boolean
+  disputed: boolean
 }
 
 export const LEDGER_SELECT =
@@ -233,6 +239,10 @@ export function classifyLedger(
   // CHARGE being $54.74, never on ledger stamps (see below).
   const chargeCents = new Map<string, number>()
   for (const ch of charges) chargeCents.set(ch.id, ch.amount_cents)
+  // Same test the "-cost" sweep uses below, hoisted so a trial's own point
+  // can carry it too — a lost or still-open dispute, not just a refund.
+  const chargeDisputed = new Map<string, boolean>()
+  for (const ch of charges) chargeDisputed.set(ch.id, (ch.dispute_lost_cents ?? 0) > 0 || (ch.dispute_open_cents ?? 0) > 0 || (ch.dispute_fee_cents ?? 0) !== 0)
 
   // NET = KEPT (owner's rule, 2026-08-17, final form: "net is 77K not 83").
   // Every entry a charge emits is reduced down to what the charge actually
@@ -307,6 +317,8 @@ export function classifyLedger(
       convertedCents: t.converted_cents,
       convertedAt: t.converted_at,
       lifetimeBundle: t.lifetime_bundle,
+      refunded: t.trial_refunded,
+      disputed: chargeDisputed.get(t.charge_id) ?? false,
     })
     // Both sets come from the ledger's own person key, so "who is net-new"
     // and "who is an existing-customer buyer" have exactly one definition.

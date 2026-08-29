@@ -569,10 +569,17 @@ export default async function DashboardPage({
     // Net-new per bucket, from the ledger like its two siblings, so the three
     // parts of ALL TRIALS come from one place and always sum to it.
     const netNewByBucket = new Map<string, number>()
+    // The two transparency lines under ALL TRIALS: how many of THAT bucket's
+    // gross count were refunded / disputed. Not a fourth part — every one of
+    // these is already inside net/quizExisting/notQuiz above.
+    const refundedByBucket = new Map<string, number>()
+    const disputedByBucket = new Map<string, number>()
     for (const t of rev.trialPoints) {
       const b = bucketKey(t.at, gran)
       if (!b || b < launchBucket) continue
       if (t.attribution === 'quiz_net_new') netNewByBucket.set(b, (netNewByBucket.get(b) || 0) + 1)
+      if (t.refunded) refundedByBucket.set(b, (refundedByBucket.get(b) || 0) + 1)
+      if (t.disputed) disputedByBucket.set(b, (disputedByBucket.get(b) || 0) + 1)
       if (!t.due) continue
       const m = maturity.get(b) || { due: 0, conv: 0 }
       m.due++
@@ -640,6 +647,8 @@ export default async function DashboardPage({
       netNew: netNewByBucket.get(bucket) || 0,     // from the ledger, quiz clock
       otherPaid: otherByBucket.get(bucket) || 0,   // first charges the quiz cannot claim
       quizExistingPaid: quizExistingByBucket.get(bucket) || 0,
+      refundedTrials: refundedByBucket.get(bucket) || 0,
+      disputedTrials: disputedByBucket.get(bucket) || 0,
       revenue: subs.get(bucket)?.revenue || 0,
       revenueNet: revByBucket.get(bucket)?.net || 0,
       revenueQuizExisting: revByBucket.get(bucket)?.quizExisting || 0,

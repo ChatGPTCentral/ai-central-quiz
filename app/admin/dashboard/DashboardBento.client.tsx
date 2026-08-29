@@ -70,6 +70,12 @@ export interface SeriesPoint {
   /** Trials the quiz DID earn from people who had paid us before, so they are
    *  not net-new customers. Bucketed on QUIZ date, like net-new. */
   quizExistingPaid: number
+  /** How many of THIS bucket's gross ALL TRIALS were refunded / disputed —
+   *  transparency lines under the total (owner, 2026-08-29), not a second
+   *  total: every one of these is already inside netNew/quizExistingPaid/
+   *  otherPaid above, gross. Same per-kind clock as their parent count. */
+  refundedTrials: number
+  disputedTrials: number
   /** Money from this cohort's net-new buyers, bucketed on QUIZ date. */
   revenue: number
   /** The revenue split, from REAL Stripe charges (stripe_charges mirror).
@@ -527,6 +533,10 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
           note: 'took the quiz and then bought, but had paid us before — the quiz earned the trial, not a new customer. By QUIZ date.' },
         { label: 'from not-quiz', pick: (p: SeriesPoint) => p.otherPaid, tot: sumB(p => p.otherPaid, F.otherPaid), metric: 'trials_notquiz',
           note: 'never took the quiz, or took it only after paying. By CHARGE date. Same classification as the revenue rows. Counts are gross; money is NET of refunds and lost disputes, so a refunded trial keeps its count while its dollars leave the money rows.' },
+        { label: 'of which refunded', pick: (p: SeriesPoint) => p.refundedTrials, tot: sumB(p => p.refundedTrials, 0), metric: 'trials_refunded',
+          note: 'already counted above, not extra: how many of the three rows above came back as a refund. Their dollars left the money rows; their count did not leave this one.' },
+        { label: 'of which disputed', pick: (p: SeriesPoint) => p.disputedTrials, tot: sumB(p => p.disputedTrials, 0), metric: 'trials_disputed',
+          note: 'already counted above, not extra: a lost or still-open chargeback. Overlaps "refunded" when Stripe processed it as both.' },
       ],
     },
     {
