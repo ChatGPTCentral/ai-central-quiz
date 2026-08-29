@@ -955,10 +955,26 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               {videoTourSection}
             </>
           ) : (
-          // The winner of result_sellfirst_v1, now the default page.
+          // Was studyPlanSection then offerSection — swapped 2026-08-29.
+          // v2_study_plan's own CTA was taking 57% of all checkout clicks on
+          // this page while converting 9.0% of them to a paid trial;
+          // v2_offer_stack_badges (inside offerSection, buried second) took
+          // under 2% of clicks but converted 100% of the ones it got, and
+          // v2_risk_free (further down still) converted 63.6%. Confirmed
+          // twice, independently, weeks apart (CLAUDE.md's own funnel-theory
+          // note, then a fresh person-level cross-reference against
+          // stripe_charges this session) — not a new hypothesis, the
+          // already-diagnosed "study_plan dominates exposure, badges are
+          // buried" problem CLAUDE.md names, finally acted on. This is also
+          // exactly the order the result_strip_v1 arm already tested
+          // (offer first, study plan demoted) rather than an unprecedented
+          // reorder. Shipped on judgment (rule 1: a change this large and
+          // this well-evidenced doesn't need a slow new A/B to re-confirm
+          // it), watched on /admin/cohorts (rule 5), not run as a formal
+          // experiment — the direction is not in genuine doubt here.
           <>
-            {studyPlanSection}
             {offerSection(false)}
+            {studyPlanSection}
             <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
             {reviewsSection}
             {videoTourSection}
