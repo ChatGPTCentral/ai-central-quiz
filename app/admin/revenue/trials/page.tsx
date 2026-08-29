@@ -24,7 +24,7 @@ import {
   retryVerdict, lastChargeAttempts, loadGraduatedSet,
   STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State, type Row,
 } from '@/lib/revenue-shared'
-import { classifyLedger, bucketKey, isQuizEarned } from '@/lib/trial-entries'
+import { classifyLedger, bucketKey } from '@/lib/trial-entries'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -88,17 +88,20 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const limit = Math.min(5000, Math.max(50, Number(searchParams.limit) || 5000))
   const initialNonPayingOnly = searchParams.nonpaying === '1'
 
-  // The SAME clock ALL TRIALS on the matrix counts by (a quiz-earned trial
-  // restates to the week the person took the quiz), not trial_at — so a
-  // ?month= filter here shows exactly the people that cell sums, not a
-  // charge-date slice that would total something else (owner, 2026-08-29,
-  // asking for the 102 behind July's ALL TRIALS numbered so it can be
-  // counted by eye, after the dashboard and /admin/revenue kept disagreeing
-  // on what "July" means).
-  const anchorOf = (r: Row) => (isQuizEarned(r.attribution) && r.quiz_completed_at) ? r.quiz_completed_at : r.trial_at
-  const anchorMonthOf = (r: Row) => bucketKey(anchorOf(r), 'month')
+  // Plain calendar month of the TRIAL DATE itself — day 1 to the last day,
+  // nothing restated to a different month. Owner, 2026-08-29, after the
+  // quiz-cohort version (which restates a trial to the month the person took
+  // the quiz, so a July-quiz/August-pay trial showed under July) surprised
+  // him with an August date inside a "July" filter: "if you filter by july
+  // i want to see them sorted A-Z on the date from the day 1 of the month to
+  // the last." This now matches /admin/revenue's own monthly count column
+  // (also trial_at), NOT the matrix's ALL TRIALS cell (which still restates
+  // quiz-earned trials to their quiz date, on purpose — that cell answers
+  // "what did the quiz produce", this page now answers "what happened in
+  // this calendar month").
+  const trialMonthOf = (r: Row) => bucketKey(r.trial_at, 'month')
   const fMonth = searchParams.month || ''
-  const monthsPresent = Array.from(new Set(L.map(anchorMonthOf))).filter(Boolean).sort()
+  const monthsPresent = Array.from(new Set(L.map(trialMonthOf))).filter(Boolean).sort()
 
   const L3 = L.filter(r => (includeIndia || r.country !== 'India') && (includeNoCard || !inNoCardEra(r)))
   // 'lapsed_covered' reads and counts as 'lapsed' everywhere on this page
@@ -110,7 +113,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
     matchesState(r) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr) &&
-    (!fMonth || anchorMonthOf(r) === fMonth) &&
+    (!fMonth || trialMonthOf(r) === fMonth) &&
     (!q || r.person_key.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q)))
 
   // The tables talk (owner, 2026-08-22): every row carries the SAME retry
@@ -118,11 +121,12 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   // charge attempt — so what this table offers and what the queue holds can
   // never disagree.
   const lastAttempt = lastChargeAttempts(d.adminActions)
-  // Sorted by anchor when a month is picked, oldest first — the same order
-  // a person would count in by hand, and the clock the filter itself used to
-  // decide who is in the list. Otherwise unchanged: newest trial first.
+  // Sorted by trial date when a month is picked, day 1 to the last day —
+  // the same order a person would count in by hand, and the same field the
+  // filter itself used to decide who is in the list. Otherwise unchanged:
+  // newest trial first.
   const people = fMonth
-    ? [...filtered].sort((a, b) => anchorOf(a).localeCompare(anchorOf(b))).slice(0, limit)
+    ? [...filtered].sort((a, b) => a.trial_at.localeCompare(b.trial_at)).slice(0, limit)
     : [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
   const tableRows: TrialRow[] = people.map((r, i) => {
     const st = effState(r)
@@ -180,10 +184,12 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
       </p>
       {fMonth && (
         <p style={{ fontSize: 12.5, color: INK, marginTop: 6, maxWidth: 860, lineHeight: 1.6, fontWeight: 700 }}>
-          {fMonth}: {filtered.length} row{filtered.length === 1 ? '' : 's'} numbered below, oldest first. Same person can
-          have more than one row here (a real repeat trial counts twice, rule 2). This is the SAME clock the matrix&rsquo;s
-          ALL TRIALS row counts by — a quiz-earned trial sits in the month the person took the quiz, not the month they
-          paid, so this list and that cell should always match to the row.
+          {fMonth}: {filtered.length} row{filtered.length === 1 ? '' : 's'} numbered below, day 1 to the last day of the
+          month, by trial date. Same person can have more than one row here (a real repeat trial counts twice, rule 2).
+          This matches /admin/revenue&rsquo;s own monthly count column (same trial-date clock). It will NOT always match
+          the matrix&rsquo;s ALL TRIALS cell: that row restates a quiz-earned trial to the month the person took the
+          quiz, so a person who took the quiz this month but paid next month counts there, not here, until their trial
+          date actually falls in this month.
         </p>
       )}
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
@@ -227,9 +233,9 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
             <a key={k} href={qs({ attr: fAttr === k ? undefined : k })} style={chip(fAttr === k)}>{v}</a>
           ))}
           <span style={{ width: 12 }} />
-          {/* By quiz-cohort month, same clock as the matrix's ALL TRIALS row
-              (owner, 2026-08-29) — lets a specific month's count be counted
-              by eye instead of taken on faith. */}
+          {/* By calendar month of the trial date itself, day 1 to the last
+              day (owner, 2026-08-29) — lets a specific month's count be
+              counted by eye instead of taken on faith. */}
           {monthsPresent.map(m => (
             <a key={m} href={qs({ month: fMonth === m ? undefined : m })} style={chip(fMonth === m)}>{m}</a>
           ))}
