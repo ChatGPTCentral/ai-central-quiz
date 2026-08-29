@@ -22,6 +22,11 @@ import ChargeAnnualAll from './ChargeAnnualAll.client'
 import type { State } from '@/lib/revenue-states'
 
 export interface TrialRow {
+  /** 1-indexed position in the server's own filtered, sorted list — so a
+   *  count like "102" can be checked by counting rows, not taken on faith
+   *  (owner, 2026-08-29). Gaps appear only if the Non-paying toggle below
+   *  hides some rows client-side; the number itself never repeats or resets. */
+  rowNumber: number
   charge_id: string
   person_key: string
   customer_id: string | null
@@ -90,6 +95,7 @@ type Col = {
 }
 
 const ALL_COLUMNS: Col[] = [
+  { key: 'row_number', label: '#', align: 'right', cell: r => <span style={{ color: MUTE }}>{r.rowNumber}</span> },
   { key: 'trial_date', label: 'Trial date', align: 'left',
     cell: r => <span style={{ color: MUTE, whiteSpace: 'nowrap' }}>{fmtDay(r.trial_at)}<span title={`Pricing era ${r.era}`} style={{ marginLeft: 5, fontSize: 9.5 }}>e{r.era}</span></span> },
   { key: 'email', label: 'Email', align: 'left', cell: r => r.person_key },
@@ -226,7 +232,7 @@ const ALL_COLUMNS: Col[] = [
  *  renders, in both the All and Non-paying views, so it is never a per-user
  *  column choice either; see the 'action' column definition above for what
  *  it shows on each row and why. */
-const DEFAULT_ORDER = ['trial_date', 'name', 'email', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
+const DEFAULT_ORDER = ['row_number', 'trial_date', 'name', 'email', 'status', 'payment1', 'payment2', 'total', 'channel', 'utm', 'country', 'paid2on']
 const DEFAULT_HIDDEN = ['channel', 'utm', 'country', 'paid2on']
 
 const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, padding: '7px 8px', whiteSpace: 'nowrap' }

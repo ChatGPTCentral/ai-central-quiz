@@ -24,7 +24,7 @@ import {
   retryVerdict, lastChargeAttempts, loadGraduatedSet,
   STATE_LABEL, STATE_COLOR, ATTR_LABEL, type State, type Row,
 } from '@/lib/revenue-shared'
-import { classifyLedger } from '@/lib/trial-entries'
+import { classifyLedger, bucketKey, isQuizEarned } from '@/lib/trial-entries'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -88,6 +88,18 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const limit = Math.min(5000, Math.max(50, Number(searchParams.limit) || 5000))
   const initialNonPayingOnly = searchParams.nonpaying === '1'
 
+  // The SAME clock ALL TRIALS on the matrix counts by (a quiz-earned trial
+  // restates to the week the person took the quiz), not trial_at — so a
+  // ?month= filter here shows exactly the people that cell sums, not a
+  // charge-date slice that would total something else (owner, 2026-08-29,
+  // asking for the 102 behind July's ALL TRIALS numbered so it can be
+  // counted by eye, after the dashboard and /admin/revenue kept disagreeing
+  // on what "July" means).
+  const anchorOf = (r: Row) => (isQuizEarned(r.attribution) && r.quiz_completed_at) ? r.quiz_completed_at : r.trial_at
+  const anchorMonthOf = (r: Row) => bucketKey(anchorOf(r), 'month')
+  const fMonth = searchParams.month || ''
+  const monthsPresent = Array.from(new Set(L.map(anchorMonthOf))).filter(Boolean).sort()
+
   const L3 = L.filter(r => (includeIndia || r.country !== 'India') && (includeNoCard || !inNoCardEra(r)))
   // 'lapsed_covered' reads and counts as 'lapsed' everywhere on this page
   // (owner, 2026-08-23: same fact, "Did not convert"; see the note on
@@ -98,6 +110,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
     matchesState(r) &&
     (!fEra || r.era === fEra) &&
     (!fAttr || r.attribution === fAttr) &&
+    (!fMonth || anchorMonthOf(r) === fMonth) &&
     (!q || r.person_key.toLowerCase().includes(q) || (r.name || '').toLowerCase().includes(q)))
 
   // The tables talk (owner, 2026-08-22): every row carries the SAME retry
@@ -105,11 +118,17 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   // charge attempt — so what this table offers and what the queue holds can
   // never disagree.
   const lastAttempt = lastChargeAttempts(d.adminActions)
-  const people = [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
-  const tableRows: TrialRow[] = people.map(r => {
+  // Sorted by anchor when a month is picked, oldest first — the same order
+  // a person would count in by hand, and the clock the filter itself used to
+  // decide who is in the list. Otherwise unchanged: newest trial first.
+  const people = fMonth
+    ? [...filtered].sort((a, b) => anchorOf(a).localeCompare(anchorOf(b))).slice(0, limit)
+    : [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
+  const tableRows: TrialRow[] = people.map((r, i) => {
     const st = effState(r)
     const la = lastAttempt.get(r.person_key.toLowerCase())
     return {
+      rowNumber: i + 1,
       personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? paysOffLedger(r) : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
       name: r.name, country: r.country, utm_source: r.utm_source,
@@ -139,7 +158,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
 
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
-    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, india: includeIndia ? '1' : undefined, nocard: includeNoCard ? '1' : undefined, q: q || undefined, ...patch }
+    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, month: fMonth || undefined, india: includeIndia ? '1' : undefined, nocard: includeNoCard ? '1' : undefined, q: q || undefined, ...patch }
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v)
     const s = p.toString()
     return `/admin/revenue/trials${s ? `?${s}` : ''}`
@@ -159,6 +178,14 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
         your sheet&rsquo;s judgments import every morning. Each trial is in exactly one state, so the counts always add up
         to {L3.length.toLocaleString()}{includeIndia ? '' : ' (India hidden)'}. Last sync: {d.lastSyncedAt ? fmtDay(d.lastSyncedAt) : 'unknown'}.
       </p>
+      {fMonth && (
+        <p style={{ fontSize: 12.5, color: INK, marginTop: 6, maxWidth: 860, lineHeight: 1.6, fontWeight: 700 }}>
+          {fMonth}: {filtered.length} row{filtered.length === 1 ? '' : 's'} numbered below, oldest first. Same person can
+          have more than one row here (a real repeat trial counts twice, rule 2). This is the SAME clock the matrix&rsquo;s
+          ALL TRIALS row counts by — a quiz-earned trial sits in the month the person took the quiz, not the month they
+          paid, so this list and that cell should always match to the row.
+        </p>
+      )}
       <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
         <a href="/admin/revenue" style={navChip}>← Revenue</a>
         {/* The old /admin/revenue/recovery page is gone (owner, 2026-08-23:
@@ -174,9 +201,9 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
           stay one click away instead of sitting open on every visit). Opens
           itself when any of them is actually active, so an active filter is
           never invisible. */}
-      <details open={!!(fState || fEra || fAttr || includeIndia || includeNoCard || q)} style={{ marginTop: 14 }}>
+      <details open={!!(fState || fEra || fAttr || fMonth || includeIndia || includeNoCard || q)} style={{ marginTop: 14 }}>
         <summary style={{ fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer', userSelect: 'none' }}>
-          Filters{(fState || fEra || fAttr || includeIndia || includeNoCard || q) ? ' (active)' : ''}
+          Filters{(fState || fEra || fAttr || fMonth || includeIndia || includeNoCard || q) ? ' (active)' : ''}
         </summary>
         <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 10 }}>
           <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
@@ -198,6 +225,13 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
           <span style={{ width: 12 }} />
           {Object.entries(ATTR_LABEL).map(([k, v]) => (
             <a key={k} href={qs({ attr: fAttr === k ? undefined : k })} style={chip(fAttr === k)}>{v}</a>
+          ))}
+          <span style={{ width: 12 }} />
+          {/* By quiz-cohort month, same clock as the matrix's ALL TRIALS row
+              (owner, 2026-08-29) — lets a specific month's count be counted
+              by eye instead of taken on faith. */}
+          {monthsPresent.map(m => (
+            <a key={m} href={qs({ month: fMonth === m ? undefined : m })} style={chip(fMonth === m)}>{m}</a>
           ))}
           <span style={{ width: 12 }} />
           <a href={qs({ india: includeIndia ? undefined : '1' })} style={chip(includeIndia)}
