@@ -332,9 +332,17 @@ The rules that follow, and they are rules:
   PostHog also has its own Heatmaps product (coordinate-level click, rage,
   scroll-depth maps, separate from the event counts above), queryable via
   its `heatmaps-list`/`heatmaps-events` API. `capture_heatmaps: true` is
-  set client-side (`components/PostHogProvider.client.tsx`), but as of
-  2026-08-24 it returns ZERO data sitewide over the trailing 30 days,
-  cause not yet found. Verify this is still true before relying on it.
+  set client-side (`components/PostHogProvider.client.tsx`). Read as
+  returning ZERO data sitewide on 2026-08-24; re-verified 2026-08-29 and
+  it is flowing again, cause of the original gap still unknown (data
+  could simply have been short of PostHog's own ingestion lag at the
+  earlier check). `url_pattern` matching is fussy: an anchored regex like
+  `quiz\.thecentral\.ai/result(\?.*)?$` returned zero even where real
+  pageviews existed, a looser `.*\/result.*` found the real data (1,242
+  clicks on /result over 14 days, 76% of them below the fold). No custom
+  PostHog dashboard exists either, only the untouched default "Your
+  starter dashboard" from project setup — nothing curated lives there to
+  check daily.
 
 ## How to talk to the owner (his instruction, 2026-08-20)
 
