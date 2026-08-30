@@ -146,6 +146,16 @@ export function OfferStack({
             device has a wallet AND the flag is on, so the button below is
             always the guaranteed path. */}
         {expressPay}
+        {/* PayBadges moved ABOVE the main CTA (owner, 2026-08-30: promote the
+            badges). It used to sit after the button and the guarantee text,
+            which meant most people who clicked the button above it never
+            scrolled far enough to trigger its own view event — this exact
+            placement (v2_offer_stack_badges) converts 81.8% of the people who
+            DO click it, the best rate on the page, but had only 494 views
+            against v2_study_plan's 1,847 (buyer_placement_quality, refreshed
+            2026-08-30). A trust signal that arrives after the decision is
+            already made cannot influence it; this one now can. */}
+        <PayBadges fallbackUrl={checkoutUrl} submissionId={submissionId} placement="v2_offer_stack_badges" />
         <CheckoutLink
           href={checkoutUrl}
           placement="v2_offer_stack"
@@ -161,7 +171,6 @@ export function OfferStack({
             Not useful? Reply to any of our emails within your 4 weeks and we refund the {offer.price}. No forms, no questions.
           </p>
         )}
-        <PayBadges fallbackUrl={checkoutUrl} submissionId={submissionId} placement="v2_offer_stack_badges" />
       </div>
     </div>
   )
