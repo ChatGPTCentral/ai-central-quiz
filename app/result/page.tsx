@@ -555,6 +555,25 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     previewVar.includes('redesign') ||
     assignments.some(a => a.experimentKey === 'result_page_v4' && a.variantKey === 'redesign')
 
+  // ── result_page_v5 · the redesign, sell-first ────────────────────────
+  // v4 lost badly: complete_to_checkout 15.6% (redesign) vs 47.8% (control),
+  // net_new_paid tied 1-1 despite redesign getting more completions (owner,
+  // 2026-08-30, after the cohort-49 and stale-LCP watcher flags led here).
+  // v4's own body put agitation and mechanism BEFORE the offer — sell-LATER,
+  // the one structural shape this page has already tested and lost with
+  // (result_sellfirst_v1: sell-first won checkout_click +14.4pts). v5 keeps
+  // every new piece of v4 (StageJourneyBar in the hero, FitCheckSection,
+  // HowItGoesSection, MechanismSection, BundleCrossSell, the real countdown)
+  // but puts the offer back where sell-first puts it: right after the hero,
+  // with everything else reordered to AFTER it as reinforcement, not a gate.
+  // Same hero as v4 (RedesignHero, gated on `redesign || v5` below), so a
+  // visitor never sees two different heroes for the same underlying idea.
+  const v5 =
+    previewVar.includes('v5') ||
+    assignments.some(a => a.experimentKey === 'result_page_v5' && a.variantKey === 'redesign_sellfirst')
+  // Either redesign arm claims the page shape, same reasoning as `aspirational`.
+  const redesignHero = redesign || v5
+
   // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
   // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
   // beehiiv link 1:1); 'link' arm: unchanged, navigates to the beehiiv link.
@@ -794,7 +813,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
 
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
-        {redesign ? (
+        {redesignHero ? (
           <RedesignHero
             firstName={firstName}
             rungClassName={rt.typeName}
@@ -870,7 +889,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                         guarantee
             Every section is identical between arms, only the order and the
             video's position change, so a win is attributable to the order. */}
-        {reveal && !stripped && !redesign && (
+        {reveal && !stripped && !redesignHero && (
           <UnlockReveal
             offer={offer}
             firstName={firstName || null}
@@ -923,6 +942,50 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 />
               </div>
             </section>
+            <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} nextStageLabel={nextStage?.label ?? null} />
+            {reviewsSection}
+            {studyPlanSection}
+          </>
+        ) : v5 ? (
+          // Sell-first order: the offer is the very next thing after the
+          // hero (same shape control has used since 2026-08-29), everything
+          // v4 put ahead of it becomes reinforcement below it instead.
+          <>
+            <section id="offer" style={{ backgroundColor: '#FEF7E7', scrollMarginTop: 0 }}>
+              <div className="max-w-[720px] mx-auto px-6 sm:px-10 pt-10 sm:pt-12 pb-12 sm:pb-16">
+                <div className="text-center">
+                  <h2 className="font-bold" style={{ fontSize: 'clamp(24px, 3vw, 32px)', color: '#1D3557', letterSpacing: '-0.01em' }}>
+                    Your plan, unlocked tonight
+                  </h2>
+                </div>
+                <div className="mt-6">
+                  <BundleCrossSell nextStageLabel={nextStage?.label ?? null} />
+                </div>
+                <OfferStack
+                  offer={offer}
+                  checkoutUrl={checkoutUrl}
+                  submissionId={rowId}
+                  rungClassName={rung.className}
+                  ctaLabel={ov('offerCard.ctaLabel', CTA)}
+                  expressPay={expressPayEl}
+                  lead="duration"
+                  guarantee="oneline"
+                  windowNote={windowNote}
+                />
+              </div>
+            </section>
+            <FitCheckSection />
+            <AgitationSection>
+              {echoOn ? (
+                <AnswerEcho lines={echoLines} stageClassName={rt.typeName} />
+              ) : cost ? (
+                <div className="mx-auto" style={{ borderLeft: '4px solid #E48715', backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
+                  <p style={{ fontSize: 15.5, lineHeight: 1.5, color: '#1A1A1A', fontWeight: 500 }}>{cost}</p>
+                </div>
+              ) : null}
+            </AgitationSection>
+            <HowItGoesSection rungClassName={rt.typeName} />
+            <MechanismSection />
             <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} nextStageLabel={nextStage?.label ?? null} />
             {reviewsSection}
             {studyPlanSection}
@@ -999,7 +1062,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
         {/* Redesign arm only, and only when there is a real deadline to
             restate (the component itself no-ops without one). */}
-        {redesign && (
+        {redesignHero && (
           <FinalUrgencyClose offer={offer} fw={fw} checkoutUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('riskFree.ctaLabel', CTA)} />
         )}
 
