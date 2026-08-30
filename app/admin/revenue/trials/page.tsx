@@ -128,11 +128,10 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const people = fMonth
     ? [...filtered].sort((a, b) => a.trial_at.localeCompare(b.trial_at)).slice(0, limit)
     : [...filtered].sort((a, b) => b.trial_at.localeCompare(a.trial_at)).slice(0, limit)
-  const tableRows: TrialRow[] = people.map((r, i) => {
+  const tableRows: TrialRow[] = people.map(r => {
     const st = effState(r)
     const la = lastAttempt.get(r.person_key.toLowerCase())
     return {
-      rowNumber: i + 1,
       personNote: st === 'lapsed_covered' ? personOutcome.get(r.person_key) ?? paysOffLedger(r) : null,
       charge_id: r.charge_id, person_key: r.person_key, customer_id: r.customer_id,
       name: r.name, country: r.country, utm_source: r.utm_source,

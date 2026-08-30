@@ -22,11 +22,6 @@ import ChargeAnnualAll from './ChargeAnnualAll.client'
 import type { State } from '@/lib/revenue-states'
 
 export interface TrialRow {
-  /** 1-indexed position in the server's own filtered, sorted list — so a
-   *  count like "102" can be checked by counting rows, not taken on faith
-   *  (owner, 2026-08-29). Gaps appear only if the Non-paying toggle below
-   *  hides some rows client-side; the number itself never repeats or resets. */
-  rowNumber: number
   charge_id: string
   person_key: string
   customer_id: string | null
@@ -86,6 +81,14 @@ type CellCtx = {
   onColor: (chargeId: string, color: string) => void
   onCheck: (chargeId: string, check: StripeCheck | null) => void
   checks: Record<string, StripeCheck | null>
+  /** Position in the table AS DISPLAYED, 1-indexed — built from `view`
+   *  (the client's own final sort) right before render, never from a
+   *  server-assigned number. The table always re-sorts client-side (line
+   *  ~307, "ONE order, always"), so a number attached to a row before that
+   *  sort belongs to a different order than the one on screen: the first
+   *  visible row showed "821" instead of "1" until this stopped trusting
+   *  a pre-sort number (owner, 2026-08-29). */
+  rowNumbers: Map<string, number>
 }
 type Col = {
   key: string
@@ -95,7 +98,7 @@ type Col = {
 }
 
 const ALL_COLUMNS: Col[] = [
-  { key: 'row_number', label: '#', align: 'right', cell: r => <span style={{ color: MUTE }}>{r.rowNumber}</span> },
+  { key: 'row_number', label: '#', align: 'right', cell: (r, ctx) => <span style={{ color: MUTE }}>{ctx.rowNumbers.get(r.charge_id) ?? '–'}</span> },
   { key: 'trial_date', label: 'Trial date', align: 'left',
     cell: r => <span style={{ color: MUTE, whiteSpace: 'nowrap' }}>{fmtDay(r.trial_at)}<span title={`Pricing era ${r.era}`} style={{ marginLeft: 5, fontSize: 9.5 }}>e{r.era}</span></span> },
   { key: 'email', label: 'Email', align: 'left', cell: r => r.person_key },
@@ -288,8 +291,6 @@ export default function TrialsTable({
   // dettagli della transazione stripe a destra dei bottoni").
   const [liveChecks, setLiveChecks] = useState<Record<string, StripeCheck | null>>({})
   const setLiveCheck = (chargeId: string, check: StripeCheck | null) => setLiveChecks(prev => ({ ...prev, [chargeId]: check }))
-  const cellCtx: CellCtx = { onColor: setLiveColor, onCheck: setLiveCheck, checks: liveChecks }
-
   // ONE table, ONE toggle (owner, 2026-08-23: "ridurre la complessita di
   // avere tutte queste tabelle e sottotabelle ... un toggle che mi fa il
   // subset di tutte le persone con le righe rosse"). The earlier cancelled/
@@ -305,6 +306,10 @@ export default function TrialsTable({
   const nonPaying = rows.filter(r => r.derivedState === 'lapsed')
   const base = nonPayingOnly ? nonPaying : rows
   const view = [...base].sort((a, b) => a.trial_at.localeCompare(b.trial_at))
+  // Built from `view`, the order actually on screen — see the note on
+  // CellCtx.rowNumbers for why this can never be a server-assigned number.
+  const rowNumbers = new Map(view.map((r, i) => [r.charge_id, i + 1]))
+  const cellCtx: CellCtx = { onColor: setLiveColor, onCheck: setLiveCheck, checks: liveChecks, rowNumbers }
   // Actions then Notes are always the last two columns, in both views
   // (owner, 2026-08-23: "actions, e poi dopo mi metti le note").
   const visible = [...L.visibleKeys.map(k => MENU_COLUMNS.find(c => c.key === k)!), ACTION_COL, NOTES_COL].filter(Boolean)
