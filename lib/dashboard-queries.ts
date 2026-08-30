@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { fromRow, type DbRow, type StoredSubmission } from './kv'
 import { applyFilterSpec, decodeSpec, type FilterSpec } from './advanced-filter'
+import { classifyLedger, loadLedgerAndCharges, type Entry, type TrialPoint } from './trial-entries'
 
 // ────────────────────────────────────────────────────────────────
 // Column projection — list-view queries skip the heavy jsonb columns.
@@ -323,3 +324,87 @@ export async function facetCounts(
 // The DB-row → StoredSubmission mapper lives in lib/kv.ts (`fromRow`).
 // Do NOT re-implement it here — keep a single source of truth so new columns
 // surface in every code path (table, detail, CSV export) at the same time.
+
+// The matrix's five revenue rows AND the "Not from the quiz" count, all from
+// ONE classification pass over REAL charges in the stripe_charges mirror.
+// This function used to classify raw charges itself, which meant the same
+// rules lived in two places and drifted; now the database owns the rules and
+// this only decides which CLOCK each row sits on.
+//
+// 'net'          quiz earned the trial from someone who had never paid. Quiz clock.
+// 'quizExisting' quiz earned the trial from an existing customer. Quiz clock.
+// 'notQuiz'      never took the quiz, or took it after paying. Charge clock.
+// 'annual'       the conversion that trial produced, on ITS TRIAL'S clock, so
+//                a week column answers "what did that week's trials become".
+// 'other'        every remaining dollar in the account: legacy subscriptions,
+//                old annual prices, duplicate subscriptions. Charge clock.
+// Conversion money is split by WHO earned the trial behind it, because "what
+// did the quiz produce" has to include the renewals its trials went on to pay.
+// Two real kinds rather than a shadow tag, so ALL REVENUE stays a plain sum of
+// its parts and nothing can be double-counted.
+//
+// The classification itself lives in lib/trial-entries.ts because
+// /api/admin/drill replays it to answer "which rows made this cell". A
+// drill-down that re-queried would be a second implementation of the same
+// rules, which is how every number in this project that disagreed with itself
+// got that way.
+//
+// Moved here from app/admin/dashboard/page.tsx (owner, 2026-08-29): a page.tsx
+// file may only export the route-segment surface Next.js expects
+// (default/metadata/dynamic/…), so a second caller — /admin/insights, which
+// needs the same netNewEmails/quizExistingEmails join for its "who actually
+// paid" column — could not import it from there directly.
+export async function revenueCharges(): Promise<{
+  entries: Entry[]
+  mirrored: number
+  /** $54.74 bundles ($4.99 trial + $49.75 lifetime) inside the numbers. */
+  lifetimeSplits: number
+  /** Conversions whose trial cohort predates the visible window. Attributed to
+   *  their real (off-screen) cohort and disclosed, never shown under a recent
+   *  week that could not have produced them. */
+  preWindowAnnuals: number
+  /** Emails of quiz-earned trials from EXISTING customers, for the north star. */
+  quizExistingEmails: Set<string>
+  /** Emails of NET-NEW trial buyers. The ledger decides this rather than a
+   *  second computation over submissions: the two agreed at 71 each today, but
+   *  they agreed by coincidence of two code paths, and every number in this
+   *  project that was computed twice eventually disagreed. */
+  netNewEmails: Set<string>
+  /** People holding more than one paid trial. Owner's rule 2 and 5: they all
+   *  count, so this is a fact about the customer base, not a deduction. */
+  quizRepeatTrials: number
+  /** Every trial with the clock it sits on, whether its renewal date has
+   *  passed, and whether it converted. The Trial→annual row is built from
+   *  THIS, not from a lifetime-value threshold on submissions — that older
+   *  path called a Jun-29 cohort 0% while the ledger showed it converting,
+   *  which is exactly the two-sources problem this rebuild exists to kill. */
+  trialPoints: TrialPoint[]
+}> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>(), netNewEmails: new Set<string>(), trialPoints: [] }
+  if (!url || !key) return empty
+  const c = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+  })
+
+  const { ledger, charges } = await loadLedgerAndCharges(c)
+
+  // ONE classification pass, shared with /api/admin/drill so the drawer that
+  // opens a cell lists the very entries that were summed into it.
+  const { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails } =
+    classifyLedger(ledger, charges, MIRROR_START_ISO)
+
+  // People holding more than one paid trial. This used to be the count of
+  // trials the ledger threw away as duplicates; nothing is thrown away now
+  // (owner's rules 1, 2 and 5 — gross, always, restated 2026-08-29), so it is
+  // simply how many people bought twice. A refund does not un-buy the trial.
+  const perPerson = new Map<string, number>()
+  for (const t of ledger) {
+    perPerson.set(t.person_key, (perPerson.get(t.person_key) || 0) + 1)
+  }
+  const quizRepeatTrials = Array.from(perPerson.values()).filter(n => n > 1).length
+
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, netNewEmails, trialPoints }
+}

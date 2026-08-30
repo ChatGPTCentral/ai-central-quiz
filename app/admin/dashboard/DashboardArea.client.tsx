@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import AdvancedFilter from '@/app/admin/submissions/AdvancedFilter.client'
-import DashboardBento, { type BentoRow, type FunnelEventCounts, type PlacementStat, type Series } from './DashboardBento.client'
+import DashboardBento, { type BentoRow, type FunnelEventCounts, type Series } from './DashboardBento.client'
 
 // Owns the shared Numbers/Percentages state and hosts the compact header control
 // cluster (Launch/All · N/% · Segments · Export) so the segment builder no longer
 // eats a full-width strip at the top — it drops down from a button next to Export.
 export default function DashboardArea({
-  rows, sample, funnelEvents, placements, series, exportHref, launchLabel, rangeLabel, searchParamsStr, error,
+  rows, sample, funnelEvents, series, exportHref, launchLabel, rangeLabel, searchParamsStr, error,
   otherPaid, quizExistingPaid, lifetimeSplits, quizRepeatTrials, preWindowAnnuals,
 }: {
-  rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts; placements: PlacementStat[]
+  rows: BentoRow[]; sample: 'launch' | 'all'; funnelEvents: FunnelEventCounts
   otherPaid: number
   quizExistingPaid: number
   /** People-vs-charges reconciliation facts for the matrix footnote. */
@@ -75,7 +75,7 @@ export default function DashboardArea({
       )}
 
       <div style={{ padding: '0 36px 44px' }}>
-        <DashboardBento rows={rows} sample={sample} funnelEvents={funnelEvents} placements={placements} series={series} pct={pct} otherPaid={otherPaid} quizExistingPaid={quizExistingPaid} lifetimeSplits={lifetimeSplits} quizRepeatTrials={quizRepeatTrials} preWindowAnnuals={preWindowAnnuals} />
+        <DashboardBento rows={rows} sample={sample} funnelEvents={funnelEvents} series={series} pct={pct} otherPaid={otherPaid} quizExistingPaid={quizExistingPaid} lifetimeSplits={lifetimeSplits} quizRepeatTrials={quizRepeatTrials} preWindowAnnuals={preWindowAnnuals} />
       </div>
     </div>
   )
