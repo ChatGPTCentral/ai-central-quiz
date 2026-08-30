@@ -131,9 +131,9 @@ function readRef(obj: unknown, key: string): string | null {
   return null
 }
 
-/** Is there a DEFAULT payment method set, by the field names Stripe has
- *  historically used: the invoice's own default, then the customer's
- *  invoice_settings default, then the legacy default_source.
+/** Is there a DEFAULT payment method set, by the invoice's own default, then
+ *  the legacy default_source — both invoice-level fields, no customer
+ *  expansion needed.
  *
  *  PROVEN UNRELIABLE, 2026-08-20 — kept only as a free, best-effort hint, NEVER
  *  as a gate. Ton Kuijlen has a Mastercard attached and nine Stripe retry
@@ -141,7 +141,12 @@ function readRef(obj: unknown, key: string): string | null {
  *  yet this returned false for him: the account's pinned API version does not
  *  populate these fields the way expected, the same class of bug that moved
  *  amount_refunded off the Charge object. A false negative here once told the
- *  owner a real customer had "no card on file".
+ *  owner a real customer had "no card on file". This used to also check the
+ *  CUSTOMER object's own invoice_settings/default_source, which needed
+ *  `expand: ['data.customer']` on the list call — removed 2026-08-30 once that
+ *  expand turned out to be the likely cause of this sync timing out at 300s
+ *  (see walkInvoices): the customer-level fallback was already unreliable, so
+ *  paying for it on every one of ~2,400 invoices, every hour, bought nothing.
  *
  *  The AUTHORITATIVE check lives in app/api/admin/invoice-retry/route.ts,
  *  which calls stripe.paymentMethods.list() live, at the moment of the click —
@@ -150,12 +155,6 @@ function readRef(obj: unknown, key: string): string | null {
 function hasChargeableMethod(inv: Stripe.Invoice): boolean {
   if (readRef(inv, 'default_payment_method')) return true
   if (readRef(inv, 'default_source')) return true
-  const cust = (inv as unknown as { customer?: unknown }).customer
-  if (!cust || typeof cust !== 'object') return false
-  const c = cust as { deleted?: boolean; default_source?: unknown; invoice_settings?: { default_payment_method?: unknown } }
-  if (c.deleted) return false
-  if (c.invoice_settings?.default_payment_method) return true
-  if (c.default_source) return true
   return false
 }
 
@@ -235,14 +234,8 @@ export async function GET(req: NextRequest) {
     try {
       let after: string | undefined
       while (invoicePages < INVOICE_PAGE_CAP) {
-        // The customer is expanded to answer ONE question: is there a card we
-        // could charge. A PayPal payment leaves no reusable payment method, so
-        // invoices.pay() can never work for those people, and offering them a
-        // Retry button is offering an action that cannot succeed (owner,
-        // 2026-08-20, on JAGANATH G PATIL).
         const page: Stripe.ApiList<Stripe.Invoice> = await stripe.invoices.list({
           limit: 100,
-          expand: ['data.customer'],
           ...(after ? { starting_after: after } : {}),
         })
         invoicePages++
@@ -287,8 +280,22 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  await Promise.all([walkCharges(), walkInvoices()])
-
+  // SEQUENTIAL, not Promise.all, and each written the moment ITS walk ends —
+  // not both held until the slower one also finishes.
+  //
+  // Found 2026-08-30 (owner's watcher flagged /admin/revenue/unpaid stale for
+  // 21.5h): this route was timing out at the 300s platform ceiling on most
+  // hourly runs (23 occurrences since 2026-08-17, Vercel runtime error log),
+  // yet stripe_payment_failures kept refreshing while stripe_invoices did
+  // not. Cause: both walks ran concurrently under one Promise.all with a
+  // single write step after BOTH resolved — a slow or killed invoices walk
+  // meant the whole function never reached either write, and running two
+  // full Stripe walks at once likely doubled the account's request rate into
+  // its rate limit right when it mattered. Now invoices goes first (it is
+  // the one that was starving) and gets its own write immediately, so a
+  // charges walk that runs long afterward can no longer cost invoices its
+  // freshness, or vice versa — and a bad run degrades to ONE stale table
+  // instead of both.
   const c = sb()
   const write = async (table: string, rows: object[]) => {
     let n = 0
@@ -304,12 +311,14 @@ export async function GET(req: NextRequest) {
   let failuresWritten = 0
   let invoicesWritten = 0
   try {
+    await walkInvoices()
     // A walk that ERRORED wrote nothing, so do not upsert its partial rows on
     // top of a complete previous run. Same rule the charges sync applies to
     // its refund and dispute detail: a degraded run must never overwrite good
     // data with an incomplete picture.
-    if (!errors.charges) failuresWritten = await write('stripe_payment_failures', failures)
     if (!errors.invoices) invoicesWritten = await write('stripe_invoices', invoices)
+    await walkCharges()
+    if (!errors.charges) failuresWritten = await write('stripe_payment_failures', failures)
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })
   }
