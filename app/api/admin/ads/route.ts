@@ -157,17 +157,23 @@ export async function GET(req: NextRequest) {
   // size, is the only honest option: swapping to the small number would
   // flatter every channel on this page, and ignoring it would hide the fact
   // that our own cohort may be behaving differently.
-  const { data: qz } = await c
-    .from('submissions')
-    .select('stripe_first_charge_at, stripe_last_charge_at')
-    .gte('stripe_first_charge_at', '2026-07-05')
-    .lt('stripe_first_charge_at', new Date(Date.now() - 32 * 864e5).toISOString())
-    .is('archived_at', null)
-    .or('is_test.is.null,is_test.eq.false')
-  const qzRows = (qz || []) as { stripe_first_charge_at: string; stripe_last_charge_at: string | null }[]
-  const qzRenewed = qzRows.filter(r =>
-    r.stripe_last_charge_at &&
-    new Date(r.stripe_last_charge_at).getTime() > new Date(r.stripe_first_charge_at).getTime() + 20 * 864e5).length
+  //
+  // Reads trial_ledger, not raw submissions fields (owner, 2026-08-29: "are
+  // we sure we're taking into account all the trials"). The old version
+  // guessed "renewed" from stripe_last_charge_at > stripe_first_charge_at +
+  // 20 days on the submissions row directly — a second, independent
+  // derivation of the same fact trial_to_annual_rate() above already
+  // computes correctly (due, converted, not refunded), just without its
+  // quiz-era filter. Checked against real data: 61 "due" / 59.0% the old
+  // way, 46 due / 69.6% reading the ledger — not a rounding difference.
+  const { data: qzLedger } = await c
+    .from('trial_ledger')
+    .select('due, converted')
+    .in('attribution', ['quiz_net_new', 'quiz_existing'])
+    .eq('due', true)
+    .eq('trial_refunded', false)
+  const qzRows = (qzLedger || []) as { due: boolean; converted: boolean }[]
+  const qzRenewed = qzRows.filter(r => r.converted).length
   const cohortRate: number | null = qzRows.length > 0 ? qzRenewed / qzRows.length : null
 
   return NextResponse.json({

@@ -69,6 +69,16 @@ export default function AdsPanel() {
 
   const ltv = data?.economics.ltv ?? 0
   const paidRows = useMemo(() => (data?.rows ?? []).filter(r => r.paid && r.takers > 0), [data])
+  // The same rows the table shows (takers >= 5), summed for the total row
+  // below it (owner, 2026-08-29: "add also a total line").
+  const shownRows = useMemo(() => (data?.rows ?? []).filter(r => r.takers >= 5), [data])
+  const totals = useMemo(() => {
+    const takers = shownRows.reduce((a, r) => a + r.takers, 0)
+    const sawResult = shownRows.reduce((a, r) => a + r.sawResult, 0)
+    const clicked = shownRows.reduce((a, r) => a + r.clicked, 0)
+    const buyers = shownRows.reduce((a, r) => a + r.buyers, 0)
+    return { takers, sawResult, clicked, buyers, clickRate: sawResult > 0 ? clicked / sawResult : 0, buyRate: takers > 0 ? buyers / takers : 0 }
+  }, [shownRows])
   const spendNum = Number(spend) || 0
   const paidTakers = paidRows.reduce((a, r) => a + r.takers, 0)
   // Landing views from paid sources. LinkedIn owns the true click count, this
@@ -159,7 +169,7 @@ export default function AdsPanel() {
           </tr>
         </thead>
         <tbody>
-          {data.rows.filter(r => r.takers >= 5).map(r => (
+          {shownRows.map(r => (
             <tr key={r.source} style={{ borderBottom: `1px solid ${ROWHAIR}` }}>
               <td className="py-1.5" style={{ fontWeight: r.paid ? 800 : 500 }}>
                 {r.source}{r.paid && <span style={{ marginLeft: 6, fontSize: 9.5, background: INK, color: '#FFFDFA', padding: '1px 5px', fontWeight: 700 }}>PAID</span>}
@@ -174,6 +184,18 @@ export default function AdsPanel() {
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr style={{ borderTop: `2px solid ${INK}`, fontWeight: 800 }}>
+            <td className="py-1.5">Total</td>
+            <td className="text-right tabular-nums">{totals.takers}</td>
+            <td className="text-right tabular-nums">{totals.sawResult}</td>
+            <td className="text-right tabular-nums">{totals.clicked}</td>
+            <td className="text-right tabular-nums">{pct(totals.clickRate)}</td>
+            <td className="text-right tabular-nums">{totals.buyers}</td>
+            <td className="text-right tabular-nums" style={{ color: totals.buyRate >= breakEvenRate ? GOOD : INK }}>{pct(totals.buyRate)}</td>
+            <td className="text-right tabular-nums">{usd(ltv * totals.buyRate)}</td>
+          </tr>
+        </tfoot>
       </table>
       </div>
       <p style={{ fontSize: 11.5, color: MUTE, padding: '10px 16px 14px', margin: 0, lineHeight: 1.5, borderTop: `1px solid ${ROWHAIR}` }}>
