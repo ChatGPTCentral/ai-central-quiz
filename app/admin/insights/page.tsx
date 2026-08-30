@@ -29,20 +29,25 @@ export default async function InsightsPage() {
     // (net-new OR existing customer buying again), not netNew alone, the
     // same north-star definition the dashboard's KPI row uses. This table
     // used to key on netNew only, undercounting existing-customer buyers by
-    // the same bug fixed today on "What a taker is worth, by source".
-    const quizTrialById = new Map<string, { quizTrial: boolean; ltv: number }>()
+    // the same bug fixed 2026-08-29 on "What a taker is worth, by source".
+    //
+    // Revenue reads quizRevenueByEmail (net, ledger-truth), not
+    // lifetime_value_usd — the same fix that table needed a day later,
+    // 2026-08-30: that CRM field is gross of Stripe's fees and can include
+    // money from before the quiz ever touched this person.
+    const quizTrialById = new Map<string, { quizTrial: boolean; revenue: number }>()
     for (const r of allRows) {
       const emailKey = r.email?.trim().toLowerCase() || null
       const netNew = !!(emailKey && rev.netNewEmails.has(emailKey))
       const quizTrial = netNew || (!!emailKey && rev.quizExistingEmails.has(emailKey))
-      if (r.id) quizTrialById.set(String(r.id), { quizTrial, ltv: r.lifetimeValueUsd || 0 })
+      if (r.id) quizTrialById.set(String(r.id), { quizTrial, revenue: emailKey ? (rev.quizRevenueByEmail.get(emailKey) ?? 0) : 0 })
     }
     placements = events.placements.map(p => {
       let sales = 0
       let revenue = 0
       for (const id of p.clickerIds ?? []) {
         const hit = quizTrialById.get(id)
-        if (hit?.quizTrial) { sales++; revenue += hit.ltv }
+        if (hit?.quizTrial) { sales++; revenue += hit.revenue }
       }
       return { placement: p.placement, views: p.views, clicks: p.clicks, sales, revenue }
     })

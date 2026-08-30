@@ -28,6 +28,12 @@ export interface BentoRow {
   utmQuiz: string | null
   utmNewsletter: string | null
   ltv: number
+  /** NET quiz revenue from this person (their trial + its own renewal, rule 6
+   *  kept money) — use this for any north-star money figure. `ltv` above is
+   *  submissions.lifetime_value_usd, a CRM field: whole lifetime, gross of
+   *  Stripe's fees, fine for a rough "have they ever paid" badge, wrong for
+   *  a number meant to reconcile with the matrix. */
+  quizNetRevenueUsd: number
   /** No Stripe charge EVER before the quiz, then bought. A new customer. */
   netNew: boolean
   /** THE NORTH STAR (owner, 2026-08-10): the quiz produced a trial from this
@@ -1046,7 +1052,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, series, pct
   // an advertising one. The ads page keeps it too, priced against spend; here
   // it is unpriced, so a free source and a paid source can be compared on the
   // only thing they share, what a taker is worth.
-  const sourceEconomics = useMemo(() => {
+  const sourceRows = useMemo(() => {
     const m = new Map<string, { takers: number; paid: number; revenue: number }>()
     for (const r of rows) {
       const k = r.utmQuiz || '(direct)'
@@ -1058,30 +1064,45 @@ export default function DashboardBento({ rows, sample, funnelEvents, series, pct
       // BentoRow's own comment above), so an existing customer who took the
       // quiz and bought again was invisible here, understating every
       // source's real buy rate and worth.
-      if (r.quizTrial) { e.paid++; e.revenue += r.ltv }
+      //
+      // quizNetRevenueUsd, not ltv (owner, 2026-08-30: caught this table's
+      // Revenue total, $3,241, disagreeing with the matrix's quiz-revenue
+      // rows). ltv is submissions.lifetime_value_usd, a CRM enrichment field:
+      // gross of Stripe's fees (only refunds subtracted) and lagging the
+      // ledger's own hourly refresh — the "net of refunds but before fees"
+      // number rule 6 says renders nowhere. quizNetRevenueUsd comes from the
+      // same classifyLedger() entries the matrix itself sums, so this table
+      // reconciles to it by construction.
+      if (r.quizTrial) { e.paid++; e.revenue += r.quizNetRevenueUsd }
       m.set(k, e)
     }
-    return Array.from(m.entries())
-      .map(([source, v]) => ({
-        source,
-        ...v,
-        buyRate: v.takers > 0 ? (v.paid / v.takers) * 100 : 0,
-        // ARPU over EVERY taker, not just buyers: this is what one more visitor
-        // from that source is worth, which is the number you would bid with.
-        arpu: v.takers > 0 ? v.revenue / v.takers : 0,
-      }))
-      .filter(r => r.takers >= 5)
-      .sort((a, b) => b.arpu - a.arpu || b.takers - a.takers)
+    return Array.from(m.entries()).map(([source, v]) => ({
+      source,
+      ...v,
+      buyRate: v.takers > 0 ? (v.paid / v.takers) * 100 : 0,
+      // ARPU over EVERY taker, not just buyers: this is what one more visitor
+      // from that source is worth, which is the number you would bid with.
+      arpu: v.takers > 0 ? v.revenue / v.takers : 0,
+    }))
   }, [rows])
-  // The total line across every source shown (owner, 2026-08-29: "add also
-  // a total line") — summed from the same rows the table shows, so it can
-  // be checked against them by eye.
+  // Sources under 5 takers stay off the table — a single-digit sample is not
+  // worth its own line. This is what the table body renders.
+  const sourceEconomics = useMemo(
+    () => sourceRows.filter(r => r.takers >= 5).sort((a, b) => b.arpu - a.arpu || b.takers - a.takers),
+    [sourceRows],
+  )
+  // The total line across EVERY source, hidden ones included (owner,
+  // 2026-08-29: "add also a total line"). It first summed sourceEconomics
+  // only, the rows the table shows, which quietly dropped real buyers in
+  // small source buckets — the same mistake the ads page's total made and
+  // was caught making, 2026-08-30 (that fix: commit 36926e3). A total that
+  // is not the real total is not trustworthy, so this one sums every source.
   const sourceTotals = useMemo(() => {
-    const takers = sourceEconomics.reduce((a, r) => a + r.takers, 0)
-    const paid = sourceEconomics.reduce((a, r) => a + r.paid, 0)
-    const revenue = sourceEconomics.reduce((a, r) => a + r.revenue, 0)
+    const takers = sourceRows.reduce((a, r) => a + r.takers, 0)
+    const paid = sourceRows.reduce((a, r) => a + r.paid, 0)
+    const revenue = sourceRows.reduce((a, r) => a + r.revenue, 0)
     return { takers, paid, revenue, buyRate: takers > 0 ? (paid / takers) * 100 : 0, arpu: takers > 0 ? revenue / takers : 0 }
-  }, [sourceEconomics])
+  }, [sourceRows])
 
   return (
     <div>
@@ -1258,7 +1279,7 @@ export default function DashboardBento({ rows, sample, funnelEvents, series, pct
         <div style={{ borderTop: '1px solid #333333' }}>
           <div className="flex items-baseline justify-between" style={{ padding: '12px 20px', background: LATTE, borderBottom: `1px solid ${HAIR}`, gap: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>What a taker is worth, by source</span>
-            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>ARPU is revenue ÷ ALL takers, so it is what one more visitor is worth · sources under 5 takers hidden</span>
+            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>ARPU is revenue ÷ ALL takers, so it is what one more visitor is worth · sources under 5 takers hidden as their own row, still counted in Total</span>
           </div>
           <div className="ac-scrollx"><div>
             <div className="grid" style={{ gridTemplateColumns: GRID_SRC, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B', borderBottom: `1px solid ${HAIR}`, padding: '0 20px' }}>

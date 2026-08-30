@@ -135,6 +135,13 @@ export default async function DashboardPage({
       utmQuiz: cleanUtm(r.utmSource),
       utmNewsletter: cleanUtm(r.utmSourceBeehiiv),
       ltv: r.lifetimeValueUsd || 0,
+      // NET money the quiz itself produced from this person (their trial +
+      // its own renewal, rule 6 kept-money) — see quizRevenueByEmail's own
+      // comment. `ltv` above stays as-is: it is submissions.lifetime_value_usd,
+      // a CRM field other screens (People, IdCard) legitimately use as a rough
+      // "has this person ever paid us" signal, gross of fees, whole lifetime.
+      // A north-star money figure must use this field instead, never that one.
+      quizNetRevenueUsd: emailKey ? (rev.quizRevenueByEmail.get(emailKey) ?? 0) : 0,
       netNew,
       quizTrial,
     }

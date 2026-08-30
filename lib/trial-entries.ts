@@ -231,6 +231,7 @@ export function classifyLedger(
   preWindowAnnuals: number
   quizExistingEmails: Set<string>
   netNewEmails: Set<string>
+  quizRevenueByEmail: Map<string, number>
 } {
   const entries: Entry[] = []
   const trialPoints: TrialPoint[] = []
@@ -507,5 +508,23 @@ export function classifyLedger(
     })
   }
 
-  return { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails }
+  // Per-person NET quiz revenue: their trial plus its own renewal, nothing a
+  // person brought with them before the quiz touched them (owner's rule,
+  // 2026-08-11: "money from people the quiz never touched is excluded").
+  // Summed from the SAME entries the KPI row and the matrix already sum —
+  // never a second computation of what "kept" means — so a screen built from
+  // this map reconciles to quizRevenue by construction. Found missing
+  // 2026-08-30: "What a taker is worth, by source" was pricing people off
+  // submissions.lifetime_value_usd instead, a CRM enrichment column that is
+  // gross of Stripe's fees (only refunds subtracted, see stripe-import.ts)
+  // and lags the ledger's own hourly refresh — exactly the "net of refunds
+  // but before fees" number rule 6 says renders nowhere, rendering anyway.
+  const quizRevenueByEmail = new Map<string, number>()
+  for (const e of entries) {
+    if (e.kind !== 'net' && e.kind !== 'quizExisting' && e.kind !== 'annualQuiz') continue
+    const key = e.personKey.toLowerCase()
+    quizRevenueByEmail.set(key, (quizRevenueByEmail.get(key) ?? 0) + e.usd)
+  }
+
+  return { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails, quizRevenueByEmail }
 }

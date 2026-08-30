@@ -370,6 +370,11 @@ export async function revenueCharges(): Promise<{
    *  they agreed by coincidence of two code paths, and every number in this
    *  project that was computed twice eventually disagreed. */
   netNewEmails: Set<string>
+  /** NET quiz revenue per person (their trial + its own renewal, kept money,
+   *  rule 6) — for anything pricing a person or a source, so it never falls
+   *  back to submissions.lifetime_value_usd, a CRM field that is gross of
+   *  Stripe's fees and lags the ledger's own hourly refresh. */
+  quizRevenueByEmail: Map<string, number>
   /** People holding more than one paid trial. Owner's rule 2 and 5: they all
    *  count, so this is a fact about the customer base, not a deduction. */
   quizRepeatTrials: number
@@ -382,7 +387,7 @@ export async function revenueCharges(): Promise<{
 }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
-  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>(), netNewEmails: new Set<string>(), trialPoints: [] }
+  const empty = { entries: [], mirrored: 0, lifetimeSplits: 0, quizRepeatTrials: 0, preWindowAnnuals: 0, quizExistingEmails: new Set<string>(), netNewEmails: new Set<string>(), quizRevenueByEmail: new Map<string, number>(), trialPoints: [] }
   if (!url || !key) return empty
   const c = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -393,7 +398,7 @@ export async function revenueCharges(): Promise<{
 
   // ONE classification pass, shared with /api/admin/drill so the drawer that
   // opens a cell lists the very entries that were summed into it.
-  const { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails } =
+  const { entries, trialPoints, lifetimeSplits, preWindowAnnuals, quizExistingEmails, netNewEmails, quizRevenueByEmail } =
     classifyLedger(ledger, charges, MIRROR_START_ISO)
 
   // People holding more than one paid trial. This used to be the count of
@@ -406,5 +411,5 @@ export async function revenueCharges(): Promise<{
   }
   const quizRepeatTrials = Array.from(perPerson.values()).filter(n => n > 1).length
 
-  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, netNewEmails, trialPoints }
+  return { entries, mirrored: charges.length, lifetimeSplits, quizRepeatTrials, preWindowAnnuals, quizExistingEmails, netNewEmails, quizRevenueByEmail, trialPoints }
 }
