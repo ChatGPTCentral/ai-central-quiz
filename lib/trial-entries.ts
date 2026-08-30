@@ -156,6 +156,11 @@ export type TrialPoint = {
   trialCents: number
   convertedCents: number | null
   convertedAt: string | null
+  /** The renewal's own charge id, for looking up ITS net kept amount
+   *  separately from the trial's (rule 6: money is net, everywhere,
+   *  including in a drill-down — a $59.75 renewal has its own fee and its
+   *  own possible refund, not the trial's). Null until a renewal exists. */
+  convertedChargeId: string | null
   lifetimeBundle: boolean
   /** For the transparency lines under ALL TRIALS: gross includes these, so
    *  the owner can see how many of the gross count they are without having
@@ -316,6 +321,7 @@ export function classifyLedger(
       trialCents: t.trial_cents,
       convertedCents: t.converted_cents,
       convertedAt: t.converted_at,
+      convertedChargeId: t.converted_charge_id && t.converted_charge_id !== t.charge_id ? t.converted_charge_id : null,
       lifetimeBundle: t.lifetime_bundle,
       refunded: t.trial_refunded,
       disputed: chargeDisputed.get(t.charge_id) ?? false,

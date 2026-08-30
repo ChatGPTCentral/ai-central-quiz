@@ -415,8 +415,16 @@ export default async function DashboardPage({
   // truth: the count row is now exactly the notQuiz first-trial entries, so
   // count × $4.99 equals the revenue row by construction.
   const rev = await revenueCharges()
-  const notQuizTrialEntries = rev.entries.filter(e => e.kind === 'notQuiz')
-  const quizExistingEntries = rev.entries.filter(e => e.kind === 'quizExisting')
+  // ONE TRIAL, ONE ROW: trialPoints (not entries) for counting, because a
+  // refunded trial now emits TWO entries of its own kind — the main one at
+  // $0 plus the "-cost" sweep's negative residual, both needed so the money
+  // still nets to the cent (see lib/trial-entries.ts) — and counting entries
+  // instead of trials silently counted that one refunded person twice. Found
+  // 2026-08-29 when the matrix (96) and /admin/revenue/trials (94) stopped
+  // agreeing on July right after the gross-count fix: Bianco and Mitchell,
+  // July's two refunds, were each worth 2 in this count instead of 1.
+  const notQuizTrialEntries = rev.trialPoints.filter(t => t.attribution === 'not_quiz')
+  const quizExistingEntries = rev.trialPoints.filter(t => t.attribution === 'quiz_existing')
 
 
   // One projection per person.
@@ -561,16 +569,19 @@ export default async function DashboardPage({
     //
     // The trials the quiz cannot claim, in the same buckets as everything
     // else, so a good week for the quiz can be told apart from a good week
-    // for Stripe. Same classified entries as the revenue row, one per person.
+    // for Stripe. One row per TRIAL (trialPoints), not per entry — revByBucket
+    // below counts entries on purpose (a refunded trial's money is two entries,
+    // $0 plus its cost residual, so both must be summed), but a headcount must
+    // never do that, or one refunded person reads as two.
     const otherByBucket = new Map<string, number>()
-    for (const e of notQuizTrialEntries) {
-      const b = bucketKey(e.chargedAt, gran)
+    for (const t of notQuizTrialEntries) {
+      const b = bucketKey(t.chargedAt, gran)
       if (!b || b < launchBucket) continue
       otherByBucket.set(b, (otherByBucket.get(b) || 0) + 1)
     }
     const quizExistingByBucket = new Map<string, number>()
-    for (const e of quizExistingEntries) {
-      const b = bucketKey(e.chargedAt, gran)
+    for (const t of quizExistingEntries) {
+      const b = bucketKey(t.chargedAt, gran)
       if (!b || b < launchBucket) continue
       quizExistingByBucket.set(b, (quizExistingByBucket.get(b) || 0) + 1)
     }

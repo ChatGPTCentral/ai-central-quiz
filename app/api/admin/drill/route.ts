@@ -66,13 +66,6 @@ const TRIAL_WHY: Record<string, string> = {
   not_quiz: 'never took the quiz, or took it only after paying',
 }
 
-const trialRow = (t: TrialPoint): DrillRow => ({
-  chargeId: t.chargeId, personKey: t.personKey, name: t.name, customerId: t.customerId,
-  submissionId: t.submissionId, at: t.at, chargedAt: t.chargedAt,
-  usd: t.trialCents / 100,
-  why: TRIAL_WHY[t.attribution] ?? t.attribution,
-})
-
 export async function GET(req: NextRequest) {
   const ok = await verifySessionCookie(req.cookies.get(ADMIN_COOKIE_NAME)?.value)
   if (!ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
@@ -89,8 +82,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'bad gran' }, { status: 400 })
   }
 
+  // ONE clock, matching the dashboard exactly (owner, 2026-08-29): every
+  // per-period cell now buckets by the real charge date, not the quiz-
+  // restated one, so the drawer a cell opens must filter by the same field
+  // it was bucketed by, or the drawer's rows would stop being a true
+  // accounting of that cell's own number — the exact failure mode this
+  // whole endpoint exists to prevent (see the file header).
   const want = new Set(buckets)
-  const inWindow = (at: string) => want.has(bucketKey(at, gran))
+  const inWindow = (chargedAt: string) => want.has(bucketKey(chargedAt, gran))
 
   let rows: DrillRow[] = []
   let money = true
@@ -98,9 +97,25 @@ export async function GET(req: NextRequest) {
     const { ledger, charges } = await loadLedgerAndCharges(db(), MIRROR_START_ISO)
     const { entries, trialPoints } = classifyLedger(ledger, charges, MIRROR_START_ISO)
     const ofKind = (...kinds: Entry['kind'][]) =>
-      entries.filter(e => kinds.includes(e.kind) && inWindow(e.at)).map(asRow)
+      entries.filter(e => kinds.includes(e.kind) && inWindow(e.chargedAt)).map(asRow)
+    // NET, not the face price (rule 6: money is net, everywhere, a drawer
+    // included). Found 2026-08-29 alongside the gross-count fix: a trial
+    // row here showed trialCents, the $4.99 sticker price, while every
+    // other money on the page was already net of fees and refunds. Summed
+    // from entries (the same net the money rows show) by charge id, plus
+    // that charge's own "-cost" residual if it has one — the two pieces a
+    // refunded trial's kept money is split across.
+    const netByCharge = new Map<string, number>()
+    for (const e of entries) netByCharge.set(e.chargeId, (netByCharge.get(e.chargeId) ?? 0) + e.usd)
+    const netOfCharge = (chargeId: string) => (netByCharge.get(chargeId) ?? 0) + (netByCharge.get(`${chargeId}-cost`) ?? 0)
+    const trialRow = (t: TrialPoint): DrillRow => ({
+      chargeId: t.chargeId, personKey: t.personKey, name: t.name, customerId: t.customerId,
+      submissionId: t.submissionId, at: t.at, chargedAt: t.chargedAt,
+      usd: netOfCharge(t.chargeId),
+      why: TRIAL_WHY[t.attribution] ?? t.attribution,
+    })
     const trials = (pick: (t: TrialPoint) => boolean) =>
-      trialPoints.filter(t => pick(t) && inWindow(t.at)).map(trialRow)
+      trialPoints.filter(t => pick(t) && inWindow(t.chargedAt)).map(trialRow)
 
     switch (metric) {
       // ── money ──
@@ -117,10 +132,12 @@ export async function GET(req: NextRequest) {
       case 'trials_existing': money = false; rows = trials(t => t.attribution === 'quiz_existing'); break
       case 'trials_notquiz': money = false; rows = trials(t => t.attribution === 'not_quiz'); break
       case 'trials_quiz_earned': money = false; rows = trials(t => isQuizEarned(t.attribution)); break
+      case 'trials_refunded': money = false; rows = trials(t => t.refunded); break
+      case 'trials_disputed': money = false; rows = trials(t => t.disputed); break
       case 'conversions': money = false
-        rows = trialPoints.filter(t => t.due && t.converted && inWindow(t.at)).map(t => ({
+        rows = trialPoints.filter(t => t.due && t.converted && inWindow(t.chargedAt)).map(t => ({
           ...trialRow(t),
-          usd: t.convertedCents != null ? t.convertedCents / 100 : null,
+          usd: t.convertedChargeId ? netOfCharge(t.convertedChargeId) : (t.convertedCents != null ? t.convertedCents / 100 : null),
           why: t.lifetimeBundle
             ? 'bought the lifetime outright, counted as won, no renewal to come'
             : `renewed on ${(t.convertedAt || '').slice(0, 10)}`,
