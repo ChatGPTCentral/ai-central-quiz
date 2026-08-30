@@ -781,14 +781,15 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: P
   )
 }
 
-/** quiz_flow_v2 assignment (or ?qf=v2 preview, which records no exposure).
- *  Split out so the preview can read searchParams inside the Suspense
- *  boundary the rest of the flow already lives in. */
-function QuizV2Gate({ questions, accent, assignments }: Props) {
-  const sp = useSearchParams()
-  const preview = (sp.get('qf') || '').trim() === 'v2'
-  const assigned = (assignments ?? []).some(a => a.experimentKey === 'quiz_flow_v2' && a.variantKey === 'flow2')
-  return <QuizV2Content questions={questions} accent={accent} flowV2={preview || assigned} />
+/** quiz_flow_v2 CONCLUDED 2026-08-30 (owner: "promuovi flow2"): flow2 won on
+ *  quiz_completed, 73.8% vs 70.7% control, 335/336 exposures over 12 days,
+ *  never behind at any point in the run. The endowed/front-loaded progress
+ *  bar (flowProgressPct) and the endgame steps-left line are now everyone's
+ *  experience — assignment no longer gates this, same promotion pattern as
+ *  checkout_embed_v1 (app/result/page.tsx). experiments.quiz_flow_v2 set
+ *  status=ended, winner_variant=flow2. */
+function QuizV2Gate({ questions, accent }: Props) {
+  return <QuizV2Content questions={questions} accent={accent} flowV2 />
 }
 
 export default function QuizV2Client({ questions, accent, assignments }: Props) {
