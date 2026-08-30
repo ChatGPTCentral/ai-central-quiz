@@ -69,16 +69,26 @@ export default function AdsPanel() {
 
   const ltv = data?.economics.ltv ?? 0
   const paidRows = useMemo(() => (data?.rows ?? []).filter(r => r.paid && r.takers > 0), [data])
-  // The same rows the table shows (takers >= 5), summed for the total row
-  // below it (owner, 2026-08-29: "add also a total line").
   const shownRows = useMemo(() => (data?.rows ?? []).filter(r => r.takers >= 5), [data])
+  // ALL sources, including the ones too small to list as their own row.
+  // The total row first summed shownRows only (owner, 2026-08-29: "add also
+  // a total line"), which quietly dropped real buyers: two sources under 5
+  // takers each (december_update_welcome_sequence, newsletter_header) held 4
+  // real quiz-trial buyers between them, so the total read 130 against the
+  // ledger's true 134 (owner caught it, 2026-08-30, comparing it to the
+  // dashboard's 144 quiz-earned TRIALS — the further 10-trial gap there is
+  // people who bought a second trial off one quiz completion, not a bug: a
+  // trial count and a taker count are different things by design, rule 5).
+  // Rows stay hidden below 5 takers, a single-digit sample is not worth its
+  // own line, but the total must be the real total or it is not trustworthy.
   const totals = useMemo(() => {
-    const takers = shownRows.reduce((a, r) => a + r.takers, 0)
-    const sawResult = shownRows.reduce((a, r) => a + r.sawResult, 0)
-    const clicked = shownRows.reduce((a, r) => a + r.clicked, 0)
-    const buyers = shownRows.reduce((a, r) => a + r.buyers, 0)
+    const all = data?.rows ?? []
+    const takers = all.reduce((a, r) => a + r.takers, 0)
+    const sawResult = all.reduce((a, r) => a + r.sawResult, 0)
+    const clicked = all.reduce((a, r) => a + r.clicked, 0)
+    const buyers = all.reduce((a, r) => a + r.buyers, 0)
     return { takers, sawResult, clicked, buyers, clickRate: sawResult > 0 ? clicked / sawResult : 0, buyRate: takers > 0 ? buyers / takers : 0 }
-  }, [shownRows])
+  }, [data])
   const spendNum = Number(spend) || 0
   const paidTakers = paidRows.reduce((a, r) => a + r.takers, 0)
   // Landing views from paid sources. LinkedIn owns the true click count, this
@@ -200,8 +210,8 @@ export default function AdsPanel() {
       </div>
       <p style={{ fontSize: 11.5, color: MUTE, padding: '10px 16px 14px', margin: 0, lineHeight: 1.5, borderTop: `1px solid ${ROWHAIR}` }}>
         &ldquo;Worth per taker&rdquo; is LTV x buy rate, the most you could pay for one visitor from that
-        source and still break even. Sources under 5 takers are hidden. Free sources are shown for
-        comparison, the bar only binds on paid ones.
+        source and still break even. Sources under 5 takers are hidden as their own row, but still
+        counted in Total. Free sources are shown for comparison, the bar only binds on paid ones.
       </p>
       </div>
 
