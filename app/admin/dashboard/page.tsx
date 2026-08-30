@@ -546,25 +546,38 @@ export default async function DashboardPage({
         clean.set(b, cl)
       }
     }
+    // ONE RULE for which period a trial or its money sits in, everywhere on
+    // this table: the day the charge actually happened, cash-basis, day 1 to
+    // the last day of the month — never restated to the quiz date (owner,
+    // 2026-08-29, after ALL TRIALS and the trials table kept disagreeing on
+    // "July": "esiste UNA SOLA regola == che è uguale a come fare il
+    // bilancio 'per competenza' e non 'per cassa'... perchè abbiamo piu
+    // regole se solo una regola è vera"). bucketKey(e.chargedAt, ...) below,
+    // not e.at — chargedAt is the one field every Entry/TrialPoint carries
+    // that is ALWAYS the real charge date, quiz-earned or not (see the `at`
+    // vs `chargedAt` split in lib/trial-entries.ts). This is a display-only
+    // choice: classifyLedger() itself, and anything reading `at` directly
+    // (the drill endpoint, the KPI row's all-window sums), is untouched.
+    //
     // The trials the quiz cannot claim, in the same buckets as everything
     // else, so a good week for the quiz can be told apart from a good week
     // for Stripe. Same classified entries as the revenue row, one per person.
     const otherByBucket = new Map<string, number>()
     for (const e of notQuizTrialEntries) {
-      const b = bucketKey(e.at, gran)
+      const b = bucketKey(e.chargedAt, gran)
       if (!b || b < launchBucket) continue
       otherByBucket.set(b, (otherByBucket.get(b) || 0) + 1)
     }
     const quizExistingByBucket = new Map<string, number>()
     for (const e of quizExistingEntries) {
-      const b = bucketKey(e.at, gran)
+      const b = bucketKey(e.chargedAt, gran)
       if (!b || b < launchBucket) continue
       quizExistingByBucket.set(b, (quizExistingByBucket.get(b) || 0) + 1)
     }
 
-    // The revenue split, each entry already carrying its own clock (see
-    // revenueCharges). Kind names match the SeriesPoint field suffixes.
-    // Trial→annual, from the ledger, on the same clock as the money.
+    // The revenue split. Kind names match the SeriesPoint field suffixes.
+    // Trial→annual, from the ledger, on the same charge-date clock as
+    // everything else in this table now (see the note above).
     const maturity = new Map<string, { due: number; conv: number }>()
     // Net-new per bucket, from the ledger like its two siblings, so the three
     // parts of ALL TRIALS come from one place and always sum to it.
@@ -575,7 +588,7 @@ export default async function DashboardPage({
     const refundedByBucket = new Map<string, number>()
     const disputedByBucket = new Map<string, number>()
     for (const t of rev.trialPoints) {
-      const b = bucketKey(t.at, gran)
+      const b = bucketKey(t.chargedAt, gran)
       if (!b || b < launchBucket) continue
       if (t.attribution === 'quiz_net_new') netNewByBucket.set(b, (netNewByBucket.get(b) || 0) + 1)
       if (t.refunded) refundedByBucket.set(b, (refundedByBucket.get(b) || 0) + 1)
@@ -595,7 +608,7 @@ export default async function DashboardPage({
     // is false on its face (owner, 2026-08-11).
     const annualParts = new Map<string, Map<number, number>>()
     for (const e of rev.entries) {
-      const b = bucketKey(e.at, gran)
+      const b = bucketKey(e.chargedAt, gran)
       if (!b || b < launchBucket) continue
       const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annualQuiz: 0, annualNotQuiz: 0, other: 0 }
       r[e.kind] += e.usd
