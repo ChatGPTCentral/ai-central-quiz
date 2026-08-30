@@ -96,8 +96,19 @@ export async function GET(req: NextRequest) {
   try {
     const { ledger, charges } = await loadLedgerAndCharges(db(), MIRROR_START_ISO)
     const { entries, trialPoints } = classifyLedger(ledger, charges, MIRROR_START_ISO)
+    // A renewal is credited to the TRIAL that earned it, not its own charge
+    // date (owner, 2026-08-29 — see app/admin/dashboard/page.tsx's matching
+    // note). Must match the dashboard's bucketing exactly, or "won trials -
+    // quiz" for July would open a drawer full of August rows.
+    const originalTrialDateByRenewalCharge = new Map<string, string>()
+    for (const t of trialPoints) if (t.convertedChargeId) originalTrialDateByRenewalCharge.set(t.convertedChargeId, t.chargedAt)
+    const cohortDateOf = (e: Entry) => {
+      if (e.kind !== 'annualQuiz' && e.kind !== 'annualNotQuiz') return e.chargedAt
+      const baseChargeId = e.chargeId.endsWith('-cost') ? e.chargeId.slice(0, -5) : e.chargeId
+      return originalTrialDateByRenewalCharge.get(baseChargeId) ?? e.chargedAt
+    }
     const ofKind = (...kinds: Entry['kind'][]) =>
-      entries.filter(e => kinds.includes(e.kind) && inWindow(e.chargedAt)).map(asRow)
+      entries.filter(e => kinds.includes(e.kind) && inWindow(cohortDateOf(e))).map(asRow)
     // NET, not the face price (rule 6: money is net, everywhere, a drawer
     // included). Found 2026-08-29 alongside the gross-count fix: a trial
     // row here showed trialCents, the $4.99 sticker price, while every

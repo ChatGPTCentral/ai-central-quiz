@@ -425,6 +425,24 @@ export default async function DashboardPage({
   // July's two refunds, were each worth 2 in this count instead of 1.
   const notQuizTrialEntries = rev.trialPoints.filter(t => t.attribution === 'not_quiz')
   const quizExistingEntries = rev.trialPoints.filter(t => t.attribution === 'quiz_existing')
+  // A renewal is credited to the TRIAL that earned it, not the month the
+  // renewal happened to bill (owner, 2026-08-29, after the "one clock"
+  // fix moved renewals onto their own charge date and put July's renewals
+  // under August: "se un trial appartiene e luglio ed è stato cominciato
+  // e poi la conversione avviene ad agosto, comunque devi attribuirlo a
+  // luglio"). Only for annualQuiz/annualNotQuiz — a trial's OWN sale still
+  // sits on ITS OWN charge date, unchanged. Built from trialPoints, the
+  // one place a renewal's chargeId is linked back to its trial's own date.
+  const originalTrialDateByRenewalCharge = new Map<string, string>()
+  for (const t of rev.trialPoints) if (t.convertedChargeId) originalTrialDateByRenewalCharge.set(t.convertedChargeId, t.chargedAt)
+  const cohortDateOf = (e: { kind: string; chargeId: string; chargedAt: string }) => {
+    if (e.kind !== 'annualQuiz' && e.kind !== 'annualNotQuiz') return e.chargedAt
+    // The "-cost" sweep's residual for a disputed/refunded renewal carries
+    // the SAME renewal charge id plus this suffix (lib/trial-entries.ts) —
+    // strip it so that entry lands in the same cohort bucket as the main one.
+    const baseChargeId = e.chargeId.endsWith('-cost') ? e.chargeId.slice(0, -5) : e.chargeId
+    return originalTrialDateByRenewalCharge.get(baseChargeId) ?? e.chargedAt
+  }
 
 
   // One projection per person.
@@ -587,8 +605,11 @@ export default async function DashboardPage({
     }
 
     // The revenue split. Kind names match the SeriesPoint field suffixes.
-    // Trial→annual, from the ledger, on the same charge-date clock as
-    // everything else in this table now (see the note above).
+    // Trial→annual, credited to the week of the TRIAL that earned it (owner,
+    // 2026-08-29: "se un trial appartiene e luglio... comunque devi
+    // attribuirlo a luglio") — cohortDateOf() below handles this for the
+    // annualQuiz/annualNotQuiz rows specifically; every other row still
+    // sits on its own charge date, per the rule above.
     const maturity = new Map<string, { due: number; conv: number }>()
     // Net-new per bucket, from the ledger like its two siblings, so the three
     // parts of ALL TRIALS come from one place and always sum to it.
@@ -619,7 +640,7 @@ export default async function DashboardPage({
     // is false on its face (owner, 2026-08-11).
     const annualParts = new Map<string, Map<number, number>>()
     for (const e of rev.entries) {
-      const b = bucketKey(e.chargedAt, gran)
+      const b = bucketKey(cohortDateOf(e), gran)
       if (!b || b < launchBucket) continue
       const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annualQuiz: 0, annualNotQuiz: 0, other: 0 }
       r[e.kind] += e.usd
