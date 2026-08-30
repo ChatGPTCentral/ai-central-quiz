@@ -78,7 +78,10 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
   const fState = (searchParams.state || '') as State | ''
   const fEra = searchParams.era ? Number(searchParams.era) : 0
   const fAttr = searchParams.attr || ''
-  const includeIndia = searchParams.india === '1'
+  // Shown by default (owner, 2026-08-29: "do not hide india for default") —
+  // was opt-in (?india=1), now opt-OUT (?india=0), so a bare visit to this
+  // page always includes every country the ledger has.
+  const includeIndia = searchParams.india !== '0'
   const includeNoCard = searchParams.nocard === '1'
   const q = (searchParams.q || '').trim().toLowerCase()
   // Owner, 2026-08-23: "you say there are 795 but you're only showing 200" —
@@ -161,7 +164,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
 
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams()
-    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, month: fMonth || undefined, india: includeIndia ? '1' : undefined, nocard: includeNoCard ? '1' : undefined, q: q || undefined, ...patch }
+    const merged = { state: fState || undefined, era: fEra ? String(fEra) : undefined, attr: fAttr || undefined, month: fMonth || undefined, india: includeIndia ? undefined : '0', nocard: includeNoCard ? '1' : undefined, q: q || undefined, ...patch }
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v)
     const s = p.toString()
     return `/admin/revenue/trials${s ? `?${s}` : ''}`
@@ -206,9 +209,9 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
           stay one click away instead of sitting open on every visit). Opens
           itself when any of them is actually active, so an active filter is
           never invisible. */}
-      <details open={!!(fState || fEra || fAttr || fMonth || includeIndia || includeNoCard || q)} style={{ marginTop: 14 }}>
+      <details open={!!(fState || fEra || fAttr || fMonth || !includeIndia || includeNoCard || q)} style={{ marginTop: 14 }}>
         <summary style={{ fontSize: 11.5, fontWeight: 700, color: INK, cursor: 'pointer', userSelect: 'none' }}>
-          Filters{(fState || fEra || fAttr || fMonth || includeIndia || includeNoCard || q) ? ' (active)' : ''}
+          Filters{(fState || fEra || fAttr || fMonth || !includeIndia || includeNoCard || q) ? ' (active)' : ''}
         </summary>
         <div className="flex flex-wrap items-center" style={{ gap: 7, marginTop: 10 }}>
           <a href={qs({ state: undefined })} style={chip(!fState)}>All {L3.length}</a>
@@ -239,8 +242,8 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
             <a key={m} href={qs({ month: fMonth === m ? undefined : m })} style={chip(fMonth === m)}>{m}</a>
           ))}
           <span style={{ width: 12 }} />
-          <a href={qs({ india: includeIndia ? undefined : '1' })} style={chip(includeIndia)}
-            title="India is hidden by default: 0 of 43 due trials there ever renewed, which is why India is sold the lifetime.">
+          <a href={qs({ india: includeIndia ? '0' : undefined })} style={chip(includeIndia)}
+            title="Shown by default. India's due trials rarely renew (0 of 43 at last count), which is why India is sold the lifetime instead — hide it here to look at renewing markets alone.">
             {includeIndia ? 'India: shown' : 'India: hidden'}
           </a>
           <a href={qs({ nocard: includeNoCard ? undefined : '1' })} style={chip(includeNoCard)}
@@ -251,7 +254,7 @@ export default async function TrialsPage({ searchParams }: { searchParams: Recor
             {fState && <input type="hidden" name="state" value={fState} />}
             {fEra ? <input type="hidden" name="era" value={String(fEra)} /> : null}
             {fAttr && <input type="hidden" name="attr" value={fAttr} />}
-            {includeIndia && <input type="hidden" name="india" value="1" />}
+            {!includeIndia && <input type="hidden" name="india" value="0" />}
             {includeNoCard && <input type="hidden" name="nocard" value="1" />}
             <input name="q" defaultValue={q} placeholder="search email or name…"
               style={{ border: `2px solid ${INK}`, background: '#FFFDFA', fontSize: 11.5, padding: '5px 9px', width: 190 }} />
