@@ -1104,7 +1104,13 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
       const k = r.utmQuiz || '(direct)'
       const e = m.get(k) || { takers: 0, paid: 0, revenue: 0 }
       e.takers++
-      if (r.netNew) { e.paid++; e.revenue += r.ltv }
+      // quizTrial, not netNew (owner, 2026-08-29: "are we sure we're taking
+      // into account all the trials and their relative conversion by
+      // source?") — netNew is a strict subset of the north star (see
+      // BentoRow's own comment above), so an existing customer who took the
+      // quiz and bought again was invisible here, understating every
+      // source's real buy rate and worth.
+      if (r.quizTrial) { e.paid++; e.revenue += r.ltv }
       m.set(k, e)
     }
     return Array.from(m.entries())
@@ -1119,6 +1125,15 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
       .filter(r => r.takers >= 5)
       .sort((a, b) => b.arpu - a.arpu || b.takers - a.takers)
   }, [rows])
+  // The total line across every source shown (owner, 2026-08-29: "add also
+  // a total line") — summed from the same rows the table shows, so it can
+  // be checked against them by eye.
+  const sourceTotals = useMemo(() => {
+    const takers = sourceEconomics.reduce((a, r) => a + r.takers, 0)
+    const paid = sourceEconomics.reduce((a, r) => a + r.paid, 0)
+    const revenue = sourceEconomics.reduce((a, r) => a + r.revenue, 0)
+    return { takers, paid, revenue, buyRate: takers > 0 ? (paid / takers) * 100 : 0, arpu: takers > 0 ? revenue / takers : 0 }
+  }, [sourceEconomics])
 
   // The button that SELLS, which is not always the button that gets clicked.
   // Badging the top click rate as "Best" was quietly wrong: the click-quality
@@ -1326,6 +1341,16 @@ export default function DashboardBento({ rows, sample, funnelEvents, placements,
                 <span style={{ textAlign: 'right', fontWeight: 800, color: r.arpu > 0 ? '#62A758' : MUTE, ...tnum }}>${r.arpu.toFixed(2)}</span>
               </div>
             ))}
+            {sourceEconomics.length > 0 && (
+              <div className="grid items-center" style={{ gridTemplateColumns: GRID_SRC, fontSize: 12, fontWeight: 800, borderTop: `2px solid ${INK}`, padding: '6px 20px' }}>
+                <span style={{ color: INK }}>Total</span>
+                <span style={{ textAlign: 'right', ...tnum }}>{sourceTotals.takers.toLocaleString()}</span>
+                <span style={{ textAlign: 'right', ...tnum }}>{sourceTotals.paid.toLocaleString()}</span>
+                <span style={{ textAlign: 'right', color: '#046BB1', ...tnum }}>{sourceTotals.buyRate.toFixed(1)}%</span>
+                <span style={{ textAlign: 'right', ...tnum }}>${sourceTotals.revenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <span style={{ textAlign: 'right', color: sourceTotals.arpu > 0 ? '#62A758' : MUTE, ...tnum }}>${sourceTotals.arpu.toFixed(2)}</span>
+              </div>
+            )}
           </div></div>
         </div>
 
