@@ -56,5 +56,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Feed the theory of conversions. Owner, 2026-08-30: "non mi stai
+  // spiegando comunque come unire e unificare 'coorti' + 'esperimenti' +
+  // 'x-ray' + 'digest giornaliero' in un unico 'diario scientifico'". Before
+  // this, proposedHypothesis lived only in today's daily_digests row —
+  // real on the day it was written, invisible a week later, and never
+  // tracked to a verdict. Every OTHER instrument already writes here
+  // (experiments via their cohort evidence, analyses by hand); the digest
+  // was the one gap. One row per day, guarded on the day-tagged note so
+  // a manual "rifai il digest" re-run does not duplicate it.
+  if (result.proposedHypothesis) {
+    const dayTag = `digest-day:${result.day}`
+    const { data: already } = await c.from('cohort_learnings').select('id').ilike('notes', `%${dayTag}%`).limit(1)
+    if (!already?.length) {
+      const { error: learnErr } = await c.from('cohort_learnings').insert({
+        title: result.headline || `Digest hypothesis, ${result.day}`,
+        hypothesis: result.proposedHypothesis,
+        kind: 'analysis',
+        status: 'open',
+        notes: `Auto-proposed by the daily digest (${dayTag}). Trials yesterday: ${result.trialsYesterday}, bar ${result.barHit ? 'hit' : 'missed'}. Written by the same synthesis step that produces the digest's synthesis text — read /admin/digest for the day's full context.`,
+      })
+      if (learnErr) console.error('[daily-digest] could not log proposedHypothesis to cohort_learnings:', learnErr)
+    }
+  }
+
   return NextResponse.json({ ok: true, ...result })
 }

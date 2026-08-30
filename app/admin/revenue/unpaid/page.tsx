@@ -115,7 +115,16 @@ function statusOf(q: QueueRow): { label: string; color: string; detail?: string 
   return { label: 'not yet attempted', color: MUTE }
 }
 
-export default async function UnpaidInvoicesPage() {
+export default async function UnpaidInvoicesPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string | undefined>
+}) {
+  // ?show=uncollectible | actionable — owner, 2026-08-30: "dividiamo le
+  // 'retryable' e le 'uncollectible' ... dammi il link così che le indago".
+  // Same population as the summary line's counts, just filterable to one at
+  // a time instead of scrolling a 599-row table.
+  const show = (searchParams.show || '').trim()
   let queue: QueueRow[] = []
   let err: string | null = null
   try {
@@ -141,6 +150,14 @@ export default async function UnpaidInvoicesPage() {
   const paidSince = queue.filter(q => (q.blocked_reason || '').startsWith('They paid us'))
   const stillRetrying = queue.filter(q => !q.is_overdue && q.stripe_attempted)
   const neverAttemptedByStripe = queue.filter(q => q.stripe_attempts === 0)
+
+  // Filtered view for the table only — the summary counts above always
+  // reflect the whole 599, so the two never disagree about what "actionable"
+  // or "uncollectible" means, only what the table currently shows.
+  const shown =
+    show === 'uncollectible' ? uncollectible :
+    show === 'actionable' ? actionable :
+    queue
 
   // Totals are per CURRENCY. Summing mixed currencies into one figure is the
   // kind of number nobody can verify against a Stripe screen. Only the
@@ -199,19 +216,35 @@ export default async function UnpaidInvoicesPage() {
         {' · '}{neverAttemptedByStripe.length} Stripe has never attempted at all
       </p>
 
+      {/* Owner, 2026-08-30: split retryable from uncollectible, with a real
+          Stripe link on every row so the uncollectible ones can be
+          investigated (and possibly reopened) directly in Stripe. */}
+      <div className="flex flex-wrap items-center" style={{ gap: 8, marginTop: 10 }}>
+        <a href="/admin/revenue/unpaid" style={{ ...navChip, ...(show === '' ? { background: INK, color: '#FFFDFA' } : {}) }}>
+          All ({queue.length})
+        </a>
+        <a href="/admin/revenue/unpaid?show=actionable" style={{ ...navChip, ...(show === 'actionable' ? { background: INK, color: '#FFFDFA' } : {}) }}>
+          Retryable now ({actionable.length})
+        </a>
+        <a href="/admin/revenue/unpaid?show=uncollectible" style={{ ...navChip, ...(show === 'uncollectible' ? { background: INK, color: '#FFFDFA' } : {}) }}>
+          Uncollectible, needs Stripe ({uncollectible.length})
+        </a>
+      </div>
+
       {/* THE ONE LIST. Ordered by the view: actionable-and-untouched first,
           then longest since our last try, blocked rows sink to the bottom —
           visible, not removed. */}
       <section style={{ marginTop: 26 }}>
         <div className="flex flex-wrap items-start justify-between" style={{ gap: 12 }}>
           <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-            All unpaid invoices <span style={{ color: MUTE, fontWeight: 600 }}>({queue.length})</span>
+            {show === 'uncollectible' ? 'Uncollectible' : show === 'actionable' ? 'Retryable now' : 'All unpaid invoices'}
+            {' '}<span style={{ color: MUTE, fontWeight: 600 }}>({shown.length})</span>
           </h2>
           {/* Runs on EVERY row above. Known-blocked rows are skipped without a
               Stripe call but still appear in the results, so nothing here is
               a hidden subset. Owner, 2026-08-20. */}
           <InvoiceRetryAll
-            invoices={queue.map(q => ({
+            invoices={shown.map(q => ({
               invoiceId: q.invoice_id, personKey: q.person_key,
               amountCents: q.amount_remaining_cents, currency: q.currency,
               blockedReason: q.blocked_reason,
@@ -219,10 +252,10 @@ export default async function UnpaidInvoicesPage() {
           />
         </div>
         <p style={{ fontSize: 12, color: MUTE, marginTop: 5, maxWidth: 880, lineHeight: 1.6 }}>
-          <strong style={{ color: INK }}>Retry all</strong> runs on every row in this table, full stop — the{' '}
-          {blocked.length} already known blocked are skipped without spending a Stripe call, the other{' '}
-          {actionable.length} get a real, live-checked attempt. Whether a card actually exists is checked LIVE at the
-          click, not guessed from this list.
+          <strong style={{ color: INK }}>Retry all</strong> runs on every row in THIS table ({shown.length} shown,
+          filtered by the chips above) — known-blocked rows among them are skipped without spending a Stripe call,
+          the rest get a real, live-checked attempt. Whether a card actually exists is checked LIVE at the click, not
+          guessed from this list.
         </p>
         <div style={{ overflowX: 'auto', marginTop: 10 }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1150 }}>
@@ -239,7 +272,7 @@ export default async function UnpaidInvoicesPage() {
               </tr>
             </thead>
             <tbody>
-              {queue.map(q => {
+              {shown.map(q => {
                 const st = statusOf(q)
                 return (
                   <tr key={q.invoice_id}>
@@ -260,6 +293,14 @@ export default async function UnpaidInvoicesPage() {
                       <div style={{ fontSize: 10.5 }}>
                         {q.status}{q.collection_method === 'send_invoice' ? ' · emailed' : ' · auto-charge'}
                       </div>
+                      {/* The Stripe DASHBOARD view (admin-side), not pay_url
+                          below which is the customer-facing payment page —
+                          this is the one that lets a human reopen an
+                          uncollectible invoice inside Stripe itself. */}
+                      <a href={`https://dashboard.stripe.com/invoices/${q.invoice_id}`} target="_blank" rel="noreferrer"
+                         style={{ fontSize: 10.5, color: '#3B5C8F' }}>
+                        Stripe invoice ↗
+                      </a>
                     </td>
                     <td style={td}>
                       {q.stripe_attempts === 0
@@ -300,8 +341,8 @@ export default async function UnpaidInvoicesPage() {
                   </tr>
                 )
               })}
-              {queue.length === 0 && (
-                <tr><td colSpan={8} style={{ padding: 16, color: MUTE, fontSize: 12 }}>Nothing outstanding.</td></tr>
+              {shown.length === 0 && (
+                <tr><td colSpan={8} style={{ padding: 16, color: MUTE, fontSize: 12 }}>Nothing in this view.</td></tr>
               )}
             </tbody>
           </table>
