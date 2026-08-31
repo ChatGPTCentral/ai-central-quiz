@@ -28,6 +28,7 @@ export function OfferStack({
   lead = 'classic',
   guarantee = 'block',
   windowNote = null,
+  jobLevel = null,
 }: {
   checkoutUrl: string
   submissionId?: string
@@ -53,7 +54,22 @@ export function OfferStack({
    *  for the next N hours"), server-computed from the person's own deadline
    *  and enforced by both checkout routes. Null renders nothing. */
   windowNote?: string | null
+  /** Their OWN answer to the quiz's job_level question (real options:
+   *  Founder / C-Suite / VP-Director / Individual contributor / Manager /
+   *  Other / Student or intern) — never inferred, never enriched, the same
+   *  honesty rule AnswerEcho already follows. Added 2026-08-31 after the
+   *  session's own buyer-pattern analysis: Founder/C-Suite/VP-Director
+   *  convert roughly double Individual-contributor/Manager on this exact
+   *  field (cohort_learnings id=9). Null for every other answer — no line,
+   *  never a guess. */
+  jobLevel?: string | null
 }) {
+  const decisionMakerLine =
+    jobLevel === 'Founder' ? 'You’re the founder. Nobody needs to sign off on this.' :
+    jobLevel === 'C-Suite' ? 'You’re C-suite. Nobody needs to sign off on this.' :
+    jobLevel === 'VP/Director' ? 'You’re a VP or Director. This is a $4.99 call, not a budget meeting.' :
+    null
+
   const items = [
     { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
     { t: '1,200+ step-by-step tutorials', d: 'Plain language, a screenshot at every step, nothing assumes you can code.' },
@@ -139,6 +155,12 @@ export function OfferStack({
             </div>
           </div>
         </div>
+      )}
+
+      {decisionMakerLine && (
+        <p style={{ margin: '14px 26px 0', fontSize: 13.5, fontWeight: 700, color: RICH, textAlign: 'center' }}>
+          {decisionMakerLine}
+        </p>
       )}
 
       <div className="flex flex-col items-center" style={{ padding: '20px 26px 24px', gap: 10 }}>

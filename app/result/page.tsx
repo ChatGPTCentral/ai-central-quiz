@@ -668,6 +668,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     stageKey,
   )
   const echoOn = researchPage && echoLines.length >= 2
+  // Their own quiz answer, real options only (Founder/C-Suite/VP-Director/
+  // Individual contributor/Manager/Other/Student or intern) — OfferStack
+  // renders a line off it only for the three that this session's
+  // buyer-pattern analysis found convert roughly double the rest
+  // (cohort_learnings id=9). Ships to every arm alike, not one experiment.
+  const jobLevel = segFields?.job_level ?? null
   const offerSection = (withVideo: boolean) => (
     // id + scrollMarginTop so /admin/compare can point both frames straight
     // at the part that differs (owner, 2026-08-19: the two pages looked
@@ -723,6 +729,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           lead={researchPage ? 'duration' : 'classic'}
           guarantee={researchPage ? 'oneline' : 'block'}
           windowNote={windowNote}
+          jobLevel={jobLevel}
         />
 
       </div>
@@ -939,6 +946,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   lead="duration"
                   guarantee="oneline"
                   windowNote={windowNote}
+                  jobLevel={jobLevel}
                 />
               </div>
             </section>
@@ -971,6 +979,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   lead="duration"
                   guarantee="oneline"
                   windowNote={windowNote}
+                  jobLevel={jobLevel}
                 />
               </div>
             </section>
