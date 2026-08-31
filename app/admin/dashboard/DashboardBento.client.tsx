@@ -101,6 +101,10 @@ export interface SeriesPoint {
    *  states the real mix instead of dividing by an assumed price. */
   annualParts: [number, number][]
   revenueOther: number
+  /** The $49.75 half of a $54.74 lifetime bundle, split out of revenueOther
+   *  2026-08-31 once real signal (India's first lifetime sale) justified its
+   *  own line instead of reading as residual. */
+  revenueLifetime: number
   /** Completions and paid restricted to days that had client tracking, so a
    *  partially-instrumented period's step rates are computed over the window
    *  that was actually measured instead of mixing tracked and untracked days. */
@@ -531,7 +535,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
   // its clock, because two adjacent rows on unstated different clocks is
   // exactly what produced the "24 vs 23" confusion.
   const sumOf = (f: (p: SeriesPoint) => number) => buckets.reduce((a: number, p: SeriesPoint) => a + f(p), 0)
-  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnualQuiz + p.revenueAnnualNotQuiz + p.revenueOther
+  const revAll = (p: SeriesPoint) => p.revenueNet + p.revenueQuizExisting + p.revenueNotQuiz + p.revenueAnnualQuiz + p.revenueAnnualNotQuiz + p.revenueOther + p.revenueLifetime
   // `unit` = the single price a row is made of; it powers the hover arithmetic
   // ("6 × $4.99 = $29.94") so any cell can be checked against Stripe by eye.
   type RateRow = {
@@ -601,6 +605,7 @@ function VolumeMatrix({ series, gran, F, lifetimeSplits, quizRepeatTrials, preWi
         { label: 'from won trials - quiz', money: true, all: sumOf(p => p.revenueAnnualQuiz), per: (p: SeriesPoint) => p.revenueAnnualQuiz, metric: 'rev_won_quiz' },
         { label: 'from won trials - no quiz', money: true, all: sumOf(p => p.revenueAnnualNotQuiz), per: (p: SeriesPoint) => p.revenueAnnualNotQuiz, metric: 'rev_won_noquiz' },
         { label: 'from other revenue', money: true, all: sumOf(p => p.revenueOther), per: (p: SeriesPoint) => p.revenueOther, metric: 'rev_other' },
+        { label: 'from lifetime sales', money: true, all: sumOf(p => p.revenueLifetime), per: (p: SeriesPoint) => p.revenueLifetime, metric: 'rev_lifetime' },
       ],
     },
   ]

@@ -39,8 +39,14 @@ export function bucketEnd(bucket: string, gran: Gran): string {
 // 'annualQuiz'    a renewal whose trial the quiz earned. On ITS TRIAL'S clock.
 // 'annualNotQuiz' a renewal behind a trial the quiz never touched.
 // 'other'         every remaining dollar: legacy subscriptions, old annual
-//                 prices, lifetime halves, duplicate subscriptions. Charge clock.
-export type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annualQuiz' | 'annualNotQuiz' | 'other'
+//                 prices, duplicate subscriptions. Charge clock.
+// 'lifetimeSale'  a $49.75 lifetime purchase: standalone, or the lifetime
+//                 half of a $54.74 trial+lifetime bundle. Split out of
+//                 'other' 2026-08-31 once a real signal (India's first
+//                 standalone lifetime, 2026-08-28) justified its own line
+//                 (owner's rule, 2026-08-11: hold until real signal, then
+//                 give it its own line so a win does not read as residual).
+export type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annualQuiz' | 'annualNotQuiz' | 'other' | 'lifetimeSale'
 
 /** The prices that ARE a paid trial. $54.74 is the $4.99 trial with the $49.75
  *  lifetime bought alongside it; $3.99 was an earlier era's trial price;
@@ -49,6 +55,13 @@ export type RevKind = 'net' | 'quizExisting' | 'notQuiz' | 'annualQuiz' | 'annua
 export const TRIAL_PRICES = new Set([399, 499, 1495, 5474])
 /** The subscription price. Never Other Revenue. */
 export const ANNUAL_CENTS = 5975
+/** The standalone lifetime price (lib/offers.ts LIFETIME_OFFER), sold on its
+ *  own Stripe payment link since 2024-06, mostly to buyers where a recurring
+ *  card charge is unreliable. Not a trial price (rule 1 covers only $4.99)
+ *  and never Other Revenue (rule 4): its own kind. 241 charges already carry
+ *  this price; the roadmap held this fix until one landed after the
+ *  2026-08-11 waiting-owner card, which happened 2026-08-28. */
+export const LIFETIME_CENTS = 4975
 
 export type LedgerRow = {
   charge_id: string; person_key: string; trial_at: string; trial_cents: number; trial_refunded: boolean
@@ -355,7 +368,7 @@ export function classifyLedger(
     // of the gross-count fix above, never on refund status either, for the
     // same reason and with the same sweep-neutrality guarantee.
     if (chargeCents.get(t.charge_id) === 5474) {
-      entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, chargeId: `${t.charge_id}-lt`, kind: 'other', usd: netCents(t.charge_id, 4975) / 100, why: 'the $49.75 lifetime half of a $54.74 bundle' })
+      entries.push({ ...who, at: t.trial_at, chargedAt: t.trial_at, chargeId: `${t.charge_id}-lt`, kind: 'lifetimeSale', usd: netCents(t.charge_id, LIFETIME_CENTS) / 100, why: 'the $49.75 lifetime half of a $54.74 bundle' })
     }
 
     // A conversion entry needs a real, SEPARATE converted charge: a bundle
@@ -417,7 +430,7 @@ export function classifyLedger(
       })
       if (ch.amount_cents === 5474) {
         entries.push({
-          at: ch.charged_at, chargedAt: ch.charged_at, kind: 'other', usd: netCents(ch.id, 4975) / 100,
+          at: ch.charged_at, chargedAt: ch.charged_at, kind: 'lifetimeSale', usd: netCents(ch.id, LIFETIME_CENTS) / 100,
           chargeId: `${ch.id}-lt`, personKey: who, name: ch.description ?? null,
           customerId: ch.customer_id ?? null, submissionId: null,
           why: 'the $49.75 lifetime half of a $54.74 bundle',
@@ -431,6 +444,15 @@ export function classifyLedger(
         chargeId: ch.id, personKey: who, name: ch.description ?? null,
         customerId: ch.customer_id ?? null, submissionId: null,
         why: 'a $59.75 subscription with no trial claiming it, counted here because a renewal is never Other Revenue',
+      })
+      continue
+    }
+    if (ch.amount_cents === LIFETIME_CENTS) {
+      entries.push({
+        at: ch.charged_at, chargedAt: ch.charged_at, kind: 'lifetimeSale', usd: netCents(ch.id, ch.amount_cents) / 100,
+        chargeId: ch.id, personKey: who, name: ch.description ?? null,
+        customerId: ch.customer_id ?? null, submissionId: null,
+        why: 'a standalone $49.75 lifetime purchase, counted here because a lifetime sale is never Other Revenue',
       })
       continue
     }
@@ -480,6 +502,7 @@ export function classifyLedger(
     if (asTrial) return asTrial
     if (TRIAL_PRICES.has(ch.amount_cents)) return 'notQuiz'
     if (ch.amount_cents === ANNUAL_CENTS) return 'annualNotQuiz'
+    if (ch.amount_cents === LIFETIME_CENTS) return 'lifetimeSale'
     return 'other'
   }
   const swept = new Set<string>()

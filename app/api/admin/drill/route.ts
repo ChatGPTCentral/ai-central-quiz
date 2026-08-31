@@ -130,13 +130,14 @@ export async function GET(req: NextRequest) {
 
     switch (metric) {
       // ── money ──
-      case 'rev_all': rows = ofKind('net', 'quizExisting', 'notQuiz', 'annualQuiz', 'annualNotQuiz', 'other'); break
+      case 'rev_all': rows = ofKind('net', 'quizExisting', 'notQuiz', 'annualQuiz', 'annualNotQuiz', 'other', 'lifetimeSale'); break
       case 'rev_net': rows = ofKind('net'); break
       case 'rev_existing': rows = ofKind('quizExisting'); break
       case 'rev_notquiz': rows = ofKind('notQuiz'); break
       case 'rev_won_quiz': rows = ofKind('annualQuiz'); break
       case 'rev_won_noquiz': rows = ofKind('annualNotQuiz'); break
       case 'rev_other': rows = ofKind('other'); break
+      case 'rev_lifetime': rows = ofKind('lifetimeSale'); break
       // ── counts ──
       case 'trials_all': money = false; rows = trials(() => true); break
       case 'trials_net': money = false; rows = trials(t => t.attribution === 'quiz_net_new'); break

@@ -280,7 +280,7 @@ export default async function DashboardPage({
       maturity.set(b, m)
     }
 
-    const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annualQuiz: number; annualNotQuiz: number; other: number }>()
+    const revByBucket = new Map<string, { net: number; quizExisting: number; notQuiz: number; annualQuiz: number; annualNotQuiz: number; other: number; lifetimeSale: number }>()
     // What the conversion money is actually MADE OF, per bucket. A conversion
     // can be a $59.75 annual or the $49.75 half of a lifetime bundle, so the
     // hover must state the real mix instead of dividing the total by an
@@ -290,7 +290,7 @@ export default async function DashboardPage({
     for (const e of rev.entries) {
       const b = bucketKey(cohortDateOf(e), gran)
       if (!b || b < launchBucket) continue
-      const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annualQuiz: 0, annualNotQuiz: 0, other: 0 }
+      const r = revByBucket.get(b) || { net: 0, quizExisting: 0, notQuiz: 0, annualQuiz: 0, annualNotQuiz: 0, other: 0, lifetimeSale: 0 }
       r[e.kind] += e.usd
       revByBucket.set(b, r)
       if (e.kind === 'annualQuiz' || e.kind === 'annualNotQuiz') {
@@ -350,6 +350,7 @@ export default async function DashboardPage({
       revenueAnnualNotQuiz: revByBucket.get(bucket)?.annualNotQuiz || 0,
       annualParts: Array.from(annualParts.get(bucket)?.entries() ?? []).sort((a, b) => b[0] - a[0]),
       revenueOther: revByBucket.get(bucket)?.other || 0,
+      revenueLifetime: revByBucket.get(bucket)?.lifetimeSale || 0,
       matureTrials: maturity.get(bucket)?.due || 0,
       billedAnnual: maturity.get(bucket)?.conv || 0,
       cleanCompleted: clean.get(bucket)?.completed || 0,

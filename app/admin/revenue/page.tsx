@@ -9,7 +9,7 @@
 //
 // THE RULE THIS PAGE LIVES BY: the matrix and this page are the same thing
 // displayed two ways. Every dollar here comes from the SAME classified
-// entries the dashboard's revenue rows sum — same six kinds, same clocks —
+// entries the dashboard's revenue rows sum — same seven kinds, same clocks —
 // and the table proves itself on screen: the kind columns sum to the row
 // total, the rows sum to the account, and the identity line at the bottom
 // compares that sum to raw Stripe to the penny, going red if they ever part.
@@ -21,7 +21,7 @@
 //   trial_ledger    one row per trial: who, which era, did the quiz earn it,
 //                   did it convert, what it earned
 //        ↓
-//   classifyLedger  every charge into exactly one of six kinds
+//   classifyLedger  every charge into exactly one of seven kinds
 
 import RevenueChart, { type ChartPoint } from '@/components/admin/RevenueChart.client'
 import SyncCharges from '@/components/admin/SyncCharges.client'
@@ -51,13 +51,14 @@ const navChip: React.CSSProperties = {
   border: '2px solid #1A1A1A', background: '#FFFDFA', color: '#1A1A1A', textDecoration: 'none',
 }
 
-/** The matrix's six kinds, grouped the way its ALL REVENUE breakdown reads. */
+/** The matrix's seven kinds, grouped the way its ALL REVENUE breakdown reads. */
 const KIND_COLS = [
   { key: 'trialsQuiz', label: 'Trials · quiz', kinds: ['net', 'quizExisting'] },
   { key: 'trialsNot', label: 'Trials · not quiz', kinds: ['notQuiz'] },
   { key: 'wonQuiz', label: 'Won yearly · quiz', kinds: ['annualQuiz'] },
   { key: 'wonNot', label: 'Won yearly · no quiz', kinds: ['annualNotQuiz'] },
   { key: 'other', label: 'Other revenue', kinds: ['other'] },
+  { key: 'lifetime', label: 'Lifetime sales', kinds: ['lifetimeSale'] },
 ] as const
 
 export default async function RevenuePage() {
@@ -83,8 +84,8 @@ export default async function RevenuePage() {
   // ── The unified month table: counts from the ledger, money from the
   //    classified entries, each on the clock the matrix uses. ──
   const kindOf = (k: string) => KIND_COLS.find(c => (c.kinds as readonly string[]).includes(k))?.key ?? 'other'
-  type MonthMoney = { trialsQuiz: number; trialsNot: number; wonQuiz: number; wonNot: number; other: number; total: number }
-  const emptyMoney = (): MonthMoney => ({ trialsQuiz: 0, trialsNot: 0, wonQuiz: 0, wonNot: 0, other: 0, total: 0 })
+  type MonthMoney = { trialsQuiz: number; trialsNot: number; wonQuiz: number; wonNot: number; other: number; lifetime: number; total: number }
+  const emptyMoney = (): MonthMoney => ({ trialsQuiz: 0, trialsNot: 0, wonQuiz: 0, wonNot: 0, other: 0, lifetime: 0, total: 0 })
   const moneyByMonth = new Map<string, MonthMoney>()
   for (const e of entries) {
     const m = e.at.slice(0, 7)
@@ -109,7 +110,7 @@ export default async function RevenuePage() {
   const grand = emptyMoney()
   for (const m of Array.from(moneyByMonth.values())) {
     grand.trialsQuiz += m.trialsQuiz; grand.trialsNot += m.trialsNot; grand.wonQuiz += m.wonQuiz
-    grand.wonNot += m.wonNot; grand.other += m.other; grand.total += m.total
+    grand.wonNot += m.wonNot; grand.other += m.other; grand.lifetime += m.lifetime; grand.total += m.total
   }
   // THE IDENTITY, on screen: classified total vs NET (gross of successful
   // charges minus refunds minus lost disputes), to the penny. Net is the
