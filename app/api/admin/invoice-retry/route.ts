@@ -135,7 +135,18 @@ export async function POST(req: NextRequest) {
   const customerId = typeof inv.customer === 'string' ? inv.customer : inv.customer?.id ?? null
   const owed = inv.amount_remaining ?? 0
 
-  if (inv.status !== 'open') return refuse(invoiceId, personKey, customerId, `invoice is ${inv.status}, not open`)
+  // 'open' is the normal case. 'uncollectible' is also allowed as of
+  // 2026-08-31 (owner: he opened one of these in the Stripe dashboard
+  // himself and found a real "Charge customer" button sitting on it there) —
+  // Stripe marking an invoice uncollectible means its OWN automatic retries
+  // gave up, not that a fresh attempt is refused. This route already defers
+  // every real question to a live Stripe call rather than trusting a stale
+  // status, so the same posture applies here: try it, let Stripe's own
+  // response (paid, or a real decline) be the answer, same as any other
+  // invoice. 'paid'/'void'/'draft' stay refused — those are genuinely final.
+  if (inv.status !== 'open' && inv.status !== 'uncollectible') {
+    return refuse(invoiceId, personKey, customerId, `invoice is ${inv.status}, not open or uncollectible`)
+  }
   if (owed <= 0) return refuse(invoiceId, personKey, customerId, 'nothing is owed on this invoice')
 
   // The guard that matters most. Somebody who has paid us since this invoice
