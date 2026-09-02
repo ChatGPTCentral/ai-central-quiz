@@ -109,27 +109,43 @@ export default function ExpressPay({
           mode: 'payment',
           amount,
           currency,
-          setupFutureUsage: 'off_session',
+          // A lifetime buyer has no renewal, so the card is not saved for
+          // later — the same rule /api/checkout/intent already applies
+          // server-side. Asking Stripe to save it anyway was a latent
+          // mismatch, harmless while PayPal stayed off below; it would
+          // matter once a payment method that treats setupFutureUsage
+          // differently from a card is actually offered.
+          ...(offer === 'lifetime' ? {} : { setupFutureUsage: 'off_session' as const }),
           appearance: { theme: 'flat' },
         })
 
-        // Apple Pay and Google Pay ONLY. Both are CARD wallets: the card lands
-        // on the customer exactly like a typed card, and checkout-health has
-        // already proven that path saves a reusable payment method (10/10 card
+        // Apple Pay and Google Pay: CARD wallets, the card lands on the
+        // customer exactly like a typed card, and checkout-health has already
+        // proven that path saves a reusable payment method (10/10 card
         // buyers, 10/10 Link buyers).
         //
-        // PayPal is deliberately excluded. It is its own payment method type,
+        // PayPal stays off for the TRIAL: it is its own payment method type,
         // not a card, and no PayPal buyer has ever come through our checkout,
         // so we have zero evidence it leaves anything chargeable on day 28. A
         // PayPal sale that did not save would be $4.99 instead of $4.99 +
         // $59.75/yr, and we would not find out for four weeks.
+        //
+        // PayPal turns ON for the lifetime offer only (2026-09-02): that
+        // concern is specifically about the day-28 renewal, and a lifetime
+        // purchase has none. India is routed to this offer because Stripe
+        // cannot take RuPay, its dominant card network (funnel_events vs.
+        // stripe charges show the checkout form loading fine but almost no
+        // attempt ever reaching Stripe, the signature of a card rejected
+        // client-side before submission) — PayPal is likely the one rail
+        // that already clears for a RuPay-only buyer, and it was already
+        // enabled account-wide, just never offered a one-tap button.
         const express = elements.create('expressCheckout', {
           buttonHeight: 48,
           buttonTheme: { applePay: 'black', googlePay: 'black' },
           paymentMethods: {
             applePay: 'auto',
             googlePay: 'auto',
-            paypal: 'never',
+            paypal: offer === 'lifetime' ? 'auto' : 'never',
             link: 'never',
             amazonPay: 'never',
           },
