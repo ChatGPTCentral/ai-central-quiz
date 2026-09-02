@@ -250,9 +250,16 @@ export default async function HomePage({
             </Link>
             <p style={{ fontSize: 13, color: MUTE, marginTop: 12 }}>{effortNote}</p>
 
-            <div
-              className="inline-flex items-center justify-center gap-4 px-4 py-2.5 font-mono"
-              style={{ backgroundColor: '#FFFFFF', border: `2px solid ${INK}`, fontSize: 10.5, letterSpacing: '0.08em', color: INK, marginTop: 18 }}
+            {/* This badge was the single most dead-clicked element on the
+                page (41 clicks in 14 days, PostHog $dead_click, more than
+                anywhere else): the bordered pill reads as a button, and
+                people tap it expecting something to happen. Same fix as the
+                pass card below — it goes to the quiz now (2026-09-02). */}
+            <Link
+              href={quizHref}
+              aria-label="take the quiz"
+              className="inline-flex items-center justify-center gap-4 px-4 py-2.5 font-mono transition-transform hover:-translate-y-px active:scale-[0.98]"
+              style={{ backgroundColor: '#FFFFFF', border: `2px solid ${INK}`, fontSize: 10.5, letterSpacing: '0.08em', color: INK, marginTop: 18, textDecoration: 'none' }}
             >
               <span className="inline-flex items-center gap-1.5">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={FULVOUS} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -266,7 +273,7 @@ export default async function HomePage({
                 <span style={{ color: '#62A758' }}>●</span>
                 2,768 COMPLETED
               </span>
-            </div>
+            </Link>
 
             {/* The reward, underneath and smaller: it shows what the quiz
                 mints without competing for the click. Still clickable, since
@@ -397,10 +404,17 @@ export default async function HomePage({
               {effortNote}
             </p>
 
-            {/* Survey time + completions count — social-proof strip, hard-edge restyle. */}
-            <div
-              className="mt-5 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 py-2.5 font-mono"
-              style={{ backgroundColor: '#FFFFFF', border: `2px solid ${INK}`, fontSize: 10.5, letterSpacing: '0.08em', color: INK }}
+            {/* Survey time + completions count — social-proof strip, hard-edge
+                restyle. This is the live desktop layout (desktopOneCol is
+                false for real traffic now that landing_desktop_v1 ended),
+                so this is the copy that was actually eating the 41 dead
+                clicks: the bordered pill reads as a button. Now one
+                (2026-09-02). */}
+            <Link
+              href={quizHref}
+              aria-label="take the quiz"
+              className="mt-5 inline-flex items-center justify-center gap-3 sm:gap-4 px-4 py-2.5 font-mono transition-transform hover:-translate-y-px active:scale-[0.98]"
+              style={{ backgroundColor: '#FFFFFF', border: `2px solid ${INK}`, fontSize: 10.5, letterSpacing: '0.08em', color: INK, textDecoration: 'none' }}
             >
               <span className="inline-flex items-center gap-1.5">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={FULVOUS} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -414,7 +428,7 @@ export default async function HomePage({
                 <span style={{ color: '#62A758' }}>●</span>
                 2,768 COMPLETED
               </span>
-            </div>
+            </Link>
           </div>
         </div>
       </main>
