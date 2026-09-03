@@ -1,21 +1,24 @@
 // Daily trial-supply alarm.
 //
-// The owner's bar is 10 real trials a day, counted the way the matrix
-// counts it (lib/ux-watch.ts's daily_benchmark check): quiz-attributed
-// trials clock to the day the QUIZ was completed, not-quiz trials clock to
-// the day CHARGED. This runs the same formula for TODAY, the in-progress
-// day, instead of yesterday's completed one, so the owner sees it live
-// instead of only finding out the morning after.
+// Counts by CHARGE date (incasso), on purpose, not the quiz-completion
+// clock daily_benchmark uses (lib/ux-watch.ts). Owner, 2026-09-03: trials
+// per day/week/month must be counted by charge date so the time series
+// never revises — a chart drawn today and the same chart redrawn in three
+// months must show the same bar for a past day, or it cannot honestly show
+// whether an optimization moved growth. A quiz-dated count fails that: a
+// recent day looks artificially low until its slow converters (someone who
+// took the quiz weeks ago and only pays today) trickle in and it revises
+// upward, which can read as decline when nothing declined.
 //
-// FIXED 2026-09-03: the first version counted raw stripe_charges by
-// charged_at for every trial, which overcounts a day in progress — a quiz
-// taken weeks ago that converts today belongs to THAT quiz day in the
-// matrix, not today (CLAUDE.md's own clock rule). Caught by hand-checking
-// today's 9 charged trials against trial_ledger: only 6 were actually
-// today's under the real clock, 3 were quiz completions from 07-23, 07-25
-// and 08-14 that happened to pay today. The morning's "8 trials" email had
-// already gone out under the old count before this was found; it is not
-// retracted, only every count from here on uses the corrected one.
+// This ran quiz-clocked for about 20 minutes on 2026-09-03 (commit
+// 6fc3fe8, matching daily_benchmark's own formula) before the owner
+// overruled it back to charge date, explicitly, for the reason above. Do
+// not "fix" this back to quiz-date — that was tried, reasoned about, and
+// rejected on purpose. The two clocks answer different questions and both
+// are correct for their own: daily_benchmark asks "did a cohort's funnel
+// experience eventually convert" (attribution, must be quiz-dated, is
+// allowed to revise as it matures); this alert asks "how many trials did
+// we bank today" (volume trend, must be charge-dated, must never revise).
 //
 // He does not want automatic pricing or a hard cap built for a ceiling
 // that has rarely bound, only the option to act on it himself, so this
@@ -25,6 +28,7 @@
 // alarm (lib/express-alert.ts).
 
 import { createClient } from '@supabase/supabase-js'
+import { TRIAL_PRICES } from '@/lib/trial-entries'
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 const SETTINGS_KEY = 'trial_supply_alert'
@@ -56,11 +60,11 @@ function sb() {
 }
 
 /**
- * Counts today's real trials the way the matrix counts them (quiz-clock
- * plus charge-clock, same formula as daily_benchmark) and emails the owner
- * once per threshold, the first time the count reaches each one for the
- * day. Safe to call after every trial-priced charge: the app_settings
- * marker makes an already-alerted threshold a no-op.
+ * Counts today's real trials by charge date, gross across every trial
+ * price (rule 5, never deduplicated), and emails the owner once per
+ * threshold, the first time the count reaches each one for the day. Safe
+ * to call after every trial-priced charge: the app_settings marker makes
+ * an already-alerted threshold a no-op.
  */
 export async function checkAndAlertTrialSupply(): Promise<void> {
   const c = sb()
@@ -78,29 +82,19 @@ export async function checkAndAlertTrialSupply(): Promise<void> {
 
   const dayStart = `${todayUtc}T00:00:00.000Z`
   const dayEnd = new Date(new Date(dayStart).getTime() + 86_400_000).toISOString()
-  const quizAttrs = ['quiz_net_new', 'quiz_existing']
 
-  // Same two-clock formula as daily_benchmark, re-windowed to today instead
-  // of yesterday: quiz-attributed trials on the quiz-completion clock
-  // (falling back to the charge clock on the rare row with no completion
-  // timestamp), not-quiz trials on the charge clock.
-  const [quizByQuizDate, quizByFallback, other] = await Promise.all([
-    c.from('trial_ledger').select('charge_id', { count: 'exact', head: true })
-      .in('attribution', quizAttrs).not('quiz_completed_at', 'is', null)
-      .gte('quiz_completed_at', dayStart).lt('quiz_completed_at', dayEnd),
-    c.from('trial_ledger').select('charge_id', { count: 'exact', head: true })
-      .in('attribution', quizAttrs).is('quiz_completed_at', null)
-      .gte('trial_at', dayStart).lt('trial_at', dayEnd),
-    c.from('trial_ledger').select('charge_id', { count: 'exact', head: true })
-      .eq('attribution', 'not_quiz')
-      .gte('trial_at', dayStart).lt('trial_at', dayEnd),
-  ])
-  const err = quizByQuizDate.error || quizByFallback.error || other.error
-  if (err) {
-    console.error('[trial-supply-alert] count query failed:', err.message)
+  const { count, error } = await c
+    .from('stripe_charges')
+    .select('id', { count: 'exact', head: true })
+    .in('amount_cents', Array.from(TRIAL_PRICES))
+    .eq('refunded', false)
+    .gte('charged_at', dayStart)
+    .lt('charged_at', dayEnd)
+  if (error) {
+    console.error('[trial-supply-alert] count query failed:', error.message)
     return
   }
-  const n = (quizByQuizDate.count ?? 0) + (quizByFallback.count ?? 0) + (other.count ?? 0)
+  const n = count ?? 0
 
   const crossed = thresholds.filter(t => n >= t && !alertedToday.includes(t))
   if (crossed.length === 0) return
