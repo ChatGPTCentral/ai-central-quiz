@@ -12,6 +12,22 @@
 //   · quickback is derived rather than reported, so its definition is visible
 //     and arguable instead of being Microsoft's private heuristic
 //   · errors are named, where Clarity could only ever count them
+//
+// FIXED 2026-09-03: quickback used to check PostHog for event IN
+// ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click') — but
+// quiz_start and checkout_click are OUR OWN first-party events, sent only
+// to funnel_events (lib/events-client.ts posts to /api/events, never to
+// PostHog), and $autocapture has not fired once in 30 days on this project
+// (checked against PostHog's own live taxonomy), so that condition had
+// silently degraded to "did a dead click happen" — true for almost no
+// session on any page, which is why quickback read as a near-universal
+// crisis everywhere it was checked. PostHog cannot see our funnel events,
+// so it cannot answer "did this person do anything meaningful" by our own
+// definition of meaningful. What it CAN honestly answer: did PostHog
+// record anything else about this visit at all. quickback now means a
+// session whose entire PostHog record is the one pageview and nothing
+// else — a real, PostHog-only signal, smaller in scope than before but
+// true.
 
 import { hogql } from '@/lib/posthog-read'
 
@@ -40,7 +56,7 @@ export async function uxByPage(days = 7): Promise<{ rows: UxPageRow[]; snapshotD
       SELECT properties.$session_id AS sid FROM events
       WHERE timestamp > now() - INTERVAL ${days} DAY
       GROUP BY sid
-      HAVING countIf(event IN ('$autocapture', 'quiz_start', 'checkout_click', '$dead_click')) = 0
+      HAVING count() = 1
     )
     SELECT
       splitByChar('?', toString(properties.$current_url))[1] AS url,
