@@ -730,6 +730,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           guarantee={researchPage ? 'oneline' : 'block'}
           windowNote={windowNote}
           jobLevel={jobLevel}
+          hoursLost={segFields?.hours_lost ?? null}
+          workArea={segFields?.work_area ?? null}
         />
 
       </div>
@@ -947,6 +949,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   guarantee="oneline"
                   windowNote={windowNote}
                   jobLevel={jobLevel}
+                  hoursLost={segFields?.hours_lost ?? null}
+                  workArea={segFields?.work_area ?? null}
                 />
               </div>
             </section>
@@ -980,6 +984,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   guarantee="oneline"
                   windowNote={windowNote}
                   jobLevel={jobLevel}
+                  hoursLost={segFields?.hours_lost ?? null}
+                  workArea={segFields?.work_area ?? null}
                 />
               </div>
             </section>

@@ -29,6 +29,8 @@ export function OfferStack({
   guarantee = 'block',
   windowNote = null,
   jobLevel = null,
+  hoursLost = null,
+  workArea = null,
 }: {
   checkoutUrl: string
   submissionId?: string
@@ -63,7 +65,19 @@ export function OfferStack({
    *  field (cohort_learnings id=9). Null for every other answer — no line,
    *  never a guess. */
   jobLevel?: string | null
+  /** Their own stated hours-lost-per-week and work area, same two fields
+   *  AnswerEcho already echoes — but AnswerEcho lives inside a live,
+   *  currently-reading experiment (relaunched 2026-08-26), so its copy
+   *  cannot change without wasting that read. This pushes the SAME honest
+   *  personalization into the stack every visitor sees, ships-to-everyone
+   *  like jobLevel above (2026-09-03, owner: "voglio il funnel e l'offerta
+   *  migliore"). Quotes their own answer back — never a claim about what
+   *  the library covers, which we cannot verify per field. Null renders the
+   *  original generic copy, unchanged. */
+  hoursLost?: number | null
+  workArea?: string | null
 }) {
+  const area = workArea ? workArea.split(',')[0]?.trim() || null : null
   const decisionMakerLine =
     jobLevel === 'Founder' ? 'You’re the founder. Nobody needs to sign off on this.' :
     jobLevel === 'C-Suite' ? 'You’re C-suite. Nobody needs to sign off on this.' :
@@ -71,7 +85,12 @@ export function OfferStack({
     null
 
   const items = [
-    { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
+    hoursLost && hoursLost > 0
+      ? {
+          t: `Get back ~${hoursLost} hour${hoursLost === 1 ? '' : 's'} a week`,
+          d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}${area ? ` in ${area}` : ''}, opened tonight.`,
+        }
+      : { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
     { t: '1,200+ step-by-step tutorials', d: 'Plain language, a screenshot at every step, nothing assumes you can code.' },
     { t: '50+ templates and prompt packs', d: 'Copy, paste, done. Built for real work, not demos.' },
     { t: 'New tutorials every week', d: 'The tools change monthly. The library keeps up so you do not have to.' },
