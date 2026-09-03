@@ -21,8 +21,10 @@ import { waitUntil } from '@vercel/functions'
 import Stripe from 'stripe'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
 import { verifyExpressPayment, sendExpressAlert } from '@/lib/express-alert'
+import { checkAndAlertTrialSupply } from '@/lib/trial-supply-alert'
 import { posthogCapture } from '@/lib/posthog-server'
 import { mirrorCharge } from '@/lib/mirror-charge'
+import { TRIAL_PRICES } from '@/lib/trial-entries'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -216,6 +218,21 @@ export async function POST(req: NextRequest) {
     waitUntil(
       mirrorCharge(ch, s).catch(err => console.error('[stripe-webhook] mirrorCharge failed:', err)),
     )
+  }
+
+  // The owner's discretionary trial-supply heads-up (2026-09-03): "avvisami
+  // quando arriviamo a 8 trial al giorno", same channel as the express-pay
+  // alarm above. Only checked on a genuine new trial charge, not every
+  // event type, and the alert itself is idempotent per UTC day (see
+  // lib/trial-supply-alert.ts) so a Stripe retry of this same event can
+  // never double-send.
+  if (event.type === 'charge.succeeded') {
+    const ch = event.data.object as Stripe.Charge
+    if (!ch.refunded && TRIAL_PRICES.has(ch.amount)) {
+      waitUntil(
+        checkAndAlertTrialSupply().catch(err => console.error('[stripe-webhook] trial-supply alert failed:', err)),
+      )
+    }
   }
 
   if (RELEVANT.has(event.type)) {
