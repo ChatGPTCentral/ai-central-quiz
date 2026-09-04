@@ -916,13 +916,34 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               you&rsquo;re a <strong style={{ fontWeight: 700, color: RICH }}>{rung.className.toLowerCase()}</strong> with{' '}
               {nextStage ? 'room above you' : 'the top in sight'}. Here&rsquo;s the climb.
             </p>
+            {/* The hero's only call to action used to read "Scroll down to
+                unlock your pass" and jump to #pass, which sits at the very
+                bottom, past the offer and past the study plan. It was the
+                first thing almost everyone saw and it routed them around
+                everything that sells, to a free item. Measured 2026-08-29 to
+                09-04: of the people who open this page, 70.6% ever reach the
+                offer stack and 49.9% ever reach the study plan, and an
+                anchor jump fires none of the placements in between, which is
+                the shape of that loss.
+
+                It now points at #offer, the section immediately above the
+                study plan, so the cue still orients the reader and the road
+                to the plan is one section instead of three. It deliberately
+                does NOT point at the study plan itself: the offer-first
+                order is what lifted trials per result view from 6.29% to
+                10.47% (see the order comment further down), and jumping the
+                offer would undo exactly that.
+
+                The trade, stated: the pass loses its signpost. It stays on
+                the page and people who scroll still reach it, and it was
+                small anyway, 35 pass unlocks and 29 shares in nine days. */}
             <div className="mt-5">
               <a
-                href="#pass"
+                href="#offer"
                 className="inline-flex items-center gap-2"
                 style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}
               >
-                🎟 Scroll down to unlock your pass ↓
+                🎯 See how to climb ↓
               </a>
             </div>
             </div>
