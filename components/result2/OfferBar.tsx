@@ -6,40 +6,64 @@ import { firePlacementView } from '@/components/CheckoutLink.client'
 import { useCheckout } from '@/components/checkout-context'
 import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
-const DURATION_SECONDS = 15 * 60 // 15 minutes
-
 /**
  * Result v2 offer bar: fixed to the BOTTOM with a neon treatment — near-black
- * strip, glowing xanthous top edge, and a big pulsing countdown dead-center.
- * Placements v2_offer_bar / v2_offer_bar_banner; shares the sessionStorage
- * countdown key with v1 so a visitor who sees both pages keeps one timer.
+ * strip, glowing xanthous top edge, and the deadline dead-center.
+ * Placements v2_offer_bar / v2_offer_bar_banner.
+ *
+ * THE COUNTDOWN IS THE REAL ONE OR THERE IS NO COUNTDOWN (2026-09-04).
+ * This bar used to run its own 15-minute timer out of sessionStorage, under
+ * the words "Special offer expires". Nothing expired when it reached zero,
+ * the price was identical either side of it, and a new session started the
+ * 15 minutes again. It was the single most-seen element on the result page:
+ * 536 of 541 people, 99.1%.
+ *
+ * CLAUDE.md carries the research it contradicted — 18 published A/B tests on
+ * countdown timers, real deadlines median +9.1%, fake or resetting ones
+ * median −3.2% — and names this exact risk: a fake deadline teaches the
+ * reader to distrust deadlines in general, INCLUDING the real one. The real
+ * one here is the founding window (lib/founding-window.ts), a personal
+ * 12-hour rate the checkout genuinely enforces server-side. The page already
+ * calls it "the one TRUE urgency line this page is allowed" and then let
+ * this bar undercut it in front of everybody.
+ *
+ * So the bar now takes the deadline from the caller instead of inventing it:
+ *   deadline  — the founding window's real expiresAt, or null
+ *   heldNote  — the rate was held for an email recipient, so their clock has
+ *               already run out and a countdown would be a lie
+ * With no real deadline the bar shows the offer and the button, and says
+ * nothing about time. A quieter bar that is true beats a loud one that is
+ * not, and it keeps the founding window credible for the day it is on.
  */
-export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer }) {
+export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER, deadline = null, heldNote = false }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer; deadline?: string | null; heldNote?: boolean }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+  const [mounted, setMounted] = useState(false)
   const { mode, open } = useCheckout()
 
   useEffect(() => {
-    const key = 'ac_quiz_offer_start'
-    const stored = sessionStorage.getItem(key)
-    const startedAt = stored ? parseInt(stored, 10) : Date.now()
-    if (!stored) sessionStorage.setItem(key, String(startedAt))
-
-    const calc = () => {
-      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
-      return Math.max(0, DURATION_SECONDS - elapsed)
-    }
-
+    setMounted(true)
+    firePlacementView('v2_offer_bar', submissionId)
+    if (!deadline) return
+    const endsAt = Date.parse(deadline)
+    if (Number.isNaN(endsAt)) return
+    const calc = () => Math.max(0, Math.floor((endsAt - Date.now()) / 1000))
     setSecondsLeft(calc())
     const interval = setInterval(() => setSecondsLeft(calc()), 1000)
-    firePlacementView('v2_offer_bar', submissionId)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [deadline])
 
-  if (secondsLeft === null) return null
+  // Render nothing until mounted so the server and the client agree; the
+  // countdown is clock-dependent and would otherwise mismatch on hydration.
+  if (!mounted) return null
 
-  const mins = Math.floor(secondsLeft / 60).toString().padStart(2, '0')
-  const secs = (secondsLeft % 60).toString().padStart(2, '0')
+  /** The real window is 12 hours, not 15 minutes, so hours lead while they
+   *  exist and the seconds only appear in the last hour, where they mean
+   *  something. */
+  const clock = secondsLeft === null || secondsLeft <= 0 ? null
+    : secondsLeft >= 3600
+      ? `${Math.floor(secondsLeft / 3600)}h ${Math.floor((secondsLeft % 3600) / 60).toString().padStart(2, '0')}m`
+      : `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`
 
   const goCheckout = () => {
     sendEvent('checkout_click', { props: { placement: 'v2_offer_bar_banner' }, submissionId })
@@ -70,17 +94,29 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
       </div>
       <div className="md:hidden" />
 
-      {/* center: THE countdown */}
+      {/* center: the real deadline, the honest held line, or nothing */}
       <div className="flex flex-col items-center justify-center" style={{ lineHeight: 1 }}>
-        <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6 }}>
-          Special offer expires
-        </span>
-        <span
-          className="font-mono font-black tabular-nums ac-neontime"
-          style={{ fontSize: 'clamp(26px, 4.4vw, 36px)', color: '#E7B02F', marginTop: 2 }}
-        >
-          {mins}:{secs}
-        </span>
+        {clock ? (
+          <>
+            <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6 }}>
+              Your founding rate ends in
+            </span>
+            <span
+              className="font-mono font-black tabular-nums ac-neontime"
+              style={{ fontSize: 'clamp(26px, 4.4vw, 36px)', color: '#E7B02F', marginTop: 2 }}
+            >
+              {clock}
+            </span>
+          </>
+        ) : heldNote ? (
+          <span className="text-center" style={{ fontSize: 12.5, color: '#FEF7E7', opacity: 0.8, maxWidth: 260 }}>
+            Your founding rate is <strong style={{ color: '#E7B02F', opacity: 1 }}>held</strong>, the price from your email
+          </span>
+        ) : (
+          <span className="uppercase text-center" style={{ fontSize: 11, letterSpacing: '0.16em', color: '#FEF7E7', opacity: 0.7 }}>
+            1,200+ tutorials · 50+ templates
+          </span>
+        )}
       </div>
 
       {/* right: neon CTA */}

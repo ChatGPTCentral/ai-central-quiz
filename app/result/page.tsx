@@ -356,6 +356,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   )
   let fw = baseOffer.key === 'trial' ? await foundingWindowState(rowId, baseOffer.cents, undefined, { heldRate }) : null
   if (fw && fwPreview === 'expired') fw = { ...fw, enabled: true, valid: false, held: false, amountCents: fw.listCents }
+  // ?fw=valid previews a LIVE window without flipping app_settings, so the
+  // real countdown in the offer bar can be checked (and shown to the owner)
+  // while 'founding_window'.enabled is still false. Preview only: it changes
+  // what this page renders, never what the checkout charges.
+  if (fw && fwPreview === 'valid') fw = { ...fw, enabled: true, valid: true, held: false, expiresAt: new Date(Date.now() + fw.windowHours * 3600_000).toISOString() }
+  if (fw && fwPreview === 'held') fw = { ...fw, enabled: true, valid: true, held: true }
   const offer = fw && fw.enabled && !fw.valid
     ? { ...baseOffer, price: `$${(fw.listCents / 100).toFixed(2)}`, cents: fw.listCents }
     : baseOffer
@@ -1163,7 +1169,18 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         utmSource={segFields?.utm_source ?? (typeof searchParams.utm_source === 'string' ? searchParams.utm_source : null)}
       />
 
-      <OfferBar offer={offer} paymentUrl={checkoutUrl} submissionId={rowId} ctaLabel={ov('offerBar.ctaLabel', `${CTA} ↗`)} />
+      {/* The bar carries the REAL deadline or none at all. It used to run its
+          own 15-minute sessionStorage timer, in front of 99.1% of everyone who
+          reaches this page, while `windowNote` above was already computing the
+          only deadline the checkout enforces. See OfferBar.tsx. */}
+      <OfferBar
+        offer={offer}
+        paymentUrl={checkoutUrl}
+        submissionId={rowId}
+        ctaLabel={ov('offerBar.ctaLabel', `${CTA} ↗`)}
+        deadline={fw && fw.enabled && fw.valid && !fw.held ? fw.expiresAt : null}
+        heldNote={!!(fw && fw.enabled && fw.held)}
+      />
     </CheckoutModalProvider>
   )
 }
