@@ -21,6 +21,7 @@ const tnum: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
 const PLACEMENT_NAME: Record<string, string> = {
   v2_offer_stack: 'Offer stack',
   v2_offer_stack_badges: 'Offer stack · pay marks',
+  v2_hero_cta: 'Hero button (above the fold)',
   v2_offer_bar: 'Sticky bottom bar',
   v2_offer_bar_banner: 'Sticky bottom bar · whole strip',
   v2_video_cta: 'Under the video',

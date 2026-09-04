@@ -1,5 +1,6 @@
 import CheckoutLink from '@/components/CheckoutLink.client'
 import PayBadges from '@/components/result2/PayBadges.client'
+import { article } from '@/lib/result-url'
 import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // The offer stack. The old card said "get everything, $4.99" — no itemisation,
@@ -29,6 +30,8 @@ export function OfferStack({
   guarantee = 'block',
   windowNote = null,
   todayCount = null,
+  supplyLimit = null,
+  supplyLeft = null,
   jobLevel = null,
   hoursLost = null,
   workArea = null,
@@ -64,6 +67,10 @@ export function OfferStack({
    *  small floor (lib/result page decides the number) a low count would
    *  undercut itself, and no app_settings row means the flag is off. */
   todayCount?: number | null
+  /** Today's enforced $4.99 limit, or null when no limit is enforced. */
+  supplyLimit?: number | null
+  /** How many of that limit are still unsold right now. */
+  supplyLeft?: number | null
   /** Their OWN answer to the quiz's job_level question (real options:
    *  Founder / C-Suite / VP-Director / Individual contributor / Manager /
    *  Other / Student or intern) — never inferred, never enriched, the same
@@ -96,9 +103,9 @@ export function OfferStack({
     hoursLost && hoursLost > 0
       ? {
           t: `Get back ~${hoursLost} hour${hoursLost === 1 ? '' : 's'} a week`,
-          d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}${area ? ` in ${area}` : ''}, opened tonight.`,
+          d: `Weeks 2, 3 and 4 of the plan built for ${article(rungClassName)} ${rungClassName.toLowerCase()}${area ? ` in ${area}` : ''}, opened tonight.`,
         }
-      : { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for a ${rungClassName.toLowerCase()}, opened tonight.` },
+      : { t: 'Your 30-day plan, unlocked', d: `Weeks 2, 3 and 4 of the plan built for ${article(rungClassName)} ${rungClassName.toLowerCase()}, opened tonight.` },
     { t: '1,200+ step-by-step tutorials', d: 'Plain language, a screenshot at every step, nothing assumes you can code.' },
     { t: '50+ templates and prompt packs', d: 'Copy, paste, done. Built for real work, not demos.' },
     { t: 'New tutorials every week', d: 'The tools change monthly. The library keeps up so you do not have to.' },
@@ -176,22 +183,21 @@ export function OfferStack({
         </p>
       )}
 
-      {/* risk reversal — the objection is the renewal, so answer it at the button */}
-      {guarantee === 'block' && (
-        <div style={{ margin: '16px 26px 0', padding: '13px 15px', backgroundColor: CREAM, border: `2px solid ${INK}` }}>
-          <div className="flex" style={{ gap: 10 }}>
-            <span aria-hidden style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
-            <div>
-              <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>{offer.oneTime ? 'Nothing to cancel' : 'Covered both ways'}</div>
-              <div className="mt-1" style={{ fontSize: 12.5, color: BODY, fontWeight: 300, lineHeight: 1.5 }}>
-                {offer.oneTime
-                  ? 'There is no subscription here, so there is nothing to remember and nothing to cancel. '
-                  : 'Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account. Plus a 30-day money-back guarantee: '}
-                {offer.guarantee}
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* THE DAILY SUPPLY, stated only while it is enforced (owner,
+          2026-09-04: "bring back into this page the fact that there are only
+          10 4.99 trials available a day and he can get one of them").
+          supplyLimit is null unless lib/trial-supply-cap.ts is switched on,
+          and when it is on, arrival number 11 genuinely pays the list price
+          — the comment that used to sit above this spot refused the claim
+          for the right reason, that the cap was alert-only then. It is a
+          real cap now, so the claim is allowed, and it disappears the moment
+          the cap is switched off. */}
+      {supplyLimit !== null && supplyLeft !== null && (
+        <p style={{ padding: '8px 26px 0', margin: 0, fontSize: 12.5, fontWeight: 700, color: supplyLeft > 0 ? FULVOUS : BODY }}>
+          {supplyLeft > 0
+            ? `⚡ ${supplyLeft} of today's ${supplyLimit} trials at ${offer.price} are still open`
+            : `Today's ${supplyLimit} trials at ${offer.price} are taken. The next ones open tomorrow.`}
+        </p>
       )}
 
       {decisionMakerLine && (
@@ -231,6 +237,28 @@ export function OfferStack({
           </p>
         )}
       </div>
+      {/* risk reversal, BELOW the buttons (owner, 2026-09-04: "that
+          'you're covered box' bring it below the payment buttons"). It used
+          to sit above them and pushed the button itself further down the
+          card. The objection it answers is the renewal, which a person
+          raises with their hand already on the button, so it reads just as
+          well underneath and the ask arrives sooner. */}
+      {guarantee === 'block' && (
+        <div style={{ margin: '0 26px 22px', padding: '13px 15px', backgroundColor: CREAM, border: `2px solid ${INK}` }}>
+          <div className="flex" style={{ gap: 10 }}>
+            <span aria-hidden style={{ fontSize: 16, lineHeight: 1.2 }}>🛡️</span>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: RICH }}>{offer.oneTime ? 'Nothing to cancel' : 'Covered both ways'}</div>
+              <div className="mt-1" style={{ fontSize: 12.5, color: BODY, fontWeight: 300, lineHeight: 1.5 }}>
+                {offer.oneTime
+                  ? 'There is no subscription here, so there is nothing to remember and nothing to cancel. '
+                  : 'Cancel any time in your trial month and you pay nothing more, no email required, two clicks in your account. Plus a 30-day money-back guarantee: '}
+                {offer.guarantee}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

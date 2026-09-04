@@ -82,7 +82,34 @@ export async function foundingWindowState(
     enabled: false, valid: true, held: false, amountCents: baseCents,
     listCents: cfg.list_cents, windowHours: cfg.window_hours, expiresAt: null,
   }
-  if (!cfg.enabled) return disabled
+  if (!cfg.enabled) {
+    // The founding WINDOW is off. The daily SUPPLY CAP has its own switch
+    // (lib/trial-supply-cap.ts) and can run without it: same $4.99 for
+    // everyone, no personal deadline, until the day's supply is gone.
+    // Everything here is inside one try: db() throws when the service key is
+    // absent, and a copy decision must never be able to take this page down.
+    // Every failure path returns `disabled`, which keeps $4.99 for everyone —
+    // the same under-charge-never-over-charge direction as the rest of this
+    // file.
+    try {
+      const client = c ?? db()
+      const supply = await getTrialSupplyState(client)
+      if (!supply.enabled) return disabled
+      // A promised price is never taken back, exactly as below.
+      if (opts?.heldRate && submissionId) return { ...disabled, enabled: true, valid: true, held: true, amountCents: baseCents }
+      if (!supply.exhaustedAt) return { ...disabled, enabled: true, valid: true, amountCents: baseCents }
+      if (!submissionId) return { ...disabled, enabled: true, valid: false, amountCents: cfg.list_cents }
+      const { data } = await client.from('submissions').select('created_at').eq('id', submissionId).maybeSingle()
+      const createdIso = data?.created_at as string | undefined
+      // Real timestamps, never raw ISO strings: Postgres and JS format
+      // offsets differently and a string compare can misorder two moments
+      // milliseconds apart.
+      const arrivedAfter = createdIso ? new Date(createdIso).getTime() > new Date(supply.exhaustedAt).getTime() : true
+      return { ...disabled, enabled: true, valid: !arrivedAfter, amountCents: arrivedAfter ? cfg.list_cents : baseCents }
+    } catch {
+      return disabled
+    }
+  }
 
   // THE HELD RATE (2026-08-19, first night of the window). Our recovery
   // emails quote $4.99 and carry static Stripe links that genuinely charge

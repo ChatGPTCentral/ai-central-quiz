@@ -32,3 +32,12 @@ export function personResultPath(r: {
   if (utm) for (const [k, v] of Object.entries(utm)) params.set(k, v)
   return `/result?${params.toString()}`
 }
+
+
+/** "a" or "an" for a word, so a rung name never reads "a experimenter".
+ *  English article choice follows the SOUND, but every rung on this ladder
+ *  (Observer, Experimenter, Practitioner, Power User, Builder) agrees with
+ *  the plain vowel-letter rule, so the simple test is the correct one here. */
+export function article(word: string): string {
+  return /^[aeiou]/i.test(word.trim()) ? 'an' : 'a'
+}

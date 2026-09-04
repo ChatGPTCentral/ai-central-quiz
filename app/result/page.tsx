@@ -21,11 +21,13 @@ import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
+import { article } from '@/lib/result-url'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { AnswerEcho, buildEchoLines } from '@/components/result2/AnswerEcho'
 import { foundingWindowState, hoursLeft, isHeldRateSource } from '@/lib/founding-window'
+import { getTrialSupplyState } from '@/lib/trial-supply-cap'
 import { todayTrialCount } from '@/lib/trial-entries'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
@@ -65,6 +67,10 @@ const CTA_LABEL_LIFETIME = 'get lifetime access'
 
 interface SegFields {
   email?: string | null
+  /** The person's own name from the quiz. The hero used to read it ONLY from
+   *  the URL, so any link without &name= (a share, a bookmark, a paste) gave
+   *  an impersonal page to someone we know the name of. */
+  name?: string | null
   utm_source?: string | null
   stage?: string | null
   persona?: string | null
@@ -119,7 +125,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
   })
     const { data } = await c
       .from('submissions')
-      .select('email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for, depth_actions, work_area')
+      .select('name, email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for, depth_actions, work_area')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -159,6 +165,23 @@ async function fetchTodayCountForDisplay(): Promise<number | null> {
     return n >= 3 ? n : null
   } catch {
     return null
+  }
+}
+
+/** Today's real trial count, or 0 — used only to say how many of the day's
+ *  supply are left. Never throws: a copy line must not take the page down. */
+async function todayTrialCountSafe(): Promise<number> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+    if (!url || !key) return 0
+    const c = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+    })
+    return await todayTrialCount(c)
+  } catch {
+    return 0
   }
 }
 
@@ -255,7 +278,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const score = isNaN(scoreRaw) || scoreRaw <= 0 ? 50 : scoreRaw
   const rowId = searchParams.id
 
-  const firstName = (name || '').trim().split(/\s+/)[0] || ''
 
   // THREE independent reads, ONE round trip. They used to run in sequence,
   // stacking Supabase + editor-config + Stripe latency into TTFB on a page
@@ -271,6 +293,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     }),
     resolveLifetimePriceId().then(id => !!id).catch(() => false),
   ])
+  // The URL first, then the row we just fetched. The URL wins because a
+  // preview link may deliberately carry a different name; the row is what
+  // makes the page personal for everyone who arrives without one.
+  const firstName = (name || segFields?.name || '').trim().split(/\s+/)[0] || ''
+
   const persona = segFields?.persona ?? searchParams.persona ?? null
   const content = personaContent(persona)
   // ONE effective rung drives the copy, the percentile and the gauge. They used
@@ -376,6 +403,19 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       ? `Your founding rate: ${baseOffer.price} for the next ${hoursLeft(fw.expiresAt)} hours. After that, new members pay $${(fw.listCents / 100).toFixed(2)}.`
       : null
   const todayCount = await fetchTodayCountForDisplay()
+  // The daily $4.99 supply, read only so the page can STATE it. It renders a
+  // limit only while lib/trial-supply-cap.ts actually enforces one; with the
+  // switch off the page says nothing about supply, the same rule that took
+  // the fake countdown off the offer bar this morning.
+  const supply = await getTrialSupplyState().catch(() => null)
+  // ?supply=N previews the line with N left, so it can be seen and judged
+  // before the cap is switched on. Preview only: it changes what this page
+  // renders, never what the checkout charges and never the real limit.
+  const supplyPreview = typeof searchParams.supply === 'string' ? parseInt(searchParams.supply, 10) : NaN
+  const supplyLimit = !Number.isNaN(supplyPreview) ? 10 : supply?.enabled ? supply.limit : null
+  const supplyLeft = !Number.isNaN(supplyPreview)
+    ? Math.max(0, supplyPreview)
+    : supply?.enabled ? Math.max(0, supply.limit - (await todayTrialCountSafe())) : null
   const isLifetime = offer.key === 'lifetime'
   // Every CTA on the page asks for the offer this visitor is being shown.
   const CTA = isLifetime ? CTA_LABEL_LIFETIME : CTA_LABEL
@@ -641,11 +681,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     <section style={{ borderTop: `3px solid ${INK}` }}>
       <div className="max-w-[720px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
         <Eyebrow>Your recommended study plan</Eyebrow>
+        {/* Owner, 2026-09-04: "voglio che ognuno sia personalizzato e che dica,
+            questo è il piano per te, first_name". The rung moved into the line
+            below, which also retires the "mapped for a experimenter" article
+            bug that only showed on vowel-initial rungs. */}
         <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-          The first month, mapped for a {rung.className.toLowerCase()}
+          {firstName ? `${firstName}, this is the plan for you` : 'This is the plan for you'}
         </h2>
         <p className="mt-3 max-w-[620px]" style={{ fontWeight: 300, fontSize: 15.5, lineHeight: 1.5, color: BODY }}>
-          {p('Five tutorials from the library, sequenced for exactly where you are. The first takes 15 minutes tonight.')}
+          {p(`Five tutorials from the library, sequenced for exactly where ${article(rung.className)} ${rung.className.toLowerCase()} is now. The first takes 15 minutes tonight.`)}
         </p>
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">
@@ -777,6 +821,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           guarantee={researchPage ? 'oneline' : 'block'}
           windowNote={windowNote}
           todayCount={todayCount}
+          supplyLimit={supplyLimit}
+          supplyLeft={supplyLeft}
           jobLevel={jobLevel}
           hoursLost={segFields?.hours_lost ?? null}
           workArea={segFields?.work_area ?? null}
@@ -792,10 +838,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <div className="max-w-[880px] mx-auto px-6 sm:px-10 py-12 sm:py-16">
         <Eyebrow>The full tour</Eyebrow>
         <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-          Prefer to see it first? Four minutes
+          Prefer to see it first? One minute
         </h2>
         <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
-          A walk through the library, the templates and how members actually use it day to day.
+          A quick walk through the library, the templates and how members actually use it day to day.
         </p>
         {videoBlock(false)}
       </div>
@@ -937,14 +983,35 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 The trade, stated: the pass loses its signpost. It stays on
                 the page and people who scroll still reach it, and it was
                 small anyway, 35 pass unlocks and 29 shares in nine days. */}
+            {/* THE ABOVE-THE-FOLD ASK (owner, 2026-09-04: "above the fold we
+                gotta make that button click to the 4.99 offer immediately not
+                waiting to scroll down").
+
+                History of this one element, because it moved twice today and
+                the reason matters. It began as "Scroll down to unlock your
+                pass", anchored to #pass at the very bottom, which routed the
+                first thing everybody sees around all of the selling to a free
+                item. It then pointed at #offer. It now opens checkout itself,
+                so the page can be bought from the first screen without a
+                scroll at all.
+
+                Measured reach, 2026-08-29 to 09-04, on real scroll depth
+                (placement_view fires on an IntersectionObserver): 70.6% of
+                people ever reach the offer stack and 49.9% the study plan.
+                Every one of them sees this. The label carries no price: the
+                house rule is one promise repeated, price in the offer stack
+                and on the bar, the button sells the outcome. */}
             <div className="mt-5">
-              <a
-                href="#offer"
-                className="inline-flex items-center gap-2"
-                style={{ border: `2px dashed ${INK}`, backgroundColor: CREAM, color: INK, padding: '10px 22px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}
+              <CheckoutLink
+                href={checkoutUrl}
+                placement="v2_hero_cta"
+                submissionId={rowId}
+                className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]"
+                style={{ textDecoration: 'none' }}
               >
-                🎯 See how to climb ↓
-              </a>
+                <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 16, height: 52, padding: '0 24px' }}>{CTA}</span>
+                <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 52, height: 52, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 16 }} aria-hidden>↗</span>
+              </CheckoutLink>
             </div>
             </div>
 
@@ -1018,6 +1085,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   guarantee="oneline"
                   windowNote={windowNote}
                   todayCount={todayCount}
+                  supplyLimit={supplyLimit}
+                  supplyLeft={supplyLeft}
                   jobLevel={jobLevel}
                   hoursLost={segFields?.hours_lost ?? null}
                   workArea={segFields?.work_area ?? null}
@@ -1054,6 +1123,8 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   guarantee="oneline"
                   windowNote={windowNote}
                   todayCount={todayCount}
+                  supplyLimit={supplyLimit}
+                  supplyLeft={supplyLeft}
                   jobLevel={jobLevel}
                   hoursLost={segFields?.hours_lost ?? null}
                   workArea={segFields?.work_area ?? null}

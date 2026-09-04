@@ -15,7 +15,21 @@
 //
 // Config lives in app_settings key 'trial_daily_supply', resets itself
 // every UTC day:
-//   { date: 'YYYY-MM-DD', limit: 10, exhaustedAt: string | null }
+//   { enabled: false, date: 'YYYY-MM-DD', limit: 10, exhaustedAt: string | null }
+//
+// `enabled` is its OWN switch, added 2026-09-04. The cap was first written
+// inside lib/founding-window.ts's enabled branch, so it could only ever bite
+// while the founding WINDOW was also on. The owner then took the founding
+// window off the table and asked for the daily limit alone: "bring back into
+// this page the fact that there are only 10 4.99 trials available a day and
+// he can get one of them". Two different promises, so two different
+// switches. With this one on and the window off, everybody keeps $4.99 with
+// no personal deadline until the day's supply runs out, and only arrivals
+// after that pay the list price.
+//
+// The result page may state the limit ONLY while this is true. That is the
+// same rule the fake 15-minute countdown broke this morning: a scarcity
+// claim renders because it is enforced, or it does not render.
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { todayTrialCount } from '@/lib/trial-entries'
@@ -23,7 +37,7 @@ import { todayTrialCount } from '@/lib/trial-entries'
 const SETTINGS_KEY = 'trial_daily_supply'
 const DEFAULT_LIMIT = 10
 
-export type SupplyState = { date: string; limit: number; exhaustedAt: string | null }
+export type SupplyState = { enabled: boolean; date: string; limit: number; exhaustedAt: string | null }
 
 function db(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -46,10 +60,14 @@ export async function getTrialSupplyState(c?: SupabaseClient): Promise<SupplySta
     const client = c ?? db()
     const { data } = await client.from('app_settings').select('value').eq('key', SETTINGS_KEY).maybeSingle()
     const v = (data?.value ?? {}) as Partial<SupplyState>
-    if (v.date !== todayUtc) return { date: todayUtc, limit: DEFAULT_LIMIT, exhaustedAt: null }
-    return { date: todayUtc, limit: Number(v.limit) > 0 ? Number(v.limit) : DEFAULT_LIMIT, exhaustedAt: v.exhaustedAt ?? null }
+    // Off unless switched on, deliberately: an unset row must never start
+    // charging anyone the list price, and must never let the page claim a
+    // limit nothing enforces.
+    const enabled = v.enabled === true
+    if (v.date !== todayUtc) return { enabled, date: todayUtc, limit: DEFAULT_LIMIT, exhaustedAt: null }
+    return { enabled, date: todayUtc, limit: Number(v.limit) > 0 ? Number(v.limit) : DEFAULT_LIMIT, exhaustedAt: v.exhaustedAt ?? null }
   } catch {
-    return { date: todayUtc, limit: DEFAULT_LIMIT, exhaustedAt: null }
+    return { enabled: false, date: todayUtc, limit: DEFAULT_LIMIT, exhaustedAt: null }
   }
 }
 
@@ -59,7 +77,9 @@ export async function getTrialSupplyState(c?: SupabaseClient): Promise<SupplySta
 export async function raiseTrialSupply(by: number, c?: SupabaseClient): Promise<SupplyState> {
   const client = c ?? db()
   const current = await getTrialSupplyState(client)
-  const next: SupplyState = { date: current.date, limit: current.limit + by, exhaustedAt: null }
+  // Raising the limit implies running the cap: an owner who adds supply is
+  // asking for the cap to be live, not switching it off by omission.
+  const next: SupplyState = { enabled: true, date: current.date, limit: current.limit + by, exhaustedAt: null }
   await client.from('app_settings').upsert(
     { key: SETTINGS_KEY, value: next, updated_at: new Date().toISOString() },
     { onConflict: 'key' },
@@ -75,7 +95,7 @@ export async function raiseTrialSupply(by: number, c?: SupabaseClient): Promise<
 export async function markSupplyExhaustedIfNeeded(c?: SupabaseClient): Promise<void> {
   const client = c ?? db()
   const state = await getTrialSupplyState(client)
-  if (state.exhaustedAt) return
+  if (!state.enabled || state.exhaustedAt) return
   const n = await todayTrialCount(client)
   if (n < state.limit) return
   await client.from('app_settings').upsert(
