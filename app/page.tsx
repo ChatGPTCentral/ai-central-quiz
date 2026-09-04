@@ -160,13 +160,21 @@ export default async function HomePage({
             LinkedIn-style CTA (see where I rank) → free note → description →
             card. Hidden on lg+, which uses the flipped two-column grid. ── */}
         <div className="lg:hidden w-full max-w-md mx-auto flex flex-col items-center text-center">
-          <h1
-            className="font-bold"
-            style={{ fontSize: 'clamp(30px, 8.5vw, 40px)', lineHeight: 1.04, letterSpacing: '-0.035em', color: RICH, marginBottom: 12 }}
-          >
-            Most people haven&apos;t started with AI.{' '}
-            <span style={{ color: FULVOUS }}>Where do you rank?</span>
-          </h1>
+          {/* The headline is tapped and it went nowhere: 6 dead clicks in six
+              hours on 2026-09-04, split between the two halves of this
+              sentence. Same lesson as the completions badge in 9abd55d — on a
+              page whose only job is to start the quiz, anything a person
+              reaches for should start the quiz. The question mark is an
+              invitation; it now answers. */}
+          <Link href={quizHref} aria-label="see where I rank" style={{ textDecoration: 'none', color: 'inherit', display: 'block', width: '100%' }}>
+            <h1
+              className="font-bold"
+              style={{ fontSize: 'clamp(30px, 8.5vw, 40px)', lineHeight: 1.04, letterSpacing: '-0.035em', color: RICH, marginBottom: 12 }}
+            >
+              Most people haven&apos;t started with AI.{' '}
+              <span style={{ color: FULVOUS }}>Where do you rank?</span>
+            </h1>
+          </Link>
           <p className="uppercase" style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.05em', color: FULVOUS, marginBottom: 18 }}>
             The 40-second AI readiness quiz
           </p>
@@ -217,13 +225,16 @@ export default async function HomePage({
             <p className="uppercase" style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.05em', color: FULVOUS, marginBottom: 14 }}>
               The 40-second AI readiness quiz
             </p>
-            <h1
-              className="font-bold"
-              style={{ fontSize: 'clamp(38px, 3.6vw, 52px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH, marginBottom: 16 }}
-            >
-              Most people haven&apos;t started with AI.{' '}
-              <span style={{ color: FULVOUS }}>Where do you rank?</span>
-            </h1>
+            {/* Clickable for the same reason as the mobile headline above. */}
+            <Link href={quizHref} aria-label="see where I rank" style={{ textDecoration: 'none', color: 'inherit', display: 'block', width: '100%' }}>
+              <h1
+                className="font-bold"
+                style={{ fontSize: 'clamp(38px, 3.6vw, 52px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH, marginBottom: 16 }}
+              >
+                Most people haven&apos;t started with AI.{' '}
+                <span style={{ color: FULVOUS }}>Where do you rank?</span>
+              </h1>
+            </Link>
             <p style={{ fontSize: 18, fontWeight: 300, lineHeight: 1.5, color: '#4A4A4A', maxWidth: 560, marginBottom: 26 }}>
               Take the quiz to get your <strong style={{ color: INK, fontWeight: 600 }}>AI Readiness Type</strong> and
               see exactly where you land versus everyone else, then a plan to climb
@@ -365,13 +376,16 @@ export default async function HomePage({
             <p className="uppercase mb-4" style={{ fontSize: 12, fontWeight: 500, letterSpacing: '0.05em', color: FULVOUS }}>
               The 40-second AI readiness quiz
             </p>
-            <h1
-              className="mb-4 sm:mb-5 font-bold"
-              style={{ fontSize: 'clamp(32px, 4.4vw, 54px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}
-            >
-              Most people haven&apos;t started with AI.{' '}
-              <span style={{ color: FULVOUS }}>Where do you rank?</span>
-            </h1>
+            {/* Clickable for the same reason as the two headlines above. */}
+            <Link href={quizHref} aria-label="see where I rank" style={{ textDecoration: 'none', color: 'inherit', display: 'block', width: '100%' }}>
+              <h1
+                className="mb-4 sm:mb-5 font-bold"
+                style={{ fontSize: 'clamp(32px, 4.4vw, 54px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}
+              >
+                Most people haven&apos;t started with AI.{' '}
+                <span style={{ color: FULVOUS }}>Where do you rank?</span>
+              </h1>
+            </Link>
             <p
               className="mb-7 sm:mb-8 max-w-[540px] mx-auto lg:mx-0"
               style={{ fontSize: 'clamp(15px, 1.5vw, 18px)', fontWeight: 300, lineHeight: 1.5, color: '#4A4A4A' }}
