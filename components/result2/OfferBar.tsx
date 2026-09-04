@@ -84,39 +84,44 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
       role="link"
       aria-label="Claim the special offer"
     >
-      {/* left: the offer line (hidden on small screens) */}
+      {/* left: what the price buys (hidden on small screens, where the centre
+          has to carry the whole offer on its own) */}
       <div className="hidden md:flex items-center gap-3 min-w-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-full-dark-bg.png" alt="AI Central" style={{ height: 18, width: 'auto', display: 'block', opacity: 0.9 }} />
         <span style={{ fontSize: 12.5, color: '#FEF7E7', opacity: 0.75, letterSpacing: '0.04em' }}>
-          Full library · <strong style={{ color: '#E7B02F', opacity: 1 }}>{offer.oneTime ? `${offer.price} once, yours for good` : `${offer.price} first month`}</strong>
+          1,200+ tutorials · 50+ templates
         </span>
       </div>
       <div className="md:hidden" />
 
-      {/* center: the real deadline, the honest held line, or nothing */}
+      {/* centre: THE PRICE (owner, 2026-09-04: "voglio puntare su questa
+          questione che ogni giorno ci sono 10 trial a questo no-brainer
+          price"). This slot is the loudest thing on the bar and the bar is
+          the most-seen element on the page, 536 of 541 people. It used to
+          hold a fake countdown; before that the price only ever appeared in
+          the left cell, which is `hidden md:flex` — so 27.8% of this page's
+          traffic, everyone on a phone, never saw the number the whole
+          argument rests on. The price now sits here on every screen size.
+          The BUTTON still sells the outcome, not the price: that rule is in
+          CLAUDE.md and this does not break it, the strip is where the price
+          is allowed to live. */}
       <div className="flex flex-col items-center justify-center" style={{ lineHeight: 1 }}>
         {clock ? (
-          <>
-            <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6 }}>
-              Your founding rate ends in
-            </span>
-            <span
-              className="font-mono font-black tabular-nums ac-neontime"
-              style={{ fontSize: 'clamp(26px, 4.4vw, 36px)', color: '#E7B02F', marginTop: 2 }}
-            >
-              {clock}
-            </span>
-          </>
+          <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6, marginBottom: 3 }}>
+            {clock} left
+          </span>
         ) : heldNote ? (
-          <span className="text-center" style={{ fontSize: 12.5, color: '#FEF7E7', opacity: 0.8, maxWidth: 260 }}>
-            Your founding rate is <strong style={{ color: '#E7B02F', opacity: 1 }}>held</strong>, the price from your email
+          <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6, marginBottom: 3 }}>
+            price held from your email
           </span>
-        ) : (
-          <span className="uppercase text-center" style={{ fontSize: 11, letterSpacing: '0.16em', color: '#FEF7E7', opacity: 0.7 }}>
-            1,200+ tutorials · 50+ templates
-          </span>
-        )}
+        ) : null}
+        <span className="font-black tabular-nums ac-neontime" style={{ fontSize: 'clamp(26px, 4.4vw, 34px)', color: '#E7B02F' }}>
+          {offer.price}
+        </span>
+        <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.18em', color: '#FEF7E7', opacity: 0.65, marginTop: 3 }}>
+          {offer.oneTime ? 'once, yours for good' : 'for your first month'}
+        </span>
       </div>
 
       {/* right: neon CTA */}
