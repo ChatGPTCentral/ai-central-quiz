@@ -28,7 +28,7 @@
 // alarm (lib/express-alert.ts).
 
 import { createClient } from '@supabase/supabase-js'
-import { TRIAL_PRICES } from '@/lib/trial-entries'
+import { todayTrialCount } from '@/lib/trial-entries'
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 const SETTINGS_KEY = 'trial_supply_alert'
@@ -80,21 +80,7 @@ export async function checkAndAlertTrialSupply(): Promise<void> {
       ? [8] // legacy single-alert shape, from before the cascade existed
       : []
 
-  const dayStart = `${todayUtc}T00:00:00.000Z`
-  const dayEnd = new Date(new Date(dayStart).getTime() + 86_400_000).toISOString()
-
-  const { count, error } = await c
-    .from('stripe_charges')
-    .select('id', { count: 'exact', head: true })
-    .in('amount_cents', Array.from(TRIAL_PRICES))
-    .eq('refunded', false)
-    .gte('charged_at', dayStart)
-    .lt('charged_at', dayEnd)
-  if (error) {
-    console.error('[trial-supply-alert] count query failed:', error.message)
-    return
-  }
-  const n = count ?? 0
+  const n = await todayTrialCount(c)
 
   const crossed = thresholds.filter(t => n >= t && !alertedToday.includes(t))
   if (crossed.length === 0) return

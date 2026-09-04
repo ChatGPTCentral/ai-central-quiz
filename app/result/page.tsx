@@ -26,6 +26,7 @@ import { LabHero } from '@/components/result2/LabHero'
 import { OfferStack } from '@/components/result2/OfferStack'
 import { AnswerEcho, buildEchoLines } from '@/components/result2/AnswerEcho'
 import { foundingWindowState, hoursLeft, isHeldRateSource } from '@/lib/founding-window'
+import { todayTrialCount } from '@/lib/trial-entries'
 import { LibraryGrid } from '@/components/result2/LibraryGrid'
 import { AspirationalHero } from '@/components/result2/AspirationalHero'
 import AdsRescue from '@/components/result2/AdsRescue.client'
@@ -124,6 +125,42 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
       .maybeSingle()
     return (data as SegFields) || null
   } catch { return null }
+}
+
+/**
+ * Real, live "N people got this today" social proof — never a spots-left
+ * claim, because nothing actually stops trial #11 (lib/trial-supply-alert.ts
+ * has no enforcement, only an owner-facing alert). "X people today" is true
+ * the moment it renders and stays true; "X of 10 spots left" would imply an
+ * availability limit that does not exist, which is exactly the fictitious
+ * claim CLAUDE.md bans. Owner, 2026-09-04, after asking whether framing
+ * this as urgency moved yesterday's numbers (it did not — that spike traced
+ * to his own direct outreach, not the site): "si" to showing the REAL count
+ * publicly. Below 3 a raw number reads as weak, not as proof, so it renders
+ * nothing until then — the same "never a half-signal" instinct as every
+ * other null-renders-nothing field on this page.
+ *
+ * Toggled by app_settings 'today_count_display' ({ enabled: boolean }),
+ * same flip-live-no-deploy pattern as founding_window; defaults ON (unset
+ * row) so this ships live today without needing a settings write first.
+ */
+async function fetchTodayCountForDisplay(): Promise<number | null> {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY
+    if (!url || !key) return null
+    const c = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: (i: RequestInfo | URL, n?: RequestInit) => fetch(i, { ...n, cache: 'no-store' }) },
+    })
+    const { data: setting } = await c.from('app_settings').select('value').eq('key', 'today_count_display').maybeSingle()
+    const enabled = (setting?.value as { enabled?: boolean } | null)?.enabled !== false
+    if (!enabled) return null
+    const n = await todayTrialCount(c)
+    return n >= 3 ? n : null
+  } catch {
+    return null
+  }
 }
 
 const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
@@ -333,6 +370,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     : fw && fw.enabled && fw.valid && fw.expiresAt
       ? `Your founding rate: ${baseOffer.price} for the next ${hoursLeft(fw.expiresAt)} hours. After that, new members pay $${(fw.listCents / 100).toFixed(2)}.`
       : null
+  const todayCount = await fetchTodayCountForDisplay()
   const isLifetime = offer.key === 'lifetime'
   // Every CTA on the page asks for the offer this visitor is being shown.
   const CTA = isLifetime ? CTA_LABEL_LIFETIME : CTA_LABEL
@@ -729,6 +767,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           lead={researchPage ? 'duration' : 'classic'}
           guarantee={researchPage ? 'oneline' : 'block'}
           windowNote={windowNote}
+          todayCount={todayCount}
           jobLevel={jobLevel}
           hoursLost={segFields?.hours_lost ?? null}
           workArea={segFields?.work_area ?? null}
@@ -948,6 +987,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   lead="duration"
                   guarantee="oneline"
                   windowNote={windowNote}
+                  todayCount={todayCount}
                   jobLevel={jobLevel}
                   hoursLost={segFields?.hours_lost ?? null}
                   workArea={segFields?.work_area ?? null}
@@ -983,6 +1023,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   lead="duration"
                   guarantee="oneline"
                   windowNote={windowNote}
+                  todayCount={todayCount}
                   jobLevel={jobLevel}
                   hoursLost={segFields?.hours_lost ?? null}
                   workArea={segFields?.work_area ?? null}

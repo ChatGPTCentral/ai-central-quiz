@@ -28,6 +28,7 @@ export function OfferStack({
   lead = 'classic',
   guarantee = 'block',
   windowNote = null,
+  todayCount = null,
   jobLevel = null,
   hoursLost = null,
   workArea = null,
@@ -56,6 +57,13 @@ export function OfferStack({
    *  for the next N hours"), server-computed from the person's own deadline
    *  and enforced by both checkout routes. Null renders nothing. */
   windowNote?: string | null
+  /** Real trials banked today (UTC), server-computed by the same query the
+   *  owner's own daily alert uses (lib/trial-entries.ts's todayTrialCount) —
+   *  never a "spots left" claim, since nothing actually caps the day, only
+   *  a plain count of what already happened. Null renders nothing: below a
+   *  small floor (lib/result page decides the number) a low count would
+   *  undercut itself, and no app_settings row means the flag is off. */
+  todayCount?: number | null
   /** Their OWN answer to the quiz's job_level question (real options:
    *  Founder / C-Suite / VP-Director / Individual contributor / Manager /
    *  Other / Student or intern) — never inferred, never enriched, the same
@@ -155,6 +163,16 @@ export function OfferStack({
       {windowNote && (
         <p style={{ padding: '10px 26px 0', margin: 0, fontSize: 13, color: FULVOUS, fontWeight: 700 }}>
           {windowNote}
+        </p>
+      )}
+
+      {/* Real count, never a "spots left" line — nothing actually caps the
+          day (lib/trial-supply-alert.ts is alert-only), so a limit claim
+          here would be exactly the fictitious device CLAUDE.md bans. Just
+          what already happened today, true the instant it renders. */}
+      {todayCount !== null && (
+        <p style={{ padding: '10px 26px 0', margin: 0, fontSize: 12.5, color: GREEN, fontWeight: 700 }}>
+          🔥 {todayCount} people got this trial today
         </p>
       )}
 

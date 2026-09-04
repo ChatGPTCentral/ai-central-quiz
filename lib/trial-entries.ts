@@ -221,6 +221,33 @@ export async function loadLedgerAndCharges(
   return { ledger, charges }
 }
 
+/** Today's real trial count by charge date (UTC day), gross across every
+ *  trial price (rule 5, never deduplicated) — the exact definition
+ *  lib/trial-supply-alert.ts uses for the owner's own daily alert. The one
+ *  place this query lives: a customer-facing "X trials today" line
+ *  (app/result/page.tsx) reads it too, so the number a visitor sees can
+ *  never be a different count than the one the owner's own alert already
+ *  fired on. Never throws: a live counter that can take the result page
+ *  down is worse than no counter. */
+export async function todayTrialCount(c: { from: (t: string) => any }): Promise<number> {
+  try {
+    const todayUtc = new Date().toISOString().slice(0, 10)
+    const dayStart = `${todayUtc}T00:00:00.000Z`
+    const dayEnd = new Date(new Date(dayStart).getTime() + 86_400_000).toISOString()
+    const { count, error } = await c
+      .from('stripe_charges')
+      .select('id', { count: 'exact', head: true })
+      .in('amount_cents', Array.from(TRIAL_PRICES))
+      .eq('refunded', false)
+      .gte('charged_at', dayStart)
+      .lt('charged_at', dayEnd)
+    if (error) return 0
+    return count ?? 0
+  } catch {
+    return 0
+  }
+}
+
 /** True when the quiz can claim the trial: a new customer it convinced, or an
  *  existing one it convinced again. Both are the north star. */
 export function isQuizEarned(attribution: string): boolean {
