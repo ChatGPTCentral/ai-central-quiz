@@ -226,6 +226,10 @@ export function QuestionRenderer({
                 <span
                   className="flex-shrink-0 flex items-center justify-center font-mono"
                   style={{
+                    // Decoration, same reason as the multi-select tick box
+                    // below: the button owns the click, the badge must not
+                    // intercept it.
+                    pointerEvents: 'none',
                     width: 26, height: 26, fontSize: 12, fontWeight: 600,
                     backgroundColor: sel ? FULVOUS : INK,
                     color: sel ? RICH : CREAM,
@@ -234,7 +238,7 @@ export function QuestionRenderer({
                   {KEYS[i] ?? '·'}
                 </span>
                 <span style={{ fontSize: 15, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>{opt.label}</span>
-                {sel && <span className="ml-auto flex-shrink-0" style={{ color: FULVOUS, fontWeight: 700, fontSize: 16 }} aria-hidden>✓</span>}
+                {sel && <span className="ml-auto flex-shrink-0" style={{ color: FULVOUS, fontWeight: 700, fontSize: 16, pointerEvents: 'none' }} aria-hidden>✓</span>}
               </button>
             )
           })}
@@ -278,6 +282,14 @@ export function QuestionRenderer({
                     width: 15, height: 15,
                     border: `2px solid ${sel ? FULVOUS : INK}`,
                     backgroundColor: sel ? FULVOUS : '#FFFFFF',
+                    // The tick box is decoration: the button around it owns the
+                    // toggle. Without this the box is the element under the
+                    // finger, and PostHog counted 220 dead clicks on it in two
+                    // days (2026-09-04) — the single most tapped dead thing in
+                    // the whole funnel, on the quiz itself. Letting the click
+                    // fall through to the button is the fix for the real tap
+                    // and for the reporting at the same time.
+                    pointerEvents: 'none',
                   }}
                   aria-hidden
                 >
@@ -289,9 +301,9 @@ export function QuestionRenderer({
                 </span>
                 {opt.logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={opt.logo} alt="" className="flex-shrink-0 object-contain" style={{ width: 18, height: 18 }} />
+                  <img src={opt.logo} alt="" className="flex-shrink-0 object-contain" style={{ width: 18, height: 18, pointerEvents: 'none' }} />
                 ) : opt.emoji ? (
-                  <span className="flex-shrink-0" style={{ fontSize: 15, lineHeight: 1 }}>{opt.emoji}</span>
+                  <span className="flex-shrink-0" style={{ fontSize: 15, lineHeight: 1, pointerEvents: 'none' }}>{opt.emoji}</span>
                 ) : null}
                 <span style={{ fontSize: isGrid ? 13 : 14, fontWeight: 500, color: RICH, lineHeight: 1.3 }}>
                   {opt.label}

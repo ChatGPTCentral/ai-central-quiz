@@ -84,8 +84,9 @@ function BlockNext({
       type="button"
       onClick={onClick}
       disabled={submitting}
+      aria-busy={submitting}
       className={`${fullWidth ? 'flex w-full' : 'inline-flex'} transition-transform active:scale-[0.98] disabled:active:scale-100`}
-      style={{ opacity: muted ? 0.55 : 1, transition: 'opacity 150ms' }}
+      style={{ opacity: muted ? 0.55 : 1, transition: 'opacity 150ms', cursor: submitting ? 'not-allowed' : undefined }}
     >
       <span
         className="flex-1 inline-flex items-center justify-center"
@@ -93,9 +94,20 @@ function BlockNext({
           backgroundColor: gold ? XANTHOUS : INK,
           color: gold ? RICH : CREAM,
           fontWeight: 600, fontSize: 16, height: 50, padding: '0 22px',
+          gap: submitting ? 9 : 0,
         }}
       >
-        {submitting ? 'sending…' : label}
+        {/* "sending…" alone was the most dead-clicked string on the funnel:
+            10 taps in six hours (2026-09-04), all on a button that had
+            already been pressed. Swapping the word for a word that MOVES is
+            the whole fix — a still label reads as a page that froze, and a
+            person who thinks nothing happened presses again. */}
+        {submitting ? (
+          <>
+            <span className="qv2-spin" style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${gold ? RICH : CREAM}`, borderTopColor: 'transparent', display: 'block', pointerEvents: 'none' }} aria-hidden />
+            sending…
+          </>
+        ) : label}
       </span>
       <span
         className="inline-flex items-center justify-center flex-shrink-0"
@@ -108,6 +120,11 @@ function BlockNext({
       >
         ↗
       </span>
+      <style>{`
+        @keyframes qv2-spin { to { transform: rotate(360deg) } }
+        .qv2-spin { animation: qv2-spin 0.7s linear infinite }
+        @media (prefers-reduced-motion: reduce) { .qv2-spin { animation-duration: 2.4s } }
+      `}</style>
     </button>
   )
 }
