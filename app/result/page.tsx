@@ -33,7 +33,6 @@ import AdsRescue from '@/components/result2/AdsRescue.client'
 import { UnlockReveal } from '@/components/result2/UnlockReveal.client'
 import ExpressPay from '@/components/result2/ExpressPay.client'
 import { RiskFree } from '@/components/result2/RiskFree'
-import PayBadges from '@/components/result2/PayBadges.client'
 import { RedesignHero, FitCheckSection } from '@/components/result2/RedesignHero'
 import { AgitationSection, HowItGoesSection, MechanismSection, BundleCrossSell, FinalUrgencyClose } from '@/components/result2/RedesignExtras'
 
@@ -645,7 +644,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         <StudyPlan stageKey={stageKey} checkoutUrl={checkoutUrl} submissionId={rowId} />
         <div className="mt-9 flex flex-col items-center gap-3">
           <BlockButton2 href={checkoutUrl} label={ov('studyPlan.ctaLabel', CTA)} placement="v2_study_plan" submissionId={rowId} />
-          <PayBadges fallbackUrl={checkoutUrl} submissionId={rowId} placement="v2_study_plan_badges" />
+          {/* The pay-badge row under this button was cut 2026-09-04: 5 clicks
+              from 350 people who saw it, 1.4%, against 17.1% for the button
+              directly above it. It repeats a reassurance the offer stack
+              already carries, and every element on this page competes with
+              the CTA for the same attention. */}
           <p style={{ fontSize: 13, color: MUTE, textAlign: 'center', maxWidth: 460 }}>
             Unlocking your plan opens the whole library: 1,200+ tutorials and 50+ templates, not just these five.
           </p>
@@ -1075,22 +1078,30 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             </>
           ) : (
           // Was studyPlanSection then offerSection — swapped 2026-08-29.
-          // v2_study_plan's own CTA was taking 57% of all checkout clicks on
-          // this page while converting 9.0% of them to a paid trial;
-          // v2_offer_stack_badges (inside offerSection, buried second) took
-          // under 2% of clicks but converted 100% of the ones it got, and
-          // v2_risk_free (further down still) converted 63.6%. Confirmed
-          // twice, independently, weeks apart (CLAUDE.md's own funnel-theory
-          // note, then a fresh person-level cross-reference against
-          // stripe_charges this session) — not a new hypothesis, the
-          // already-diagnosed "study_plan dominates exposure, badges are
-          // buried" problem CLAUDE.md names, finally acted on. This is also
-          // exactly the order the result_strip_v1 arm already tested
-          // (offer first, study plan demoted) rather than an unprecedented
-          // reorder. Shipped on judgment (rule 1: a change this large and
-          // this well-evidenced doesn't need a slow new A/B to re-confirm
-          // it), watched on /admin/cohorts (rule 5), not run as a formal
-          // experiment — the direction is not in genuine doubt here.
+          //
+          // KEEP THIS ORDER. Measured 2026-09-04 on the only metric that
+          // decides anything here, trials per result view: 58/922 = 6.29%
+          // in the two weeks BEFORE the swap, 56/535 = 10.47% in the week
+          // after. +4.2 points, about 2.7 sigma. It is a before/after read
+          // and not a randomised arm, so traffic mix moved underneath it
+          // (landings roughly doubled over the same days), but the effect is
+          // large and there is no reason a traffic change would push this
+          // metric this way.
+          //
+          // THE ORIGINAL REASONING BELOW WAS WRONG, THE CHANGE WAS RIGHT.
+          // It said v2_offer_stack_badges "converted 100% of the ones it
+          // got" and v2_risk_free 63.6%. Both were rates over a handful of
+          // clicks. Re-measured over 2026-08-25→09-04, by people who SAW a
+          // placement and then clicked checkout: v2_study_plan 69/404 =
+          // 17.1% (the strongest block on the page), v2_offer_bar 56/747 =
+          // 7.5%, v2_offer_stack_badges 27/489 = 5.5%. The badge is not a
+          // 100% closer and the study plan is not weak. CLAUDE.md carried
+          // the same small-denominator claim and was corrected the same day.
+          //
+          // Recorded this way on purpose: the next person to read the old
+          // justification would have been right to distrust it, and might
+          // have reverted a change that is measurably earning trials. Judge
+          // the order by the outcome above, not by the placement rates.
           <>
             {offerSection(false)}
             {studyPlanSection}

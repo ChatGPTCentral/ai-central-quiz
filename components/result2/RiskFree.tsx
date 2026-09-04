@@ -1,5 +1,4 @@
 import CheckoutLink from '@/components/CheckoutLink.client'
-import PayBadges from '@/components/result2/PayBadges.client'
 import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 // The guarantee section. Its only job is to answer the last silent objection:
@@ -168,7 +167,9 @@ export function RiskFree({
                 ↗
               </span>
             </CheckoutLink>
-            <PayBadges fallbackUrl={checkoutUrl} submissionId={submissionId} placement="v2_risk_free_badges" />
+            {/* Pay-badge row cut 2026-09-04: 1 click from 202 people who saw
+                it, 0.5%, the weakest thing on the result page. The RiskFree
+                button it sat under converts 3.5% on the same window. */}
           </div>
         </div>
       </div>
