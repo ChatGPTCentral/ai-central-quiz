@@ -33,11 +33,11 @@ export function bucketEnd(bucket: string, gran: Gran): string {
   return d.toISOString().slice(0, 10)
 }
 
-// 'net'           quiz earned the trial from someone who had never paid. Quiz clock.
-// 'quizExisting'  quiz earned the trial from an existing customer. Quiz clock.
+// 'net'           quiz earned the trial from someone who had never paid. Charge clock.
+// 'quizExisting'  quiz earned the trial from an existing customer. Charge clock.
 // 'notQuiz'       never took the quiz, or took it after paying. Charge clock.
-// 'annualQuiz'    a renewal whose trial the quiz earned. On ITS TRIAL'S clock.
-// 'annualNotQuiz' a renewal behind a trial the quiz never touched.
+// 'annualQuiz'    a renewal whose trial the quiz earned. On ITS TRIAL'S charge clock (accrual).
+// 'annualNotQuiz' a renewal behind a trial the quiz never touched. Same accrual rule.
 // 'other'         every remaining dollar: legacy subscriptions, old annual
 //                 prices, duplicate subscriptions. Charge clock.
 // 'lifetimeSale'  a $49.75 lifetime purchase: standalone, or the lifetime
@@ -135,8 +135,11 @@ export function keptUsdCents(
 /** One classified dollar amount, carrying WHO it came from and WHY it is
  *  here, so the same object can be summed into a cell or listed in a drawer. */
 export type Entry = {
-  /** The clock this entry sits on: quiz date for quiz-earned rows, charge date
-   *  otherwise. This is the field that decides the column. */
+  /** The clock this entry sits on. Owner's rule, restated 2026-09-04: every
+   *  trial sits on its OWN charge date, always, so a day/week/month series
+   *  never revises itself as slow converters trickle in. A renewal sits on
+   *  its TRIAL's charge date (accrual), not its own — never the quiz date,
+   *  for either. This is the field that decides the column. */
   at: string
   kind: RevKind
   usd: number
@@ -294,10 +297,16 @@ export function classifyLedger(
 
   for (const t of ledger) {
     if (t.lifetime_bundle) lifetimeSplits++
-    // A quiz-earned trial restates to the week the person took the quiz; the
-    // cohort owns the sale. Everything else sits where it was charged.
+    // Owner's rule, restated 2026-09-04: every trial sits on its OWN charge
+    // date, full stop — a day/week/month series must never revise itself as
+    // slow converters (quiz taken weeks ago, paid today) trickle in, or real
+    // growth can read as decline. Ran on the quiz clock for about 20 minutes
+    // on 2026-09-03 (commit 6fc3fe8) before the owner overruled it back;
+    // do not reintroduce the quiz-date branch here. `quizEarned` still
+    // decides the KIND (net vs quizExisting vs notQuiz), just not the clock
+    // any more.
     const quizEarned = isQuizEarned(t.attribution)
-    const anchor = quizEarned && t.quiz_completed_at ? t.quiz_completed_at : t.trial_at
+    const anchor = t.trial_at
     const who = {
       chargeId: t.charge_id,
       personKey: t.person_key,

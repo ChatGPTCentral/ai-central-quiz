@@ -229,9 +229,18 @@ export default async function DashboardPage({
     // regole se solo una regola è vera"). bucketKey(e.chargedAt, ...) below,
     // not e.at — chargedAt is the one field every Entry/TrialPoint carries
     // that is ALWAYS the real charge date, quiz-earned or not (see the `at`
-    // vs `chargedAt` split in lib/trial-entries.ts). This is a display-only
-    // choice: classifyLedger() itself, and anything reading `at` directly
-    // (the drill endpoint, the KPI row's all-window sums), is untouched.
+    // vs `chargedAt` split in lib/trial-entries.ts).
+    //
+    // UPDATE 2026-09-04: this used to be a display-only patch — classifyLedger()
+    // itself, and anything reading `at` directly (the drill endpoint, the KPI
+    // row's all-window sums), stayed on the quiz clock, untouched. The owner
+    // repeated the same rule that day for trial-supply-alert.ts and daily_
+    // benchmark, so classifyLedger()'s `at` now IS cash-basis (+ accrual for
+    // renewals) too — `at` and `chargedAt`/cohortDateOf() below now compute
+    // the identical value for every entry. This page's own bucketKey(chargedAt)/
+    // cohortDateOf() calls are therefore redundant with a plain `e.at` / `t.at`
+    // now, kept as-is rather than refactored under time pressure — both paths
+    // agree, so leaving them is not a correctness risk, only unswept duplication.
     //
     // The trials the quiz cannot claim, in the same buckets as everything
     // else, so a good week for the quiz can be told apart from a good week

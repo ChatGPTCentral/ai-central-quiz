@@ -31,9 +31,24 @@ exactly one of three buckets, and the dashboard shows all three:
 
 | Bucket | Meaning | Clock |
 |---|---|---|
-| Net-new | no charge ever, took quiz, then paid | quiz date |
-| Quiz, existing customer | had paid before, took quiz, then paid again | quiz date |
+| Net-new | no charge ever, took quiz, then paid | charge date |
+| Quiz, existing customer | had paid before, took quiz, then paid again | charge date |
 | Not from the quiz | never took it, or took it after paying | charge date |
+
+**Clock, restated 2026-09-04: every trial counts on its OWN charge date, no
+exception.** The owner's reason: a day/week/month series must never revise
+itself as slow converters (quiz taken weeks ago, paid today) trickle in —
+a quiz-dated count makes a recent period look artificially low until they
+land, which can read as decline when nothing declined. The **$59.75
+renewal** stays different on purpose: it is accounted in the week its OWN
+trial belonged to (accrual, not cash), never its own charge week, so a
+cohort's trial count and that cohort's eventual renewal rate live in the
+same row. This replaced the prior rule (quiz date for net-new/existing)
+the same day `lib/trial-supply-alert.ts` briefly shipped the old quiz-date
+clock and the owner overruled it (commit 5a5047e). `classifyLedger()`
+(lib/trial-entries.ts) is the one place this is implemented; daily_benchmark
+(lib/ux-watch.ts) and the daily digest (lib/daily-digest.ts) read the same
+rule rather than re-deriving it.
 
 ## The charge rules (owner, 2026-08-11, standing until he changes them)
 

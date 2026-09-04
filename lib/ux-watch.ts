@@ -530,30 +530,27 @@ export const UX_QUERIES: {
     claim: "yesterday missed the owner's bar of 10 trials a day",
     // THE BAR (owner, 2026-08-18: "your benchmark must be over 10 conversions
     // per day — below that everything is failure"). Counted the way the
-    // matrix counts: quiz-earned trials on the quiz clock plus not-quiz
-    // trials on the charge clock, over the last COMPLETED UTC day, so this
-    // number is the number his daily cells sum to. This check is a distance
-    // meter, not a malfunction alarm: it is EXPECTED to be red until the
-    // funnel actually clears the bar, it stays visible on the dashboard
-    // every run, and it goes green the first day ten trials land. Warn, not
-    // critical, so the meter never drowns the alarms that mean breakage.
+    // matrix counts, restated 2026-09-04: every trial on its OWN charge
+    // date, no exception (CLAUDE.md's bucket table), over the last COMPLETED
+    // UTC day, so this number is the number his daily cells sum to. This
+    // used to split quiz-attributed trials onto the quiz-completion clock;
+    // the owner overruled that the same day it briefly shipped in
+    // lib/trial-supply-alert.ts (commit 6fc3fe8, reverted 5a5047e), because
+    // a quiz-dated count revises upward for weeks as slow converters land,
+    // which can read as decline when nothing declined. This check is a
+    // distance meter, not a malfunction alarm: it is EXPECTED to be red
+    // until the funnel actually clears the bar, it stays visible on the
+    // dashboard every run, and it goes green the first day ten trials land.
+    // Warn, not critical, so the meter never drowns the alarms that mean
+    // breakage.
     threshold: 0,
     severity: 'warn',
     source: 'supabase',
-    sql: `select
-            (select count(*) from trial_ledger
-              where attribution in ('quiz_net_new','quiz_existing')
-                and coalesce(quiz_completed_at, trial_at) >= current_date - 1
-                and coalesce(quiz_completed_at, trial_at) < current_date) as quiz_trials,
-            (select count(*) from trial_ledger
-              where attribution = 'not_quiz'
-                and trial_at >= current_date - 1 and trial_at < current_date) as other_trials`,
+    sql: `select count(*) as total from trial_ledger
+            where trial_at >= current_date - 1 and trial_at < current_date`,
     read: rows => {
-      const r = rows[0] || {}
-      const q = Number(r.quiz_trials || 0)
-      const o = Number(r.other_trials || 0)
-      const total = q + o
-      return { value: total >= 10 ? 0 : 1, detail: `${total} trial${total === 1 ? '' : 's'} yesterday (${q} quiz + ${o} not-quiz) against the bar of 10` }
+      const total = Number(rows[0]?.total || 0)
+      return { value: total >= 10 ? 0 : 1, detail: `${total} trial${total === 1 ? '' : 's'} yesterday against the bar of 10` }
     },
   },
   {

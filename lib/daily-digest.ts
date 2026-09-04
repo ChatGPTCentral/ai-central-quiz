@@ -115,25 +115,24 @@ export interface DigestResult {
  *  query instead of two queries. */
 async function trialsByDay(c: SupabaseClient): Promise<Map<string, number>> {
   const since = new Date(Date.now() - SUMS_DAYS * DAY_MS).toISOString()
-  // Same bucketing the daily_benchmark watcher check uses (lib/ux-watch.ts):
-  // quiz-attributed trials (net-new + existing) on the QUIZ clock, not-quiz
-  // trials on the CHARGE clock. This used to scan stripe_charges by
-  // charged_at instead — a second derivation of "trials/day" that could,
-  // and on 2026-08-24 did, disagree with the matrix's own number (5 here
-  // vs 3 on daily_benchmark) — exactly the one-source-of-truth violation
-  // CLAUDE.md warns about. trial_ledger is the one source; read it, don't
-  // re-derive it.
+  // Owner's rule, restated 2026-09-04: every trial counts on its OWN charge
+  // date, no exception — a day/week/month series must never revise itself
+  // as slow converters (quiz taken weeks ago, paid today) trickle in, or
+  // real growth can read as decline. This used to split quiz-attributed
+  // trials onto the QUIZ clock to match daily_benchmark (lib/ux-watch.ts),
+  // which itself now reads the same charge-date rule — see CLAUDE.md's
+  // bucket table. trial_ledger.trial_at is the one source for this; read
+  // it, don't re-derive it.
   const { data, error } = await c.from('trial_ledger')
-    .select('attribution, quiz_completed_at, trial_at')
+    .select('trial_at')
     .in('attribution', ['quiz_net_new', 'quiz_existing', 'not_quiz'])
-    .or(`quiz_completed_at.gte.${since},trial_at.gte.${since}`)
+    .gte('trial_at', since)
     .limit(5000)
   if (error) console.error('[daily-digest] trial_ledger query failed:', error.message, error.details, error.hint, error.code)
   const byDay = new Map<string, number>()
-  for (const r of (data ?? []) as { attribution: string; quiz_completed_at: string | null; trial_at: string | null }[]) {
-    const anchor = r.attribution === 'not_quiz' ? r.trial_at : (r.quiz_completed_at ?? r.trial_at)
-    if (!anchor || anchor < since) continue
-    const d = anchor.slice(0, 10)
+  for (const r of (data ?? []) as { trial_at: string | null }[]) {
+    if (!r.trial_at) continue
+    const d = r.trial_at.slice(0, 10)
     byDay.set(d, (byDay.get(d) ?? 0) + 1)
   }
   return byDay
