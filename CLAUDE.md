@@ -203,6 +203,15 @@ buyers because identity there stays anonymous until someone is identified.
   converts 69% of its clickers, v2_study_plan 9%, but study_plan is seen by
   1,129 people and badges by so few its impression was not even instrumented
   until 2026-08-11.
+  **REVERSED 2026-09-04, do not act on the line above.** Once the badge
+  impression was really instrumented, its denominator stopped being tiny and
+  the ranking inverted. Over the 21 days to 2026-09-04, by distinct people
+  who saw the placement and then clicked checkout: v2_study_plan 232/1,011 =
+  **22.9%**, the best converter on the page; v2_offer_bar 155/1,522 = 10.2%;
+  v2_library_grid 32/584 = 5.5%; v2_risk_free 17/390 = 4.4%;
+  v2_offer_stack_badges 30/835 = **3.6%**; v2_offer_stack 22/834 = 2.6%.
+  The 69% was a rate over a handful of impressions, which is the classic way
+  a small denominator invents a winner.
 
 ## Funnel design theory, cross-checked against our own data (2026-08-26)
 
@@ -227,11 +236,21 @@ sourcing and the tiered build plan: [Le Cinque Scuole](https://claude.ai/code/ar
    *different* element (anything implying false scarcity, e.g. a prize
    wheel) teaching the reader not to trust deadlines at all, including the
    real one.
-3. **v2_offer_stack_badges (69% of clickers) is buried; v2_study_plan (9%
-   of clickers, far more views) dominates exposure.** This is a placement
-   problem, not a content problem — matches Welsh's "delete some of your
-   offers" and Hormozi's Trim & Stack. Promote the badge, shrink the study
-   plan.
+3. **SUPERSEDED 2026-09-04. The original point read "v2_offer_stack_badges
+   (69% of clickers) is buried; v2_study_plan (9% of clickers, far more
+   views) dominates exposure. Promote the badge, shrink the study plan."
+   Acting on it would have promoted a 3.6% element over a 22.9% one.**
+   Re-measured over the 21 days to 2026-09-04, study_plan is the strongest
+   placement on the page (22.9% of the people who see it go on to click
+   checkout) and the badges convert 3.6%. The 69% came from a period when
+   the badge impression was barely instrumented, so the rate had almost no
+   denominator. The Welsh "delete some of your offers" and Hormozi Trim &
+   Stack conclusion still holds, it just points the other way: the page
+   carries placements that convert ~nothing at real volume
+   (v2_fomo_notification 1/736 = 0.1%, v2_social_marquee 3/505 = 0.6%,
+   v2_risk_free_badges 3/391 = 0.8%, v2_study_plan_badges 10/856 = 1.2%,
+   v2_expense_email 0/283 = 0.0%). Those are the things to cut, and the
+   space belongs to study_plan and offer_bar.
 4. **Quiz-derived data (persona, score, cost-of-gap) mostly only selects
    which persona template renders, not the offer copy itself — but this is
    partly already built and sitting idle, not a gap to build from zero.**
