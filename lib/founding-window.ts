@@ -17,6 +17,7 @@
 // dollars, it must never cost a buyer money they were promised not to pay.
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { getTrialSupplyState } from '@/lib/trial-supply-cap'
 
 export type FoundingConfig = { enabled: boolean; list_cents: number; window_hours: number }
 
@@ -107,7 +108,27 @@ export async function foundingWindowState(
     const createdIso = data?.created_at as string | undefined
     if (!createdIso) return { ...disabled, enabled: true, valid: false, amountCents: cfg.list_cents }
     const expires = new Date(createdIso).getTime() + cfg.window_hours * 3600_000
-    const valid = Date.now() < expires
+    let valid = Date.now() < expires
+
+    // THE DAILY SUPPLY CAP (owner, 2026-09-04): a real, discretionary limit
+    // on how many $4.99 trials sell today, layered on top of each person's
+    // own window above. Same under-charge-never-over-charge direction as
+    // everything else here: this can only turn a still-valid window
+    // INVALID, never the reverse, and only for a window that started AFTER
+    // supply ran out — compared as real timestamps, never as raw ISO
+    // strings, because Postgres and JS format offsets differently and a
+    // string compare can misorder two timestamps a few milliseconds apart.
+    // Someone whose quiz completed before the cap bit keeps their own
+    // $4.99 for their own full window, exactly like held-rate and
+    // time-based promises already do — the cap only ever touches arrivals
+    // it could not possibly have already promised anything to.
+    if (valid) {
+      try {
+        const supply = await getTrialSupplyState(client)
+        if (supply.exhaustedAt && new Date(createdIso).getTime() > new Date(supply.exhaustedAt).getTime()) valid = false
+      } catch { /* fail toward $4.99, same direction as the rest of this function */ }
+    }
+
     return {
       enabled: true, valid, held: false,
       amountCents: valid ? baseCents : cfg.list_cents,

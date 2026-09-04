@@ -22,6 +22,7 @@ import Stripe from 'stripe'
 import { aggregateStripeByEmail, importAggregatedToCRM } from '@/lib/stripe-import'
 import { verifyExpressPayment, sendExpressAlert } from '@/lib/express-alert'
 import { checkAndAlertTrialSupply } from '@/lib/trial-supply-alert'
+import { markSupplyExhaustedIfNeeded } from '@/lib/trial-supply-cap'
 import { posthogCapture } from '@/lib/posthog-server'
 import { mirrorCharge } from '@/lib/mirror-charge'
 import { TRIAL_PRICES } from '@/lib/trial-entries'
@@ -229,8 +230,15 @@ export async function POST(req: NextRequest) {
   if (event.type === 'charge.succeeded') {
     const ch = event.data.object as Stripe.Charge
     if (!ch.refunded && TRIAL_PRICES.has(ch.amount)) {
+      // Sequential on purpose: the cap must be marked exhausted (if this
+      // charge just reached it) BEFORE the alert reads supply state, or a
+      // "closing in" email could fire in the same instant supply actually
+      // closed, instead of the one "just closed" email that should.
       waitUntil(
-        checkAndAlertTrialSupply().catch(err => console.error('[stripe-webhook] trial-supply alert failed:', err)),
+        markSupplyExhaustedIfNeeded()
+          .catch(err => console.error('[stripe-webhook] trial-supply cap check failed:', err))
+          .then(() => checkAndAlertTrialSupply())
+          .catch(err => console.error('[stripe-webhook] trial-supply alert failed:', err)),
       )
     }
   }
