@@ -21,6 +21,7 @@ import { getLivePublishedConfig } from '@/lib/form-config'
 import type { EndScreen } from '@/lib/form-schema'
 import { pickEndScreen } from '@/lib/form-schema'
 import CheckoutLink from '@/components/CheckoutLink.client'
+import VideoWatch from '@/components/result2/VideoWatch.client'
 import { article } from '@/lib/result-url'
 import CheckoutModalProvider from '@/components/result2/CheckoutModal.client'
 import { LabHero } from '@/components/result2/LabHero'
@@ -742,6 +743,15 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     </div>
   )
 
+  /** The video block plus its measurement and its escape hatch. See
+   *  components/result2/VideoWatch.client.tsx for why both exist. */
+  const videoWithFallback = (autoplay: boolean) => (
+    <>
+      {videoBlock(autoplay)}
+      <VideoWatch videoId={VIDEO_ID} submissionId={rowId} />
+    </>
+  )
+
   // The offer. `withVideo` is the whole experiment in one flag: control puts
   // the 4-minute video in front of the price, the challenger does not.
   //
@@ -783,11 +793,20 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </>
         ) : (
           <>
+            {/* Owner, 2026-09-05: name the person's OWN next rung instead of a
+                generic "top 1%". The rung and the next rung are facts on their
+                row. The TIME to get there is not: components/result2/
+                StageGauge.tsx sets "≈1 wk" as a display convention for every
+                rung, so neither that nor "3-5 days" is measured, and neither
+                is promised here. The one true time fact is the plan's own
+                first step, and that is what the line says. */}
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              Wanna climb to the top 1%? Here&rsquo;s how
+              {nextStage
+                ? <>Here is what {article(nextStage.label)} {nextStage.label.toLowerCase()} does differently</>
+                : <>Here is what the top of the ladder does differently</>}
             </h2>
             <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
-              Upskill yourself with the unfair advantage 2,500+ took to become irreplaceable.
+              The same library 2,500+ members use. Your first tutorial takes 15 minutes tonight.
             </p>
 
             {/* Their own answer, quoted back. Renders only for people who
@@ -810,7 +829,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             the gap idea returns it comes through the experiment queue with a
             control, not straight onto the page that sells. */}
 
-        {withVideo && videoBlock(true)}
+        {withVideo && videoWithFallback(true)}
 
         <OfferStack
           offer={offer}
@@ -846,7 +865,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
           A quick walk through the library, the templates and how members actually use it day to day.
         </p>
-        {videoBlock(false)}
+        {videoWithFallback(false)}
       </div>
     </section>
   )

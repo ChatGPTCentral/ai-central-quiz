@@ -116,11 +116,14 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
             price held from your email
           </span>
         ) : null}
-        <span className="font-black tabular-nums ac-neontime" style={{ fontSize: 'clamp(26px, 4.4vw, 34px)', color: '#E7B02F' }}>
-          {offer.price}
+        {/* Owner, 2026-09-05: the strip should say what the price BUYS, not
+            just the number. "Unlock everything" is the promise the button
+            repeats, so the two agree instead of competing. */}
+        <span className="font-black tabular-nums ac-neontime text-center" style={{ fontSize: 'clamp(19px, 3.1vw, 26px)', color: '#E7B02F', lineHeight: 1.1 }}>
+          Unlock everything for {offer.price}
         </span>
         <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.18em', color: '#FEF7E7', opacity: 0.65, marginTop: 3 }}>
-          {offer.oneTime ? 'once, yours for good' : 'for your first month'}
+          {offer.oneTime ? 'once, yours for good' : 'your first month'}
         </span>
       </div>
 

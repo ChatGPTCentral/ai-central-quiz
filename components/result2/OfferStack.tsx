@@ -195,12 +195,25 @@ export function OfferStack({
           for the right reason, that the cap was alert-only then. It is a
           real cap now, so the claim is allowed, and it disappears the moment
           the cap is switched off. */}
+      {/* Owner, 2026-09-05, wanted this louder and framed as something the
+          reader earned rather than a footnote: "you're lucky you've unlocked
+          this limited offer". Every word here is checkable — they did take
+          the quiz, the supply is a real enforced cap, and the count is the
+          live one — so it says "unlocked", never "lucky", which would be a
+          claim about chance we cannot support. */}
       {supplyLimit !== null && supplyLeft !== null && (
-        <p style={{ padding: '8px 26px 0', margin: 0, fontSize: 12.5, fontWeight: 700, color: supplyLeft > 0 && !soldOut ? FULVOUS : BODY }}>
-          {supplyLeft > 0 && !soldOut
-            ? `⚡ ${supplyLeft} of today's ${supplyLimit} trials at ${offer.price}, kept for people who took the quiz`
-            : `Today's ${supplyLimit} trials at ${offer.price} are taken. The next ${supplyLimit} open tomorrow.`}
-        </p>
+        <div style={{ margin: '14px 26px 0', padding: '11px 14px', border: `2px solid ${supplyLeft > 0 && !soldOut ? FULVOUS : INK}`, backgroundColor: supplyLeft > 0 && !soldOut ? '#FFF6E6' : '#FFFFFF' }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: RICH, lineHeight: 1.25 }}>
+            {supplyLeft > 0 && !soldOut
+              ? `You took the quiz, so this ${offer.price} is open to you`
+              : `Today's ${supplyLimit} places are taken`}
+          </div>
+          <div className="mt-1" style={{ fontSize: 13, fontWeight: 600, color: supplyLeft > 0 && !soldOut ? FULVOUS : BODY, lineHeight: 1.4 }}>
+            {supplyLeft > 0 && !soldOut
+              ? `${supplyLeft} of today's ${supplyLimit} places left`
+              : `The next ${supplyLimit} open tomorrow.`}
+          </div>
+        </div>
       )}
 
       {decisionMakerLine && (

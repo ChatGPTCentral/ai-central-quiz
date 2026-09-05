@@ -28,6 +28,9 @@ const ALLOWED_EVENTS = new Set([
   'assembling_view', 'result_view',
   // conversion
   'checkout_click',
+  // The escape hatch under the result-page video. It is the closest thing we
+  // can measure to "the embed did not load for this person" (2026-09-05).
+  'video_fallback_click',
   // experimentation
   'exposure',
   // exit rescue
