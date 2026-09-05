@@ -168,6 +168,29 @@ export async function GET(req: NextRequest) {
   if (!stripeKey) return NextResponse.json({ error: 'STRIPE_SECRET_KEY not set' }, { status: 500 })
   const stripe = new Stripe(stripeKey, { apiVersion: '2026-04-22.dahlia', maxNetworkRetries: 5, timeout: 30_000 })
 
+  // WINDOW WALK (2026-09-05). This route walked every charge ATTEMPT since
+  // account inception on every run: 3,238 succeeded plus 7,713 failed is
+  // ~11,000 attempts, ~110 sequential pages, and it hit the 300s ceiling 16
+  // times between 2026-08-17 and 2026-09-05 together with the charges sync.
+  // A job that times out is a job that one day loses rows.
+  //
+  // 1,775 of those failures are from the last 45 days, so the daily run walks
+  // the window. A failed charge never changes after the fact, so nothing is
+  // lost by not re-reading a failure from March.
+  //
+  // INVOICES ARE DIFFERENT and get two passes, because an invoice DOES
+  // change: an old unpaid one that finally gets paid must stop being
+  // outstanding, and a created-date window would never look at it again. So
+  // the window pass is joined by a pass over everything still `open`,
+  // whatever its age. Open invoices are few and they are the only ones
+  // dunning acts on.
+  //
+  // ?full=1 walks everything, for a backfill. ?days=N overrides the window.
+  const fullWalk = req.nextUrl.searchParams.get('full') === '1'
+  const daysParam = Number(req.nextUrl.searchParams.get('days'))
+  const windowDays = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(daysParam, 3650) : 45
+  const sinceEpoch = fullWalk ? 0 : Math.floor(Date.now() / 1000) - windowDays * 86400
+
   const syncStamp = new Date().toISOString()
   const failures: FailureRow[] = []
   const invoices: InvoiceRow[] = []
@@ -183,7 +206,7 @@ export async function GET(req: NextRequest) {
       let after: string | undefined
       while (chargePages < CHARGE_PAGE_CAP) {
         const page: Stripe.ApiList<Stripe.Charge> = await stripe.charges.list({
-          created: { gte: 0 },
+          created: { gte: sinceEpoch },
           limit: 100,
           expand: ['data.customer'],
           ...(after ? { starting_after: after } : {}),
@@ -230,12 +253,17 @@ export async function GET(req: NextRequest) {
   }
 
   // ── INVOICES ──────────────────────────────────────────────────────────
-  const walkInvoices = async () => {
+  /** One pass over the invoice list. Called twice: once for the recent
+   *  window, once for everything still OPEN regardless of age. An old
+   *  invoice that gets paid must stop being outstanding, and a created-date
+   *  window alone would never look at it again. */
+  const walkInvoicePass = async (filter: Stripe.InvoiceListParams) => {
     try {
       let after: string | undefined
       while (invoicePages < INVOICE_PAGE_CAP) {
         const page: Stripe.ApiList<Stripe.Invoice> = await stripe.invoices.list({
           limit: 100,
+          ...filter,
           ...(after ? { starting_after: after } : {}),
         })
         invoicePages++
@@ -311,12 +339,22 @@ export async function GET(req: NextRequest) {
   let failuresWritten = 0
   let invoicesWritten = 0
   try {
-    await walkInvoices()
+    // Recent invoices, then every open one regardless of age. The second
+    // pass is what keeps stripe_outstanding_invoices honest.
+    await walkInvoicePass(fullWalk ? {} : { created: { gte: sinceEpoch } })
+    if (!fullWalk) await walkInvoicePass({ status: 'open' })
     // A walk that ERRORED wrote nothing, so do not upsert its partial rows on
     // top of a complete previous run. Same rule the charges sync applies to
     // its refund and dispute detail: a degraded run must never overwrite good
     // data with an incomplete picture.
-    if (!errors.invoices) invoicesWritten = await write('stripe_invoices', invoices)
+    // DEDUPE. The two invoice passes overlap by construction: an invoice that
+    // is both recent and still open is collected twice, and Postgres refuses
+    // an ON CONFLICT that touches the same row twice inside one statement.
+    // Last write wins, which is the open pass, the fresher read of the two.
+    const invoicesById = new Map<string, InvoiceRow>()
+    for (const inv of invoices) invoicesById.set(inv.id, inv)
+    const uniqueInvoices = Array.from(invoicesById.values())
+    if (!errors.invoices) invoicesWritten = await write('stripe_invoices', uniqueInvoices)
     await walkCharges()
     if (!errors.charges) failuresWritten = await write('stripe_payment_failures', failures)
   } catch (e) {
@@ -339,7 +377,7 @@ export async function GET(req: NextRequest) {
     ok: !failed,
     synced_at: syncStamp,
     failures: { found: failures.length, written: failuresWritten, skipped_succeeded: succeededSeen, pages: chargePages },
-    invoices: { found: invoices.length, written: invoicesWritten, pages: invoicePages },
+    invoices: { found: invoices.length, unique: invoicesWritten, written: invoicesWritten, pages: invoicePages },
     outstanding_invoices: outstanding ?? null,
     // Say what did not happen, loudly. A sync that half-worked and returns 200
     // is how a stale mirror looks healthy for weeks.

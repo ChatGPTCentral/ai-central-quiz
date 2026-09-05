@@ -64,7 +64,27 @@ export async function GET(req: NextRequest) {
   // owner's Stripe screen said Net volume $77,464.56 with no bridge between
   // them. ~3,000 charges is ~30 pages — well under the ceiling; revisit only
   // if volume makes this slow.
-  const sinceEpoch = 0
+  // WINDOW WALK (2026-09-05). The full re-walk above was correct and became
+  // too slow: 3,238 mirrored charges since 2023-11-11, and the walk pages
+  // over every charge ATTEMPT, failures included, so it ran past the 300s
+  // ceiling 16 times between 2026-08-17 and 2026-09-05. A job that times out
+  // is a job that one day loses rows, and these rows are the money.
+  //
+  // Only 322 of those 3,238 charges are from the last 45 days, so the daily
+  // run now walks the window and nothing else. What the old full walk was
+  // FOR — keeping the refund and dispute state of OLD charges current — is
+  // kept by the trailing sweep after the upsert: the refunds and disputes
+  // endpoints already report globally, and any charge they name that the
+  // window did not cover has its refund and dispute columns updated on the
+  // row already in the mirror. 111 old charges carry a refund or a dispute
+  // today, and the sweep costs no Stripe calls at all.
+  //
+  // ?full=1 still walks everything, for a backfill or after a schema change.
+  // ?days=N overrides the window.
+  const fullWalk = req.nextUrl.searchParams.get('full') === '1'
+  const daysParam = Number(req.nextUrl.searchParams.get('days'))
+  const windowDays = Number.isFinite(daysParam) && daysParam > 0 ? Math.min(daysParam, 3650) : 45
+  const sinceEpoch = fullWalk ? 0 : Math.floor(Date.now() / 1000) - windowDays * 86400
   void MIRROR_START_ISO
 
   type Row = {
@@ -290,6 +310,45 @@ export async function GET(req: NextRequest) {
     written += chunk.length
   }
 
+  // TRAILING SWEEP. Charges outside the window that the refunds or disputes
+  // endpoints named this run: their money changed, their row did not move.
+  // Two round trips, no Stripe calls — the amounts are already in the maps,
+  // only the mirror needs to hear about them. Skipped when a fetch failed,
+  // for the same reason the columns above are conditional: a degraded run
+  // must never write zeros over good detail.
+  let swept = 0
+  if (!fullWalk && !fetchErrors.refunds && !fetchErrors.disputes) {
+    const inWindow = new Set(snaps.map(s2 => s2.id))
+    // Array.from, not a spread: this file's TS target does not allow
+    // iterating a Map iterator directly, and the rest of the route already
+    // uses Array.from for the same reason.
+    const touched = new Set<string>(Array.from(refundByCharge.keys()).concat(Array.from(disputeByCharge.keys())))
+    const sweepIds = Array.from(touched).filter(id => !inWindow.has(id))
+    for (let i = 0; i < sweepIds.length; i += 200) {
+      const ids = sweepIds.slice(i, i + 200)
+      const { data: existing, error: readErr } = await c
+        .from('stripe_charges')
+        .select('id')
+        .in('id', ids)
+      if (readErr || !existing?.length) continue
+      for (const row of existing as { id: string }[]) {
+        const d = disputeByCharge.get(row.id)
+        const { error: updErr } = await c
+          .from('stripe_charges')
+          .update({
+            amount_refunded_cents: refundByCharge.get(row.id) ?? 0,
+            disputed: d?.any === true,
+            dispute_lost_cents: d?.lost ?? 0,
+            dispute_fee_cents: d?.fee ?? 0,
+            dispute_open_cents: d?.open ?? 0,
+            synced_at: syncStamp,
+          })
+          .eq('id', row.id)
+        if (!updErr) swept++
+      }
+    }
+  }
+
   // The mirror has just moved, so the ledger's invariants are re-checked
   // against what it now says. This is the guardrail the 2026-08-11 bugs got
   // past: a double-claimed renewal and 39 deduplicated trials both survived
@@ -305,10 +364,15 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    since: 'account inception (full-history walk)',
+    mode: fullWalk ? 'full-history walk' : `window walk, last ${windowDays} days`,
+    since: fullWalk ? 'account inception' : new Date(sinceEpoch * 1000).toISOString(),
     pages,
     charges: rows.length,
     written,
+    // Old charges whose refund or dispute money moved, updated in place
+    // without re-walking them. Zero on a full walk, where the window covers
+    // everything already.
+    sweptOutsideWindow: swept,
     refunded: rows.filter(r => r.refunded).length,
     refundDetailUsd: Array.from(refundByCharge.values()).reduce((a, b) => a + b, 0) / 100,
     disputesLostUsd: Array.from(disputeByCharge.values()).reduce((a, b) => a + b.lost, 0) / 100,
