@@ -71,6 +71,20 @@ export async function getTrialSupplyState(c?: SupabaseClient): Promise<SupplySta
   }
 }
 
+/** Owner action: switch the whole cap on or off. Off means no limit at all —
+ *  everyone keeps $4.99 and the result page stops claiming a daily supply,
+ *  because a claim nobody enforces is the one thing this must never be. */
+export async function setTrialSupplyEnabled(enabled: boolean, c?: SupabaseClient): Promise<SupplyState> {
+  const client = c ?? db()
+  const current = await getTrialSupplyState(client)
+  const next: SupplyState = { ...current, enabled }
+  await client.from('app_settings').upsert(
+    { key: SETTINGS_KEY, value: next, updated_at: new Date().toISOString() },
+    { onConflict: 'key' },
+  )
+  return next
+}
+
 /** Owner action: raise today's limit by `by` (5, 10 or 15, his own words)
  *  and reopen $4.99 for new arrivals — clearing exhaustedAt is what actually
  *  reopens it, the higher number alone would not. */

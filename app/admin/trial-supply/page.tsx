@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { todayTrialCount } from '@/lib/trial-entries'
-import { getTrialSupplyState, raiseTrialSupply } from '@/lib/trial-supply-cap'
+import { getTrialSupplyState, raiseTrialSupply, setTrialSupplyEnabled } from '@/lib/trial-supply-cap'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,11 +28,19 @@ const HAIR = '#E8E2D4'
 const GREEN = '#2D6A26'
 const RED = '#BE3B3B'
 
-export default async function TrialSupplyPage({ searchParams }: { searchParams: { raise?: string } }) {
+export default async function TrialSupplyPage({ searchParams }: { searchParams: { raise?: string; cap?: string } }) {
   const c = db()
   const raiseBy = Number(searchParams.raise)
   if ([5, 10, 15].includes(raiseBy)) {
     await raiseTrialSupply(raiseBy, c)
+    redirect('/admin/trial-supply')
+  }
+  // ?cap=on|off, same one-tap GET shape as ?raise. The cap is a PRICE
+  // control, so the owner must be able to pull it himself without waiting
+  // for anyone: off means everyone keeps $4.99 and the result page stops
+  // saying anything about a daily supply.
+  if (searchParams.cap === 'on' || searchParams.cap === 'off') {
+    await setTrialSupplyEnabled(searchParams.cap === 'on', c)
     redirect('/admin/trial-supply')
   }
 
@@ -46,6 +54,22 @@ export default async function TrialSupplyPage({ searchParams }: { searchParams: 
         The real, discretionary cap on $4.99 trials for the UTC day. Raising it only affects arrivals from
         this moment on — anyone whose personal window already started keeps their $4.99 regardless.
       </p>
+
+      <div style={{ marginBottom: 16, padding: '12px 16px', border: `1px solid ${INK}`, background: supply.enabled ? CREAM : '#FFFFFF' }}>
+        <div className="flex items-center justify-between gap-4">
+          <span style={{ fontSize: 13, fontWeight: 800, color: supply.enabled ? GREEN : MUTE }}>
+            {supply.enabled
+              ? 'The cap is ON. The result page states the daily limit.'
+              : 'The cap is OFF. No limit, and the page says nothing about supply.'}
+          </span>
+          <a
+            href={`/admin/trial-supply?cap=${supply.enabled ? 'off' : 'on'}`}
+            style={{ fontSize: 13, fontWeight: 800, color: supply.enabled ? RED : GREEN, textDecoration: 'underline', whiteSpace: 'nowrap' }}
+          >
+            {supply.enabled ? 'switch it off' : 'switch it on'}
+          </a>
+        </div>
+      </div>
 
       <div style={{ border: `1px solid ${INK}`, background: '#FFFFFF' }}>
         <div style={{ padding: '16px 20px', background: CREAM, borderBottom: `1px solid ${INK}` }}>
