@@ -1042,7 +1042,25 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
             {/* Right column: the tachometer */}
             <div className="min-w-0">
-              <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
+              {/* The gauge is the centrepiece of the hero and it did nothing:
+                  14 dead clicks in six hours on 2026-09-05, the most-clicked
+                  dead thing on this page, identified from the ux-watch
+                  element chain (an SVG path with stroke #E48715, which is the
+                  needle arc). It sits directly beside the hero CTA, so a
+                  person who taps it is engaged, not lost. Its own placement,
+                  v2_gauge, so the next reading says whether those clicks
+                  actually buy — if they do not, this comes straight back
+                  out. */}
+              <CheckoutLink
+                href={checkoutUrl}
+                placement="v2_gauge"
+                submissionId={rowId}
+                className="block"
+                style={{ textDecoration: 'none', color: 'inherit' }}
+                ariaLabel="unlock all tutorials"
+              >
+                <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
+              </CheckoutLink>
               {nextStage && (
                 <p className="mt-1 text-center" style={{ fontSize: 14, color: BODY, fontWeight: 300 }}>
                   Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, ≈1 wk away with the library.
