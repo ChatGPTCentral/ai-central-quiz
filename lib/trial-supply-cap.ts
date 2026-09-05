@@ -10,8 +10,9 @@
 // ran out keeps their $4.99 for their own full window, exactly like the
 // founding window's own held-rate and time-based promises already do
 // (lib/founding-window.ts). No new price is invented: once the cap bites,
-// a new arrival simply gets the SAME list price ($14.95) an expired
-// founding window already charges everyone.
+// a new arrival is simply not offered the trial until tomorrow. There is no
+// second price to fall back to: $4.99 is the only trial price (owner,
+// 2026-09-05).
 //
 // Config lives in app_settings key 'trial_daily_supply', resets itself
 // every UTC day:

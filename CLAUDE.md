@@ -55,18 +55,34 @@ rule rather than re-deriving it.
 These are not derivations, they are the definitions. Do not "improve" them.
 
 1. **ANY $4.99 charge IS a paid trial.** No exceptions, no deduplication.
-   Since 2026-08-18, $14.95 is also a trial price: the FOUNDING WINDOW
-   (owner's Option B) gives quiz completers 12 hours at $4.99, enforced
-   server-side by lib/founding-window.ts in BOTH checkout paths, then the
-   $14.95 list price genuinely charges. The deadline is real or it does not
-   render, that is the whole point. Flag lives in app_settings
-   'founding_window' (flips live, no deploy). Emails hold the $4.99 rate
-   through their own static links, deliberately. TWO LAWS from the launch:
-   a list price must be one a real person could rationally pay (a
-   fictitious anchor is banned, $29.99 was refused), and any new price must
-   be scanned against charge history first ($7.99 was a legacy monthly
-   price; adding it swallowed 248 old charges into the ledger for four
-   minutes before the no-op check caught it).
+   **$4.99 IS THE ONLY TRIAL PRICE** (owner, 2026-09-05: "cancella questa
+   idea del 14.95 è stato un errore del passato"). Nothing on the site may
+   quote a second price for the trial. The old $14.95 list price is deleted:
+   it charged nobody in its entire life, 0 rows in `stripe_charges` at 1495,
+   so nothing in the ledger depends on it. The FOUNDING WINDOW that carried
+   it (a 12-hour personal deadline, app_settings 'founding_window') is
+   retired and its flag stays off; do not propose it again.
+
+   **THE DAILY SUPPLY, which replaced it.** Every day there are **10 trials
+   at $4.99, kept for people who took the quiz**. It is a real cap,
+   `lib/trial-supply-cap.ts`, with its own `enabled` switch in app_settings
+   'trial_daily_supply', and it resets at UTC midnight. When the day's 10
+   are gone the offer CLOSES until tomorrow — it is never repriced, because
+   there is no other price. At 7 of 10 the owner gets an email and can raise
+   the day's supply to 15 or 20 in one tap (`/admin/trial-supply`, which
+   also switches the whole cap on and off). The raise is discretionary and
+   his alone.
+
+   The result page may state the limit ONLY while the cap is enforced, and
+   the line disappears the moment it is switched off. Same law as every
+   deadline here: it is real or it does not render.
+
+   STANDING LAWS from the pricing launches, both still binding: a price must
+   be one a real person could rationally pay (a fictitious anchor is banned,
+   $29.99 was refused), and any new price must be scanned against charge
+   history first ($7.99 was a legacy monthly price; adding it swallowed 248
+   old charges into the ledger for four minutes before the no-op check
+   caught it).
 2. **A person may buy more than one paid trial.** All of them count.
 3. **A person may hold more than one yearly subscription.**
 4. **Other Revenue may contain no paid trial and no $59.75 subscription.** It

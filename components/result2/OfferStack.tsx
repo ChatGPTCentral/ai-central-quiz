@@ -32,6 +32,7 @@ export function OfferStack({
   todayCount = null,
   supplyLimit = null,
   supplyLeft = null,
+  soldOut = false,
   jobLevel = null,
   hoursLost = null,
   workArea = null,
@@ -71,6 +72,8 @@ export function OfferStack({
   supplyLimit?: number | null
   /** How many of that limit are still unsold right now. */
   supplyLeft?: number | null
+  /** Today's supply is gone. The price does not change, the offer closes. */
+  soldOut?: boolean
   /** Their OWN answer to the quiz's job_level question (real options:
    *  Founder / C-Suite / VP-Director / Individual contributor / Manager /
    *  Other / Student or intern) — never inferred, never enriched, the same
@@ -193,10 +196,10 @@ export function OfferStack({
           real cap now, so the claim is allowed, and it disappears the moment
           the cap is switched off. */}
       {supplyLimit !== null && supplyLeft !== null && (
-        <p style={{ padding: '8px 26px 0', margin: 0, fontSize: 12.5, fontWeight: 700, color: supplyLeft > 0 ? FULVOUS : BODY }}>
-          {supplyLeft > 0
-            ? `⚡ ${supplyLeft} of today's ${supplyLimit} trials at ${offer.price} are still open`
-            : `Today's ${supplyLimit} trials at ${offer.price} are taken. The next ones open tomorrow.`}
+        <p style={{ padding: '8px 26px 0', margin: 0, fontSize: 12.5, fontWeight: 700, color: supplyLeft > 0 && !soldOut ? FULVOUS : BODY }}>
+          {supplyLeft > 0 && !soldOut
+            ? `⚡ ${supplyLeft} of today's ${supplyLimit} trials at ${offer.price}, kept for people who took the quiz`
+            : `Today's ${supplyLimit} trials at ${offer.price} are taken. The next ${supplyLimit} open tomorrow.`}
         </p>
       )}
 

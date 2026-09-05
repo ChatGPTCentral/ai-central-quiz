@@ -382,26 +382,28 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
     typeof searchParams.utm_source === 'string' ? searchParams.utm_source : segFields?.utm_source ?? null,
   )
   let fw = baseOffer.key === 'trial' ? await foundingWindowState(rowId, baseOffer.cents, undefined, { heldRate }) : null
-  if (fw && fwPreview === 'expired') fw = { ...fw, enabled: true, valid: false, held: false, amountCents: fw.listCents }
+  if (fw && fwPreview === 'soldout') fw = { ...fw, soldOut: true }
   // ?fw=valid previews a LIVE window without flipping app_settings, so the
   // real countdown in the offer bar can be checked (and shown to the owner)
   // while 'founding_window'.enabled is still false. Preview only: it changes
   // what this page renders, never what the checkout charges.
   if (fw && fwPreview === 'valid') fw = { ...fw, enabled: true, valid: true, held: false, expiresAt: new Date(Date.now() + fw.windowHours * 3600_000).toISOString() }
   if (fw && fwPreview === 'held') fw = { ...fw, enabled: true, valid: true, held: true }
-  const offer = fw && fw.enabled && !fw.valid
-    ? { ...baseOffer, price: `$${(fw.listCents / 100).toFixed(2)}`, cents: fw.listCents }
-    : baseOffer
+  // ONE PRICE. $4.99 is the trial price and there is no other (owner,
+  // 2026-09-05: "cancella questa idea del 14.95 è stato un errore del
+  // passato"). Nothing on this page can raise it: the daily supply closes
+  // the offer when it runs out, it never reprices it. The old $14.95 list
+  // price charged nobody, ever, so deleting it costs no history.
+  const offer = baseOffer
+  const soldOut = !!fw?.soldOut
   // The one TRUE urgency line this page is allowed: a personal deadline that
   // the checkout actually enforces. A held-rate visitor gets the honest
   // version instead, because their clock ran out and we kept the price
   // anyway; inventing a fresh countdown for them would be the fake deadline
   // this whole design exists to avoid.
-  const windowNote = fw && fw.enabled && fw.held
-    ? `We held your founding rate: ${baseOffer.price} for your first 4 weeks, the price from your email.`
-    : fw && fw.enabled && fw.valid && fw.expiresAt
-      ? `Your founding rate: ${baseOffer.price} for the next ${hoursLeft(fw.expiresAt)} hours. After that, new members pay $${(fw.listCents / 100).toFixed(2)}.`
-      : null
+  // The founding-window note is gone with the window itself. It was the only
+  // line on this page that ever quoted a second price.
+  const windowNote = null
   const todayCount = await fetchTodayCountForDisplay()
   // The daily $4.99 supply, read only so the page can STATE it. It renders a
   // limit only while lib/trial-supply-cap.ts actually enforces one; with the
@@ -823,6 +825,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           todayCount={todayCount}
           supplyLimit={supplyLimit}
           supplyLeft={supplyLeft}
+          soldOut={soldOut}
           jobLevel={jobLevel}
           hoursLost={segFields?.hours_lost ?? null}
           workArea={segFields?.work_area ?? null}
@@ -1087,6 +1090,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   todayCount={todayCount}
                   supplyLimit={supplyLimit}
                   supplyLeft={supplyLeft}
+                  soldOut={soldOut}
                   jobLevel={jobLevel}
                   hoursLost={segFields?.hours_lost ?? null}
                   workArea={segFields?.work_area ?? null}
@@ -1125,6 +1129,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                   todayCount={todayCount}
                   supplyLimit={supplyLimit}
                   supplyLeft={supplyLeft}
+                  soldOut={soldOut}
                   jobLevel={jobLevel}
                   hoursLost={segFields?.hours_lost ?? null}
                   workArea={segFields?.work_area ?? null}

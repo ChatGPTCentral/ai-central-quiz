@@ -31,7 +31,10 @@ const CONTROL_URL = 'https://quiz.thecentral.ai/admin/trial-supply'
  *  per limit VALUE (not a fixed count), so raising the limit — his own
  *  "aumentarla di 5, 10, o 15" — unlocks a fresh warning as the new,
  *  higher limit approaches too, instead of only ever firing once all day. */
-const WARN_BEFORE = 2
+// Owner, 2026-09-05: "quando arriviamo a 7-8 io posso decidere
+// discrezionalmente di alzare la supply a 15 oppure 20". Warning at 7 of 10
+// leaves him three sales of room to decide in, instead of two.
+const WARN_BEFORE = 3
 
 function sb() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -136,7 +139,7 @@ async function sendClosedEmail(count: number, supply: SupplyState, day: string):
       </p>`,
     [
       `Today's $4.99 supply is closed (${day}). Trial #${supply.limit} sold at ${closedAt}, ${count} total so far.`,
-      'New arrivals now see $14.95. Nobody already inside their own founding window was affected.',
+      "New arrivals are told today's are taken and the next open tomorrow. Nobody already promised $4.99 was affected.",
       `Reopen it at ${CONTROL_URL}?raise=5 (or 10, or 15).`,
     ],
   )

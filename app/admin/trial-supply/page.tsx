@@ -81,7 +81,7 @@ export default async function TrialSupplyPage({ searchParams }: { searchParams: 
         <div style={{ padding: '16px 20px' }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: exhausted ? RED : GREEN, margin: 0 }}>
             {exhausted
-              ? `$4.99 is closed for new arrivals since ${new Date(supply.exhaustedAt!).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}. New visitors now see $14.95.`
+              ? `$4.99 is closed for new arrivals since ${new Date(supply.exhaustedAt!).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}. New visitors are told today's are taken and the next open tomorrow.`
               : `$4.99 is open. ${Math.max(0, supply.limit - count)} left before it closes for new arrivals today.`}
           </p>
 

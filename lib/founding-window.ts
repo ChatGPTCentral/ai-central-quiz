@@ -8,7 +8,7 @@
 //
 // Config lives in app_settings key 'founding_window' so it flips LIVE with
 // no deploy (the 2026-08-07 baked-env lesson):
-//   { "enabled": false, "list_cents": 1495, "window_hours": 12 }
+//   { "enabled": false, "list_cents": 499, "window_hours": 12 }
 //
 // FAILURE DIRECTION IS DELIBERATE, in both directions:
 //   - config unreadable  -> behave as DISABLED (today's $4.99 for everyone);
@@ -23,6 +23,9 @@ export type FoundingConfig = { enabled: boolean; list_cents: number; window_hour
 
 export type WindowState = {
   enabled: boolean
+  /** Today's supply is gone, so the page stops offering the trial. It is NOT
+   *  a different price: there is no other price. */
+  soldOut?: boolean
   /** true = the $4.99 founding rate applies to this person right now. */
   valid: boolean
   /** true = the rate is valid because we HELD it for an email recipient,
@@ -37,7 +40,11 @@ export type WindowState = {
   expiresAt: string | null
 }
 
-const DEFAULTS: FoundingConfig = { enabled: false, list_cents: 1495, window_hours: 12 }
+// ONE PRICE (owner, 2026-09-05). The old second price charged nobody, ever —
+// it never charged a single customer — and the owner has deleted it, so
+// the default here is the trial price itself. Nothing in this file can now
+// quote a number a customer has not already been promised.
+const DEFAULTS: FoundingConfig = { enabled: false, list_cents: 499, window_hours: 12 }
 
 function db(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -94,18 +101,20 @@ export async function foundingWindowState(
     try {
       const client = c ?? db()
       const supply = await getTrialSupplyState(client)
-      if (!supply.enabled) return disabled
-      // A promised price is never taken back, exactly as below.
-      if (opts?.heldRate && submissionId) return { ...disabled, enabled: true, valid: true, held: true, amountCents: baseCents }
-      if (!supply.exhaustedAt) return { ...disabled, enabled: true, valid: true, amountCents: baseCents }
-      if (!submissionId) return { ...disabled, enabled: true, valid: false, amountCents: cfg.list_cents }
+      if (!supply.enabled || !supply.exhaustedAt) return disabled
+      if (opts?.heldRate && submissionId) return disabled
+      if (!submissionId) return { ...disabled, soldOut: true }
       const { data } = await client.from('submissions').select('created_at').eq('id', submissionId).maybeSingle()
       const createdIso = data?.created_at as string | undefined
       // Real timestamps, never raw ISO strings: Postgres and JS format
       // offsets differently and a string compare can misorder two moments
       // milliseconds apart.
       const arrivedAfter = createdIso ? new Date(createdIso).getTime() > new Date(supply.exhaustedAt).getTime() : true
-      return { ...disabled, enabled: true, valid: !arrivedAfter, amountCents: arrivedAfter ? cfg.list_cents : baseCents }
+      // THE PRICE NEVER CHANGES. $4.99 is the only trial price there is
+      // (owner, 2026-09-05). Running out of supply closes the day's offer,
+      // it does not reprice it: `amountCents` stays baseCents in every
+      // branch here, and `soldOut` is what the page reads.
+      return arrivedAfter ? { ...disabled, soldOut: true } : disabled
     } catch {
       return disabled
     }
@@ -114,7 +123,7 @@ export async function foundingWindowState(
   // THE HELD RATE (2026-08-19, first night of the window). Our recovery
   // emails quote $4.99 and carry static Stripe links that genuinely charge
   // $4.99 forever, so a recipient who follows one back to this page must
-  // never meet $14.95: overnight, 2 of the first 5 clickers did exactly
+  // never meet a higher price: overnight, 2 of the first 5 clickers did exactly
   // that, arriving from an Aug-16 and an Aug-17 quiz, and neither bought.
   // The rate is honoured for arrivals tagged with an email source. It is
   // not a loophole in the deadline, it is the deadline told truthfully:
