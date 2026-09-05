@@ -935,7 +935,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <ExperimentTracker assignments={assignments} submissionId={rowId} />
       <Confetti onLoad />
 
-      <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingBottom: 84 }}>
+      {/* The 72px offer bar is fixed to the TOP as of 2026-09-05, so the page
+          reserves its room up there instead of underneath. 84 = the bar plus
+          a little air, the same figure the bottom version used. */}
+      <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingTop: 84, paddingBottom: 24 }}>
 
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
         {redesignHero ? (

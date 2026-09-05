@@ -7,9 +7,22 @@ import { useCheckout } from '@/components/checkout-context'
 import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 /**
- * Result v2 offer bar: fixed to the BOTTOM with a neon treatment — near-black
- * strip, glowing xanthous top edge, and the deadline dead-center.
+ * Result v2 offer bar: fixed to the TOP with a neon treatment — near-black
+ * strip, glowing xanthous edge, the offer dead-center.
  * Placements v2_offer_bar / v2_offer_bar_banner.
+ *
+ * MOVED FROM THE BOTTOM 2026-09-05, ship-and-watch, not an A/B.
+ * The bar earns the move: measured click-to-trial from 2026-08-15, it took
+ * 146 clicks and 23 of those people bought, the SECOND biggest source of
+ * trials on the page behind the study plan's 27. It is also seen by 99.1%
+ * of everyone who opens the page, because it is fixed.
+ * Why not a formal test: the bar converts about 7.5% of the people who see
+ * it, and this page can only resolve a 10-point move on that step inside
+ * three weeks (CLAUDE.md's own detectable-effect table). A position test
+ * would have been the seventh experiment to die with no verdict. The order
+ * swap of 2026-08-29 was decided the same way and gave a 2.7-sigma read on
+ * trials per result view within a week, so the meter is /admin/cohorts and
+ * the number to watch is trials per result view, not clicks on the bar.
  *
  * THE COUNTDOWN IS THE REAL ONE OR THERE IS NO COUNTDOWN (2026-09-04).
  * This bar used to run its own 15-minute timer out of sessionStorage, under
@@ -73,12 +86,12 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
 
   return (
     <div
-      className="ac-neonbar fixed bottom-0 left-0 right-0 z-50 grid items-center gap-2 px-3 sm:px-6 cursor-pointer"
+      className="ac-neonbar fixed top-0 left-0 right-0 z-50 grid items-center gap-2 px-3 sm:px-6 cursor-pointer"
       style={{
         gridTemplateColumns: '1fr auto 1fr',
         backgroundColor: '#0D0D0D',
         height: 72,
-        borderTop: '2px solid #E7B02F',
+        borderBottom: '2px solid #E7B02F',
       }}
       onClick={goCheckout}
       role="link"
@@ -119,11 +132,19 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
         {/* Owner, 2026-09-05: the strip should say what the price BUYS, not
             just the number. "Unlock everything" is the promise the button
             repeats, so the two agree instead of competing. */}
-        <span className="font-black tabular-nums ac-neontime text-center" style={{ fontSize: 'clamp(19px, 3.1vw, 26px)', color: '#E7B02F', lineHeight: 1.1 }}>
+        {/* The full sentence needs room. On a phone it wrapped to two lines
+            inside a 72px strip and squeezed the button, so the small screen
+            gets the price big with the promise underneath — same words, same
+            promise, one line each. */}
+        <span className="hidden sm:block font-black ac-neontime text-center" style={{ fontSize: 'clamp(19px, 3.1vw, 26px)', color: '#E7B02F', lineHeight: 1.1 }}>
           Unlock everything for {offer.price}
         </span>
-        <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.18em', color: '#FEF7E7', opacity: 0.65, marginTop: 3 }}>
-          {offer.oneTime ? 'once, yours for good' : 'your first month'}
+        <span className="sm:hidden font-black tabular-nums ac-neontime text-center" style={{ fontSize: 26, color: '#E7B02F', lineHeight: 1 }}>
+          {offer.price}
+        </span>
+        <span className="uppercase text-center" style={{ fontSize: 9.5, letterSpacing: '0.16em', color: '#FEF7E7', opacity: 0.7, marginTop: 3, whiteSpace: 'nowrap' }}>
+          <span className="sm:hidden">unlock everything</span>
+          <span className="hidden sm:inline">{offer.oneTime ? 'once, yours for good' : 'your first month'}</span>
         </span>
       </div>
 
@@ -140,13 +161,13 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
       </div>
 
       <style>{`
-        .ac-neonbar { box-shadow: 0 -2px 18px rgba(231,176,47,0.55), 0 -8px 44px rgba(231,176,47,0.28); animation: ac-neon-pulse 2.4s ease-in-out infinite }
+        .ac-neonbar { box-shadow: 0 2px 18px rgba(231,176,47,0.55), 0 8px 44px rgba(231,176,47,0.28); animation: ac-neon-pulse 2.4s ease-in-out infinite }
         .ac-neontime { text-shadow: 0 0 10px rgba(231,176,47,0.95), 0 0 28px rgba(231,176,47,0.55), 0 0 52px rgba(228,135,21,0.35) }
         .ac-neoncta { box-shadow: 0 0 14px rgba(231,176,47,0.75), 0 0 34px rgba(231,176,47,0.35); transition: box-shadow .2s }
         .ac-neoncta:hover { box-shadow: 0 0 20px rgba(231,176,47,0.95), 0 0 48px rgba(231,176,47,0.5) }
         @keyframes ac-neon-pulse {
-          0%, 100% { box-shadow: 0 -2px 18px rgba(231,176,47,0.55), 0 -8px 44px rgba(231,176,47,0.28) }
-          50% { box-shadow: 0 -2px 26px rgba(231,176,47,0.8), 0 -10px 60px rgba(231,176,47,0.42) }
+          0%, 100% { box-shadow: 0 2px 18px rgba(231,176,47,0.55), 0 8px 44px rgba(231,176,47,0.28) }
+          50% { box-shadow: 0 2px 26px rgba(231,176,47,0.8), 0 10px 60px rgba(231,176,47,0.42) }
         }
         @media (prefers-reduced-motion: reduce) { .ac-neonbar { animation: none } }
       `}</style>
