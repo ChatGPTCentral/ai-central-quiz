@@ -85,6 +85,9 @@ interface SegFields {
   job_level?: string | null
   score?: number | null
   hours_lost?: number | null
+  /** What one hour of their time is worth, their own figure. Null on every row
+   *  from before 2026-09-07, so anything using it must degrade. */
+  hourly_value?: number | null
   hours_would_use_for?: string | null
   /** Raw depth picks, CSV. The ladder's top rungs are earned by three of
    *  these, so this is what makes the gap to the next stage computable. */
@@ -126,7 +129,7 @@ async function fetchSegmentFields(id: string | undefined): Promise<SegFields | n
   })
     const { data } = await c
       .from('submissions')
-      .select('name, email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hours_would_use_for, depth_actions, work_area')
+      .select('name, email, stage, persona, friction, intent_30d, frequency_score, depth_score, breadth_score, momentum, ai_tools, job_level, score, utm_source, hours_lost, hourly_value, hours_would_use_for, depth_actions, work_area')
       .eq('id', id)
       .maybeSingle()
     return (data as SegFields) || null
@@ -855,6 +858,47 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             34% to 8% purely by denominator. The component still exists; if
             the gap idea returns it comes through the experiment queue with a
             control, not straight onto the page that sells. */}
+
+        {/* THE COST OF THE GAP, IN THEIR OWN FIGURES, IMMEDIATELY BEFORE THE
+            PRICE (owner, 2026-09-07: "ogni result page è una persona, una
+            storia, un pain... dobbiamo identificare il pain, valutarlo
+            monetariamente e offrire la soluzione no brain").
+
+            Both numbers are answers the person gave minutes ago, never our
+            estimate of them: hours_lost from "how many hours a week do you
+            lose to busywork", hourly_value from "what is an hour of your time
+            worth". The page multiplies and states, it does not infer. That
+            line matters, because the moment we guess a number on somebody's
+            behalf the whole thing becomes a sales trick and the $4.99 beside
+            it stops being credible.
+
+            The mechanic is the one the best subscription quiz funnels use
+            (RevenueCat's Noom teardown, 2026): reflect the person's own
+            figures back BEFORE any price, in the unit they already think in,
+            so the price lands against a number they have already accepted as
+            theirs. Noom uses kilos and a date. Ours is hours and dollars,
+            because that is what we asked.
+
+            Renders only when BOTH answers exist. Every row before 2026-09-07
+            has no hourly_value, and a half-stated gap is worse than none. */}
+        {typeof segFields?.hours_lost === 'number' && typeof segFields?.hourly_value === 'number' && segFields.hours_lost > 0 && segFields.hourly_value > 0 && (
+          <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '20px 22px' }}>
+            <Eyebrow>The cost of the gap, in your numbers</Eyebrow>
+            <p className="mt-3" style={{ fontSize: 17, lineHeight: 1.5, color: RICH, fontWeight: 300 }}>
+              You told us busywork takes about{' '}
+              <strong style={{ fontWeight: 700 }}>{segFields.hours_lost} hours a week</strong> from you, and that an
+              hour of your time is worth about{' '}
+              <strong style={{ fontWeight: 700 }}>${segFields.hourly_value}</strong>.
+            </p>
+            <p className="mt-3" style={{ fontSize: 22, lineHeight: 1.3, color: RICH, fontWeight: 800, letterSpacing: '-0.02em' }}>
+              That is {Math.round(segFields.hours_lost * 52)} hours a year, and by your own figure,
+              ${Math.round(segFields.hours_lost * 52 * segFields.hourly_value).toLocaleString('en-US')}.
+            </p>
+            <p className="mt-2" style={{ fontSize: 13.5, color: MUTE, fontWeight: 300 }}>
+              Your figures, not ours. We only multiplied them.
+            </p>
+          </div>
+        )}
 
         {withVideo && videoWithFallback(true)}
 

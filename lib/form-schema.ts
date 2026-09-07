@@ -23,7 +23,7 @@ export type V2DbColumn =
   | 'ai_tools' | 'work_area' | 'job_level'
   // Cost-of-the-gap answers. Sales signals only — deliberately NOT part of the
   // score or the stage, so historical rows stay comparable.
-  | 'hours_lost' | 'hours_would_use_for'
+  | 'hours_lost' | 'hours_would_use_for' | 'hourly_value'
 
 export interface V2Question {
   id: string

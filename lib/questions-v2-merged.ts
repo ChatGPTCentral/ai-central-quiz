@@ -113,6 +113,39 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     ],
   },
 
+  // The second half of the cost-of-the-gap pair (owner, 2026-09-07). hoursLost
+  // above says HOW MUCH time goes, this says what that time is worth to them.
+  // Both numbers are the person's own estimate, which is the whole point: the
+  // result page can then state the cost of the gap in their words, before the
+  // price, without us inferring anything they did not say.
+  //
+  // Bands, not a free number, for the same reason hoursLost uses bands: one tap
+  // keeps the quiz moving, and the value column stores the band's own figure so
+  // nothing depends on parsing what someone typed. The top band stores its
+  // FLOOR (250), never a guessed midpoint — every figure built on this should
+  // understate rather than flatter.
+  //
+  // Sales signal only. Deliberately outside calculateScoreV2 and assignStage,
+  // exactly like hours_lost, so every historical score and stage stays
+  // comparable.
+  {
+    id: 'hourlyValue',
+    type: 'chips',
+    label: 'What is an hour of your time worth?',
+    sublabel: 'Your own rough figure, in dollars. Nobody sees it but you.',
+    required: true,
+    dbColumn: 'hourly_value',
+    scoring: 'value',
+    layout: 'rows',
+    options: [
+      { label: 'Under $20',       value: '12',  score: 12 },
+      { label: '$20 to $50',      value: '35',  score: 35 },
+      { label: '$50 to $100',     value: '75',  score: 75 },
+      { label: '$100 to $250',    value: '165', score: 165 },
+      { label: 'More than $250',  value: '250', score: 250 },
+    ],
+  },
+
   {
     id: 'aiTools',
     type: 'multi-chips',
@@ -309,6 +342,7 @@ export interface V2DbValues {
   // assignStage, so every historical score and stage stays comparable.
   hours_lost?: number
   hours_would_use_for?: string
+  hourly_value?: number
 }
 
 export function answersToDb(
@@ -341,6 +375,7 @@ export function answersToDb(
         if (q.dbColumn === 'frequency_score') out.frequency_score = n
         else if (q.dbColumn === 'momentum') out.momentum = n
         else if (q.dbColumn === 'hours_lost') out.hours_lost = n
+        else if (q.dbColumn === 'hourly_value') out.hourly_value = n
       }
     } else if (q.scoring === 'enum' && typeof raw === 'string') {
       if (q.dbColumn === 'friction') out.friction = raw
