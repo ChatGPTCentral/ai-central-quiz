@@ -660,6 +660,33 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   // Either redesign arm claims the page shape, same reasoning as `aspirational`.
   const redesignHero = redesign || v5
 
+  // ── result_short_v1 · does the page AFTER the offer close anybody? ──────
+  // Owner's thesis, 2026-09-07: the product is good and thousands see the
+  // offer, so the tens of conversions must mean the value is not being
+  // communicated. Measured against six weeks of scroll depth, that thesis
+  // does not hold in the direction he expected. Conversion by how far a
+  // person read, 2,933 people: stops at the offer card 21/206 = 10.2%, reads
+  // to the study plan 47/841 = 5.6%, reads the WHOLE page to the guarantee
+  // 52/763 = 6.8%. The curve peaks at the offer and falls. More exposure to
+  // the explanation does not buy more.
+  //
+  // The honest confound, stated because it decides how this is read: deep
+  // scrolling may be the SYMPTOM of hesitation rather than its cause. Someone
+  // convinced clicks at the offer; someone unsure keeps looking for a reason.
+  // Correlation cannot separate those two, which is exactly why this ships as
+  // a test and not as a blanket cut.
+  //
+  // The challenger ends the page after the study plan: no library grid, no
+  // reviews marquee, no video tour. RiskFree still closes both arms, since it
+  // answers the last objection and its clickers buy at 47%.
+  // Primary metric: TRIALS per result view, never clicks. Six weekly points
+  // say the two move opposite ways on this page (the week with the most
+  // clicks, 37.3%, converted worst at 4.8%; the week with the fewest, 25.0%,
+  // converted best at 8.0%), so a click read here would mislead by design.
+  const shortPage =
+    previewVar.includes('short') ||
+    assignments.some(a => a.experimentKey === 'result_short_v1' && a.variantKey === 'short')
+
   // ── Embedded checkout A/B (experiment `checkout_embed_v1`) ──────────
   // 'embedded' arm: every CTA opens an on-page Stripe modal (mirrors the
   // beehiiv link 1:1); 'link' arm: unchanged, navigates to the beehiiv link.
@@ -1248,9 +1275,10 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           <>
             {offerSection(false)}
             {studyPlanSection}
-            <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />
-            {reviewsSection}
-            {videoTourSection}
+            {/* result_short_v1: the challenger stops here. See `shortPage`. */}
+            {!shortPage && <LibraryGrid checkoutUrl={checkoutUrl} submissionId={rowId} />}
+            {!shortPage && reviewsSection}
+            {!shortPage && videoTourSection}
           </>
           )
         ) : (
