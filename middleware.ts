@@ -40,6 +40,18 @@ export async function middleware(req: NextRequest) {
     // check counts them by this marker, which also keeps the case for fixing
     // the beehiiv header link visible instead of silently absorbed.
     url.searchParams.set('jl', '1')
+    // THE PATH ITSELF, so the next one names its own source (2026-09-07).
+    // The rescue threw the broken path away, so all analytics ever saw was
+    // "/?jl=1" and the question "which link is it" had no answer in the data.
+    // A day was spent inspecting emails by hand for it: the AI 101 course, Pass
+    // Recovery and Winback headers are all clean HTML anchors, and so is a
+    // recent published issue, which falsifies the standing guess that it is the
+    // header link in an automation. Meanwhile 6 of 13 rescued sessions in three
+    // days arrived from bing.com, so the broken link lives on a page a crawler
+    // can read, not only inside an email.
+    // Truncated and encoded: this value reaches analytics, so it must be short
+    // and inert.
+    url.searchParams.set('jlp', pathname.slice(0, 24))
     return NextResponse.redirect(url)
   }
 

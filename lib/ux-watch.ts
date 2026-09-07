@@ -337,7 +337,7 @@ export const UX_QUERIES: {
       return {
         value: sessions,
         detail: sessions
-          ? `${sessions} sessions in 24h rescued from the )**_** link; the fix is the header link in the beehiiv automation`
+          ? `${sessions} sessions in 24h rescued from a junk link. The paths are now recorded as jlp= on the rescued URL, and 6 of 13 in three days came from bing.com, so look for a PUBLISHED page carrying it, not only an automation: the AI 101, Pass Recovery and Winback headers were each checked by hand on 2026-09-07 and are clean`
           : 'none',
       }
     },
