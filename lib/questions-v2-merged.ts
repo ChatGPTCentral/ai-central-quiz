@@ -113,38 +113,27 @@ export const QUESTIONS_V2_MERGED: V2Question[] = [
     ],
   },
 
-  // The second half of the cost-of-the-gap pair (owner, 2026-09-07). hoursLost
-  // above says HOW MUCH time goes, this says what that time is worth to them.
-  // Both numbers are the person's own estimate, which is the whole point: the
-  // result page can then state the cost of the gap in their words, before the
-  // price, without us inferring anything they did not say.
+  // REMOVED 2026-09-07, the same day it shipped, after four hours live.
   //
-  // Bands, not a free number, for the same reason hoursLost uses bands: one tap
-  // keeps the quiz moving, and the value column stores the band's own figure so
-  // nothing depends on parsing what someone typed. The top band stores its
-  // FLOOR (250), never a guessed midpoint — every figure built on this should
-  // understate rather than flatter.
+  // The question was "What is an hour of your time worth?", added straight
+  // after hoursLost to let the result page state the cost of the gap in the
+  // person's own money. The risk was stated when it shipped: a required
+  // question sits on the step every trial passes through. It did not cost a
+  // little, it cost most of the funnel.
   //
-  // Sales signal only. Deliberately outside calculateScoreV2 and assignStage,
-  // exactly like hours_lost, so every historical score and stage stays
-  // comparable.
-  {
-    id: 'hourlyValue',
-    type: 'chips',
-    label: 'What is an hour of your time worth?',
-    sublabel: 'Your own rough figure, in dollars. Nobody sees it but you.',
-    required: true,
-    dbColumn: 'hourly_value',
-    scoring: 'value',
-    layout: 'rows',
-    options: [
-      { label: 'Under $20',       value: '12',  score: 12 },
-      { label: '$20 to $50',      value: '35',  score: 35 },
-      { label: '$50 to $100',     value: '75',  score: 75 },
-      { label: '$100 to $250',    value: '165', score: 165 },
-      { label: 'More than $250',  value: '250', score: 250 },
-    ],
-  },
+  // Measured the same day: 28 people answered it against 53 to 70 for every
+  // other question in the quiz, and start-to-email fell to 59.6% (53 of 89)
+  // against 70.3%, 78.6%, 71.3% and 81.1% on the four days before. Roughly
+  // ten of eighty-nine starters lost in one afternoon, upstream of every
+  // trial.
+  //
+  // The cost-of-the-gap block SURVIVES this: it falls back to $40 an hour and
+  // says on its face that $40 is an average, which is the honest form and the
+  // one every pre-existing row was always going to use anyway. The column
+  // submissions.hourly_value stays, nullable and unused for now, so the 28
+  // real answers are not thrown away and the question can come back somewhere
+  // that does not gate the funnel, for example after the email is captured or
+  // on the result page itself.
 
   {
     id: 'aiTools',
