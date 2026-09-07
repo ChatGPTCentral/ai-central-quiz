@@ -41,7 +41,22 @@ export interface VariantResult extends VariantStats {
   completions: number
   clickRate: number
   completionRate: number
-  /** net_new_paid / exposures — the north star, always too small to conclude on. */
+  /** net_new_paid / exposures — the north star, always too small to conclude on.
+   *
+   *  THE NAME LIES, AND IT HAS ALREADY COST A CONVERSATION (owner, 2026-09-07:
+   *  "la metrica north star sono new trial sia che siano net-new o existing").
+   *  `net_new_paid` sounds like it drops the existing-customer bucket. It does
+   *  not. The experiment_results RPC filters
+   *      t.attribution in ('quiz_net_new','quiz_existing')
+   *  so it counts BOTH kinds of quiz-attributed trial, excludes refunded ones,
+   *  and requires the trial to land after the person's first exposure. That is
+   *  the north star exactly as CLAUDE.md defines it.
+   *
+   *  Left named as it is on purpose for now: the string is stored in every
+   *  experiments.primary_metric row and returned as a column by the RPC, so a
+   *  rename is a three-place migration and there is a live experiment
+   *  (result_short_v1) depending on it. Renaming it to quiz_trials is worth
+   *  doing between experiments, not during one. */
   paidRate: number
   /** net_new_paid / clickers — how much a click from this arm is actually worth. */
   clickToPaid: number

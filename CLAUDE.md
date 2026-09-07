@@ -25,6 +25,15 @@ the bar. The measured decomposition: on-page CVR at the research ceiling
 (~6.3%) needs ~160 landings/day for 10 trials; landings are the owner's
 lever, CVR is Claude's.
 
+**The experiment metric named `net_new_paid` COUNTS BOTH kinds.** The name is
+a trap: the `experiment_results` RPC filters `attribution in ('quiz_net_new',
+'quiz_existing')`, drops refunded trials, and requires the trial to land after
+first exposure. So an experiment set to `net_new_paid` is decided on the north
+star as defined here, existing customers included. Checked against the
+function definition 2026-09-07 after the owner rightly challenged the name; a
+rename to `quiz_trials` is a three-place migration and waits for a gap between
+experiments.
+
 **NOT** this metric: people who paid without ever taking the quiz, or who took
 it only after paying. Renewals are not trials. Every trial therefore falls in
 exactly one of three buckets, and the dashboard shows all three:
