@@ -915,10 +915,21 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             The sequence is the one the best subscription quiz funnels use:
             the reader's own figures first, the gain second, the price last,
             so $4.99 lands against a number they already accepted as theirs. */}
-        {typeof segFields?.hours_lost === 'number' && segFields.hours_lost > 0 && (() => {
-          const hours = segFields.hours_lost as number
-          const ownRate = typeof segFields?.hourly_value === 'number' && segFields.hourly_value > 0
-          const rate = ownRate ? (segFields.hourly_value as number) : 40
+        {(() => {
+          // ?gap=5.5,35 previews this block with those two answers, the same
+          // shape as ?fw= and ?supply= above. It exists because the block is
+          // driven entirely by DB answers, so it renders as nothing on any
+          // environment without a service key, and "it looked empty" is not a
+          // useful review. Preview only: it changes what renders, never what
+          // is stored or charged.
+          const gp = typeof searchParams.gap === 'string' ? searchParams.gap.split(',').map(Number) : []
+          const previewHours = gp.length >= 1 && Number.isFinite(gp[0]) && gp[0] > 0 ? gp[0] : null
+          const previewRate = gp.length >= 2 && Number.isFinite(gp[1]) && gp[1] > 0 ? gp[1] : null
+          const hours = previewHours ?? (typeof segFields?.hours_lost === 'number' ? segFields.hours_lost : null)
+          if (!hours || hours <= 0) return null
+          const own = previewRate ?? (typeof segFields?.hourly_value === 'number' && segFields.hourly_value > 0 ? segFields.hourly_value : null)
+          const ownRate = own !== null
+          const rate = own ?? 40
           const yearHours = Math.round(hours * 52)
           const yearValue = Math.round(yearHours * rate)
           const savedHours = Math.round(yearHours * 0.2)
