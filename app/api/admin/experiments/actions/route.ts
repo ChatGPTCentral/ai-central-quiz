@@ -60,6 +60,29 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+      // AN APPROVED VARIANT WITH ZERO WEIGHT GETS ZERO TRAFFIC, so an
+      // experiment that starts in that state is a one-armed test that cannot
+      // produce a verdict however long it runs. That is not a theory:
+      // landing_skip_v1 ran for two weeks from 2026-08-25 with its 'skip' arm
+      // approved at weight 0, collected 46 exposures all on control, and was
+      // closed on 2026-09-07 with nothing to read. The share is computed as
+      // weight / total weight, so approving alone never granted traffic even
+      // though the panel said it did.
+      const zeroWeighted = ((row.variants as ExperimentVariant[]) || [])
+        .filter(v => v.approved !== false && !(Number(v.weight) > 0))
+        .map(v => v.key)
+      if (zeroWeighted.length) {
+        return NextResponse.json({
+          error: `cannot start: approved variant(s) ${zeroWeighted.join(', ')} have weight 0 and would receive no traffic. Set a weight above 0, or unapprove them.`,
+        }, { status: 400 })
+      }
+      const approvedCount = ((row.variants as ExperimentVariant[]) || []).filter(v => v.approved !== false).length
+      if (approvedCount < 2) {
+        return NextResponse.json({
+          error: `cannot start: ${approvedCount} approved variant(s). A test needs at least two arms.`,
+        }, { status: 400 })
+      }
+
       const update: Record<string, unknown> = { status: 'running', updated_at: now }
       if (!row.started_at) update.started_at = now
       await c.from('experiments').update(update).eq('key', key)
@@ -68,9 +91,21 @@ export async function POST(req: NextRequest) {
     } else if (action === 'end' || action === 'kill') {
       await c.from('experiments').update({ status: action === 'end' ? 'ended' : 'killed', ended_at: now, updated_at: now }).eq('key', key)
     } else if (action === 'approve_variant') {
+      // Approving now GRANTS WEIGHT, because that is what the panel has always
+      // promised ("approve to give them traffic") and never did: it flipped the
+      // flag and left weight at the 0 a new variant is created with. A variant
+      // approved with weight 0 is invisible to the splitter. Where the variant
+      // already carries a weight the owner set, that weight is kept.
       const vkey = (body.variantKey || '').trim()
+      const existing = ((row.variants as ExperimentVariant[]) || []).find(v => v.key === vkey)
+      const peerWeight = ((row.variants as ExperimentVariant[]) || [])
+        .filter(v => v.key !== vkey && v.approved !== false && Number(v.weight) > 0)
+        .map(v => Number(v.weight))
+      const grantedWeight = Number(existing?.weight) > 0
+        ? Number(existing!.weight)
+        : peerWeight.length ? peerWeight.reduce((a, b) => a + b, 0) / peerWeight.length : 0.5
       const variants = ((row.variants as ExperimentVariant[]) || []).map(v =>
-        v.key === vkey ? { ...v, approved: true } : v,
+        v.key === vkey ? { ...v, approved: true, weight: grantedWeight } : v,
       )
       if (!variants.some(v => v.key === vkey)) return NextResponse.json({ error: 'variant not found' }, { status: 404 })
       await c.from('experiments').update({ variants, updated_at: now }).eq('key', key)

@@ -360,7 +360,7 @@ export default function ExperimentsPanel({
             <button onClick={() => setEditing(null)} className="rounded-lg border border-[#E8E4DF] px-5 py-2.5 text-sm font-bold text-[#9C9C9C]">Cancel</button>
           </div>
           <p className="mt-3 text-[11px] text-[#9C9C9C]">
-            Copy may use {'{firstName}'} and {'{persona}'} tokens; the hero headline also supports {'{aheadPct}'}. New variants start unapproved with weight 0 — approve to give them traffic.
+            Copy may use {'{firstName}'} and {'{persona}'} tokens; the hero headline also supports {'{aheadPct}'}. New variants start unapproved with weight 0. Approving now also gives the variant a weight matching its approved peers, because approval alone never granted traffic: the split is weight divided by total weight, so an approved arm at weight 0 stays invisible. Starting an experiment in that state is refused.
           </p>
         </section>
       )}
