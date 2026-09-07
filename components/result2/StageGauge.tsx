@@ -118,7 +118,7 @@ export function StageGauge({ stageKey, aheadPct }: { stageKey?: string | null; a
                   textAnchor={anchor}
                   style={{ fontSize: 10.5, fontWeight: 600, fill: '#C4BDB2' }}
                 >
-                  ≈{weeks} wk{weeks === 1 ? '' : 's'}
+                  ≈{weeks} week{weeks === 1 ? '' : 's'}
                 </text>
               )}
             </g>

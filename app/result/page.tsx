@@ -189,6 +189,42 @@ async function todayTrialCountSafe(): Promise<number> {
   }
 }
 
+/** What the rung ABOVE a person actually does, three lines each.
+ *
+ *  Taken from the ladder's own definitions in lib/segmentation-v2.ts, not
+ *  written as marketing: a Practitioner is defined there as somebody who "has
+ *  built one thing: a custom GPT, an integration, or shipped something", and
+ *  that same rule is what placed this reader one rung below. Repeating the
+ *  rule back cannot overstate, because it is the rule we judged them by. If
+ *  the ladder definitions change, these change with them. */
+const NEXT_RUNG_DOES: Record<string, string[]> = {
+  S1_curious: [
+    'They have seen what AI actually does, not what people say it does',
+    'They know which tool to open for which job',
+    'They have run one real task through it, start to finish',
+  ],
+  S2_experimenter: [
+    'They use AI every week on real work, not on demos',
+    'They keep a handful of prompts that reliably work',
+    'They reach for the right tool without thinking about it',
+  ],
+  S3_practitioner: [
+    'They have built one thing that runs without them, a custom GPT or an integration',
+    'They turned a task they repeat into a saved workflow',
+    'They ship work that AI helped produce, and nobody can tell',
+  ],
+  S4_power_user: [
+    'They have two or more workflows running unattended',
+    'AI does real work inside their week, not experiments',
+    'Their tools are connected, so output moves on its own',
+  ],
+  S5_builder: [
+    'They have shipped AI-powered work to real users',
+    'They build for other people, not only for themselves',
+    'They treat AI as infrastructure, not as a novelty',
+  ],
+}
+
 const STRIPE_TRIAL_URL = process.env.NEXT_PUBLIC_PAYMENT_URL || 'https://buy.stripe.com/14A5kC67m22McnWfBxdQQ0e'
 
 
@@ -859,43 +895,82 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             the gap idea returns it comes through the experiment queue with a
             control, not straight onto the page that sells. */}
 
-        {/* THE COST OF THE GAP, IN THEIR OWN FIGURES, IMMEDIATELY BEFORE THE
-            PRICE (owner, 2026-09-07: "ogni result page è una persona, una
-            storia, un pain... dobbiamo identificare il pain, valutarlo
-            monetariamente e offrire la soluzione no brain").
+        {/* THE COST OF THE GAP, THEN WHAT CLOSING IT IS WORTH (owner,
+            2026-09-07). Three numbers in one breath, and each one has to be
+            defensible on its own:
 
-            Both numbers are answers the person gave minutes ago, never our
-            estimate of them: hours_lost from "how many hours a week do you
-            lose to busywork", hourly_value from "what is an hour of your time
-            worth". The page multiplies and states, it does not infer. That
-            line matters, because the moment we guess a number on somebody's
-            behalf the whole thing becomes a sales trick and the $4.99 beside
-            it stops being credible.
+            1. HOURS. Their answer to "how many hours a week do you lose to
+               busywork", given minutes earlier.
+            2. WHAT AN HOUR IS WORTH. Their answer too, from the question added
+               the same day. For the 2,167 people who completed before that
+               question existed there is no answer, so the line falls back to
+               $40 and SAYS it is an average. A stated average is honest; a
+               stated average dressed as their own number is not.
+            3. WHAT THE LIBRARY GIVES BACK. Members report 20% to 35% more
+               productive time (owner's own client interviews, not a study, so
+               the copy says "members tell us" and never "studies show"). The
+               arithmetic uses 20, the BOTTOM of that range, because a number
+               this large has to understate or it stops being believed.
 
-            The mechanic is the one the best subscription quiz funnels use
-            (RevenueCat's Noom teardown, 2026): reflect the person's own
-            figures back BEFORE any price, in the unit they already think in,
-            so the price lands against a number they have already accepted as
-            theirs. Noom uses kilos and a date. Ours is hours and dollars,
-            because that is what we asked.
+            The sequence is the one the best subscription quiz funnels use:
+            the reader's own figures first, the gain second, the price last,
+            so $4.99 lands against a number they already accepted as theirs. */}
+        {typeof segFields?.hours_lost === 'number' && segFields.hours_lost > 0 && (() => {
+          const hours = segFields.hours_lost as number
+          const ownRate = typeof segFields?.hourly_value === 'number' && segFields.hourly_value > 0
+          const rate = ownRate ? (segFields.hourly_value as number) : 40
+          const yearHours = Math.round(hours * 52)
+          const yearValue = Math.round(yearHours * rate)
+          const savedHours = Math.round(yearHours * 0.2)
+          const savedValue = Math.round(savedHours * rate)
+          return (
+            <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '20px 22px' }}>
+              <Eyebrow>The cost of the gap</Eyebrow>
+              <p className="mt-3" style={{ fontSize: 17, lineHeight: 1.5, color: RICH, fontWeight: 300 }}>
+                You told us busywork takes about{' '}
+                <strong style={{ fontWeight: 700 }}>{hours} hours a week</strong> from you. That is{' '}
+                <strong style={{ fontWeight: 700 }}>{yearHours} hours a year</strong>, and{' '}
+                {ownRate
+                  ? <>at the <strong style={{ fontWeight: 700 }}>${rate} an hour</strong> you told us your time is worth, that time may be worth more than <strong style={{ fontWeight: 700 }}>${yearValue.toLocaleString('en-US')}</strong>.</>
+                  : <>at an average of <strong style={{ fontWeight: 700 }}>${rate} an hour</strong>, that time may be worth more than <strong style={{ fontWeight: 700 }}>${yearValue.toLocaleString('en-US')}</strong>.</>}
+              </p>
+              <p className="mt-4" style={{ fontSize: 17, lineHeight: 1.5, color: RICH, fontWeight: 300 }}>
+                Members tell us the library makes them <strong style={{ fontWeight: 700 }}>20% to 35% more productive</strong>.
+              </p>
+              <p className="mt-3" style={{ fontSize: 24, lineHeight: 1.25, color: RICH, fontWeight: 800, letterSpacing: '-0.02em' }}>
+                At the low end, that would give you back {savedHours} hours and ${savedValue.toLocaleString('en-US')} a year.
+              </p>
+              <div className="mt-6 flex flex-col items-center gap-2">
+                <BlockButton2 href={checkoutUrl} label={ov('gap.ctaLabel', CTA)} placement="v2_gap_cta" submissionId={rowId} />
+                <p style={{ fontSize: 12.5, color: MUTE, textAlign: 'center' }}>
+                  {ownRate ? 'Your hours and your hourly figure. We only multiplied them.' : `Your hours, and $${rate} an hour as an average because you were not asked yours.`}
+                </p>
+              </div>
+            </div>
+          )
+        })()}
 
-            Renders only when BOTH answers exist. Every row before 2026-09-07
-            has no hourly_value, and a half-stated gap is worse than none. */}
-        {typeof segFields?.hours_lost === 'number' && typeof segFields?.hourly_value === 'number' && segFields.hours_lost > 0 && segFields.hourly_value > 0 && (
-          <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '20px 22px' }}>
-            <Eyebrow>The cost of the gap, in your numbers</Eyebrow>
-            <p className="mt-3" style={{ fontSize: 17, lineHeight: 1.5, color: RICH, fontWeight: 300 }}>
-              You told us busywork takes about{' '}
-              <strong style={{ fontWeight: 700 }}>{segFields.hours_lost} hours a week</strong> from you, and that an
-              hour of your time is worth about{' '}
-              <strong style={{ fontWeight: 700 }}>${segFields.hourly_value}</strong>.
-            </p>
-            <p className="mt-3" style={{ fontSize: 22, lineHeight: 1.3, color: RICH, fontWeight: 800, letterSpacing: '-0.02em' }}>
-              That is {Math.round(segFields.hours_lost * 52)} hours a year, and by your own figure,
-              ${Math.round(segFields.hours_lost * 52 * segFields.hourly_value).toLocaleString('en-US')}.
-            </p>
-            <p className="mt-2" style={{ fontSize: 13.5, color: MUTE, fontWeight: 300 }}>
-              Your figures, not ours. We only multiplied them.
+        {/* WHAT THE NEXT RUNG DOES, which is the thing they are one step from.
+            The bullets are not marketing copy: they are the ladder's own
+            definitions from lib/segmentation-v2.ts, the same definitions that
+            placed this person where they are. Saying a Practitioner "has built
+            one thing, a custom GPT or an integration" is repeating the rule we
+            used to judge them, so it cannot flatter or overstate. */}
+        {nextStage && NEXT_RUNG_DOES[nextStage.key] && (
+          <div className="mt-8" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: CREAM, padding: '18px 20px' }}>
+            <h3 className="font-bold" style={{ fontSize: 'clamp(19px, 2.4vw, 24px)', lineHeight: 1.15, letterSpacing: '-0.02em', color: RICH }}>
+              {nextStage.label}s do this. You can too.
+            </h3>
+            <ul className="mt-3" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {NEXT_RUNG_DOES[nextStage.key].map(line => (
+                <li key={line} className="flex" style={{ gap: 10, marginTop: 8 }}>
+                  <span aria-hidden style={{ color: FULVOUS, fontWeight: 800, pointerEvents: 'none' }}>✓</span>
+                  <span style={{ fontSize: 15.5, lineHeight: 1.45, color: BODY, fontWeight: 300 }}>{line}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4" style={{ fontSize: 15.5, lineHeight: 1.45, color: RICH, fontWeight: 600 }}>
+              Every one of those is taught in the library, step by step.
             </p>
           </div>
         )}
@@ -1134,7 +1209,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
               </CheckoutLink>
               {nextStage && (
                 <p className="mt-1 text-center" style={{ fontSize: 14, color: BODY, fontWeight: 300 }}>
-                  Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, ≈1 wk away with the library.
+                  Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, about a week away with the library.
                 </p>
               )}
             </div>
@@ -1389,6 +1464,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         ctaLabel={ov('offerBar.ctaLabel', `${CTA} ↗`)}
         deadline={fw && fw.enabled && fw.valid && !fw.held ? fw.expiresAt : null}
         heldNote={!!(fw && fw.enabled && fw.held)}
+        firstName={firstName || null}
       />
     </CheckoutModalProvider>
   )

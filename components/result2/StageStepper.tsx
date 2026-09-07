@@ -69,7 +69,7 @@ export function StageStepper({ stageKey }: { stageKey?: string | null }) {
                   </span>
                 ) : (
                   <span className="mt-0.5" style={{ fontSize: 10.5, color: MUTE, fontVariantNumeric: 'tabular-nums' }}>
-                    ≈ {cumulativeWeeks} wk{cumulativeWeeks === 1 ? '' : 's'}
+                    ≈ {cumulativeWeeks} week{cumulativeWeeks === 1 ? '' : 's'}
                   </span>
                 )}
               </div>

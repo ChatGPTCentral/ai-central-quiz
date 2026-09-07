@@ -48,7 +48,7 @@ import { TRIAL_OFFER, type Offer } from '@/lib/offers'
  * nothing about time. A quieter bar that is true beats a loud one that is
  * not, and it keeps the founding window credible for the day it is on.
  */
-export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER, deadline = null, heldNote = false }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer; deadline?: string | null; heldNote?: boolean }) {
+export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER, deadline = null, heldNote = false, firstName = null }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer; deadline?: string | null; heldNote?: boolean; firstName?: string | null }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [mounted, setMounted] = useState(false)
   const { mode, open } = useCheckout()
@@ -86,7 +86,7 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
 
   return (
     <div
-      className="ac-neonbar fixed top-0 left-0 right-0 z-50 grid items-center gap-2 px-3 sm:px-6 cursor-pointer"
+      className="fixed top-0 left-0 right-0 z-50 grid items-center gap-2 px-3 sm:px-6 cursor-pointer"
       style={{
         gridTemplateColumns: '1fr auto 1fr',
         backgroundColor: '#0D0D0D',
@@ -129,22 +129,22 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
             price held from your email
           </span>
         ) : null}
-        {/* Owner, 2026-09-05: the strip should say what the price BUYS, not
-            just the number. "Unlock everything" is the promise the button
-            repeats, so the two agree instead of competing. */}
-        {/* The full sentence needs room. On a phone it wrapped to two lines
-            inside a 72px strip and squeezed the button, so the small screen
-            gets the price big with the promise underneath — same words, same
-            promise, one line each. */}
-        <span className="hidden sm:block font-black ac-neontime text-center" style={{ fontSize: 'clamp(19px, 3.1vw, 26px)', color: '#E7B02F', lineHeight: 1.1 }}>
-          Unlock everything for {offer.price}
+        {/* Owner, 2026-09-07: drop "unlock everything" for the concrete thing
+            the person gets, addressed to them by name. "Everything" is a word
+            about us; "1,200+ ChatGPT & AI tutorials" is a countable object,
+            and the name makes the strip theirs rather than an advert running
+            past them.
+            The full line needs room, so the phone keeps the price big with a
+            short promise under it: same offer, one line each, inside 72px. */}
+        <span className="hidden sm:block font-black text-center" style={{ fontSize: 'clamp(15px, 2.3vw, 21px)', color: '#E7B02F', lineHeight: 1.15 }}>
+          {firstName ? `${firstName}, unlock 1,200+ ChatGPT & AI tutorials` : 'Unlock 1,200+ ChatGPT & AI tutorials'}
         </span>
-        <span className="sm:hidden font-black tabular-nums ac-neontime text-center" style={{ fontSize: 26, color: '#E7B02F', lineHeight: 1 }}>
+        <span className="sm:hidden font-black tabular-nums text-center" style={{ fontSize: 26, color: '#E7B02F', lineHeight: 1 }}>
           {offer.price}
         </span>
         <span className="uppercase text-center" style={{ fontSize: 9.5, letterSpacing: '0.16em', color: '#FEF7E7', opacity: 0.7, marginTop: 3, whiteSpace: 'nowrap' }}>
-          <span className="sm:hidden">unlock everything</span>
-          <span className="hidden sm:inline">{offer.oneTime ? 'once, yours for good' : 'your first month'}</span>
+          <span className="sm:hidden">1,200+ tutorials</span>
+          <span className="hidden sm:inline">{offer.oneTime ? `${offer.price} once, yours for good` : `${offer.price} for your first month`}</span>
         </span>
       </div>
 
@@ -161,15 +161,12 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
       </div>
 
       <style>{`
-        .ac-neonbar { box-shadow: 0 2px 18px rgba(231,176,47,0.55), 0 8px 44px rgba(231,176,47,0.28); animation: ac-neon-pulse 2.4s ease-in-out infinite }
-        .ac-neontime { text-shadow: 0 0 10px rgba(231,176,47,0.95), 0 0 28px rgba(231,176,47,0.55), 0 0 52px rgba(228,135,21,0.35) }
-        .ac-neoncta { box-shadow: 0 0 14px rgba(231,176,47,0.75), 0 0 34px rgba(231,176,47,0.35); transition: box-shadow .2s }
-        .ac-neoncta:hover { box-shadow: 0 0 20px rgba(231,176,47,0.95), 0 0 48px rgba(231,176,47,0.5) }
-        @keyframes ac-neon-pulse {
-          0%, 100% { box-shadow: 0 2px 18px rgba(231,176,47,0.55), 0 8px 44px rgba(231,176,47,0.28) }
-          50% { box-shadow: 0 2px 26px rgba(231,176,47,0.8), 0 10px 60px rgba(231,176,47,0.42) }
-        }
-        @media (prefers-reduced-motion: reduce) { .ac-neonbar { animation: none } }
+        /* The glow and the pulse are gone (owner, 2026-09-07: "let's remove
+           that aura, that shadow"). A bar that throbs reads as an ad, and this
+           one is the first thing 99.1% of readers see. A plain black strip
+           with a gold edge says the same thing without shouting it. */
+        .ac-neoncta { transition: transform .15s }
+        .ac-neoncta:hover { transform: translateY(-1px) }
       `}</style>
     </div>
   )
