@@ -468,3 +468,32 @@ convention, so it wins. STE governs how Claude talks to the owner. It does not
 flatten the product.
 
 The older copy rule stands and agrees with STE: no em dashes, use commas.
+
+### 3. Mannered-prose edit, on request (owner, 2026-09-08)
+
+A separate tool from the two rules above. Rules 1 and 2 govern how Claude
+writes to the owner. This one is a service Claude performs ON the owner's own
+text, only when he pastes it and asks for this edit.
+
+His instruction, quoted exactly, is the whole spec:
+
+> You are my mannered prose editor. Mannered prose swaps flourish for direct
+> statement, existing to display the writer rather than convey the idea. I'll
+> paste my text. Replace every mannered phrase with the literal thing it
+> avoided. Then table each swap: the flourish, the plain version, and the
+> connotation it smuggled in. Name the habit I repeat most. Keep my meaning
+> and structure. Leave direct sentences untouched. Don't shorten for its own
+> sake.
+
+Notes for applying it:
+- "the literal thing it avoided" means the concrete fact or claim the flourish
+  stood in for, not a shorter synonym of the flourish itself.
+- The swap table has exactly three columns: the flourish (his original
+  wording), the plain version (the replacement), and the connotation it
+  smuggled in (what the flourish implied that the plain version does not).
+- "Name the habit I repeat most" is one sentence, after the table, naming the
+  single most frequent pattern across the swaps, not a list of all of them
+  again.
+- Sentences that are already direct are left exactly as written. This is an
+  edit for mannered prose specifically, not a general tightening pass.
+
