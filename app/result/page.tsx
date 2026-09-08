@@ -1169,20 +1169,46 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 gotta make that button click to the 4.99 offer immediately not
                 waiting to scroll down").
 
-                History of this one element, because it moved twice today and
-                the reason matters. It began as "Scroll down to unlock your
-                pass", anchored to #pass at the very bottom, which routed the
-                first thing everybody sees around all of the selling to a free
-                item. It then pointed at #offer. It now opens checkout itself,
-                so the page can be bought from the first screen without a
-                scroll at all.
+                History: began as "Scroll down to unlock your pass" anchored
+                to #pass at the bottom, then pointed at #offer, then opened
+                checkout itself with the page's generic {CTA} label
+                ("unlock all tutorials").
 
-                Measured reach, 2026-08-29 to 09-04, on real scroll depth
-                (placement_view fires on an IntersectionObserver): 70.6% of
-                people ever reach the offer stack and 49.9% the study plan.
-                Every one of them sees this. The label carries no price: the
-                house rule is one promise repeated, price in the offer stack
-                and on the bar, the button sells the outcome. */}
+                REWORDED 2026-09-08, ship-and-watch, no split: owner's
+                directive after watching click-through climb for six straight
+                days (18.5% to 39.5%, 2026-09-02 to 09-07) while trials per
+                click stayed flat and noisy (12.9%, 7.5%, 30.2%, 1.6%,
+                16.7%): "shapare la pagina per scoprire quale layout e parole
+                convertono di più... 10 trial al giorno assolutamente". At
+                500 views/week, a new formal split test resolves single
+                points only after weeks (CLAUDE.md's own detectable-effect
+                table); the tool that can move faster is a large,
+                theory-backed swap shipped to everyone and watched on trials,
+                not another arm to split traffic across.
+
+                This button now promises the identity the page just spent a
+                whole section proving is one rung away ("{Next stage}s do
+                this. You can too.", shipped 2026-09-07), instead of a
+                generic utility claim. "Unlock all tutorials" is a promise
+                about US; "Become a practitioner" is a promise about THEM,
+                and it is the same promise the section directly below it
+                already backs with three concrete, ladder-defined facts. A
+                structural reframe of what the button claims, not a rewording
+                of the same claim, which is the kind of change our own
+                15-experiment audit found actually moves this page (sell-
+                first +14.4pts, question-first +8.6pts, embedded checkout;
+                everything smaller returned noise).
+
+                Falls back to the generic label when there is no next stage
+                (top of the ladder), since "become an Unknown" is not a
+                sentence. Placement unchanged (v2_hero_cta) so the trial rate
+                on this exact button is comparable to what it was before the
+                copy changed — that comparison IS the watch.
+
+                Shares no surface with result_short_v1 (control vs. short
+                page): this button renders identically in both arms, above
+                the branch that experiment tests, so that comparison stays
+                clean. */}
             <div className="mt-5">
               <CheckoutLink
                 href={checkoutUrl}
@@ -1191,7 +1217,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]"
                 style={{ textDecoration: 'none' }}
               >
-                <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 16, height: 52, padding: '0 24px' }}>{CTA}</span>
+                <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 16, height: 52, padding: '0 24px' }}>
+                  {nextStage ? `Become ${article(nextStage.label)} ${nextStage.label.toLowerCase()}` : CTA}
+                </span>
                 <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 52, height: 52, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 16 }} aria-hidden>↗</span>
               </CheckoutLink>
             </div>
