@@ -895,6 +895,37 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             the gap idea returns it comes through the experiment queue with a
             control, not straight onto the page that sells. */}
 
+        <OfferStack
+          offer={offer}
+          checkoutUrl={checkoutUrl}
+          submissionId={rowId}
+          rungClassName={rung.className}
+          ctaLabel={ov('offerCard.ctaLabel', CTA)}
+          expressPay={expressPayEl}
+          lead={researchPage ? 'duration' : 'classic'}
+          guarantee={researchPage ? 'oneline' : 'block'}
+          windowNote={windowNote}
+          todayCount={todayCount}
+          supplyLimit={supplyLimit}
+          supplyLeft={supplyLeft}
+          soldOut={soldOut}
+          jobLevel={jobLevel}
+          hoursLost={segFields?.hours_lost ?? null}
+          workArea={segFields?.work_area ?? null}
+        />
+        {/* REORDERED 2026-09-08→09, self-correction. This block and the
+            next-rung section below it used to sit BEFORE OfferStack, ahead of
+            the price. That is the exact thing CLAUDE.md's own funnel-theory
+            section warns against: "diversions compete with the offer... offer
+            first, diversions after, never before or beside it" — the same
+            rule that made the 2026-08-29 reorder work (trials/view 6.29% to
+            10.47%). Measured 2026-09-09: trials per result view held at 8.1%
+            on 09-04/05 (the honesty fixes: real countdown removed, price
+            made visible, bar to top) and fell to 3.7% on 09-06/09 (once this
+            block shipped ahead of the price). 191 views is not a lot, but the
+            direction is exactly what putting content before the ask predicts,
+            and it is now placed where the rule says it belongs: reinforcement
+            AFTER the ask, not a diversion before it. */}
         {/* THE COST OF THE GAP, THEN WHAT CLOSING IT IS WORTH (owner,
             2026-09-07). Three numbers in one breath, and each one has to be
             defensible on its own:
@@ -988,24 +1019,6 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
 
         {withVideo && videoWithFallback(true)}
 
-        <OfferStack
-          offer={offer}
-          checkoutUrl={checkoutUrl}
-          submissionId={rowId}
-          rungClassName={rung.className}
-          ctaLabel={ov('offerCard.ctaLabel', CTA)}
-          expressPay={expressPayEl}
-          lead={researchPage ? 'duration' : 'classic'}
-          guarantee={researchPage ? 'oneline' : 'block'}
-          windowNote={windowNote}
-          todayCount={todayCount}
-          supplyLimit={supplyLimit}
-          supplyLeft={supplyLeft}
-          soldOut={soldOut}
-          jobLevel={jobLevel}
-          hoursLost={segFields?.hours_lost ?? null}
-          workArea={segFields?.work_area ?? null}
-        />
 
       </div>
     </section>
