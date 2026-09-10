@@ -1212,16 +1212,23 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 first +14.4pts, question-first +8.6pts, embedded checkout;
                 everything smaller returned noise).
 
-                Falls back to the generic label when there is no next stage
-                (top of the ladder), since "become an Unknown" is not a
-                sentence. Placement unchanged (v2_hero_cta) so the trial rate
-                on this exact button is comparable to what it was before the
-                copy changed — that comparison IS the watch.
-
-                Shares no surface with result_short_v1 (control vs. short
-                page): this button renders identically in both arms, above
-                the branch that experiment tests, so that comparison stays
-                clean. */}
+                REVERTED 2026-09-10, owner: "ristoriamo la versione della
+                landing piu conversion". Trials/view fell 7.95-8.1% (08-29 to
+                09-05) to 3.7% (09-06 to 09-09), and this CTA shipped 09-08,
+                inside that bad window. The stronger, cleaner culprit found
+                the same day was the gap block sitting ahead of the price
+                (fixed separately, see the reorder note lower in this file)
+                — but that fix has had only ~17 views to prove itself, nowhere
+                near enough to call it sufficient on its own. Rather than
+                stack a second unproven bet on top of an unproven fix, this
+                one reverts to the plain label while the reorder gets a clean
+                read. Not reverted: the bar's top position and the honesty
+                fixes (real countdown or none, one price only) — 09-04/09-05,
+                the days those shipped, measured 8.1%, in line with the
+                7.95% baseline, so the data does not indict them. Bringing
+                back a fake countdown or a second price is refused regardless
+                of any conversion number: CLAUDE.md is explicit that this is
+                not a variable to test. */}
             <div className="mt-5">
               <CheckoutLink
                 href={checkoutUrl}
@@ -1230,9 +1237,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]"
                 style={{ textDecoration: 'none' }}
               >
-                <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 16, height: 52, padding: '0 24px' }}>
-                  {nextStage ? `Become ${article(nextStage.label)} ${nextStage.label.toLowerCase()}` : CTA}
-                </span>
+                <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 16, height: 52, padding: '0 24px' }}>{CTA}</span>
                 <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 52, height: 52, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 16 }} aria-hidden>↗</span>
               </CheckoutLink>
             </div>
