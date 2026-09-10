@@ -926,97 +926,24 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
             direction is exactly what putting content before the ask predicts,
             and it is now placed where the rule says it belongs: reinforcement
             AFTER the ask, not a diversion before it. */}
-        {/* THE COST OF THE GAP, THEN WHAT CLOSING IT IS WORTH (owner,
-            2026-09-07). Three numbers in one breath, and each one has to be
-            defensible on its own:
-
-            1. HOURS. Their answer to "how many hours a week do you lose to
-               busywork", given minutes earlier.
-            2. WHAT AN HOUR IS WORTH. Their answer too, from the question added
-               the same day. For the 2,167 people who completed before that
-               question existed there is no answer, so the line falls back to
-               $40 and SAYS it is an average. A stated average is honest; a
-               stated average dressed as their own number is not.
-            3. WHAT THE LIBRARY GIVES BACK. Members report 20% to 35% more
-               productive time (owner's own client interviews, not a study, so
-               the copy says "members tell us" and never "studies show"). The
-               arithmetic uses 20, the BOTTOM of that range, because a number
-               this large has to understate or it stops being believed.
-
-            The sequence is the one the best subscription quiz funnels use:
-            the reader's own figures first, the gain second, the price last,
-            so $4.99 lands against a number they already accepted as theirs. */}
-        {(() => {
-          // ?gap=5.5,35 previews this block with those two answers, the same
-          // shape as ?fw= and ?supply= above. It exists because the block is
-          // driven entirely by DB answers, so it renders as nothing on any
-          // environment without a service key, and "it looked empty" is not a
-          // useful review. Preview only: it changes what renders, never what
-          // is stored or charged.
-          const gp = typeof searchParams.gap === 'string' ? searchParams.gap.split(',').map(Number) : []
-          const previewHours = gp.length >= 1 && Number.isFinite(gp[0]) && gp[0] > 0 ? gp[0] : null
-          const previewRate = gp.length >= 2 && Number.isFinite(gp[1]) && gp[1] > 0 ? gp[1] : null
-          const hours = previewHours ?? (typeof segFields?.hours_lost === 'number' ? segFields.hours_lost : null)
-          if (!hours || hours <= 0) return null
-          const own = previewRate ?? (typeof segFields?.hourly_value === 'number' && segFields.hourly_value > 0 ? segFields.hourly_value : null)
-          const ownRate = own !== null
-          const rate = own ?? 40
-          const yearHours = Math.round(hours * 52)
-          const yearValue = Math.round(yearHours * rate)
-          const savedHours = Math.round(yearHours * 0.2)
-          const savedValue = Math.round(savedHours * rate)
-          return (
-            <div className="mt-8" style={{ border: `3px solid ${INK}`, backgroundColor: '#FFFFFF', padding: '20px 22px' }}>
-              <Eyebrow>The cost of the gap</Eyebrow>
-              <p className="mt-3" style={{ fontSize: 17, lineHeight: 1.5, color: RICH, fontWeight: 300 }}>
-                You told us busywork takes about{' '}
-                <strong style={{ fontWeight: 700 }}>{hours} hours a week</strong> from you. That is{' '}
-                <strong style={{ fontWeight: 700 }}>{yearHours} hours a year</strong>, and{' '}
-                {ownRate
-                  ? <>at the <strong style={{ fontWeight: 700 }}>${rate} an hour</strong> you told us your time is worth, that time may be worth more than <strong style={{ fontWeight: 700 }}>${yearValue.toLocaleString('en-US')}</strong>.</>
-                  : <>at an average of <strong style={{ fontWeight: 700 }}>${rate} an hour</strong>, that time may be worth more than <strong style={{ fontWeight: 700 }}>${yearValue.toLocaleString('en-US')}</strong>.</>}
-              </p>
-              <p className="mt-4" style={{ fontSize: 17, lineHeight: 1.5, color: RICH, fontWeight: 300 }}>
-                Members tell us the library makes them <strong style={{ fontWeight: 700 }}>20% to 35% more productive</strong>.
-              </p>
-              <p className="mt-3" style={{ fontSize: 24, lineHeight: 1.25, color: RICH, fontWeight: 800, letterSpacing: '-0.02em' }}>
-                At the low end, that would give you back {savedHours} hours and ${savedValue.toLocaleString('en-US')} a year.
-              </p>
-              <div className="mt-6 flex flex-col items-center gap-2">
-                <BlockButton2 href={checkoutUrl} label={ov('gap.ctaLabel', CTA)} placement="v2_gap_cta" submissionId={rowId} />
-                <p style={{ fontSize: 12.5, color: MUTE, textAlign: 'center' }}>
-                  {ownRate ? 'Your hours and your hourly figure. We only multiplied them.' : `Your hours, and $${rate} an hour as an average because you were not asked yours.`}
-                </p>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* WHAT THE NEXT RUNG DOES, which is the thing they are one step from.
-            The bullets are not marketing copy: they are the ladder's own
-            definitions from lib/segmentation-v2.ts, the same definitions that
-            placed this person where they are. Saying a Practitioner "has built
-            one thing, a custom GPT or an integration" is repeating the rule we
-            used to judge them, so it cannot flatter or overstate. */}
-        {nextStage && NEXT_RUNG_DOES[nextStage.key] && (
-          <div className="mt-8" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: CREAM, padding: '18px 20px' }}>
-            <h3 className="font-bold" style={{ fontSize: 'clamp(19px, 2.4vw, 24px)', lineHeight: 1.15, letterSpacing: '-0.02em', color: RICH }}>
-              {nextStage.label}s do this. You can too.
-            </h3>
-            <ul className="mt-3" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {NEXT_RUNG_DOES[nextStage.key].map(line => (
-                <li key={line} className="flex" style={{ gap: 10, marginTop: 8 }}>
-                  <span aria-hidden style={{ color: FULVOUS, fontWeight: 800, pointerEvents: 'none' }}>✓</span>
-                  <span style={{ fontSize: 15.5, lineHeight: 1.45, color: BODY, fontWeight: 300 }}>{line}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-4" style={{ fontSize: 15.5, lineHeight: 1.45, color: RICH, fontWeight: 600 }}>
-              Every one of those is taught in the library, step by step.
-            </p>
-          </div>
-        )}
-
+        {/* REMOVED 2026-09-10, owner: "ripristiniamo la versione della
+            landing page piu ottimizzata e con piu trial associati". Both the
+            cost-of-gap block and the next-rung section shipped 2026-09-07,
+            during the window trials/view fell from 7.95-8.1% (08-29 to
+            09-05) to 3.7% (09-06 to 09-09). Reordering them after the price
+            (2026-09-09) was a smaller, more cautious fix; this goes further
+            and removes them outright, back to the exact section list that
+            measured 7.95-8.1%: hero, offer, study plan, then (control/short
+            per result_short_v1) library grid, reviews, video tour, risk-free,
+            pass. Neither section ever had positive evidence for it, only the
+            absence of proof it hurt after the reorder, and that absence was
+            built on ~17-50 views. The idea (reflect the person's own
+            numbers, name the next rung) is not wrong, it is just unproven,
+            and it goes back into the queue to be tried again later, on its
+            own, on a page that has first shown it can hold 8%+ without it.
+            NEXT_RUNG_DOES and the hourlyValue/hours_lost columns are left in
+            place; nothing about the quiz or the data model changes, only
+            what the result page renders. */}
         {withVideo && videoWithFallback(true)}
 
 
