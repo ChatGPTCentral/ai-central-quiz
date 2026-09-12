@@ -168,8 +168,83 @@ function Card({
   )
 }
 
+/** Monday of the ISO week containing this date, as a UTC day. Same rule as
+ *  lib/trial-entries.ts's bucketKey, so "week" means one thing everywhere. */
+function weekStart(iso: string): Date {
+  const d = new Date(iso)
+  const dow = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - dow)
+  d.setUTCHours(0, 0, 0, 0)
+  return d
+}
+
+function fmtWeek(d: Date): string {
+  return `Week of ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+}
+
+/** Ship log: what actually shipped, grouped by the week it shipped in, most
+ *  recent first. The board answers "what's the state now"; this answers
+ *  "what did we do" — owner, 2026-09-12: needs both, not just the board. */
+function Timeline({ tasks }: { tasks: RoadmapTask[] }) {
+  const weeks = useMemo(() => {
+    const shipped = tasks.filter(t => t.status === 'done' && t.shippedAt)
+    const byWeek = new Map<number, { start: Date; items: RoadmapTask[] }>()
+    for (const t of shipped) {
+      const start = weekStart(t.shippedAt!)
+      const key = start.getTime()
+      if (!byWeek.has(key)) byWeek.set(key, { start, items: [] })
+      byWeek.get(key)!.items.push(t)
+    }
+    byWeek.forEach(w => w.items.sort((a, b) => (b.shippedAt || '').localeCompare(a.shippedAt || '')))
+    return Array.from(byWeek.values()).sort((a, b) => b.start.getTime() - a.start.getTime())
+  }, [tasks])
+
+  if (weeks.length === 0) {
+    return <p style={{ fontSize: 12.5, color: '#9C9C9C', padding: '24px 2px' }}>Nothing shipped yet.</p>
+  }
+
+  return (
+    <div className="flex flex-col gap-6" style={{ maxWidth: 720 }}>
+      {weeks.map(w => (
+        <div key={w.start.getTime()}>
+          <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1A1A1A' }}>{fmtWeek(w.start)}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#9C9C9C' }}>{w.items.length} shipped</span>
+          </div>
+          <div className="flex flex-col" style={{ borderLeft: '2px solid #EFEAE1', paddingLeft: 14, gap: 10 }}>
+            {w.items.map(t => {
+              const ph = phaseDef(t.phase)
+              const firstLink = t.links[0]
+              return (
+                <div key={t.id}>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9C9C9C', fontVariantNumeric: 'tabular-nums' }}>{fmtDay(t.shippedAt)}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 700, color: ph.color }}>{ph.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A' }}>{t.title}</span>
+                    {firstLink && (
+                      <a href={firstLink.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10.5, fontWeight: 600, color: '#046BB1', textDecoration: 'none' }} className="hover:underline">
+                        {firstLink.label} ↗
+                      </a>
+                    )}
+                  </div>
+                  {t.notes && (
+                    <p style={{ fontSize: 11.5, lineHeight: 1.4, color: '#6B6B6B', margin: '2px 0 0', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {t.notes}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function RoadmapBoard({ initialTasks }: { initialTasks: RoadmapTask[] }) {
   const [tasks, setTasks] = useState<RoadmapTask[]>(initialTasks)
+  const [view, setView] = useState<'board' | 'timeline'>('board')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [dropCol, setDropCol] = useState<RoadmapStatus | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -260,6 +335,26 @@ export default function RoadmapBoard({ initialTasks }: { initialTasks: RoadmapTa
       {error && (
         <p className="mb-3" style={{ fontSize: 12.5, fontWeight: 600, color: '#BE3B3B' }}>{error}</p>
       )}
+      <div className="flex items-center gap-1 mb-4" style={{ background: '#FAF7F1', border: '1px solid #EFEAE1', borderRadius: 8, padding: 3, width: 'fit-content' }}>
+        {(['board', 'timeline'] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            style={{
+              fontSize: 12, fontWeight: 700, textTransform: 'capitalize', padding: '6px 14px', borderRadius: 6,
+              color: view === v ? '#1A1A1A' : '#9C9C9C',
+              background: view === v ? '#FFFFFF' : 'transparent',
+              boxShadow: view === v ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+            }}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+
+      {view === 'timeline' ? (
+        <Timeline tasks={tasks} />
+      ) : (
       <div className="flex gap-4 overflow-x-auto pb-4" style={{ scrollbarWidth: 'thin' }}>
         {ROADMAP_STATUSES.map(s => {
           const cards = byStatus.get(s.key) || []
@@ -336,6 +431,7 @@ export default function RoadmapBoard({ initialTasks }: { initialTasks: RoadmapTa
           )
         })}
       </div>
+      )}
     </div>
   )
 }

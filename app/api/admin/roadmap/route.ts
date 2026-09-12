@@ -47,8 +47,11 @@ function patchFrom(body: TaskInput, { requireTitle }: { requireTitle: boolean })
     if (!title) return { error: 'title is required' }
     patch.title = title
   }
-  if (body.description !== undefined) patch.description = body.description ? String(body.description).slice(0, 2000) : null
-  if (body.notes !== undefined) patch.notes = body.notes ? String(body.notes).slice(0, 1000) : null
+  // Capped short on purpose (owner, 2026-09-12: "le carte sono piene di
+  // descrizioni ai slop"). A card is a kanban card, not a research log — the
+  // commit and its own message already carry the history.
+  if (body.description !== undefined) patch.description = body.description ? String(body.description).slice(0, 240) : null
+  if (body.notes !== undefined) patch.notes = body.notes ? String(body.notes).slice(0, 240) : null
   if (body.phase !== undefined) {
     const phase = String(body.phase).trim().toUpperCase()
     if (!PHASE_RE.test(phase)) return { error: 'phase must be 1-16 chars of A-Z, 0-9, _' }
