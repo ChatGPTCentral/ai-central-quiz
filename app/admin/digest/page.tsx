@@ -344,8 +344,12 @@ function ProposedHypothesisBox({ text }: { text: string | null }) {
   )
 }
 
-export default async function DigestPage() {
-  const { data } = await db().from('daily_digests').select('*').order('day', { ascending: false }).limit(30)
+export default async function DigestPage({ searchParams }: { searchParams: { days?: string } }) {
+  // 7 by default, not 30: 10 stacked blocks × 30 days was the wall of text
+  // itself, before any single day's content was even trimmed. ?days=30
+  // still gets the full month for anyone who wants to scroll back.
+  const days = Math.min(90, Math.max(1, parseInt(searchParams.days || '7', 10) || 7))
+  const { data } = await db().from('daily_digests').select('*').order('day', { ascending: false }).limit(days)
   const digests = (data ?? []) as DigestRow[]
 
   return (
@@ -377,28 +381,34 @@ export default async function DigestPage() {
             <p style={{ fontSize: 15, fontWeight: 700, color: INK, marginTop: 10 }}>{d.headline}</p>
             <p style={{ fontSize: 13, color: '#333', marginTop: 6, lineHeight: 1.6, maxWidth: 760 }}>{d.synthesis}</p>
             <Sparkline trend={d.trend} />
-            <TrialSumsStrip sums={d.trial_sums} />
-            <CohortStrip
-              cohort={d.cohort_yesterday}
-              badge={`Ieri: ${d.daily_funnel?.yesterdayDate ?? d.day}`}
-              badgeColor={GREEN}
-              missingLabel="Tracciamento del solo ieri non disponibile per questo giorno (aggiunto il 2026-08-27, righe piu vecchie non lo hanno)."
-              footnote="Chi ha completato ieri ha avuto un solo giorno per comprare. Il numero di trial sale ancora nei prossimi giorni, non e' il conteggio finale."
-            />
-            <CohortStrip
-              cohort={d.cohort}
-              badge={`Non oggi: ultimi ${d.cohort?.windowDays ?? 7} giorni`}
-              badgeColor="#8A5A00"
-              missingLabel="Tracciamento non disponibile per questo giorno."
-            />
-            <WeekToDateStrip wtd={d.week_to_date} />
-            <ProposedHypothesisBox text={d.proposed_hypothesis} />
-            <CohortLearningsSection learnings={d.cohort_learnings_snapshot} />
-            <ExperimentsSection experiments={d.experiments_snapshot} />
-            <UxSignalsSection rows={d.ux_signals} />
+            {/* Everything past this point used to render open, every day: 10
+                stacked blocks before you even reached "Numeri verificabili".
+                Owner, 2026-09-12: "troppo testo troppa confusione ogni
+                giorno". The headline, the synthesis and the sparkline ARE
+                the daily read; the rest is the evidence behind them, one
+                click away, not gone. */}
             <details style={{ marginTop: 10 }}>
-              <summary style={{ fontSize: 11.5, fontWeight: 700, color: MUTE, cursor: 'pointer', userSelect: 'none' }}>Numeri verificabili</summary>
-              <div className="flex flex-wrap" style={{ gap: 30 }}>
+              <summary style={{ fontSize: 11.5, fontWeight: 700, color: MUTE, cursor: 'pointer', userSelect: 'none' }}>Dettagli e numeri verificabili</summary>
+              <TrialSumsStrip sums={d.trial_sums} />
+              <CohortStrip
+                cohort={d.cohort_yesterday}
+                badge={`Ieri: ${d.daily_funnel?.yesterdayDate ?? d.day}`}
+                badgeColor={GREEN}
+                missingLabel="Tracciamento del solo ieri non disponibile per questo giorno (aggiunto il 2026-08-27, righe piu vecchie non lo hanno)."
+                footnote="Chi ha completato ieri ha avuto un solo giorno per comprare. Il numero di trial sale ancora nei prossimi giorni, non e' il conteggio finale."
+              />
+              <CohortStrip
+                cohort={d.cohort}
+                badge={`Non oggi: ultimi ${d.cohort?.windowDays ?? 7} giorni`}
+                badgeColor="#8A5A00"
+                missingLabel="Tracciamento non disponibile per questo giorno."
+              />
+              <WeekToDateStrip wtd={d.week_to_date} />
+              <ProposedHypothesisBox text={d.proposed_hypothesis} />
+              <CohortLearningsSection learnings={d.cohort_learnings_snapshot} />
+              <ExperimentsSection experiments={d.experiments_snapshot} />
+              <UxSignalsSection rows={d.ux_signals} />
+              <div className="flex flex-wrap" style={{ gap: 30, marginTop: 10 }}>
                 <FunnelTable
                   leftLabel={d.daily_funnel?.dayBeforeDate} rightLabel={d.daily_funnel?.yesterdayDate}
                   left={d.daily_funnel?.dayBefore ?? null} right={d.daily_funnel?.yesterday ?? null}
@@ -417,6 +427,12 @@ export default async function DigestPage() {
           </div>
         ))}
       </div>
+
+      {days < 30 && digests.length === days && (
+        <a href="/admin/digest?days=30" style={{ display: 'inline-block', marginTop: 16, fontSize: 12.5, fontWeight: 600, color: MUTE }}>
+          Vedi gli ultimi 30 giorni →
+        </a>
+      )}
     </div>
   )
 }
