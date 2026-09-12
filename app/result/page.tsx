@@ -115,6 +115,19 @@ function costLine(hours?: number | null, useFor?: string | null): string | null 
   return spend ? `${base}, weeks you said you would spend on ${spend}.` : `${base}.`
 }
 
+/** Their hours (real, their own answer) times a STATED assumption, never
+ *  their own figure. The question that once supplied a real hourly rate
+ *  (hourlyValue, shipped and removed same-day 2026-09-07) cost 4 in 10
+ *  completions, so this never asks again — $40/hour is named as a plain
+ *  assumption in the copy that uses this, the same number the owner gave
+ *  2026-09-07 before that question existed. 48 working weeks a year,
+ *  matching costLine's own convention. Null when they have no hours_lost
+ *  answer at all (pre-2026-08 rows). */
+function annualCostEstimate(hours?: number | null): number | null {
+  if (!hours || hours <= 0) return null
+  return Math.round(hours * 48 * 40)
+}
+
 async function fetchSegmentFields(id: string | undefined): Promise<SegFields | null> {
   if (!id) return null
   try {
@@ -492,6 +505,7 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
   const topPct = 100 - rt.aheadPct
   const badgeTopPct = adopterTopPct(segFields?.score ?? score)
   const cost = costLine(segFields?.hours_lost, segFields?.hours_would_use_for)
+  const annualCost = annualCostEstimate(segFields?.hours_lost)
   // Design lab: ?design=a|b|c|d swaps the hero for a candidate direction so the
   // owner can preview 4 full, real result pages. No param → the normal hero, so
   // real visitors are unaffected. Leverage here is illustrative (derived from the
@@ -859,25 +873,58 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
           </>
         ) : (
           <>
-            {/* Owner, 2026-09-05: name the person's OWN next rung instead of a
-                generic "top 1%". The rung and the next rung are facts on their
-                row. The TIME to get there is not: components/result2/
-                StageGauge.tsx sets "≈1 wk" as a display convention for every
-                rung, so neither that nor "3-5 days" is measured, and neither
-                is promised here. The one true time fact is the plan's own
-                first step, and that is what the line says. */}
+            {/* Owner, 2026-09-12: lead with the dollar cost of the gap, not a
+                generic "does differently" headline. hours_lost is the
+                person's own answer (100% of completions have it); the rate
+                is a STATED $40/hour assumption, said plainly as one, never
+                claimed as their own figure — the hourlyValue question that
+                would have made it theirs was tried and removed the same day
+                (2026-09-07) for costing completions. annualCostEstimate()
+                carries the full reasoning.
+                Falls back to the previous generic headline when there is no
+                hours_lost answer at all, rather than showing half a claim. */}
             <h2 className="mt-3 font-bold" style={{ fontSize: 'clamp(26px, 3.4vw, 40px)', lineHeight: 1.02, letterSpacing: '-0.04em', color: RICH }}>
-              {nextStage
-                ? <>Here is what {article(nextStage.label)} {nextStage.label.toLowerCase()} does differently</>
-                : <>Here is what the top of the ladder does differently</>}
+              {nextStage && annualCost
+                ? <>{firstName ? `${firstName}, not` : 'Not'} being {article(nextStage.label)} {nextStage.label.toLowerCase()} is costing you ${annualCost.toLocaleString('en-US')} a year</>
+                : nextStage
+                  ? <>Here is what {article(nextStage.label)} {nextStage.label.toLowerCase()} does differently</>
+                  : <>Here is what the top of the ladder does differently</>}
             </h2>
+            {nextStage && annualCost && (
+              <p className="mt-2" style={{ fontSize: 12.5, color: MUTE, fontWeight: 300 }}>
+                Your {segFields?.hours_lost} hours a week lost to busywork, at a plain $40/hour assumption, 48 working weeks a year. Your hours are real, the rate is ours.
+              </p>
+            )}
             <p className="mt-3 max-w-[640px]" style={{ fontWeight: 300, fontSize: 17, lineHeight: 1.5, color: BODY }}>
               The same library 2,500+ members use. Your first tutorial takes 15 minutes tonight.
             </p>
 
-            {/* Their own answer, quoted back. Renders only for people who
-                answered the cost question (NULL on pre-launch rows). */}
-            {cost && (
+            {/* What the rung above them actually does, three REAL, ladder-
+                defined facts (NEXT_RUNG_DOES) — never padded to a round
+                number with invented ones. */}
+            {nextStage && (
+              <div className="mt-6 max-w-[640px]">
+                <p style={{ fontSize: 15, fontWeight: 700, color: RICH }}>
+                  {nextStage.label}s know how to use AI for:
+                </p>
+                <ul className="mt-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {(NEXT_RUNG_DOES[stageKey] ?? []).map(line => (
+                    <li key={line} className="flex" style={{ gap: 9, padding: '5px 0' }}>
+                      <span aria-hidden style={{ color: FULVOUS, fontWeight: 800, flexShrink: 0 }}>✓</span>
+                      <span style={{ fontSize: 14.5, lineHeight: 1.45, color: BODY }}>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4" style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>
+                  This is your personalized study plan to get there in under 2 weeks.
+                </p>
+              </div>
+            )}
+
+            {/* Their own answer, quoted back — only when the new dollar
+                headline above did NOT already fire, so the same fact is
+                never stated twice on the same page load. */}
+            {cost && !annualCost && (
               <div className="mt-6" style={{ borderLeft: `4px solid ${FULVOUS}`, backgroundColor: '#FFFFFF', padding: '14px 18px', maxWidth: 640 }}>
                 <p style={{ fontSize: 15.5, lineHeight: 1.5, color: RICH, fontWeight: 500 }}>{cost}</p>
               </div>

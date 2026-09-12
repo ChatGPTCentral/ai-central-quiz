@@ -7,22 +7,16 @@ import { useCheckout } from '@/components/checkout-context'
 import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 
 /**
- * Result v2 offer bar: fixed to the TOP with a neon treatment — near-black
- * strip, glowing xanthous edge, the offer dead-center.
+ * Result v2 offer bar: fixed to the BOTTOM, near-black strip, xanthous edge,
+ * the offer dead-center.
  * Placements v2_offer_bar / v2_offer_bar_banner.
  *
- * MOVED FROM THE BOTTOM 2026-09-05, ship-and-watch, not an A/B.
- * The bar earns the move: measured click-to-trial from 2026-08-15, it took
- * 146 clicks and 23 of those people bought, the SECOND biggest source of
- * trials on the page behind the study plan's 27. It is also seen by 99.1%
- * of everyone who opens the page, because it is fixed.
- * Why not a formal test: the bar converts about 7.5% of the people who see
- * it, and this page can only resolve a 10-point move on that step inside
- * three weeks (CLAUDE.md's own detectable-effect table). A position test
- * would have been the seventh experiment to die with no verdict. The order
- * swap of 2026-08-29 was decided the same way and gave a 2.7-sigma read on
- * trials per result view within a week, so the meter is /admin/cohorts and
- * the number to watch is trials per result view, not clicks on the bar.
+ * MOVED BACK TO THE BOTTOM 2026-09-12 (owner, looking at the live page
+ * directly). Had been at the top since 2026-09-05 (ship-and-watch, not an
+ * A/B — see git history on this file for that read: 8.1% trials/view across
+ * the days it shipped, in line with the 7.95% baseline, so the data never
+ * indicted the top position). This reverts on the owner's own judgment, not
+ * on new evidence against the top slot.
  *
  * THE COUNTDOWN IS THE REAL ONE OR THERE IS NO COUNTDOWN (2026-09-04).
  * This bar used to run its own 15-minute timer out of sessionStorage, under
@@ -86,25 +80,24 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 z-50 grid items-center gap-2 px-3 sm:px-6 cursor-pointer"
+      className="fixed bottom-0 left-0 right-0 z-50 grid items-center gap-2 px-3 sm:px-6 cursor-pointer"
       style={{
         gridTemplateColumns: '1fr auto 1fr',
         backgroundColor: '#0D0D0D',
         height: 72,
-        borderBottom: '2px solid #E7B02F',
+        borderTop: '2px solid #E7B02F',
       }}
       onClick={goCheckout}
       role="link"
       aria-label="Claim the special offer"
     >
-      {/* left: what the price buys (hidden on small screens, where the centre
-          has to carry the whole offer on its own) */}
+      {/* left: the logo only (owner, 2026-09-12: "too much text", and this
+          cell used to repeat "1,200+ tutorials" a second time right next to
+          the centre slot saying the same count — cut, not reworded). Hidden
+          on small screens, where the centre carries the whole offer alone. */}
       <div className="hidden md:flex items-center gap-3 min-w-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-full-dark-bg.png" alt="AI Central" style={{ height: 18, width: 'auto', display: 'block', opacity: 0.9 }} />
-        <span style={{ fontSize: 12.5, color: '#FEF7E7', opacity: 0.75, letterSpacing: '0.04em' }}>
-          1,200+ tutorials · 50+ templates
-        </span>
+        <img src="/logo-full-dark-bg.png" alt="AI Central" style={{ height: 22, width: 'auto', display: 'block', opacity: 0.9 }} />
       </div>
       <div className="md:hidden" />
 
