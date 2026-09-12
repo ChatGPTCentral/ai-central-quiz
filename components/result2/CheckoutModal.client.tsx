@@ -18,13 +18,20 @@ import { TRIAL_OFFER, type Offer } from '@/lib/offers'
 // The form is mounted only while the modal is open (Stripe.js + a Checkout
 // Session are created on intent, not for every result-page viewer).
 
-// ── Non-US trust strip ─────────────────────────────────────────────────
-// Non-US visitors convert at 2.2% against the US 7.8%, and it is not card
-// declines: 83 failed $4.99 attempts in three months, 45 of them US, and
-// Canada is 0-for-55 with zero failed attempts. They open the form, read it,
-// and leave. So the three doubts a non-US buyer actually has get answered in
-// writing, at the form: what is this in my money, when am I charged again,
-// and how do I get out. US visitors never see it.
+// ── Trust strip, everyone ──────────────────────────────────────────────
+// Started as a non-US-only strip: non-US visitors convert at 2.2% against
+// the US 7.8%, and it is not card declines — 83 failed $4.99 attempts in
+// three months, 45 of them US, Canada 0-for-55 with zero failed attempts.
+// They open the form, read it, and leave.
+//
+// EXTENDED TO EVERYONE, 2026-09-12 (owner: "non riusciamo a spiegare e
+// persuadere le persone a comprare"). Measured the same day: 26.3% of
+// everyone who closes this modal without buying stays 30+ seconds first —
+// reads the form, decides no. That is not a US-only pattern, and a US
+// visitor sitting in that 26.3% saw zero reassurance, only card fields,
+// because this strip excluded them by design. The renewal timing and the
+// guarantee are facts true for every country; only the currency line is
+// genuinely country-specific, so only that one stays gated.
 //
 // Rates are deliberately approximate ("about") — the job is recognisability,
 // not FX accuracy. Revisit the numbers if a year has passed.
@@ -93,17 +100,16 @@ export default function CheckoutModalProvider({
   // backdrop or the browser — becomes a queryable number instead of a video.
   const openedAt = useRef<number>(0)
 
-  // The country and whether the strip rendered ride on the open event, so the
-  // strip's effect is measurable per segment without an A/B the volume could
-  // never power (~80 non-US clicks a week).
-  const showTrust = !!country && country !== 'US'
+  // The country rides on the open event, so the strip's effect is still
+  // measurable per segment even though every segment sees it now.
+  const showCurrencyRow = !!country && country !== 'US' && !!localPrice(country, offer.cents / 100)
 
   const doOpen = useCallback(() => {
     if (mode !== 'embedded') return
     openedAt.current = Date.now()
-    sendEvent('checkout_modal_open', { props: { country: country ?? null, trust: showTrust }, submissionId })
+    sendEvent('checkout_modal_open', { props: { country: country ?? null, trust: true }, submissionId })
     setOpen(true)
-  }, [mode, submissionId, country, showTrust])
+  }, [mode, submissionId, country])
 
   // `how` is the whole point: leaving in 2s by backdrop is a misclick, leaving
   // at 40s by the X is someone who read the form and said no. Same event today.
@@ -164,28 +170,26 @@ export default function CheckoutModalProvider({
                   the annual bills, the guarantee) are worth having — they are
                   answers to real objections — but they belong beside the
                   decision, not in front of the form. */}
-              {showTrust && (
-                <div className="ac-cotrust">
-                  {localPrice(country!, offer.cents / 100) && (
-                    <div className="ac-cotrustrow">
-                      <span aria-hidden>💱</span>
-                      <span><strong>{offer.price} is about {localPrice(country!, offer.cents / 100)}</strong> in your money. You are charged in USD, your bank converts it automatically</span>
-                    </div>
-                  )}
+              <div className="ac-cotrust">
+                {showCurrencyRow && (
                   <div className="ac-cotrustrow">
-                    <span aria-hidden>📅</span>
-                    <span>{offer.oneTime
-                      ? 'One charge, today, and that is the end of it. No renewal, no card kept on file, nothing to cancel'
-                      : 'One charge today. The $59.75 annual only bills if you stay past 4 weeks, and we email you before it does'}</span>
+                    <span aria-hidden>💱</span>
+                    <span><strong>{offer.price} is about {localPrice(country!, offer.cents / 100)}</strong> in your money. You are charged in USD, your bank converts it automatically</span>
                   </div>
-                  <div className="ac-cotrustrow">
-                    <span aria-hidden>🛡️</span>
-                    <span>{offer.oneTime
-                      ? `30-day money-back guarantee: reply to any email inside 30 days and the ${offer.price} comes back`
-                      : 'Cancel any time in your trial month, two clicks. 30-day money-back guarantee on top'}</span>
-                  </div>
+                )}
+                <div className="ac-cotrustrow">
+                  <span aria-hidden>📅</span>
+                  <span>{offer.oneTime
+                    ? 'One charge, today, and that is the end of it. No renewal, no card kept on file, nothing to cancel'
+                    : 'One charge today. The $59.75 annual only bills if you stay past 4 weeks, and we email you before it does'}</span>
                 </div>
-              )}
+                <div className="ac-cotrustrow">
+                  <span aria-hidden>🛡️</span>
+                  <span>{offer.oneTime
+                    ? `30-day money-back guarantee: reply to any email inside 30 days and the ${offer.price} comes back`
+                    : 'Cancel any time in your trial month, two clicks. 30-day money-back guarantee on top'}</span>
+                </div>
+              </div>
               <div className="ac-cofallback">
                 <a
                   href={fallbackUrl}
