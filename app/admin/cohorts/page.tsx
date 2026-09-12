@@ -73,6 +73,25 @@ interface LearningRow {
   after_den: number | null
 }
 
+// Merged in from /admin/learnings, 2026-09-12 (owner: "learnings, cohort ed
+// experiments devono diventare una cosa sola"). cohort_learning_evidence
+// above only ever held kind='experiment' rows with cohort math attached;
+// 'analysis' and 'infra_fix' rows — a pure data finding, or a correction to
+// what a number itself meant — had nowhere else to live. Now they render
+// below the cohort table instead of on their own separate page.
+interface GeneralLearningRow {
+  id: number
+  title: string
+  hypothesis: string | null
+  kind: 'experiment' | 'analysis' | 'infra_fix'
+  status: 'open' | 'confirmed' | 'refuted' | 'abandoned'
+  step: string | null
+  applied_at_cohort: number | null
+  notes: string | null
+  links: { label: string; url: string }[] | null
+  created_at: string
+}
+
 const STEP_LABEL: Record<string, string> = {
   landed_to_started: 'landing → start',
   started_to_completed: 'start → finish',
@@ -81,19 +100,37 @@ const STEP_LABEL: Record<string, string> = {
   landed_to_trial: 'landing → trial',
 }
 
+const KIND_LABEL: Record<GeneralLearningRow['kind'], string> = {
+  experiment: 'EXPERIMENT',
+  analysis: 'ANALYSIS',
+  infra_fix: 'DATA FIX',
+}
+const KIND_NOTE: Record<GeneralLearningRow['kind'], string> = {
+  experiment: 'an on-page test with a variant — see the cohort math above',
+  analysis: 'a pattern found in the data, with nothing (yet) shipped to act on it',
+  infra_fix: 'a correction to how a number itself was computed',
+}
+const STATUS_COLOR: Record<GeneralLearningRow['status'], string> = { open: AMBER, confirmed: GREEN, refuted: RED, abandoned: MUTE }
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+
 export default async function CohortsPage() {
   let rows: CohortRow[] = []
   let learnings: LearningRow[] = []
+  let general: GeneralLearningRow[] = []
   let err: string | null = null
   try {
-    const [cohorts, learn] = await Promise.all([
+    const [cohorts, learn, all] = await Promise.all([
       db().from('funnel_cohort_stats').select('*').order('cohort_n', { ascending: false }).limit(30),
       db().from('cohort_learning_evidence').select('*').order('applied_at_cohort', { ascending: false }),
+      db().from('cohort_learnings').select('id, title, hypothesis, kind, status, step, applied_at_cohort, notes, links, created_at')
+        .in('kind', ['analysis', 'infra_fix']).order('created_at', { ascending: false }),
     ])
     if (cohorts.error) throw new Error(cohorts.error.message)
     if (learn.error) throw new Error(learn.error.message)
+    if (all.error) throw new Error(all.error.message)
     rows = (cohorts.data ?? []) as CohortRow[]
     learnings = (learn.data ?? []) as LearningRow[]
+    general = (all.data ?? []) as GeneralLearningRow[]
   } catch (e) { err = e instanceof Error ? e.message : String(e) }
 
   if (err) {
@@ -125,7 +162,14 @@ export default async function CohortsPage() {
 
   return (
     <div style={{ padding: '22px 26px 60px', maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Cohorts</h1>
+      <div className="flex items-baseline flex-wrap" style={{ gap: 10 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Cohorts &amp; learnings</h1>
+        <a href="/admin/experiments" style={{ fontSize: 12.5, fontWeight: 700, color: '#046BB1' }}>the experiments running right now →</a>
+      </div>
+      <p style={{ fontSize: 12.5, color: MUTE, marginTop: 4, maxWidth: 860 }}>
+        One page for what we changed, whether it worked, and everything else we found along the way — merged from
+        the old /admin/learnings, 2026-09-12.
+      </p>
 
       {/* THE LEARNING ENGINE, above the table, because the table is the raw
           material and this is the point of collecting it.
@@ -269,6 +313,56 @@ export default async function CohortsPage() {
         its rates are provisional. Assignment runs every 15 minutes inside the bandit cron; the watcher&rsquo;s
         cohort_regression check reads this same view and names any stage that falls 20+ points under baseline.
       </p>
+
+      {/* Everything above is an on-page test with a variant. Not every real
+          finding is: "decision-makers convert 2x better" has no variant to
+          ship, and a fix to how a number was computed isn't a test either.
+          Those live here instead of a separate page. */}
+      <section style={{ marginTop: 34 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
+          Every other finding <span style={{ color: MUTE, fontWeight: 600 }}>({general.length})</span>
+        </h2>
+        <p style={{ fontSize: 12.5, color: MUTE, marginTop: 5, maxWidth: 860 }}>
+          Data findings with nothing shipped to act on yet, and corrections to what a number itself meant.
+        </p>
+        {general.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing recorded yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {general.map(r => {
+              const vColor = STATUS_COLOR[r.status]
+              return (
+                <div key={r.id} style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '12px 14px' }}>
+                  <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: vColor, border: `2px solid ${vColor}`, padding: '1px 6px' }}>
+                      {r.status.toUpperCase()}
+                    </span>
+                    <span title={KIND_NOTE[r.kind]} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', color: MUTE, background: LATTE, border: `1px solid ${HAIR}`, padding: '2px 6px' }}>
+                      {KIND_LABEL[r.kind]}
+                    </span>
+                    <strong style={{ fontSize: 14, color: INK }}>{r.title}</strong>
+                    <span style={{ fontSize: 11, color: MUTE, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                      {fmtDate(r.created_at)}
+                      {r.step && ` · ${STEP_LABEL[r.step] ?? r.step}`}
+                    </span>
+                  </div>
+                  {r.hypothesis && (
+                    <p style={{ fontSize: 12, color: '#4A4A4A', marginTop: 6, lineHeight: 1.55, maxWidth: 880 }}>{r.hypothesis}</p>
+                  )}
+                  {r.notes && <p style={{ fontSize: 11, color: MUTE, marginTop: 6, lineHeight: 1.5 }}>{r.notes}</p>}
+                  {r.links && r.links.length > 0 && (
+                    <div className="flex flex-wrap" style={{ gap: 12, marginTop: 6 }}>
+                      {r.links.map(l => (
+                        <a key={l.url} href={l.url} style={{ fontSize: 11, color: '#046BB1', fontWeight: 700 }}>{l.label} ↗</a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

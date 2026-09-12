@@ -67,7 +67,10 @@ export default async function ExperimentsPage({ searchParams }: { searchParams: 
   return (
     <div className="p-8 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-black text-[#333333] mb-1">Experiments</h1>
+        <div className="flex items-baseline flex-wrap gap-2.5">
+          <h1 className="text-2xl font-black text-[#333333] mb-1">Experiments</h1>
+          <a href="/admin/cohorts" className="text-[12.5px] font-bold text-[#046BB1]">verdicts and every other learning →</a>
+        </div>
         <p className="text-sm text-[#9C9C9C]">
           A/B/n tests on the result page, copy or structural. Split, exposures and conversion update live; changes and kills propagate in ≤30 seconds, no deploy.
         </p>
