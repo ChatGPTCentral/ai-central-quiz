@@ -1105,92 +1105,53 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
                 The trade, stated: the pass loses its signpost. It stays on
                 the page and people who scroll still reach it, and it was
                 small anyway, 35 pass unlocks and 29 shares in nine days. */}
-            {/* THE ABOVE-THE-FOLD ASK (owner, 2026-09-04: "above the fold we
-                gotta make that button click to the 4.99 offer immediately not
-                waiting to scroll down").
+            {/* THE ABOVE-THE-FOLD ASK, ENDED 2026-09-12. History: began as
+                "Scroll down to unlock your pass" anchored to #pass, then
+                pointed at #offer (the block above), then on 2026-09-04
+                (owner: "above the fold we gotta make that button click to
+                the 4.99 offer immediately") opened checkout directly. Label
+                reworded 2026-09-08, reverted 2026-09-10 — but the checkout
+                behaviour itself was kept, because two days' aggregate
+                (8.1%, 09-04/09-05) looked clean at the time.
 
-                History: began as "Scroll down to unlock your pass" anchored
-                to #pass at the bottom, then pointed at #offer, then opened
-                checkout itself with the page's generic {CTA} label
-                ("unlock all tutorials").
+                It was not clean. Placement-level data, not read until today:
+                v2_hero_cta's share of all checkout clicks on this page went
+                from 3.6% (8 clicks, the 10 days to 09-05) to 50% (75 clicks,
+                the 7 days from 09-06) the moment it started opening checkout
+                cold. Checkout clicks overall stayed flat across both weeks —
+                this was not more interest, it was a cold click replacing a
+                read one. Our own quiz-flow paid completions, counted
+                directly on Stripe, fell from 4.6/day to 1.1/day across the
+                same two weeks.
 
-                REWORDED 2026-09-08, ship-and-watch, no split: owner's
-                directive after watching click-through climb for six straight
-                days (18.5% to 39.5%, 2026-09-02 to 09-07) while trials per
-                click stayed flat and noisy (12.9%, 7.5%, 30.2%, 1.6%,
-                16.7%): "shapare la pagina per scoprire quale layout e parole
-                convertono di più... 10 trial al giorno assolutamente". At
-                500 views/week, a new formal split test resolves single
-                points only after weeks (CLAUDE.md's own detectable-effect
-                table); the tool that can move faster is a large,
-                theory-backed swap shipped to everyone and watched on trials,
-                not another arm to split traffic across.
-
-                This button now promises the identity the page just spent a
-                whole section proving is one rung away ("{Next stage}s do
-                this. You can too.", shipped 2026-09-07), instead of a
-                generic utility claim. "Unlock all tutorials" is a promise
-                about US; "Become a practitioner" is a promise about THEM,
-                and it is the same promise the section directly below it
-                already backs with three concrete, ladder-defined facts. A
-                structural reframe of what the button claims, not a rewording
-                of the same claim, which is the kind of change our own
-                15-experiment audit found actually moves this page (sell-
-                first +14.4pts, question-first +8.6pts, embedded checkout;
-                everything smaller returned noise).
-
-                REVERTED 2026-09-10, owner: "ristoriamo la versione della
-                landing piu conversion". Trials/view fell 7.95-8.1% (08-29 to
-                09-05) to 3.7% (09-06 to 09-09), and this CTA shipped 09-08,
-                inside that bad window. The stronger, cleaner culprit found
-                the same day was the gap block sitting ahead of the price
-                (fixed separately, see the reorder note lower in this file)
-                — but that fix has had only ~17 views to prove itself, nowhere
-                near enough to call it sufficient on its own. Rather than
-                stack a second unproven bet on top of an unproven fix, this
-                one reverts to the plain label while the reorder gets a clean
-                read. Not reverted: the bar's top position and the honesty
-                fixes (real countdown or none, one price only) — 09-04/09-05,
-                the days those shipped, measured 8.1%, in line with the
-                7.95% baseline, so the data does not indict them. Bringing
-                back a fake countdown or a second price is refused regardless
-                of any conversion number: CLAUDE.md is explicit that this is
-                not a variable to test. */}
+                Back to #offer, one section above the study plan, the same
+                target this button pointed at before 2026-09-04. Owner's
+                call, on this data. */}
             <div className="mt-5">
-              <CheckoutLink
-                href={checkoutUrl}
-                placement="v2_hero_cta"
-                submissionId={rowId}
+              <a
+                href="#offer"
                 className="inline-flex transition-transform hover:-translate-y-px active:scale-[0.98]"
                 style={{ textDecoration: 'none' }}
               >
                 <span className="inline-flex items-center justify-center" style={{ backgroundColor: INK, color: CREAM, fontWeight: 700, fontSize: 16, height: 52, padding: '0 24px' }}>{CTA}</span>
                 <span className="inline-flex items-center justify-center" style={{ backgroundColor: FULVOUS, color: RICH, width: 52, height: 52, borderLeft: `2px solid ${RICH}`, fontWeight: 700, fontSize: 16 }} aria-hidden>↗</span>
-              </CheckoutLink>
+              </a>
             </div>
             </div>
 
             {/* Right column: the tachometer */}
             <div className="min-w-0">
-              {/* The gauge is the centrepiece of the hero and it did nothing:
-                  14 dead clicks in six hours on 2026-09-05, the most-clicked
-                  dead thing on this page, identified from the ux-watch
-                  element chain (an SVG path with stroke #E48715, which is the
-                  needle arc). It sits directly beside the hero CTA, so a
-                  person who taps it is engaged, not lost. Its own placement,
-                  v2_gauge, so the next reading says whether those clicks
-                  actually buy — if they do not, this comes straight back
-                  out. */}
-              <CheckoutLink
-                href={checkoutUrl}
-                placement="v2_gauge"
-                submissionId={rowId}
-                className="block"
-                style={{ textDecoration: 'none', color: 'inherit' }}
-                ariaLabel="unlock all tutorials"
-              >
-                <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
-              </CheckoutLink>
+              {/* THE GAUGE'S CHECKOUT LINK, REMOVED 2026-09-12. Added
+                  2026-09-05 because the gauge was the most dead-clicked thing
+                  on the page (14 dead clicks in six hours), with an explicit
+                  test attached: give it its own placement, v2_gauge, see
+                  whether those clicks buy, and take it back out if they
+                  don't. They don't: 16 checkout clicks in the 7 days from
+                  09-06, on a page where our own quiz-flow paid completions
+                  fell to 1.1/day in that same window (was 4.6/day the week
+                  before, counted directly on Stripe). Back to a plain gauge,
+                  engaged but not a checkout button. */}
+              <StageGauge stageKey={stageKey} aheadPct={rt.aheadPct} />
               {nextStage && (
                 <p className="mt-1 text-center" style={{ fontSize: 14, color: BODY, fontWeight: 300 }}>
                   Next stop: <strong style={{ fontWeight: 700, color: RICH }}>{nextStage.label}</strong>, about a week away with the library.
