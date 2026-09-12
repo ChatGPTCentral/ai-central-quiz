@@ -57,7 +57,6 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
       { href: '/admin/ads', label: 'Ads', icon: 'ads' },
       { href: '/admin/pass-recovery', label: 'Pass Recovery', icon: 'stats' },
       { href: '/admin/checkout-recovery', label: 'Checkout Recovery', icon: 'stats' },
-      { href: '/admin/simulator', label: 'Simulator', icon: 'simulator' },
       { href: '/admin/roadmap', label: 'Roadmap', icon: 'roadmap' },
     ],
   },
@@ -75,7 +74,6 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
       { href: '/admin/lab', label: 'Enrich', icon: 'enrich' },
       { href: '/admin/enrich-game', label: 'Enrich tuner', icon: 'stats' },
       { href: '/admin/debug', label: 'Debug lookup', icon: 'debug' },
-      { href: '/admin/editor', label: 'Form editor', icon: 'editor' },
     ],
   },
 ]
