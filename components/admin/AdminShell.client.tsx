@@ -145,7 +145,7 @@ export default function AdminShell({ children }: Props) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFDFA" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
         </button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-light.svg" alt="" style={{ width: 22, height: 22 }} />
+        <img src="/logo-square-dark.png" alt="" style={{ width: 22, height: 22 }} />
         <span style={{ fontSize: 14, fontWeight: 800, color: '#FFFDFA', letterSpacing: '-0.01em' }}>{current?.label ?? 'Admin'}</span>
         <button onClick={openPalette} aria-label="Search people" className="ac-topsearch">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9C9C9C" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
@@ -161,11 +161,11 @@ export default function AdminShell({ children }: Props) {
         <div className="flex items-center justify-between gap-2" style={{ padding: collapsed ? '16px 8px 12px' : '16px 16px 12px' }}>
           {collapsed ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/logo-light.svg" alt="AI Central" style={{ width: 26, height: 26, margin: '0 auto' }} />
+            <img src="/logo-square-dark.png" alt="AI Central" style={{ width: 26, height: 26, margin: '0 auto' }} />
           ) : (
             <div className="flex items-center min-w-0" style={{ gap: 10 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-light.svg" alt="" style={{ width: 28, height: 28, display: 'block' }} />
+              <img src="/logo-square-dark.png" alt="" style={{ width: 28, height: 28, display: 'block' }} />
               <div className="min-w-0" style={{ lineHeight: 1.2 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: '#FFFDFA', letterSpacing: '-0.01em' }}>AI Central</div>
                 <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#E7B02F', marginTop: 1 }}>Admin console</div>
