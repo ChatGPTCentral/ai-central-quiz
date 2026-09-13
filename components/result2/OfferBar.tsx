@@ -41,8 +41,16 @@ import { TRIAL_OFFER, type Offer } from '@/lib/offers'
  * With no real deadline the bar shows the offer and the button, and says
  * nothing about time. A quieter bar that is true beats a loud one that is
  * not, and it keeps the founding window credible for the day it is on.
+ *
+ * THE DAILY SUPPLY, added to this micro-line 2026-09-13. The owner asked for
+ * exactly this in this exact spot on 2026-09-04 ("voglio puntare su questa
+ * questione che ogni giorno ci sono 10 trial a questo no-brainer price"), but
+ * only the fact of $4.99 landed here; the "10 a day" count itself only ever
+ * rendered lower down, in OfferStack. Same source as there
+ * (lib/trial-supply-cap.ts via the caller), so it renders only while the cap
+ * is actually enforced, same rule as the clock above.
  */
-export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER, deadline = null, heldNote = false, firstName = null }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer; deadline?: string | null; heldNote?: boolean; firstName?: string | null }) {
+export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim offer ↗', offer = TRIAL_OFFER, deadline = null, heldNote = false, firstName = null, supplyLimit = null, supplyLeft = null, soldOut = false }: { paymentUrl: string; refNo?: string; submissionId?: string; ctaLabel?: string; offer?: Offer; deadline?: string | null; heldNote?: boolean; firstName?: string | null; supplyLimit?: number | null; supplyLeft?: number | null; soldOut?: boolean }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const [mounted, setMounted] = useState(false)
   const { mode, open } = useCheckout()
@@ -71,6 +79,13 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
     : secondsLeft >= 3600
       ? `${Math.floor(secondsLeft / 3600)}h ${Math.floor((secondsLeft % 3600) / 60).toString().padStart(2, '0')}m`
       : `${Math.floor(secondsLeft / 60).toString().padStart(2, '0')}:${(secondsLeft % 60).toString().padStart(2, '0')}`
+
+  // Short form for next to the clock, long form for when it stands alone.
+  const supplyShort = soldOut ? 'spots taken' : (supplyLimit !== null && supplyLeft !== null) ? `${supplyLeft} of ${supplyLimit} today` : null
+  const supplyStandalone = soldOut ? "today's $4.99 spots are taken" : (supplyLimit !== null && supplyLeft !== null) ? `${supplyLeft} of ${supplyLimit} $4.99 spots left today` : null
+  const microLine = clock
+    ? (supplyShort ? `${clock} left · ${supplyShort}` : `${clock} left`)
+    : supplyStandalone || (heldNote ? 'price held from your email' : null)
 
   const goCheckout = () => {
     sendEvent('checkout_click', { props: { placement: 'v2_offer_bar_banner' }, submissionId })
@@ -113,15 +128,11 @@ export default function OfferBar({ paymentUrl, submissionId, ctaLabel = 'Claim o
           CLAUDE.md and this does not break it, the strip is where the price
           is allowed to live. */}
       <div className="flex flex-col items-center justify-center" style={{ lineHeight: 1 }}>
-        {clock ? (
+        {microLine && (
           <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6, marginBottom: 3 }}>
-            {clock} left
+            {microLine}
           </span>
-        ) : heldNote ? (
-          <span className="uppercase" style={{ fontSize: 9.5, letterSpacing: '0.22em', color: '#FEF7E7', opacity: 0.6, marginBottom: 3 }}>
-            price held from your email
-          </span>
-        ) : null}
+        )}
         {/* Owner, 2026-09-07: drop "unlock everything" for the concrete thing
             the person gets, addressed to them by name. "Everything" is a word
             about us; "1,200+ ChatGPT & AI tutorials" is a countable object,

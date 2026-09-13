@@ -1079,10 +1079,12 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       <ExperimentTracker assignments={assignments} submissionId={rowId} />
       <Confetti onLoad />
 
-      {/* The 72px offer bar is fixed to the TOP as of 2026-09-05, so the page
-          reserves its room up there instead of underneath. 84 = the bar plus
-          a little air, the same figure the bottom version used. */}
-      <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingTop: 84, paddingBottom: 24 }}>
+      {/* The bar moved back to fixed-BOTTOM on 2026-09-12 (OfferBar.tsx), but
+          this wrapper kept reserving its room at the TOP. Found 2026-09-13:
+          with only 24px of bottom padding against a 72px+2px bar, the last
+          ~50px of the FAQ, the page's real final content, sat permanently
+          under the bar. Padding now matches where the bar actually is. */}
+      <div className="flex flex-col" style={{ backgroundColor: PAPER, color: INK, paddingTop: 24, paddingBottom: 84 }}>
 
         {/* ── 1 · HERO (design lab: ?design=a|b|c|d swaps this; default below) ── */}
         {redesignHero ? (
@@ -1448,7 +1450,11 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
       {/* The bar carries the REAL deadline or none at all. It used to run its
           own 15-minute sessionStorage timer, in front of 99.1% of everyone who
           reaches this page, while `windowNote` above was already computing the
-          only deadline the checkout enforces. See OfferBar.tsx. */}
+          only deadline the checkout enforces. See OfferBar.tsx.
+          supplyLimit/supplyLeft/soldOut are the same values already sent to
+          OfferStack further down, computed once above from
+          lib/trial-supply-cap.ts, so the bar states the daily count on this,
+          the most-seen element on the page, and not only near the button. */}
       <OfferBar
         offer={offer}
         paymentUrl={checkoutUrl}
@@ -1457,6 +1463,9 @@ export default async function ResultV2Page({ searchParams }: { searchParams: Rec
         deadline={fw && fw.enabled && fw.valid && !fw.held ? fw.expiresAt : null}
         heldNote={!!(fw && fw.enabled && fw.held)}
         firstName={firstName || null}
+        supplyLimit={supplyLimit}
+        supplyLeft={supplyLeft}
+        soldOut={soldOut}
       />
     </CheckoutModalProvider>
   )

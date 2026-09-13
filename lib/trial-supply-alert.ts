@@ -131,8 +131,8 @@ async function sendClosedEmail(count: number, supply: SupplyState, day: string):
       <h2 style="margin:0 0 4px;font-size:20px">🔒 Today's $4.99 supply is closed</h2>
       <p style="margin:0 0 16px;color:#555;font-size:14px">${day} · trial #${supply.limit} sold at ${closedAt}, ${count} total so far</p>
       <p style="background:#FFF3E0;border-left:4px solid #E65100;padding:12px 14px;margin:0 0 16px;font-size:14px;line-height:1.5">
-        New arrivals from here now see the $14.95 list price, same as anyone whose founding window already
-        expired. Nobody already inside their own window was affected. Reopen it now if you want, one tap:
+        New arrivals from here are told today's $4.99 spots are taken and the next open tomorrow. The price
+        never changes, there is no second price. Nobody already inside their own window was affected. Reopen it now if you want, one tap:
       </p>
       <p style="margin:0 0 16px">
         ${[5, 10, 15].map(n => `<a href="${CONTROL_URL}?raise=${n}" style="display:inline-block;margin-right:8px;padding:10px 16px;background:#1A1A1A;color:#FEF7E7;font-weight:700;text-decoration:none;font-size:13px">+${n}</a>`).join('')}
