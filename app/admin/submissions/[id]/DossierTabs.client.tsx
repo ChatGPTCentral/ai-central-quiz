@@ -11,6 +11,7 @@ import { useState, type ReactNode } from 'react'
 const TABS = [
   { key: 'overview', label: 'Overview' },
   { key: 'survey', label: 'Survey' },
+  { key: 'behavior', label: 'Behavior' },
   { key: 'revenue', label: 'Revenue' },
   { key: 'enrichment', label: 'Enrichment' },
   { key: 'rawdata', label: 'Raw data' },
@@ -21,6 +22,7 @@ type TabKey = (typeof TABS)[number]['key']
 interface Props {
   overview: ReactNode
   survey: ReactNode
+  behavior: ReactNode
   revenue: ReactNode
   enrichment: ReactNode
   rawdata: ReactNode
@@ -28,9 +30,9 @@ interface Props {
   meta: string
 }
 
-export default function DossierTabs({ overview, survey, revenue, enrichment, rawdata, meta }: Props) {
+export default function DossierTabs({ overview, survey, behavior, revenue, enrichment, rawdata, meta }: Props) {
   const [active, setActive] = useState<TabKey>('overview')
-  const panes: Record<TabKey, ReactNode> = { overview, survey, revenue, enrichment, rawdata }
+  const panes: Record<TabKey, ReactNode> = { overview, survey, behavior, revenue, enrichment, rawdata }
 
   return (
     <div className="min-w-0">

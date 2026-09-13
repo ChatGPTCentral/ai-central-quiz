@@ -15,6 +15,7 @@ import PhotoEditor from './PhotoEditor.client'
 import RawDataSection from './RawDataSection'
 import DossierTabs from './DossierTabs.client'
 import VerificationControl from './VerificationControl.client'
+import { getBehaviorTimeline, humanizePlacement, fmtDuration } from '@/lib/buyer-behavior'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
   const referrers = item.utmSource === 'pass_share' ? await findReferrers(item.utmRef) : []
   // Which result page this person actually saw (+ a way to find their recording).
   const pageSeen = await lastResultView(item.id)
+  const behavior = await getBehaviorTimeline(item.id)
 
   const companyLinkedinUrl =
     item.companyLinkedinUrl ||
@@ -94,6 +96,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
   const shortId = item.id.slice(0, 4).toUpperCase()
   const fmtDate = (d: string | number) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const fmtDateTime = (d: string) => new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 
   // ── Tab panes (server-rendered, handed to the client tab shell) ─────
 
@@ -184,6 +187,62 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             {item.momentum != null && <span style={{ border: '1px solid #D9D2C4', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#1A1A1A', fontVariantNumeric: 'tabular-nums' }}>momentum {item.momentum > 0 ? '+' : ''}{item.momentum}</span>}
             {item.friction && <span style={{ border: '1px solid #BE593B', background: '#FEF7E7', padding: '2px 8px', fontSize: 10.5, color: '#BE593B' }}>🛑 {item.friction.replace(/_/g, ' ')}</span>}
             {item.intent30d && <span style={{ border: '1px solid #62A758', background: '#FFFFFF', padding: '2px 8px', fontSize: 10.5, color: '#2D6A26' }}>🎯 {item.intent30d.replace(/_/g, ' ')}</span>}
+          </div>
+        </ProfileSection>
+      )}
+    </>
+  )
+
+  // Not read from Clarity (no API, dashboard only) — the same facts a
+  // recording would show, read from funnel_events instead: exact where a
+  // recording is only watchable. See lib/buyer-behavior.ts.
+  const behaviorPane = (
+    <>
+      <ProfileSection title="This visit, at a glance">
+        <FieldRow label="Source"><span className="text-sm text-[#333333]">{item.utmSource || 'direct'}{item.utmRef ? ` / ${item.utmRef}` : ''}</span></FieldRow>
+        <FieldRow label="Country"><span className="text-sm text-[#333333]">{item.ipCountry || item.country || '—'}</span></FieldRow>
+        <FieldRow label="Quiz level"><span className="text-sm text-[#333333]">{item.score != null ? `score ${item.score}` : '—'}{stage && stage.key !== 'unknown' ? ` · ${stage.emoji} ${stage.label}` : ''}</span></FieldRow>
+        <FieldRow label="Landing dwell">
+          <span className="text-sm text-[#333333]">{fmtDuration(behavior.landingDwellSeconds)}</span>
+          {behavior.landingDwellSeconds === null && <span className="text-sm text-[#E8E4DF]"> (no landing page view recorded, e.g. arrived already mid-quiz from a link)</span>}
+        </FieldRow>
+        <FieldRow label="Time to fill quiz"><span className="text-sm text-[#333333]">{fmtDuration(behavior.quizFillSeconds)}</span></FieldRow>
+        {behavior.visits > 1 && (
+          <FieldRow label="Visits"><span className="text-sm text-[#B26A00]">{behavior.visits} separate browser touches, not one session</span></FieldRow>
+        )}
+      </ProfileSection>
+
+      <ProfileSection title="Checkout clicks">
+        {behavior.checkoutClicks.length === 0 ? (
+          <p style={{ fontSize: 13, color: '#9C9C9C', padding: '10px 0' }}>No checkout click recorded.</p>
+        ) : (
+          <div className="flex flex-col" style={{ gap: 2 }}>
+            {behavior.checkoutClicks.map((cc, i) => (
+              <div key={i} className="flex items-baseline justify-between" style={{ padding: '6px 0', borderBottom: i < behavior.checkoutClicks.length - 1 ? '1px solid #F1ECE2' : 'none', fontSize: 13 }}>
+                <span style={{ color: '#1A1A1A' }}>{humanizePlacement(cc.placement)}</span>
+                <span style={{ color: '#9C9C9C', fontVariantNumeric: 'tabular-nums' }}>{fmtDateTime(cc.ts)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </ProfileSection>
+
+      {behavior.trials.length > 0 && (
+        <ProfileSection title="Trials charged">
+          <div className="flex flex-col" style={{ gap: 8, padding: '4px 0' }}>
+            {behavior.trials.map((t, i) => (
+              <div key={i} style={{ border: '1px solid #E8E2D4', padding: '8px 12px' }}>
+                <div className="flex items-baseline justify-between" style={{ fontSize: 13 }}>
+                  <span style={{ fontWeight: 800, color: t.refunded ? '#9C9C9C' : '#2D6A26' }}>${(t.cents / 100).toFixed(2)}{t.refunded ? ' (refunded)' : ''}</span>
+                  <span style={{ color: '#9C9C9C', fontVariantNumeric: 'tabular-nums' }}>{fmtDateTime(t.at)}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: '#6B6B6B', marginTop: 3 }}>
+                  {t.clickPlacement
+                    ? <>clicked <strong style={{ color: '#1A1A1A' }}>{humanizePlacement(t.clickPlacement)}</strong> at {fmtDateTime(t.clickTs!)}</>
+                    : <em>no on-site click before this charge — likely a direct link (email)</em>}
+                </div>
+              </div>
+            ))}
           </div>
         </ProfileSection>
       )}
@@ -444,6 +503,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
           <DossierTabs
             overview={overviewPane}
             survey={surveyPane}
+            behavior={behaviorPane}
             revenue={revenuePane}
             enrichment={enrichmentPane}
             rawdata={rawDataPane}
