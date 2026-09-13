@@ -17,6 +17,11 @@
 
 import { db } from '@/lib/revenue-shared'
 import { probBetter, nNeededPerArm } from '@/lib/bayes'
+import XraySection from '@/components/admin/XraySection'
+import CtaClickedTable from '@/components/admin/CtaClickedTable.client'
+import { filteredSubmissionsAll, parseFilters, revenueCharges } from '@/lib/dashboard-queries'
+import { loadEventStats } from '@/lib/dashboard-events'
+import type { PlacementStat } from '@/app/admin/dashboard/DashboardBento.client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -117,13 +122,15 @@ export default async function CohortsPage() {
   let rows: CohortRow[] = []
   let learnings: LearningRow[] = []
   let general: GeneralLearningRow[] = []
+  let runningExps: { key: string; name: string; page: string; primary_metric: string; variants: { key: string; weight?: number; approved?: boolean }[] }[] = []
   let err: string | null = null
   try {
-    const [cohorts, learn, all] = await Promise.all([
+    const [cohorts, learn, all, exps] = await Promise.all([
       db().from('funnel_cohort_stats').select('*').order('cohort_n', { ascending: false }).limit(30),
       db().from('cohort_learning_evidence').select('*').order('applied_at_cohort', { ascending: false }),
       db().from('cohort_learnings').select('id, title, hypothesis, kind, status, step, applied_at_cohort, notes, links, created_at')
         .in('kind', ['analysis', 'infra_fix']).order('created_at', { ascending: false }),
+      db().from('experiments').select('key, name, page, primary_metric, variants').eq('status', 'running'),
     ])
     if (cohorts.error) throw new Error(cohorts.error.message)
     if (learn.error) throw new Error(learn.error.message)
@@ -131,7 +138,42 @@ export default async function CohortsPage() {
     rows = (cohorts.data ?? []) as CohortRow[]
     learnings = (learn.data ?? []) as LearningRow[]
     general = (all.data ?? []) as GeneralLearningRow[]
+    runningExps = (exps.data ?? []) as typeof runningExps
   } catch (e) { err = e instanceof Error ? e.message : String(e) }
+
+  // Merged in from /admin/insights, 2026-09-13 (owner: "perché abbiamo
+  // ancora una sezione insights, cohorts, experiments, daily digest" — the
+  // owner's own 2026-08-30 ask, "coorti + esperimenti + x-ray + digest in
+  // un unico diario scientifico", half-done yesterday when learnings folded
+  // in here. This is the other half that was still sitting on its own page.
+  // Which CTA gets clicked → which CTA gets PAID, same quizTrial definition
+  // the dashboard's KPI row uses (net-new OR existing customer buying
+  // again), never netNew alone.
+  let placements: PlacementStat[] = []
+  try {
+    const filters = parseFilters(new URLSearchParams())
+    filters.sample = 'launch'
+    const [allSubs, events, rev] = await Promise.all([
+      filteredSubmissionsAll(filters),
+      loadEventStats(),
+      revenueCharges(),
+    ])
+    const quizTrialById = new Map<string, { quizTrial: boolean; revenue: number }>()
+    for (const r of allSubs) {
+      const emailKey = r.email?.trim().toLowerCase() || null
+      const netNew = !!(emailKey && rev.netNewEmails.has(emailKey))
+      const quizTrial = netNew || (!!emailKey && rev.quizExistingEmails.has(emailKey))
+      if (r.id) quizTrialById.set(String(r.id), { quizTrial, revenue: emailKey ? (rev.quizRevenueByEmail.get(emailKey) ?? 0) : 0 })
+    }
+    placements = events.placements.map(p => {
+      let sales = 0, revenue = 0
+      for (const id of p.clickerIds ?? []) {
+        const hit = quizTrialById.get(id)
+        if (hit?.quizTrial) { sales++; revenue += hit.revenue }
+      }
+      return { placement: p.placement, views: p.views, clicks: p.clicks, sales, revenue }
+    })
+  } catch { /* the section below degrades to empty, not a page error */ }
 
   if (err) {
     return <div style={{ padding: 26 }}><h1 style={{ fontWeight: 800, fontSize: 24 }}>Cohorts</h1><p style={{ color: RED }}>{err}</p></div>
@@ -167,9 +209,18 @@ export default async function CohortsPage() {
         <a href="/admin/experiments" style={{ fontSize: 12.5, fontWeight: 700, color: '#046BB1' }}>the experiments running right now →</a>
       </div>
       <p style={{ fontSize: 12.5, color: MUTE, marginTop: 4, maxWidth: 860 }}>
-        One page for what we changed, whether it worked, and everything else we found along the way — merged from
-        the old /admin/learnings, 2026-09-12.
+        One page for the funnel, what we changed, whether it worked, and everything else we found along the way —
+        merged from /admin/learnings (2026-09-12) and /admin/insights (2026-09-13). Experiments keeps its own page
+        for actually managing a test; this is where you read what's true.
       </p>
+
+      {/* Merged in from /admin/insights, 2026-09-13. The funnel drawn as a
+          flow — same live data as the table below, a different shape, useful
+          for different questions (where in the QUIZ people drop, not just
+          which cohort). */}
+      <section style={{ marginTop: 20 }}>
+        <XraySection />
+      </section>
 
       {/* THE LEARNING ENGINE, above the table, because the table is the raw
           material and this is the point of collecting it.
@@ -314,6 +365,36 @@ export default async function CohortsPage() {
         cohort_regression check reads this same view and names any stage that falls 20+ points under baseline.
       </p>
 
+      {/* A live pointer, not a rebuild of /admin/experiments — that page is
+          for actually creating a test, approving an arm, changing a weight.
+          This is just "is anything running right now", so you don't have to
+          leave this page to find out. */}
+      <section style={{ marginTop: 28 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
+          Running right now <span style={{ color: MUTE, fontWeight: 600 }}>({runningExps.length})</span>
+        </h2>
+        {runningExps.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 8 }}>Nothing running. Ship-and-watch instead, or start one on /admin/experiments.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {runningExps.map(e => (
+              <div key={e.key} style={{ border: `1px solid ${HAIR}`, padding: '9px 12px', fontSize: 12.5 }}>
+                <strong style={{ color: INK }}>{e.name}</strong>
+                <span style={{ color: MUTE, marginLeft: 6 }}>({e.page}, metric {e.primary_metric})</span>
+                <div className="flex flex-wrap" style={{ gap: 12, marginTop: 4 }}>
+                  {(e.variants ?? []).map(v => (
+                    <span key={v.key} style={{ color: MUTE }}>
+                      <strong style={{ color: INK }}>{v.key}</strong>{typeof v.weight === 'number' ? ` · ${Math.round(v.weight * 100)}%` : ''}
+                      {v.approved === false ? ' · not approved' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Everything above is an on-page test with a variant. Not every real
           finding is: "decision-makers convert 2x better" has no variant to
           ship, and a fix to how a number was computed isn't a test either.
@@ -362,6 +443,14 @@ export default async function CohortsPage() {
             })}
           </div>
         )}
+      </section>
+
+      {/* Merged in from /admin/insights, 2026-09-13: which CTA gets clicked
+          → which CTA gets PAID (quiz-earned, net-new or existing customer
+          buying again — never netNew alone). */}
+      <section style={{ marginTop: 34 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>Which placement actually sells</h2>
+        <CtaClickedTable placements={placements} />
       </section>
     </div>
   )
