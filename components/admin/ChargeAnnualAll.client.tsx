@@ -51,6 +51,11 @@ type Outcome = 'pending' | 'charging' | 'created' | 'no_card' | 'refused' | 'fai
 interface ResultRow extends RetryAllTrial {
   outcome: Outcome
   message: string
+  /** Per-row, manual, after the fact — never automatic (see the block
+   *  comment above: sending an invoice to a bulk run's failures unattended
+   *  is a different decision than this button already makes). */
+  invoice: 'none' | 'sending' | 'sent' | 'error'
+  invoiceMsg: string
 }
 
 /** Mirrors lib/offers-server's trial->plan mapping for display only — the
@@ -79,7 +84,7 @@ export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] })
   const run = async () => {
     stopRequested.current = false
     setPhase('running')
-    setResults(trials.map(t => ({ ...t, outcome: 'pending', message: '' })))
+    setResults(trials.map(t => ({ ...t, outcome: 'pending', message: '', invoice: 'none', invoiceMsg: '' })))
     for (let i = 0; i < trials.length; i++) {
       if (stopRequested.current) break
       const t = trials[i]
@@ -111,6 +116,31 @@ export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] })
   const requestStop = () => {
     stopRequested.current = true
     setPhase('stopping')
+  }
+
+  // The manual fallback for a row this run could not charge. Same endpoint,
+  // mode 'invoice', one row at a time, on a click — never automatic, so the
+  // "deliberate per-person action" this component was built around stays
+  // true even though the button now lives here instead of only on the
+  // single-row twin.
+  const invoiceOne = async (r: ResultRow) => {
+    setResults(prev => prev.map(row => (row.chargeId === r.chargeId ? { ...row, invoice: 'sending' } : row)))
+    try {
+      const res = await fetch('/api/admin/charge-annual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: r.customerId, personKey: r.personKey, chargeId: r.chargeId, mode: 'invoice' }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (res.ok && j.ok) {
+        const msg = j.invoiced ? `${j.subscription} · invoice ${j.invoiceSent ? 'emailed, due in 7 days' : 'created'}` : `${j.subscription}`
+        setResults(prev => prev.map(row => (row.chargeId === r.chargeId ? { ...row, invoice: 'sent', invoiceMsg: msg } : row)))
+      } else {
+        setResults(prev => prev.map(row => (row.chargeId === r.chargeId ? { ...row, invoice: 'error', invoiceMsg: String(j.error || `HTTP ${res.status}`) } : row)))
+      }
+    } catch (e) {
+      setResults(prev => prev.map(row => (row.chargeId === r.chargeId ? { ...row, invoice: 'error', invoiceMsg: e instanceof Error ? e.message : 'network error' } : row)))
+    }
   }
 
   if (phase === 'idle') {
@@ -189,16 +219,48 @@ export default function ChargeAnnualAll({ trials }: { trials: RetryAllTrial[] })
           </button>
         )}
       </div>
-      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 260, overflowY: 'auto' }}>
-        {results.map(r => (
-          <div key={r.chargeId} style={{ display: 'flex', gap: 8, fontSize: 11, alignItems: 'baseline' }}>
-            <span style={{ width: 60, flexShrink: 0, fontWeight: 700 }}>{money(planCentsFor(r.trialCents) ?? r.trialCents)}</span>
-            <span style={{ flex: 1, minWidth: 0, color: MUTE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {r.personKey}
-            </span>
-            <span style={{ color: outcomeColor[r.outcome], fontWeight: 700, whiteSpace: 'nowrap' }}>{outcomeLabel[r.outcome]}</span>
-          </div>
-        ))}
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 320, overflowY: 'auto' }}>
+        {results.map(r => {
+          const canInvoice = (r.outcome === 'failed' || r.outcome === 'no_card') && r.invoice === 'none'
+          return (
+            <div key={r.chargeId} style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingBottom: 4, borderBottom: '1px solid #F1ECE2' }}>
+              <div className="flex items-baseline" style={{ gap: 8, fontSize: 11 }}>
+                <span style={{ width: 60, flexShrink: 0, fontWeight: 700 }}>{money(planCentsFor(r.trialCents) ?? r.trialCents)}</span>
+                <span style={{ flex: 1, minWidth: 0, color: MUTE, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {r.personKey}
+                </span>
+                <span style={{ color: outcomeColor[r.outcome], fontWeight: 700, whiteSpace: 'nowrap' }}>{outcomeLabel[r.outcome]}</span>
+              </div>
+              {/* The actual Stripe message, not just the word "failed" — a
+                  3D-Secure requires-action decline and a plain expired-card
+                  decline both landed here silently before, indistinguishable
+                  without opening the network tab. */}
+              {r.outcome === 'failed' && r.message && (
+                <p style={{ fontSize: 10, color: MUTE, margin: '0 0 0 68px', lineHeight: 1.4 }}>{r.message}</p>
+              )}
+              {canInvoice && (
+                <div style={{ margin: '2px 0 0 68px' }}>
+                  <button
+                    onClick={() => void invoiceOne(r)}
+                    title={`Creates the subscription with a Stripe invoice emailed to them, due in 7 days. They pay it themselves — this is also how a card needing 3D Secure / bank authentication gets completed, since a hosted invoice page can do that and a silent charge never can.`}
+                    style={{ fontSize: 9.5, border: `2px solid ${INK}`, background: '#FFFDFA', fontWeight: 800, padding: '1px 6px', cursor: 'pointer' }}
+                  >
+                    📧 Email invoice instead
+                  </button>
+                </div>
+              )}
+              {r.invoice === 'sending' && (
+                <p style={{ fontSize: 10, color: MUTE, margin: '2px 0 0 68px' }}>sending…</p>
+              )}
+              {r.invoice === 'sent' && (
+                <p style={{ fontSize: 10, color: GREEN, fontWeight: 700, margin: '2px 0 0 68px' }}>✓ {r.invoiceMsg}</p>
+              )}
+              {r.invoice === 'error' && (
+                <p style={{ fontSize: 10, color: RED, fontWeight: 700, margin: '2px 0 0 68px' }}>✕ {r.invoiceMsg}</p>
+              )}
+            </div>
+          )
+        })}
       </div>
       {phase === 'done' && (
         <button

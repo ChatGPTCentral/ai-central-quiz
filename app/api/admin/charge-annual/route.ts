@@ -210,8 +210,21 @@ export async function POST(req: NextRequest) {
     await audit('charge_annual_created', personKey, customerId, { subscription: sub.id, status: sub.status, price: plan.id, plan_cents: plan.cents, trial_cents: trialCents, trial_charge_id: chargeId })
     return NextResponse.json({ ok: true, subscription: sub.id, status: sub.status, planCents: plan.cents })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Stripe error'
-    await audit('charge_annual_failed', personKey, customerId, { error: msg, trial_charge_id: chargeId })
+    const raw = e instanceof Error ? e.message : 'Stripe error'
+    // THE 3DS CASE, NAMED (owner, 2026-09-13: "perché ottengo sempre questo
+    // errore"). error_if_incomplete throws this exact Stripe text whenever
+    // the card needs an interactive bank challenge — Stripe refuses to
+    // create a silent, merchant-initiated charge for one, on purpose, for
+    // every such card, every time. It is not a decline and not a bug here;
+    // there is no payment_behavior that makes THIS card chargeable without
+    // the customer. The one path that works is already built: an emailed
+    // Stripe invoice is an interactive page the customer can complete the
+    // challenge on, which mode: 'invoice' on this same endpoint does.
+    const needsAction = /requires additional user action|payment_behavior/i.test(raw)
+    const msg = needsAction
+      ? `This card needs the customer to complete a bank authentication step (3D Secure), which a silent charge can never do. Use "Email invoice instead" for this one — a hosted Stripe invoice can complete that step, a merchant-initiated charge cannot. (Stripe: ${raw})`
+      : raw
+    await audit('charge_annual_failed', personKey, customerId, { error: msg, raw_error: raw, needs_action: needsAction, trial_charge_id: chargeId })
     // A decline surfaces here (error_if_incomplete throws): the card said no,
     // nothing was created, and the row stays in the retry list.
     return NextResponse.json({ error: msg }, { status: 402 })
