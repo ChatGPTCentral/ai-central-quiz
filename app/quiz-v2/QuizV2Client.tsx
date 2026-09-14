@@ -186,6 +186,16 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: P
   // Why "next" could not advance. Empty until someone actually tries.
   const [blockedHint, setBlockedHint] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // A synchronous guard against a double submit, distinct from `submitting`
+  // above. React state updates are not synchronous, so a second tap landing
+  // inside the gap between this click's setSubmitting(true) and the next
+  // render can still pass a `disabled={submitting}` check — the "sending…"
+  // button was the most dead-clicked string on the funnel for exactly this
+  // reason (2026-09-04 comment on BlockNext below), and a second real
+  // /api/submit-quiz-v2 call would double the outward side effects (Beehiiv
+  // subscribe, enrichment credit, admin email) that a single real submit
+  // already costs, not just look bad in a dead-click count.
+  const submittingRef = useRef(false)
   const [submitError, setSubmitError] = useState('')
   // Embed mode only: set (to the result-flow URL) once the submission
   // succeeded — renders the "see my results" fallback while the host page
@@ -475,6 +485,8 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: P
       return
     }
 
+    if (submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     setSubmitError('')
     try {
@@ -500,6 +512,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: P
       const data = await res.json()
       if (!data.success) {
         setSubmitError(data.error || 'Something went wrong. Please try again.')
+        submittingRef.current = false
         setSubmitting(false)
         return
       }
@@ -533,6 +546,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: P
           redirectUrl,
         })
         setEmbedDone(redirectUrl)
+        submittingRef.current = false
         setSubmitting(false)
         setTimeout(() => {
           try { if (window.top && window.top !== window.self) window.top.location.href = redirectUrl } catch { /* cross-origin nav blocked — button fallback remains */ }
@@ -542,6 +556,7 @@ function QuizV2Content({ questions, accent = DEFAULT_ACCENT, flowV2 = false }: P
       router.push(`/calculating?${params.toString()}`)
     } catch {
       setSubmitError('Network error. Please check your connection and try again.')
+      submittingRef.current = false
       setSubmitting(false)
     }
   }, [step, answers, canProceed, goForward, router, searchParams, isEmbed, postToParent, isLastStep, nextResolved, trackAnswered, isMulti, q.type, q.id]) // eslint-disable-line react-hooks/exhaustive-deps
