@@ -22,6 +22,8 @@ import CtaClickedTable from '@/components/admin/CtaClickedTable.client'
 import { filteredSubmissionsAll, parseFilters, revenueCharges } from '@/lib/dashboard-queries'
 import { loadEventStats } from '@/lib/dashboard-events'
 import type { PlacementStat } from '@/app/admin/dashboard/DashboardBento.client'
+import { getCheckoutDeclines, type DeclineRow } from '@/lib/checkout-declines'
+import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 60
@@ -174,6 +176,15 @@ export default async function CohortsPage() {
       return { placement: p.placement, views: p.views, clicks: p.clicks, sales, revenue }
     })
   } catch { /* the section below degrades to empty, not a page error */ }
+
+  // Owner, 2026-09-15: a board of the people who did NOT pay, to find the
+  // best action toward conversion for each — starting with the one segment
+  // where "why" is even answerable (an email exists, a real decision signal
+  // exists): reached checkout, did not convert. See lib/checkout-declines.ts.
+  let declines: DeclineRow[] = []
+  try {
+    declines = await getCheckoutDeclines(14, 80)
+  } catch { /* degrades to empty */ }
 
   if (err) {
     return <div style={{ padding: 26 }}><h1 style={{ fontWeight: 800, fontSize: 24 }}>Cohorts</h1><p style={{ color: RED }}>{err}</p></div>
@@ -451,6 +462,65 @@ export default async function CohortsPage() {
       <section style={{ marginTop: 34 }}>
         <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>Which placement actually sells</h2>
         <CtaClickedTable placements={placements} />
+      </section>
+
+      {/* THE NON-PAYER BOARD (owner, 2026-09-15). Only the segment where "why"
+          is answerable at all: reached checkout, no charge. Everyone here has
+          an email (the quiz is already complete) and a real decision signal
+          (checkout_modal_close: how they left, how long they stayed) — same
+          source app/api/admin/checkout-autopsy/route.ts reads in aggregate,
+          here at the person level. "Read then declined" (20s+) is a
+          different problem, and a different email, than "quick bounce"
+          (under 5s, likely a misclick, not a considered no). */}
+      <section style={{ marginTop: 34 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>Reached checkout, didn&rsquo;t pay — last 14 days</h2>
+        <p style={{ fontSize: 12.5, color: MUTE, marginTop: 4, marginBottom: 12, maxWidth: 720 }}>
+          Every one of these clicked a real checkout button and did not convert. &ldquo;Read then declined&rdquo; stayed
+          20s+ before leaving &mdash; a considered no. &ldquo;Quick bounce&rdquo; left under 5s &mdash; likely a misclick, not a decision.
+          Click a name to open their full behaviour on the Behavior tab.
+        </p>
+        {declines.length === 0 ? (
+          <p style={{ fontSize: 13, color: MUTE }}>No qualifying rows in the last 14 days, or the data failed to load.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 760 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${HAIR}` }}>
+                  <th style={{ ...th, textAlign: 'left' }}>Person</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Country</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Stage</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Last click</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {declines.map(d => {
+                  const signalLabel = d.signal === 'read_then_declined' ? 'Read then declined'
+                    : d.signal === 'quick_bounce' ? 'Quick bounce'
+                    : d.signal === 'unclear' ? 'Unclear'
+                    : 'Never closed the modal'
+                  const signalColor = d.signal === 'read_then_declined' ? AMBER : d.signal === 'quick_bounce' ? MUTE : INK
+                  return (
+                    <tr key={d.submissionId} style={{ borderBottom: `1px solid ${HAIR}` }}>
+                      <td style={{ ...td, textAlign: 'left' }}>
+                        <Link href={`/admin/submissions/${d.submissionId}`} style={{ color: INK, fontWeight: 700, textDecoration: 'underline' }}>
+                          {d.name || d.email || d.submissionId.slice(0, 8)}
+                        </Link>
+                      </td>
+                      <td style={{ ...td, textAlign: 'left' }}>{d.country || '—'}</td>
+                      <td style={{ ...td, textAlign: 'left' }}>{d.stage || '—'}</td>
+                      <td style={{ ...td, textAlign: 'left' }}>{d.lastClickPlacement || '—'}<br /><span style={{ color: MUTE, fontSize: 10.5 }}>{fmtDay(d.lastClickAt)}</span></td>
+                      <td style={{ ...td, textAlign: 'left', color: signalColor, fontWeight: d.signal === 'read_then_declined' ? 800 : 400 }}>
+                        {signalLabel}
+                        {d.closeDwellMs !== null && <span style={{ color: MUTE, fontWeight: 400 }}> &middot; {Math.round(d.closeDwellMs / 1000)}s</span>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   )
