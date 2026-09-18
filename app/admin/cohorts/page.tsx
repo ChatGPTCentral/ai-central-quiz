@@ -219,7 +219,7 @@ export default async function CohortsPage() {
   let declines: DeclineRow[] = []
   let paid: PaidRow[] = []
   try {
-    ;[declines, paid] = await Promise.all([getCheckoutDeclines(14, 80), getPaidTrials(14, 60)])
+    ;[declines, paid] = await Promise.all([getCheckoutDeclines(14, 80), getPaidTrials()])
   } catch { /* degrades to empty */ }
 
   if (err) {
@@ -439,15 +439,18 @@ export default async function CohortsPage() {
           a time): source, country, quiz level, timing, which button. */}
       <details style={{ marginTop: 18 }}>
         <summary style={summaryStyle}>Paid ({paid.length})</summary>
-        <p style={{ fontSize: 12, color: MUTE, marginTop: 8, marginBottom: 10, maxWidth: 720 }}>
-          Last 14 days, quiz-earned trials. &ldquo;No click&rdquo; means no on-site checkout button precedes the charge —
-          a real pattern (about 1 in 7), most often a direct or held-rate email link. Click a name for their full Behavior tab.
+        <p style={{ fontSize: 12, color: MUTE, marginTop: 8, marginBottom: 10, maxWidth: 780 }}>
+          Every quiz-earned trial ever, not a recent slice (owner, 2026-09-18: &ldquo;uno sweep su tutti i paganti&rdquo;).
+          &ldquo;Most likely reason&rdquo; is an inference, stated as one, built only from what actually happened — a
+          click or its absence, same-visit or a return days later — never a story about how they felt. The raw
+          timing and button sit in their own columns so the inference can be checked, not just trusted. Click a
+          name for their full Behavior tab.
         </p>
         {paid.length === 0 ? (
-          <p style={{ fontSize: 13, color: MUTE }}>No qualifying rows in the last 14 days, or the data failed to load.</p>
+          <p style={{ fontSize: 13, color: MUTE }}>No qualifying rows, or the data failed to load.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 760 }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 980 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${HAIR}` }}>
                   <th style={{ ...th, textAlign: 'left' }}>Person</th>
@@ -456,8 +459,8 @@ export default async function CohortsPage() {
                   <th style={{ ...th, textAlign: 'left' }}>Source</th>
                   <th style={th}>Landing dwell</th>
                   <th style={th}>Quiz fill</th>
-                  <th style={{ ...th, textAlign: 'left' }}>Button</th>
                   <th style={th}>Trial</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Most likely reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -473,10 +476,8 @@ export default async function CohortsPage() {
                     <td style={{ ...td, textAlign: 'left' }}>{p.utmSource || 'direct'}</td>
                     <td style={td}>{fmtDuration(p.landingDwellSeconds)}</td>
                     <td style={td}>{fmtDuration(p.quizFillSeconds)}</td>
-                    <td style={{ ...td, textAlign: 'left', color: p.clickPlacement ? INK : AMBER, fontWeight: p.clickPlacement ? 400 : 700 }}>
-                      {p.clickPlacement ? humanizePlacement(p.clickPlacement) : 'No click'}
-                    </td>
                     <td style={{ ...td, fontWeight: 800, color: GREEN }}>${(p.trialCents / 100).toFixed(2)} <span style={{ color: MUTE, fontWeight: 400 }}>{fmtDay(p.trialAt)}</span></td>
+                    <td style={{ fontSize: 12, padding: '7px 8px', textAlign: 'left', color: !p.clickPlacement ? AMBER : INK, maxWidth: 320 }}>{p.reason}</td>
                   </tr>
                 ))}
               </tbody>

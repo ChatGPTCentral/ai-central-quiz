@@ -26,6 +26,7 @@
 // exposed as its own field rather than left for a reader to infer from raw ms.
 
 import { db } from '@/lib/revenue-shared'
+import { humanizePlacement } from '@/lib/buyer-behavior'
 
 export type DeclineRow = {
   submissionId: string
@@ -140,6 +141,28 @@ export type PaidRow = {
    *  browsed the site afterward — a LATER click must never be credited
    *  here, so only clicks at or before trialAt are ever considered). */
   clickPlacement: string | null
+  /** Whole days between finishing the quiz and this charge. Null when the
+   *  quiz_submit itself was never found (older or untracked submissions). */
+  daysSinceQuiz: number | null
+  /** THE MOST LIKELY REASON, owner's ask 2026-09-18 — an inference stated
+   *  as one, built only from what actually happened (a click or its
+   *  absence, same-visit or a return days later), never a story about
+   *  what the person felt. Three buckets, in priority order: no click at
+   *  all (paid off-site, a direct or held-rate email link); a gap of 1+
+   *  days since the quiz (something brought them back, most likely a
+   *  reminder or recovery email, not the original visit); same visit,
+   *  decided fast, and the button they actually clicked. */
+  reason: string
+}
+
+function inferReason(hasSubmission: boolean, clickPlacement: string | null, daysSinceQuiz: number | null): string {
+  if (!hasSubmission) return 'No quiz activity found at all for this charge — too old or untracked to read.'
+  if (!clickPlacement) return 'No on-site click precedes this charge — paid via a direct or held-rate email link.'
+  const label = humanizePlacement(clickPlacement)
+  if (daysSinceQuiz !== null && daysSinceQuiz >= 1) {
+    return `Returned ${daysSinceQuiz} day${daysSinceQuiz === 1 ? '' : 's'} after finishing the quiz, then clicked ${label} — likely a reminder or recovery email brought them back, not the original visit.`
+  }
+  return `Same visit as the quiz, decided fast, clicked ${label}.`
 }
 
 function baseRow(t: Record<string, unknown>): PaidRow {
@@ -147,10 +170,15 @@ function baseRow(t: Record<string, unknown>): PaidRow {
     submissionId: t.submission_id as string, name: (t.name as string) ?? null, country: (t.country as string) ?? null,
     stage: (t.stage as string) ?? null, utmSource: (t.utm_source as string) ?? null, trialAt: t.trial_at as string,
     trialCents: t.trial_cents as number, landingDwellSeconds: null, quizFillSeconds: null, clickPlacement: null,
+    daysSinceQuiz: null, reason: inferReason(false, null, null),
   }
 }
 
-export async function getPaidTrials(days = 14, limit = 60): Promise<PaidRow[]> {
+/** days/limit default to effectively "everyone" — owner, 2026-09-18: "non
+ *  possiamo fare uno sweep su tutti i paganti?" after a 14-day window
+ *  showed only 26 rows. Total ever is 203 quiz-earned trials (checked the
+ *  same day), comfortably under this default limit. */
+export async function getPaidTrials(days = 400, limit = 250): Promise<PaidRow[]> {
   const c = db()
   const since = new Date(Date.now() - days * 86400_000).toISOString()
   try {
@@ -167,7 +195,13 @@ export async function getPaidTrials(days = 14, limit = 60): Promise<PaidRow[]> {
     if (trials.length === 0) return []
 
     const subIds = Array.from(new Set(trials.map(t => t.submission_id as string)))
-    const { data: anonRows } = await c.from('funnel_events').select('submission_id, anon_id').in('submission_id', subIds).not('anon_id', 'is', null)
+    // Explicit limits below: Supabase/PostgREST defaults to capping a query
+    // at 1000 rows, and sweeping ALL 203 quiz-earned trials (not a 14-day
+    // slice) genuinely exceeds that — checked 2026-09-18, 3,915 raw
+    // submission/anon_id pairs and 1,031 matching lifecycle events for
+    // today's volume alone. A silent truncation here would not error, it
+    // would just quietly drop people near the tail into "no data found."
+    const { data: anonRows } = await c.from('funnel_events').select('submission_id, anon_id').in('submission_id', subIds).not('anon_id', 'is', null).limit(8000)
     const anonsBySub = new Map<string, string[]>()
     for (const r of anonRows ?? []) {
       const sid = r.submission_id as string
@@ -184,6 +218,7 @@ export async function getPaidTrials(days = 14, limit = 60): Promise<PaidRow[]> {
       .in('anon_id', allAnonIds)
       .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
       .order('ts', { ascending: true })
+      .limit(8000)
     const events = eventRows ?? []
     const byAnon = new Map<string, typeof events>()
     for (const e of events) {
@@ -208,6 +243,10 @@ export async function getPaidTrials(days = 14, limit = 60): Promise<PaidRow[]> {
       const trialAt = t.trial_at as string
       const clicksBefore = own.filter(e => e.event === 'checkout_click' && (e.ts as string) <= trialAt)
       const lastClick = clicksBefore.length ? clicksBefore[clicksBefore.length - 1] : null
+      const clickPlacement = lastClick ? (((lastClick.props as Record<string, unknown> | null)?.placement as string) ?? null) : null
+      const daysSinceQuiz = submitted
+        ? Math.floor((new Date(trialAt).getTime() - new Date(submitted.ts as string).getTime()) / 86400_000)
+        : null
       return {
         submissionId: sid,
         name: (t.name as string) ?? null,
@@ -218,7 +257,9 @@ export async function getPaidTrials(days = 14, limit = 60): Promise<PaidRow[]> {
         trialCents: t.trial_cents as number,
         landingDwellSeconds: seconds((landed?.ts as string) ?? null, (started?.ts as string) ?? null),
         quizFillSeconds: seconds((started?.ts as string) ?? null, (submitted?.ts as string) ?? null),
-        clickPlacement: lastClick ? (((lastClick.props as Record<string, unknown> | null)?.placement as string) ?? null) : null,
+        clickPlacement,
+        daysSinceQuiz,
+        reason: inferReason(!!submitted, clickPlacement, daysSinceQuiz),
       }
     })
   } catch {
