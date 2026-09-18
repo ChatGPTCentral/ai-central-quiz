@@ -46,7 +46,6 @@ const GROUPS: { label?: string; items: { href: string; label: string; icon: Icon
   {
     items: [
       { href: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
-      { href: '/admin/digest', label: 'Daily digest', icon: 'funnel' },
       { href: '/admin/cohorts', label: 'Cohorts & learnings', icon: 'stats' },
       { href: '/admin/revenue', label: 'Revenue', icon: 'stats' },
       { href: '/admin/revenue/unpaid', label: 'Unpaid & overdue', icon: 'stats' },

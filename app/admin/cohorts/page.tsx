@@ -38,7 +38,8 @@ import CtaClickedTable from '@/components/admin/CtaClickedTable.client'
 import { filteredSubmissionsAll, parseFilters, revenueCharges } from '@/lib/dashboard-queries'
 import { loadEventStats } from '@/lib/dashboard-events'
 import type { PlacementStat } from '@/app/admin/dashboard/DashboardBento.client'
-import { getCheckoutDeclines, type DeclineRow } from '@/lib/checkout-declines'
+import { getCheckoutDeclines, getPaidTrials, type DeclineRow, type PaidRow } from '@/lib/checkout-declines'
+import { humanizePlacement, fmtDuration } from '@/lib/buyer-behavior'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
@@ -110,6 +111,12 @@ interface GeneralLearningRow {
   notes: string | null
   links: { label: string; url: string }[] | null
   created_at: string
+}
+
+const METRIC_LABEL: Record<string, string> = {
+  checkout_click: 'checkout clicks (fast)',
+  quiz_completed: 'quiz completion',
+  net_new_paid: 'paid trials (ground truth, slow)',
 }
 
 const STEP_LABEL: Record<string, string> = {
@@ -205,11 +212,14 @@ export default async function CohortsPage() {
     })
   } catch { /* the section below degrades to empty, not a page error */ }
 
-  // Reached checkout, no charge — the one non-paying segment where "why" is
-  // answerable at all (owner, 2026-09-15).
+  // Both sides of the same board (owner, 2026-09-15, then again 2026-09-18:
+  // "abbiamo bisogno sia di chi non paga sia di chi paga"). Reached
+  // checkout, no charge — the one non-paying segment where "why" is
+  // answerable at all. Paired with who DID pay, same shape.
   let declines: DeclineRow[] = []
+  let paid: PaidRow[] = []
   try {
-    declines = await getCheckoutDeclines(14, 80)
+    ;[declines, paid] = await Promise.all([getCheckoutDeclines(14, 80), getPaidTrials(14, 60)])
   } catch { /* degrades to empty */ }
 
   if (err) {
@@ -387,6 +397,10 @@ export default async function CohortsPage() {
 
       <details style={{ marginTop: 18 }}>
         <summary style={summaryStyle}>Running right now ({runningExps.length})</summary>
+        <p style={{ fontSize: 12, color: MUTE, marginTop: 8, marginBottom: 4, maxWidth: 720 }}>
+          A quick pointer, not the tool for managing a test — that's still /admin/experiments. Each variant
+          shows the SHARE of that test's traffic it gets, not its own conversion rate.
+        </p>
         {runningExps.length === 0 ? (
           <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing running. Ship-and-watch instead, or start one on /admin/experiments.</p>
         ) : (
@@ -394,12 +408,12 @@ export default async function CohortsPage() {
             {runningExps.map(e => (
               <div key={e.key} style={{ border: `1px solid ${HAIR}`, padding: '9px 12px', fontSize: 12.5 }}>
                 <strong style={{ color: INK }}>{e.name}</strong>
-                <span style={{ color: MUTE, marginLeft: 6 }}>({e.page}, metric {e.primary_metric})</span>
+                <span style={{ color: MUTE, marginLeft: 6 }}>on {e.page}, decided by {METRIC_LABEL[e.primary_metric] ?? e.primary_metric}</span>
                 <div className="flex flex-wrap" style={{ gap: 12, marginTop: 4 }}>
                   {(e.variants ?? []).map(v => (
                     <span key={v.key} style={{ color: MUTE }}>
-                      <strong style={{ color: INK }}>{v.key}</strong>{typeof v.weight === 'number' ? ` · ${Math.round(v.weight * 100)}%` : ''}
-                      {v.approved === false ? ' · not approved' : ''}
+                      <strong style={{ color: INK }}>{v.key}</strong>{typeof v.weight === 'number' ? ` · gets ${Math.round(v.weight * 100)}% of traffic` : ''}
+                      {v.approved === false ? ' · not approved yet' : ''}
                     </span>
                   ))}
                 </div>
@@ -411,7 +425,64 @@ export default async function CohortsPage() {
 
       <details style={{ marginTop: 18 }}>
         <summary style={summaryStyle}>Which placement actually sells</summary>
-        <div style={{ marginTop: 14 }}><CtaClickedTable placements={placements} /></div>
+        <p style={{ fontSize: 12, color: MUTE, marginTop: 8, marginBottom: 4, maxWidth: 720 }}>
+          For every button on the result page: how many people saw it, clicked it, and of those, how many
+          went on to pay (quiz-earned, net-new or an existing customer buying again).
+        </p>
+        <div style={{ marginTop: 10 }}><CtaClickedTable placements={placements} /></div>
+      </details>
+
+      {/* Owner, 2026-09-18: "abbiamo bisogno sia di chi non paga sia di chi
+          paga" — the declines board below only ever showed half the
+          picture. Same per-person shape, same source (lib/buyer-behavior.ts's
+          anon_id resolution, run for many people instead of one dossier at
+          a time): source, country, quiz level, timing, which button. */}
+      <details style={{ marginTop: 18 }}>
+        <summary style={summaryStyle}>Paid ({paid.length})</summary>
+        <p style={{ fontSize: 12, color: MUTE, marginTop: 8, marginBottom: 10, maxWidth: 720 }}>
+          Last 14 days, quiz-earned trials. &ldquo;No click&rdquo; means no on-site checkout button precedes the charge —
+          a real pattern (about 1 in 7), most often a direct or held-rate email link. Click a name for their full Behavior tab.
+        </p>
+        {paid.length === 0 ? (
+          <p style={{ fontSize: 13, color: MUTE }}>No qualifying rows in the last 14 days, or the data failed to load.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 760 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${HAIR}` }}>
+                  <th style={{ ...th, textAlign: 'left' }}>Person</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Country</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Stage</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Source</th>
+                  <th style={th}>Landing dwell</th>
+                  <th style={th}>Quiz fill</th>
+                  <th style={{ ...th, textAlign: 'left' }}>Button</th>
+                  <th style={th}>Trial</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paid.map(p => (
+                  <tr key={`${p.submissionId}-${p.trialAt}`} style={{ borderBottom: `1px solid ${HAIR}` }}>
+                    <td style={{ ...td, textAlign: 'left' }}>
+                      <Link href={`/admin/submissions/${p.submissionId}`} style={{ color: INK, fontWeight: 700, textDecoration: 'underline' }}>
+                        {p.name || p.submissionId.slice(0, 8)}
+                      </Link>
+                    </td>
+                    <td style={{ ...td, textAlign: 'left' }}>{p.country || '—'}</td>
+                    <td style={{ ...td, textAlign: 'left' }}>{p.stage || '—'}</td>
+                    <td style={{ ...td, textAlign: 'left' }}>{p.utmSource || 'direct'}</td>
+                    <td style={td}>{fmtDuration(p.landingDwellSeconds)}</td>
+                    <td style={td}>{fmtDuration(p.quizFillSeconds)}</td>
+                    <td style={{ ...td, textAlign: 'left', color: p.clickPlacement ? INK : AMBER, fontWeight: p.clickPlacement ? 400 : 700 }}>
+                      {p.clickPlacement ? humanizePlacement(p.clickPlacement) : 'No click'}
+                    </td>
+                    <td style={{ ...td, fontWeight: 800, color: GREEN }}>${(p.trialCents / 100).toFixed(2)} <span style={{ color: MUTE, fontWeight: 400 }}>{fmtDay(p.trialAt)}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </details>
 
       <details style={{ marginTop: 18 }}>
@@ -450,7 +521,7 @@ export default async function CohortsPage() {
                       </td>
                       <td style={{ ...td, textAlign: 'left' }}>{d.country || '—'}</td>
                       <td style={{ ...td, textAlign: 'left' }}>{d.stage || '—'}</td>
-                      <td style={{ ...td, textAlign: 'left' }}>{d.lastClickPlacement || '—'}<br /><span style={{ color: MUTE, fontSize: 10.5 }}>{fmtDay(d.lastClickAt)}</span></td>
+                      <td style={{ ...td, textAlign: 'left' }}>{d.lastClickPlacement ? humanizePlacement(d.lastClickPlacement) : '—'}<br /><span style={{ color: MUTE, fontSize: 10.5 }}>{fmtDay(d.lastClickAt)}</span></td>
                       <td style={{ ...td, textAlign: 'left', color: signalColor, fontWeight: d.signal === 'read_then_declined' ? 800 : 400 }}>
                         {signalLabel}
                         {d.closeDwellMs !== null && <span style={{ color: MUTE, fontWeight: 400 }}> &middot; {Math.round(d.closeDwellMs / 1000)}s</span>}

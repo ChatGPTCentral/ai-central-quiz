@@ -1,11 +1,21 @@
-// Reached checkout, didn't pay — the board the owner asked for 2026-09-15:
-// "una board dove raccogliamo insights per ogni... persona che non ha pagato,
-// per capire quale sarebbe la best action to conversion". Not everyone who
-// never converted: only people who got far enough to have a real signal —
-// they clicked a checkout button and did not end up in trial_ledger — since
-// that is the one non-paying group where "why" is answerable at all (an
-// email exists because the quiz was already completed) and where the
-// signal (checkout_modal_close: how + dwellMs) already exists, built for
+// The checkout-outcome board — WHO paid, and WHO didn't, side by side.
+// Owner, 2026-09-15: "una board dove raccogliamo insights per ogni...
+// persona che non ha pagato, per capire quale sarebbe la best action to
+// conversion" (getCheckoutDeclines below). Owner again, 2026-09-18, after
+// the first version shipped: "noi abbiamo bisogno sia di chi non paga sia
+// di chi paga" — one-sided was half the answer. getPaidTrials pairs it,
+// same per-person shape (source, country, quiz level, timing, which button),
+// reusing the anon_id-resolution lib/buyer-behavior.ts's single-person
+// getBehaviorTimeline already solved (quiz_view/quiz_start fire before a
+// submission_id exists, so they only join through anon_id, and a person who
+// returns later on a fresh visit gets a NEW anon_id too) — this is that same
+// logic run for many people at once instead of one dossier page at a time.
+//
+// getCheckoutDeclines is scoped to people who got far enough to have a real
+// signal — clicked a checkout button and never converted — since that is
+// the one non-paying group where "why" is answerable at all (an email
+// exists because the quiz was already completed) and where the signal
+// (checkout_modal_close: how + dwellMs) already exists, built for
 // app/api/admin/checkout-autopsy/route.ts's aggregate read of the exact same
 // events. This is that same source, at the PERSON level instead of a
 // histogram — one fact, two views, not a second computation of it.
@@ -108,6 +118,109 @@ export async function getCheckoutDeclines(days = 14, limit = 80): Promise<Declin
       })
       .sort((a, b) => (a.lastClickAt < b.lastClickAt ? 1 : -1))
       .slice(0, limit)
+  } catch {
+    return []
+  }
+}
+
+export type PaidRow = {
+  submissionId: string
+  name: string | null
+  country: string | null
+  stage: string | null
+  utmSource: string | null
+  trialAt: string
+  trialCents: number
+  landingDwellSeconds: number | null
+  quizFillSeconds: number | null
+  /** The checkout button clicked at or before this charge, across every
+   *  visit tied to this submission — null means no on-site click precedes
+   *  it at all, the signature of a direct/email-link payment (real case
+   *  found 2026-09-13: a buyer paid from a held-rate email link, then
+   *  browsed the site afterward — a LATER click must never be credited
+   *  here, so only clicks at or before trialAt are ever considered). */
+  clickPlacement: string | null
+}
+
+function baseRow(t: Record<string, unknown>): PaidRow {
+  return {
+    submissionId: t.submission_id as string, name: (t.name as string) ?? null, country: (t.country as string) ?? null,
+    stage: (t.stage as string) ?? null, utmSource: (t.utm_source as string) ?? null, trialAt: t.trial_at as string,
+    trialCents: t.trial_cents as number, landingDwellSeconds: null, quizFillSeconds: null, clickPlacement: null,
+  }
+}
+
+export async function getPaidTrials(days = 14, limit = 60): Promise<PaidRow[]> {
+  const c = db()
+  const since = new Date(Date.now() - days * 86400_000).toISOString()
+  try {
+    const { data: trialRows } = await c
+      .from('trial_ledger')
+      .select('submission_id, name, country, stage, utm_source, trial_at, trial_cents')
+      .not('submission_id', 'is', null)
+      .eq('trial_refunded', false)
+      .in('attribution', ['quiz_net_new', 'quiz_existing'])
+      .gte('trial_at', since)
+      .order('trial_at', { ascending: false })
+      .limit(limit)
+    const trials = trialRows ?? []
+    if (trials.length === 0) return []
+
+    const subIds = Array.from(new Set(trials.map(t => t.submission_id as string)))
+    const { data: anonRows } = await c.from('funnel_events').select('submission_id, anon_id').in('submission_id', subIds).not('anon_id', 'is', null)
+    const anonsBySub = new Map<string, string[]>()
+    for (const r of anonRows ?? []) {
+      const sid = r.submission_id as string
+      const arr = anonsBySub.get(sid) ?? []
+      arr.push(r.anon_id as string)
+      anonsBySub.set(sid, arr)
+    }
+    const allAnonIds = Array.from(new Set((anonRows ?? []).map(r => r.anon_id as string)))
+    if (allAnonIds.length === 0) return trials.map(t => baseRow(t))
+
+    const { data: eventRows } = await c
+      .from('funnel_events')
+      .select('anon_id, event, ts, props')
+      .in('anon_id', allAnonIds)
+      .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
+      .order('ts', { ascending: true })
+    const events = eventRows ?? []
+    const byAnon = new Map<string, typeof events>()
+    for (const e of events) {
+      const arr = byAnon.get(e.anon_id as string) ?? []
+      arr.push(e)
+      byAnon.set(e.anon_id as string, arr)
+    }
+
+    const seconds = (a: string | null, b: string | null) => {
+      if (!a || !b) return null
+      const d = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 1000)
+      return d >= 0 ? d : null
+    }
+
+    return trials.map(t => {
+      const sid = t.submission_id as string
+      const anonIds = anonsBySub.get(sid) ?? []
+      const own = anonIds.flatMap(a => byAnon.get(a) ?? []).sort((a, b) => (a.ts as string).localeCompare(b.ts as string))
+      const landed = own.find(e => e.event === 'quiz_view')
+      const started = own.find(e => e.event === 'quiz_start')
+      const submitted = own.find(e => e.event === 'quiz_submit')
+      const trialAt = t.trial_at as string
+      const clicksBefore = own.filter(e => e.event === 'checkout_click' && (e.ts as string) <= trialAt)
+      const lastClick = clicksBefore.length ? clicksBefore[clicksBefore.length - 1] : null
+      return {
+        submissionId: sid,
+        name: (t.name as string) ?? null,
+        country: (t.country as string) ?? null,
+        stage: (t.stage as string) ?? null,
+        utmSource: (t.utm_source as string) ?? null,
+        trialAt,
+        trialCents: t.trial_cents as number,
+        landingDwellSeconds: seconds((landed?.ts as string) ?? null, (started?.ts as string) ?? null),
+        quizFillSeconds: seconds((started?.ts as string) ?? null, (submitted?.ts as string) ?? null),
+        clickPlacement: lastClick ? (((lastClick.props as Record<string, unknown> | null)?.placement as string) ?? null) : null,
+      }
+    })
   } catch {
     return []
   }

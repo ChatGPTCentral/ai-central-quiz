@@ -46,7 +46,14 @@ interface ExperimentInput {
   primaryMetric?: string
   banditEnabled?: boolean
   minExposuresPerVariant?: number
+  predictedLiftPts?: number
+  targetStep?: string
 }
+
+// Same 5 steps ExperimentsPanel.client.tsx's STEP_LABEL names for display —
+// kept in sync by hand since one lives in a client component and the other
+// in a route; a step outside this set was never a real funnel stage.
+const TARGET_STEPS = new Set(['landing_to_start', 'start_to_complete', 'complete_to_checkout', 'checkout_to_paid', 'trial_to_annual'])
 
 function strArray(v: unknown, maxLen = 64, maxItems = 20): string[] {
   if (!Array.isArray(v)) return []
@@ -104,9 +111,19 @@ function validate(input: ExperimentInput): { row?: Record<string, unknown>; erro
         utmSources: strArray(input.targeting?.utmSources, 120),
       },
       variants,
-      primary_metric: input.primaryMetric === 'net_new_paid' ? 'net_new_paid' : 'checkout_click',
+      primary_metric: input.primaryMetric === 'net_new_paid' ? 'net_new_paid'
+        : input.primaryMetric === 'quiz_completed' ? 'quiz_completed'
+        : 'checkout_click',
       bandit_enabled: input.banditEnabled === true,
       min_exposures_per_variant: Math.min(10_000, Math.max(10, Number(input.minExposuresPerVariant) || 200)),
+      // Both optional: a test can run with no declared bet, same as before
+      // this existed. When given, they're what the results panel already
+      // reads as "the bet" (predicted vs. actual lift) — this was the one
+      // path that could never reach them, so every experiment made through
+      // this form showed "no bet placed" regardless of what was typed.
+      predicted_lift_pts: typeof input.predictedLiftPts === 'number' && Number.isFinite(input.predictedLiftPts)
+        ? Math.max(0, Math.min(100, input.predictedLiftPts)) : null,
+      target_step: typeof input.targetStep === 'string' && TARGET_STEPS.has(input.targetStep) ? input.targetStep : null,
       updated_at: new Date().toISOString(),
     },
   }

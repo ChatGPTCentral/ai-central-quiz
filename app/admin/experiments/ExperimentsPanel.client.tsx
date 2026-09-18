@@ -81,9 +81,12 @@ interface FormState {
   key: string
   name: string
   hypothesis: string
-  primaryMetric: 'checkout_click' | 'net_new_paid'
+  primaryMetric: 'checkout_click' | 'net_new_paid' | 'quiz_completed'
   banditEnabled: boolean
   minExposuresPerVariant: number
+  /** '' = no bet declared, same as never filling this in. */
+  targetStep: string
+  predictedLiftPts: string
   stages: string[]
   personas: string[]
   utmSources: string
@@ -97,6 +100,8 @@ const EMPTY_FORM: FormState = {
   primaryMetric: 'checkout_click',
   banditEnabled: false,
   minExposuresPerVariant: 200,
+  targetStep: '',
+  predictedLiftPts: '',
   stages: [],
   personas: [],
   utmSources: '',
@@ -151,9 +156,11 @@ export default function ExperimentsPanel({
       key: row.key,
       name: row.name || '',
       hypothesis: row.hypothesis || '',
-      primaryMetric: row.primary_metric === 'net_new_paid' ? 'net_new_paid' : 'checkout_click',
+      primaryMetric: row.primary_metric === 'net_new_paid' ? 'net_new_paid' : row.primary_metric === 'quiz_completed' ? 'quiz_completed' : 'checkout_click',
       banditEnabled: !!row.bandit_enabled,
       minExposuresPerVariant: row.min_exposures_per_variant ?? 200,
+      targetStep: row.target_step || '',
+      predictedLiftPts: typeof row.predicted_lift_pts === 'number' ? String(row.predicted_lift_pts) : '',
       stages: Array.isArray(t.stages) ? t.stages : [],
       personas: Array.isArray(t.personas) ? t.personas : [],
       utmSources: Array.isArray(t.utmSources) ? t.utmSources.join(', ') : '',
@@ -172,6 +179,8 @@ export default function ExperimentsPanel({
         primaryMetric: editing.primaryMetric,
         banditEnabled: editing.banditEnabled,
         minExposuresPerVariant: editing.minExposuresPerVariant,
+        targetStep: editing.targetStep || undefined,
+        predictedLiftPts: editing.predictedLiftPts.trim() ? Number(editing.predictedLiftPts) : undefined,
         targeting: {
           stages: editing.stages,
           personas: editing.personas,
@@ -258,6 +267,7 @@ export default function ExperimentsPanel({
               <select value={editing.primaryMetric} onChange={e => setEditing({ ...editing, primaryMetric: e.target.value as FormState['primaryMetric'] })}
                 className="w-full rounded-lg border border-[#E8E4DF] px-3 py-2 bg-white">
                 <option value="checkout_click">Checkout click rate (fast)</option>
+                <option value="quiz_completed">Quiz completion (for quiz-entry tests)</option>
                 <option value="net_new_paid">Net-new paid (ground truth, slow)</option>
               </select>
             </label>
@@ -270,6 +280,28 @@ export default function ExperimentsPanel({
               <input type="number" value={editing.minExposuresPerVariant}
                 onChange={e => setEditing({ ...editing, minExposuresPerVariant: parseInt(e.target.value || '200', 10) })}
                 className="w-full rounded-lg border border-[#E8E4DF] px-3 py-2" />
+            </label>
+          </div>
+
+          {/* THE BET — was read and shown on every result card (verdict vs.
+              this) but had no way to enter it except by hand-editing the
+              database, so it silently read "no bet placed" on every
+              experiment made through this form. Optional: leave blank for a
+              test with no declared bet, same as before this existed. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <label className="text-sm">
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-[#9C9C9C] mb-1">Target step (the bet, optional)</span>
+              <select value={editing.targetStep} onChange={e => setEditing({ ...editing, targetStep: e.target.value })}
+                className="w-full rounded-lg border border-[#E8E4DF] px-3 py-2 bg-white">
+                <option value="">No bet declared</option>
+                {Object.entries(STEP_LABEL).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-[#9C9C9C] mb-1">Predicted lift, in points</span>
+              <input type="number" min={0} max={100} value={editing.predictedLiftPts}
+                onChange={e => setEditing({ ...editing, predictedLiftPts: e.target.value })}
+                placeholder="e.g. 5" className="w-full rounded-lg border border-[#E8E4DF] px-3 py-2" />
             </label>
           </div>
 
