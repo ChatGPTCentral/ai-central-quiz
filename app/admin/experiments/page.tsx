@@ -1,7 +1,4 @@
 import { listExperiments, experimentResults, type VariantResult } from '@/lib/experiment-queries'
-import { clarityUxByPage } from '@/lib/clarity'
-import { uxByPage, type UxPageRow } from '@/lib/ux-by-page'
-import ClarityPullNow from '@/components/admin/ClarityPullNow.client'
 import ExperimentsPanel from './ExperimentsPanel.client'
 import ExperimentArms from '@/components/admin/ExperimentArms'
 
@@ -11,9 +8,15 @@ export const dynamic = 'force-dynamic'
  * Experiments — create/manage A/B/n tests on the result page without
  * deploys. Variants are copy-only overrides of whitelisted slots; results
  * join exposures to checkout clicks and real net-new Stripe conversions.
- * The Clarity UX health table lives here too (moved from the retired
- * Funnel page): rage/dead clicks and JS errors are the qualitative side
- * of every experiment read.
+ *
+ * REMOVED 2026-09-18 (owner: "non si capisce più nulla"): a page-level
+ * PostHog rage/dead-click table used to live here too, under a "UX health"
+ * label that collided with a DIFFERENT, unrelated "UX health" widget on
+ * /admin/dashboard (a product-outage banner) — same name, two different
+ * things, on top of having nothing to do with managing a test. The
+ * underlying read (lib/ux-by-page.ts's uxByPage()) still exists for a
+ * dedicated look when one is actually wanted; it just does not belong on
+ * the page for creating and reading a test's own result.
  */
 export default async function ExperimentsPage({ searchParams }: { searchParams: { exp?: string; w?: string } }) {
   let experiments: Awaited<ReturnType<typeof listExperiments>> = []
@@ -35,34 +38,7 @@ export default async function ExperimentsPage({ searchParams }: { searchParams: 
     error = e instanceof Error ? e.message : String(e)
   }
 
-  // Clarity UX snapshots (best-effort; empty until the first pull lands)
-  // PostHog first, Clarity as the fallback while both are running.
-  //
-  // Deliberately in this order and NOT the other way round: the point of the
-  // re-map is that this table keeps working when the Clarity snapshot stops,
-  // so PostHog has to be the one being proved every day. Falling back the
-  // other way would leave the new path untested until the moment we needed it.
-  let ux: { rows: UxPageRow[]; snapshotDays: number; lastFetched: string | null } = { rows: [], snapshotDays: 0, lastFetched: null }
-  try { ux = await uxByPage(7) } catch { /* fall through */ }
-  if (!ux.rows.length) {
-    try {
-      const c = await clarityUxByPage(7)
-      ux = { ...c, rows: c.rows.map(r => ({ ...r, worstElement: null })) }
-    } catch { /* table shows its empty state */ }
-  }
-  const uxPath = (u: string) => { try { return new URL(u).pathname || '/' } catch { return u } }
-  const uxRows: UxPageRow[] = ux.rows.slice(0, 8)
-
   const flagOn = process.env.NEXT_PUBLIC_EXPERIMENTS_ENABLED === 'true'
-
-  const INK = '#1A1A1A'
-  const MUTE = '#9C9C9C'
-  const HAIR = '#E8E2D4'
-  const ROWHAIR = '#F1ECE2'
-  const LATTE = '#FEF7E7'
-  const th = { fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6B6B6B' } as const
-  const tnum = { fontVariantNumeric: 'tabular-nums' } as const
-  const fmt = (n: number) => n.toLocaleString()
 
   return (
     <div className="p-8 max-w-6xl">
@@ -83,47 +59,12 @@ export default async function ExperimentsPage({ searchParams }: { searchParams: 
       </div>
       <ExperimentsPanel initialExperiments={experiments} initialResults={results} />
 
-      {/* The arms, under the numbers. Owner, 2026-08-20: the stats say how it
-          is doing, the side by side says what it IS. Both halves of one
-          question, so both on one screen. */}
-      <ExperimentArms expKey={searchParams.exp} phone={searchParams.w === 'phone'} />
-
-      {/* UX health. Reads PostHog now, with Clarity only as a fallback while
-          both run, so this table survives the Clarity snapshot being retired. */}
-      <div style={{ border: '1px solid #333333', background: '#FFFFFF', marginTop: 28 }}>
-        <div className="flex items-baseline justify-between flex-wrap" style={{ padding: '12px 16px', background: LATTE, borderBottom: '1px solid #333333', gap: 10 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>UX health</span>
-          <span className="inline-flex items-center" style={{ gap: 10 }}>
-            <span style={{ fontSize: 10.5, color: '#6B6B6B' }}>
-              {ux.snapshotDays || 0} daily snapshot{ux.snapshotDays === 1 ? '' : 's'}{ux.lastFetched ? ` · last pull ${new Date(ux.lastFetched).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
-            </span>
-            <ClarityPullNow />
-          </span>
-        </div>
-        {uxRows.length === 0 ? (
-          <p style={{ padding: '12px 16px', fontSize: 12.5, color: MUTE }}>
-            No snapshots yet. The cron pulls daily at 06:30 UTC once CLARITY_API_TOKEN is set on Vercel, or hit Pull now for the trailing day.
-          </p>
-        ) : (
-          <>
-            <div className="grid" style={{ gridTemplateColumns: 'minmax(90px,1fr) 84px 100px 60px 60px 96px 84px', ...th, borderBottom: `1px solid ${HAIR}`, padding: '0 16px' }}>
-              <span style={{ padding: '8px 0' }}>Page</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Sessions</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Scroll depth</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Rage</span><span style={{ padding: '8px 0', textAlign: 'right' }}>Dead</span><span style={{ padding: '8px 0', textAlign: 'right' }} title="A session where PostHog recorded nothing but the one pageview — no click of any kind, no error. PostHog cannot see our own quiz_start/checkout_click events, so this can only measure what PostHog itself saw, not whether the visitor did something meaningful by our own funnel's definition.">Quick-backs</span><span style={{ padding: '8px 0', textAlign: 'right' }}>JS errors</span>
-            </div>
-            {uxRows.map(r => (
-              <div key={r.url} className="grid items-center hover:bg-[#FEF7E7]" style={{ gridTemplateColumns: 'minmax(90px,1fr) 84px 100px 60px 60px 96px 84px', fontSize: 12, borderBottom: `1px solid ${ROWHAIR}`, padding: '0 16px' }}>
-                <span style={{ padding: '8px 0', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11.5, color: INK }} title={r.url}>{uxPath(r.url)}</span>
-                <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{fmt(r.sessions)}</span>
-                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: 700, color: '#046BB1', ...tnum }}>{r.scrollDepth === null ? '–' : `${r.scrollDepth}%`}</span>
-                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.rage > 0 ? 800 : 400, color: r.rage > 0 ? '#BE3B3B' : undefined, ...tnum }}>{r.rage}</span>
-                <span title={r.worstElement ? `most dead clicks on: "${r.worstElement}"` : undefined}
-                      style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.dead > 0 ? 800 : 400, color: r.dead > 0 ? '#BE593B' : undefined, ...tnum }}>{r.dead}</span>
-                <span style={{ padding: '8px 0', textAlign: 'right', ...tnum }}>{r.quickback}</span>
-                <span style={{ padding: '8px 0', textAlign: 'right', fontWeight: r.scriptErrors > 0 ? 800 : 400, color: r.scriptErrors > 0 ? '#BE3B3B' : undefined, ...tnum }}>{r.scriptErrors}</span>
-              </div>
-            ))}
-            <p style={{ padding: '8px 16px 10px', fontSize: 10.5, color: MUTE }}>Recordings and heatmaps stay in the Clarity dashboard.</p>
-          </>
-        )}
+      <div className="mt-8">
+        <h2 className="text-base font-black text-[#333333] mb-1">What&rsquo;s actually different</h2>
+        <p className="text-sm text-[#9C9C9C] mb-3">
+          Control and the variant, live, side by side — the results above say how it&rsquo;s doing, this says what it IS.
+        </p>
+        <ExperimentArms expKey={searchParams.exp} phone={searchParams.w === 'phone'} />
       </div>
     </div>
   )
