@@ -14,6 +14,22 @@
 //
 // The watcher's cohort_regression check reads the same view and names the
 // stage that moved, so the retrain cycle aims at a seam, not an anecdote.
+//
+// REBUILT 2026-09-18 (owner: "10 moduli diversi con un sacco di testo
+// difficile da leggere"). This page had grown to 10 always-open sections —
+// Insights (08-30) and Learnings (09-12) merged in, then a funnel diagram,
+// a placement table and a non-payer board each landed as one more section,
+// each with its own intro paragraph, none of it ever cut back. Fixed the
+// way the daily digest fixed the same complaint on 09-12: one thing stays
+// always open (the table itself, the one instrument), the "what changed
+// and did it work" learnings still show as their own list because that IS
+// the point of collecting cohorts, and the four things read rarely (the
+// funnel diagram, live experiment list, placement table, non-payer board)
+// collapse behind a <details> toggle — same data, one click away, not
+// gone. "What we changed" (kind=experiment) and "Every other finding"
+// (kind=analysis/infra_fix) used to be two sections with two intros for
+// what is the same list read two ways; now one list, one intro, a kind
+// badge per card.
 
 import { db } from '@/lib/revenue-shared'
 import { probBetter, nNeededPerArm } from '@/lib/bayes'
@@ -50,6 +66,7 @@ type CohortRow = {
 const pct = (a: number, b: number) => (b > 0 ? (100 * a) / b : 0)
 const fmtPct = (a: number, b: number) => (b > 0 ? `${((100 * a) / b).toFixed(0)}%` : '–')
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 
 /** The bar, translated to cohort scale: 10 trials/day at the trailing
  *  landing volume. Recomputed from the data so it tracks traffic. */
@@ -72,6 +89,8 @@ interface LearningRow {
   predicted_delta_pts: number | null
   status: string
   notes: string | null
+  links: { label: string; url: string }[] | null
+  created_at: string
   before_cohorts: number | null
   before_num: number | null
   before_den: number | null
@@ -80,12 +99,6 @@ interface LearningRow {
   after_den: number | null
 }
 
-// Merged in from /admin/learnings, 2026-09-12 (owner: "learnings, cohort ed
-// experiments devono diventare una cosa sola"). cohort_learning_evidence
-// above only ever held kind='experiment' rows with cohort math attached;
-// 'analysis' and 'infra_fix' rows — a pure data finding, or a correction to
-// what a number itself meant — had nowhere else to live. Now they render
-// below the cohort table instead of on their own separate page.
 interface GeneralLearningRow {
   id: number
   title: string
@@ -113,12 +126,32 @@ const KIND_LABEL: Record<GeneralLearningRow['kind'], string> = {
   infra_fix: 'DATA FIX',
 }
 const KIND_NOTE: Record<GeneralLearningRow['kind'], string> = {
-  experiment: 'an on-page test with a variant — see the cohort math above',
-  analysis: 'a pattern found in the data, with nothing (yet) shipped to act on it',
+  experiment: 'an on-page test with a variant, verdict from the cohort pool',
+  analysis: 'a pattern found in the data, nothing shipped yet to act on it',
   infra_fix: 'a correction to how a number itself was computed',
 }
-const STATUS_COLOR: Record<GeneralLearningRow['status'], string> = { open: AMBER, confirmed: GREEN, refuted: RED, abandoned: MUTE }
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+const STATUS_COLOR: Record<string, string> = { open: AMBER, confirmed: GREEN, refuted: RED, abandoned: MUTE, WAITING: MUTE, CONFIRMED: GREEN, REFUTED: RED, OPEN: AMBER }
+
+// One shared shape so "what changed" (has a Bayesian verdict) and "every
+// other finding" (a plain status) render as ONE list, one card component,
+// instead of two sections that used to each explain themselves.
+type Finding = {
+  id: string
+  kind: GeneralLearningRow['kind']
+  title: string
+  hypothesis: string | null
+  notes: string | null
+  links: { label: string; url: string }[] | null
+  createdAt: string
+  step: string | null
+  appliedAtCohort: number | null
+  verdictBadge: string
+  verdictColor: string
+  verdictDetail: string | null
+  evidence: string | null
+}
+
+const summaryStyle: React.CSSProperties = { cursor: 'pointer', fontSize: 17, fontWeight: 800, color: INK, listStyle: 'none' }
 
 export default async function CohortsPage() {
   let rows: CohortRow[] = []
@@ -143,14 +176,9 @@ export default async function CohortsPage() {
     runningExps = (exps.data ?? []) as typeof runningExps
   } catch (e) { err = e instanceof Error ? e.message : String(e) }
 
-  // Merged in from /admin/insights, 2026-09-13 (owner: "perché abbiamo
-  // ancora una sezione insights, cohorts, experiments, daily digest" — the
-  // owner's own 2026-08-30 ask, "coorti + esperimenti + x-ray + digest in
-  // un unico diario scientifico", half-done yesterday when learnings folded
-  // in here. This is the other half that was still sitting on its own page.
   // Which CTA gets clicked → which CTA gets PAID, same quizTrial definition
   // the dashboard's KPI row uses (net-new OR existing customer buying
-  // again), never netNew alone.
+  // again, never netNew alone).
   let placements: PlacementStat[] = []
   try {
     const filters = parseFilters(new URLSearchParams())
@@ -177,10 +205,8 @@ export default async function CohortsPage() {
     })
   } catch { /* the section below degrades to empty, not a page error */ }
 
-  // Owner, 2026-09-15: a board of the people who did NOT pay, to find the
-  // best action toward conversion for each — starting with the one segment
-  // where "why" is even answerable (an email exists, a real decision signal
-  // exists): reached checkout, did not convert. See lib/checkout-declines.ts.
+  // Reached checkout, no charge — the one non-paying segment where "why" is
+  // answerable at all (owner, 2026-09-15).
   let declines: DeclineRow[] = []
   try {
     declines = await getCheckoutDeclines(14, 80)
@@ -202,6 +228,40 @@ export default async function CohortsPage() {
   }
   const needed = trialsNeededPerCohort(rows)
 
+  // One list, one card, whichever of the two tables it came from.
+  const findings: Finding[] = [
+    ...learnings.map((l): Finding => {
+      const bN = Number(l.before_den || 0), bK = Number(l.before_num || 0)
+      const aN = Number(l.after_den || 0), aK = Number(l.after_num || 0)
+      const bPct = bN > 0 ? (bK / bN) * 100 : 0
+      const aPct = aN > 0 ? (aK / aN) * 100 : 0
+      const hasEvidence = bN > 0 && aN > 0
+      const p = hasEvidence ? probBetter(aK, aN, bK, bN) : 0.5
+      const verdict = !hasEvidence ? 'WAITING' : p >= 0.95 ? 'CONFIRMED' : p <= 0.05 ? 'REFUTED' : 'OPEN'
+      const target = Number(l.predicted_delta_pts || 5)
+      const need = nNeededPerArm(bN > 0 ? bK / bN : 0.5, target)
+      const shortBy = Math.max(0, need - aN)
+      const evidence = bN > 0 || aN > 0
+        ? `before ${bN > 0 ? `${bPct.toFixed(1)}%` : '—'} (${bK}/${bN}) · after ${aN > 0 ? `${aPct.toFixed(1)}%` : '—'} (${aK}/${aN})`
+          + (hasEvidence ? ` · ${(aPct - bPct) >= 0 ? '+' : ''}${(aPct - bPct).toFixed(1)}pts · P(better) ${(p * 100).toFixed(0)}%` : '')
+        : null
+      return {
+        id: `exp-${l.id}`, kind: 'experiment', title: l.title, hypothesis: l.hypothesis, notes: l.notes,
+        links: l.links, createdAt: l.created_at, step: l.step, appliedAtCohort: l.applied_at_cohort,
+        verdictBadge: verdict, verdictColor: STATUS_COLOR[verdict],
+        verdictDetail: verdict !== 'CONFIRMED' && verdict !== 'REFUTED'
+          ? (aN === 0 ? `No completed cohort since cohort ${l.applied_at_cohort} yet.` : `Needs ~${need.toLocaleString()} on this step for ${target}pts, ${shortBy.toLocaleString()} short.`)
+          : null,
+        evidence,
+      }
+    }),
+    ...general.map((r): Finding => ({
+      id: `gen-${r.id}`, kind: r.kind, title: r.title, hypothesis: r.hypothesis, notes: r.notes,
+      links: r.links, createdAt: r.created_at, step: r.step, appliedAtCohort: r.applied_at_cohort,
+      verdictBadge: r.status.toUpperCase(), verdictColor: STATUS_COLOR[r.status], verdictDetail: null, evidence: null,
+    })),
+  ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+
   const th: React.CSSProperties = { fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: MUTE, textAlign: 'right', padding: '7px 8px' }
   const td: React.CSSProperties = { fontSize: 12.5, padding: '7px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
 
@@ -217,111 +277,12 @@ export default async function CohortsPage() {
     <div style={{ padding: '22px 26px 60px', maxWidth: 1100 }}>
       <div className="flex items-baseline flex-wrap" style={{ gap: 10 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em', color: INK }}>Cohorts &amp; learnings</h1>
-        <a href="/admin/experiments" style={{ fontSize: 12.5, fontWeight: 700, color: '#046BB1' }}>the experiments running right now →</a>
+        <a href="/admin/experiments" style={{ fontSize: 12.5, fontWeight: 700, color: '#046BB1' }}>manage a test →</a>
       </div>
-      <p style={{ fontSize: 12.5, color: MUTE, marginTop: 4, maxWidth: 860 }}>
-        One page for the funnel, what we changed, whether it worked, and everything else we found along the way —
-        merged from /admin/learnings (2026-09-12) and /admin/insights (2026-09-13). Experiments keeps its own page
-        for actually managing a test; this is where you read what's true.
-      </p>
-
-      {/* Merged in from /admin/insights, 2026-09-13. The funnel drawn as a
-          flow — same live data as the table below, a different shape, useful
-          for different questions (where in the QUIZ people drop, not just
-          which cohort). */}
-      <section style={{ marginTop: 20 }}>
-        <XraySection />
-      </section>
-
-      {/* THE LEARNING ENGINE, above the table, because the table is the raw
-          material and this is the point of collecting it.
-          A cohort is an INCREMENT OF EVIDENCE, never a test on its own: at 100
-          landers a cohort yields 0-3 trials, so cohort N against cohort N-1
-          can resolve nothing. Evidence pools from the change forward against a
-          bounded ten-cohort control, and the verdict is read off the pool. */}
-      <section style={{ marginTop: 18, marginBottom: 30 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-          What we changed, and whether it worked <span style={{ color: MUTE, fontWeight: 600 }}>({learnings.length})</span>
-        </h2>
-        <p style={{ fontSize: 12.5, color: MUTE, marginTop: 5, maxWidth: 880, lineHeight: 1.6 }}>
-          Each learning names ONE step it claims to move and the cohort it starts at. Every completed cohort after that
-          adds people to the pool. The verdict reads the whole pool, never two adjacent cohorts. When it is still open,
-          the row says how many more people that step needs, so &quot;not yet&quot; and &quot;never&quot; can be told apart.
-        </p>
-        {learnings.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>No learning declared yet.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-            {learnings.map(l => {
-              const bN = Number(l.before_den || 0), bK = Number(l.before_num || 0)
-              const aN = Number(l.after_den || 0), aK = Number(l.after_num || 0)
-              const bPct = bN > 0 ? (bK / bN) * 100 : 0
-              const aPct = aN > 0 ? (aK / aN) * 100 : 0
-              const delta = aPct - bPct
-              const hasEvidence = bN > 0 && aN > 0
-              const p = hasEvidence ? probBetter(aK, aN, bK, bN) : 0.5
-              // 95% both ways. Anything between is genuinely undecided, and
-              // saying so is the whole job of this panel.
-              const verdict = !hasEvidence ? 'WAITING' : p >= 0.95 ? 'CONFIRMED' : p <= 0.05 ? 'REFUTED' : 'OPEN'
-              const vColor = verdict === 'CONFIRMED' ? GREEN : verdict === 'REFUTED' ? RED : verdict === 'OPEN' ? AMBER : MUTE
-              const target = Number(l.predicted_delta_pts || 5)
-              const need = nNeededPerArm(bN > 0 ? bK / bN : 0.5, target)
-              const shortBy = Math.max(0, need - aN)
-              return (
-                <div key={l.id} style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '12px 14px' }}>
-                  <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: vColor, border: `2px solid ${vColor}`, padding: '1px 6px' }}>
-                      {verdict}
-                    </span>
-                    <strong style={{ fontSize: 14, color: INK }}>{l.title}</strong>
-                    <span style={{ fontSize: 11, color: MUTE }}>
-                      {STEP_LABEL[l.step] ?? l.step} · from cohort {l.applied_at_cohort}
-                    </span>
-                  </div>
-                  {l.hypothesis && (
-                    <p style={{ fontSize: 12, color: '#4A4A4A', marginTop: 6, lineHeight: 1.55, maxWidth: 840 }}>{l.hypothesis}</p>
-                  )}
-                  <div className="flex flex-wrap" style={{ gap: 22, marginTop: 9, fontSize: 12.5 }}>
-                    <span>
-                      <span style={{ color: MUTE }}>before </span>
-                      <strong>{bN > 0 ? `${bPct.toFixed(1)}%` : '—'}</strong>
-                      <span style={{ color: MUTE }}> ({bK}/{bN}, {l.before_cohorts ?? 0} cohorts)</span>
-                    </span>
-                    <span>
-                      <span style={{ color: MUTE }}>after </span>
-                      <strong>{aN > 0 ? `${aPct.toFixed(1)}%` : '—'}</strong>
-                      <span style={{ color: MUTE }}> ({aK}/{aN}, {l.after_cohorts ?? 0} cohorts)</span>
-                    </span>
-                    {hasEvidence && (
-                      <>
-                        <span style={{ fontWeight: 800, color: delta >= 0 ? GREEN : RED }}>
-                          {delta >= 0 ? '+' : ''}{delta.toFixed(1)} pts
-                        </span>
-                        <span style={{ color: MUTE }}>P(better) <strong style={{ color: INK }}>{(p * 100).toFixed(0)}%</strong></span>
-                      </>
-                    )}
-                  </div>
-                  {verdict !== 'CONFIRMED' && verdict !== 'REFUTED' && (
-                    <p style={{ fontSize: 11.5, color: AMBER, marginTop: 7, fontWeight: 600 }}>
-                      {aN === 0
-                        ? `No completed cohort since the change yet. Evidence starts at cohort ${l.applied_at_cohort}.`
-                        : `Needs about ${need.toLocaleString()} people on this step to resolve ${target} points. ${shortBy.toLocaleString()} short.`}
-                    </p>
-                  )}
-                  {l.notes && <p style={{ fontSize: 11, color: MUTE, marginTop: 6 }}>{l.notes}</p>}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-      <p style={{ fontSize: 13, color: MUTE, marginTop: 6, maxWidth: 860, lineHeight: 1.55 }}>
-        Every 100 landers, in arrival order, is one cohort — about a day of traffic. Rates are same-person: a cohort
-        member counts at a stage only if they reached it. Cells go <strong style={{ color: GREEN }}>green</strong> when a
-        rate runs 10+ points above the trailing-ten baseline and <strong style={{ color: RED }}>red</strong> when 10+
-        below; the watcher alarms at 20. <strong style={{ color: INK }}>The bar:</strong> 10 trials a day equals{' '}
-        <strong style={{ color: AMBER }}>{needed.toFixed(1)} trials per cohort</strong> at current traffic; the trailing
-        ten average {base.trials.toFixed(1)}.
+      <p style={{ fontSize: 12, color: MUTE, marginTop: 4, maxWidth: 860 }}>
+        The bar: 10 trials/day = <strong style={{ color: AMBER }}>{needed.toFixed(1)}</strong> per cohort at current traffic,
+        trailing ten average <strong style={{ color: INK }}>{base.trials.toFixed(1)}</strong>. Green/red cells run 10+ points
+        off that baseline.
       </p>
 
       <div style={{ overflowX: 'auto', marginTop: 14 }}>
@@ -368,24 +329,66 @@ export default async function CohortsPage() {
           </tbody>
         </table>
       </div>
-
-      <p style={{ fontSize: 11, color: MUTE, marginTop: 10, maxWidth: 860, lineHeight: 1.5 }}>
-        Trials here are quiz-earned (linked through the cohort member&rsquo;s own submission), so this table measures what
-        the FUNNEL converts; not-quiz sales land on the revenue screens. The open cohort (cream row) is still filling and
-        its rates are provisional. Assignment runs every 15 minutes inside the bandit cron; the watcher&rsquo;s
-        cohort_regression check reads this same view and names any stage that falls 20+ points under baseline.
+      <p style={{ fontSize: 10.5, color: MUTE, marginTop: 8, maxWidth: 860 }}>
+        Same-person rates, quiz-earned trials only (not-quiz sales are on the revenue screens). The cream row is still filling.
       </p>
 
-      {/* A live pointer, not a rebuild of /admin/experiments — that page is
-          for actually creating a test, approving an arm, changing a weight.
-          This is just "is anything running right now", so you don't have to
-          leave this page to find out. */}
-      <section style={{ marginTop: 28 }}>
+      {/* THE LEARNING ENGINE. A cohort is an increment of evidence, never a
+          test on its own — 100 landers yields 0-3 trials, so N vs N-1
+          resolves nothing. Evidence pools from the change forward against a
+          bounded ten-cohort control; the verdict reads the pool. One list
+          for both a shipped test's Bayesian verdict and a plain finding
+          with no variant to ship (a data pattern, a fix to what a number
+          meant) — same card, the kind badge says which. */}
+      <section style={{ marginTop: 30 }}>
         <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-          Running right now <span style={{ color: MUTE, fontWeight: 600 }}>({runningExps.length})</span>
+          Learnings <span style={{ color: MUTE, fontWeight: 600 }}>({findings.length})</span>
         </h2>
+        {findings.length === 0 ? (
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing recorded yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+            {findings.map(f => (
+              <div key={f.id} style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '12px 14px' }}>
+                <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: f.verdictColor, border: `2px solid ${f.verdictColor}`, padding: '1px 6px' }}>
+                    {f.verdictBadge}
+                  </span>
+                  <span title={KIND_NOTE[f.kind]} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', color: MUTE, background: LATTE, border: `1px solid ${HAIR}`, padding: '2px 6px' }}>
+                    {KIND_LABEL[f.kind]}
+                  </span>
+                  <strong style={{ fontSize: 14, color: INK }}>{f.title}</strong>
+                  <span style={{ fontSize: 11, color: MUTE, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                    {fmtDate(f.createdAt)}{f.step && ` · ${STEP_LABEL[f.step] ?? f.step}`}
+                  </span>
+                </div>
+                {f.hypothesis && <p style={{ fontSize: 12, color: '#4A4A4A', marginTop: 6, lineHeight: 1.55, maxWidth: 860 }}>{f.hypothesis}</p>}
+                {f.evidence && <p style={{ fontSize: 12.5, color: INK, marginTop: 8 }}>{f.evidence}</p>}
+                {f.verdictDetail && <p style={{ fontSize: 11.5, color: AMBER, marginTop: 7, fontWeight: 600 }}>{f.verdictDetail}</p>}
+                {f.notes && <p style={{ fontSize: 11, color: MUTE, marginTop: 6 }}>{f.notes}</p>}
+                {f.links && f.links.length > 0 && (
+                  <div className="flex flex-wrap" style={{ gap: 12, marginTop: 6 }}>
+                    {f.links.map(l => <a key={l.url} href={l.url} style={{ fontSize: 11, color: '#046BB1', fontWeight: 700 }}>{l.label} ↗</a>)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Everything below is read rarely — collapsed by default, one click
+          away, same data as before. Not deleted, just not always open. */}
+
+      <details style={{ marginTop: 30 }}>
+        <summary style={summaryStyle}>Funnel diagram</summary>
+        <div style={{ marginTop: 14 }}><XraySection /></div>
+      </details>
+
+      <details style={{ marginTop: 18 }}>
+        <summary style={summaryStyle}>Running right now ({runningExps.length})</summary>
         {runningExps.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 8 }}>Nothing running. Ship-and-watch instead, or start one on /admin/experiments.</p>
+          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing running. Ship-and-watch instead, or start one on /admin/experiments.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
             {runningExps.map(e => (
@@ -404,80 +407,18 @@ export default async function CohortsPage() {
             ))}
           </div>
         )}
-      </section>
+      </details>
 
-      {/* Everything above is an on-page test with a variant. Not every real
-          finding is: "decision-makers convert 2x better" has no variant to
-          ship, and a fix to how a number was computed isn't a test either.
-          Those live here instead of a separate page. */}
-      <section style={{ marginTop: 34 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>
-          Every other finding <span style={{ color: MUTE, fontWeight: 600 }}>({general.length})</span>
-        </h2>
-        <p style={{ fontSize: 12.5, color: MUTE, marginTop: 5, maxWidth: 860 }}>
-          Data findings with nothing shipped to act on yet, and corrections to what a number itself meant.
-        </p>
-        {general.length === 0 ? (
-          <p style={{ fontSize: 12.5, color: MUTE, marginTop: 10 }}>Nothing recorded yet.</p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-            {general.map(r => {
-              const vColor = STATUS_COLOR[r.status]
-              return (
-                <div key={r.id} style={{ border: `2px solid ${INK}`, background: '#FFFDFA', padding: '12px 14px' }}>
-                  <div className="flex flex-wrap items-baseline" style={{ gap: 10 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: vColor, border: `2px solid ${vColor}`, padding: '1px 6px' }}>
-                      {r.status.toUpperCase()}
-                    </span>
-                    <span title={KIND_NOTE[r.kind]} style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.06em', color: MUTE, background: LATTE, border: `1px solid ${HAIR}`, padding: '2px 6px' }}>
-                      {KIND_LABEL[r.kind]}
-                    </span>
-                    <strong style={{ fontSize: 14, color: INK }}>{r.title}</strong>
-                    <span style={{ fontSize: 11, color: MUTE, marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-                      {fmtDate(r.created_at)}
-                      {r.step && ` · ${STEP_LABEL[r.step] ?? r.step}`}
-                    </span>
-                  </div>
-                  {r.hypothesis && (
-                    <p style={{ fontSize: 12, color: '#4A4A4A', marginTop: 6, lineHeight: 1.55, maxWidth: 880 }}>{r.hypothesis}</p>
-                  )}
-                  {r.notes && <p style={{ fontSize: 11, color: MUTE, marginTop: 6, lineHeight: 1.5 }}>{r.notes}</p>}
-                  {r.links && r.links.length > 0 && (
-                    <div className="flex flex-wrap" style={{ gap: 12, marginTop: 6 }}>
-                      {r.links.map(l => (
-                        <a key={l.url} href={l.url} style={{ fontSize: 11, color: '#046BB1', fontWeight: 700 }}>{l.label} ↗</a>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+      <details style={{ marginTop: 18 }}>
+        <summary style={summaryStyle}>Which placement actually sells</summary>
+        <div style={{ marginTop: 14 }}><CtaClickedTable placements={placements} /></div>
+      </details>
 
-      {/* Merged in from /admin/insights, 2026-09-13: which CTA gets clicked
-          → which CTA gets PAID (quiz-earned, net-new or existing customer
-          buying again — never netNew alone). */}
-      <section style={{ marginTop: 34 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>Which placement actually sells</h2>
-        <CtaClickedTable placements={placements} />
-      </section>
-
-      {/* THE NON-PAYER BOARD (owner, 2026-09-15). Only the segment where "why"
-          is answerable at all: reached checkout, no charge. Everyone here has
-          an email (the quiz is already complete) and a real decision signal
-          (checkout_modal_close: how they left, how long they stayed) — same
-          source app/api/admin/checkout-autopsy/route.ts reads in aggregate,
-          here at the person level. "Read then declined" (20s+) is a
-          different problem, and a different email, than "quick bounce"
-          (under 5s, likely a misclick, not a considered no). */}
-      <section style={{ marginTop: 34 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 800, color: INK }}>Reached checkout, didn&rsquo;t pay — last 14 days</h2>
-        <p style={{ fontSize: 12.5, color: MUTE, marginTop: 4, marginBottom: 12, maxWidth: 720 }}>
-          Every one of these clicked a real checkout button and did not convert. &ldquo;Read then declined&rdquo; stayed
-          20s+ before leaving &mdash; a considered no. &ldquo;Quick bounce&rdquo; left under 5s &mdash; likely a misclick, not a decision.
-          Click a name to open their full behaviour on the Behavior tab.
+      <details style={{ marginTop: 18 }}>
+        <summary style={summaryStyle}>Reached checkout, didn&rsquo;t pay ({declines.length})</summary>
+        <p style={{ fontSize: 12, color: MUTE, marginTop: 8, marginBottom: 10, maxWidth: 720 }}>
+          Last 14 days. &ldquo;Read then declined&rdquo; stayed 20s+ before leaving, a considered no. &ldquo;Quick bounce&rdquo;
+          left under 5s, likely a misclick. Click a name for their full Behavior tab.
         </p>
         {declines.length === 0 ? (
           <p style={{ fontSize: 13, color: MUTE }}>No qualifying rows in the last 14 days, or the data failed to load.</p>
@@ -521,7 +462,7 @@ export default async function CohortsPage() {
             </table>
           </div>
         )}
-      </section>
+      </details>
     </div>
   )
 }
