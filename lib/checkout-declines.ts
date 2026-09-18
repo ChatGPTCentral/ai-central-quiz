@@ -27,6 +27,42 @@
 
 import { db } from '@/lib/revenue-shared'
 import { humanizePlacement } from '@/lib/buyer-behavior'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+/** A big `.in('col', ids)` with hundreds of UUIDs is a real, confirmed
+ *  failure mode, not a theoretical one — found 2026-09-18 when a real,
+ *  recent, fully-tracked trial (quiz_submit + anon_id both present in the
+ *  data, checked by hand) still came back as "no quiz activity found" on
+ *  the Paid board. All the querying below batches through this instead of
+ *  one `.in()` call with the whole list, so no single request carries
+ *  more than BATCH ids — however many people are ever swept at once. */
+const BATCH = 80
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+  return out
+}
+/** Run `.in(column, ids)` in batches of BATCH and concatenate every row —
+ *  the shared shape both getCheckoutDeclines and getPaidTrials need
+ *  several times each, so a giant id list never rides in a single request
+ *  or a single response. `extra` chains any further filter/order the
+ *  caller needs (eq, not, in on a second column, order) onto each batch's
+ *  own query before it runs. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function selectInBatches<T = Record<string, unknown>>(
+  c: SupabaseClient, table: string, columns: string, column: string, ids: string[],
+  extra?: (q: any) => any, // eslint-disable-line @typescript-eslint/no-explicit-any
+): Promise<T[]> {
+  const batches = await Promise.all(
+    chunk(ids, BATCH).map(async batchIds => {
+      let q = c.from(table).select(columns).in(column, batchIds)
+      if (extra) q = extra(q)
+      const { data } = await q
+      return (data ?? []) as T[]
+    }),
+  )
+  return batches.flat()
+}
 
 export type DeclineRow = {
   submissionId: string
@@ -71,33 +107,29 @@ export async function getCheckoutDeclines(days = 14, limit = 80): Promise<Declin
     if (lastClick.size === 0) return []
 
     const clickedIds = Array.from(lastClick.keys())
-    const { data: paidRows } = await c
-      .from('trial_ledger')
-      .select('submission_id')
-      .in('submission_id', clickedIds)
-      .eq('trial_refunded', false)
-    const paid = new Set((paidRows ?? []).map(r => r.submission_id as string))
+    const paidRows = await selectInBatches<{ submission_id: string }>(c, 'trial_ledger', 'submission_id', 'submission_id', clickedIds, q => q.eq('trial_refunded', false))
+    const paid = new Set(paidRows.map(r => r.submission_id))
     const declinedIds = clickedIds.filter(id => !paid.has(id))
     if (declinedIds.length === 0) return []
 
-    const { data: closeRows } = await c
-      .from('funnel_events')
-      .select('submission_id, ts, props')
-      .eq('event', 'checkout_modal_close')
-      .in('submission_id', declinedIds)
+    const closeRows = await selectInBatches<{ submission_id: string; ts: string; props: Record<string, unknown> | null }>(
+      c, 'funnel_events', 'submission_id, ts, props', 'submission_id', declinedIds, q => q.eq('event', 'checkout_modal_close'),
+    )
     const lastClose = new Map<string, { how: string | null; dwellMs: number | null; ts: string }>()
-    for (const r of closeRows ?? []) {
-      const sid = r.submission_id as string
-      const ts = r.ts as string
+    for (const r of closeRows) {
+      const sid = r.submission_id
+      const ts = r.ts
       const cur = lastClose.get(sid)
       if (!cur || ts > cur.ts) {
-        const props = r.props as Record<string, unknown> | null
+        const props = r.props
         lastClose.set(sid, { how: (props?.how as string) ?? null, dwellMs: typeof props?.dwellMs === 'number' ? props.dwellMs : null, ts })
       }
     }
 
-    const { data: subs } = await c.from('submissions').select('id, name, email, country, stage').in('id', declinedIds)
-    const subById = new Map((subs ?? []).map(s => [s.id as string, s as { id: string; name: string | null; email: string | null; country: string | null; stage: string | null }]))
+    const subs = await selectInBatches<{ id: string; name: string | null; email: string | null; country: string | null; stage: string | null }>(
+      c, 'submissions', 'id, name, email, country, stage', 'id', declinedIds,
+    )
+    const subById = new Map(subs.map(s => [s.id, s]))
 
     return declinedIds
       .map(id => {
@@ -156,7 +188,12 @@ export type PaidRow = {
 }
 
 function inferReason(hasSubmission: boolean, clickPlacement: string | null, daysSinceQuiz: number | null): string {
-  if (!hasSubmission) return 'No quiz activity found at all for this charge — too old or untracked to read.'
+  // NEVER "this person never did the quiz" — everyone in this list is
+  // filtered to a quiz-attributed trial already, so they did, by
+  // construction. A miss here is OUR lookup failing to find their
+  // browsing trail (pre-tracking data, or a real bug — one was found and
+  // fixed 2026-09-18), never a fact about them.
+  if (!hasSubmission) return "Couldn't find this person's browsing history to explain it — a gap in our tracking, not a claim about them."
   if (!clickPlacement) return 'No on-site click precedes this charge — paid via a direct or held-rate email link.'
   const label = humanizePlacement(clickPlacement)
   if (daysSinceQuiz !== null && daysSinceQuiz >= 1) {
@@ -195,36 +232,33 @@ export async function getPaidTrials(days = 400, limit = 250): Promise<PaidRow[]>
     if (trials.length === 0) return []
 
     const subIds = Array.from(new Set(trials.map(t => t.submission_id as string)))
-    // Explicit limits below: Supabase/PostgREST defaults to capping a query
-    // at 1000 rows, and sweeping ALL 203 quiz-earned trials (not a 14-day
-    // slice) genuinely exceeds that — checked 2026-09-18, 3,915 raw
-    // submission/anon_id pairs and 1,031 matching lifecycle events for
-    // today's volume alone. A silent truncation here would not error, it
-    // would just quietly drop people near the tail into "no data found."
-    const { data: anonRows } = await c.from('funnel_events').select('submission_id, anon_id').in('submission_id', subIds).not('anon_id', 'is', null).limit(8000)
+    // Batched (see selectInBatches above): a single .in() with all 203+ ids
+    // is the confirmed cause of a real bug found 2026-09-18 — a fully
+    // tracked, recent trial (quiz_submit and its anon_id both verified
+    // present in the data by hand) still came back as "no quiz activity
+    // found", meaning at that size the query was failing to return what it
+    // should, not that the data was missing.
+    const anonRows = await selectInBatches<{ submission_id: string; anon_id: string }>(
+      c, 'funnel_events', 'submission_id, anon_id', 'submission_id', subIds, q => q.not('anon_id', 'is', null),
+    )
     const anonsBySub = new Map<string, string[]>()
-    for (const r of anonRows ?? []) {
-      const sid = r.submission_id as string
-      const arr = anonsBySub.get(sid) ?? []
-      arr.push(r.anon_id as string)
-      anonsBySub.set(sid, arr)
+    for (const r of anonRows) {
+      const arr = anonsBySub.get(r.submission_id) ?? []
+      arr.push(r.anon_id)
+      anonsBySub.set(r.submission_id, arr)
     }
-    const allAnonIds = Array.from(new Set((anonRows ?? []).map(r => r.anon_id as string)))
+    const allAnonIds = Array.from(new Set(anonRows.map(r => r.anon_id)))
     if (allAnonIds.length === 0) return trials.map(t => baseRow(t))
 
-    const { data: eventRows } = await c
-      .from('funnel_events')
-      .select('anon_id, event, ts, props')
-      .in('anon_id', allAnonIds)
-      .in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click'])
-      .order('ts', { ascending: true })
-      .limit(8000)
-    const events = eventRows ?? []
+    const events = await selectInBatches<{ anon_id: string; event: string; ts: string; props: Record<string, unknown> | null }>(
+      c, 'funnel_events', 'anon_id, event, ts, props', 'anon_id', allAnonIds,
+      q => q.in('event', ['quiz_view', 'quiz_start', 'quiz_submit', 'checkout_click']),
+    )
     const byAnon = new Map<string, typeof events>()
     for (const e of events) {
-      const arr = byAnon.get(e.anon_id as string) ?? []
+      const arr = byAnon.get(e.anon_id) ?? []
       arr.push(e)
-      byAnon.set(e.anon_id as string, arr)
+      byAnon.set(e.anon_id, arr)
     }
 
     const seconds = (a: string | null, b: string | null) => {
